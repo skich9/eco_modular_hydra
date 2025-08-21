@@ -1,0 +1,160 @@
+<div class="container-fluid py-4">
+	<div class="row">
+		<div class="col-12">
+			<div class="d-flex justify-content-between align-items-center mb-4">
+				<h2 class="page-title">Dashboard</h2>
+				<div class="text-muted" *ngIf="currentUser">
+					Bienvenido, {{ currentUser.nombre_completo }}
+				</div>
+			</div>
+		</div>
+	</div>
+
+	<div class="row">
+		<!-- Stats Cards -->
+		<div class="col-lg-3 col-md-6 mb-4">
+			<div class="card stats-card">
+				<div class="card-body">
+					<div class="d-flex align-items-center">
+						<div class="stats-icon bg-primary">
+							<i class="fas fa-users"></i>
+						</div>
+						<div class="ms-3">
+							<h5 class="card-title mb-0">Usuarios</h5>
+							<p class="card-text text-muted">Total registrados</p>
+							<h3 class="mb-0">125</h3>
+						</div>
+					</div>
+				</div>
+			</div>
+		</div>
+
+		<div class="col-lg-3 col-md-6 mb-4">
+			<div class="card stats-card">
+				<div class="card-body">
+					<div class="d-flex align-items-center">
+						<div class="stats-icon bg-success">
+							<i class="fas fa-book"></i>
+						</div>
+						<div class="ms-3">
+							<h5 class="card-title mb-0">Materias</h5>
+							<p class="card-text text-muted">Activas</p>
+							<h3 class="mb-0">45</h3>
+						</div>
+					</div>
+				</div>
+			</div>
+		</div>
+
+		<div class="col-lg-3 col-md-6 mb-4">
+			<div class="card stats-card">
+				<div class="card-body">
+					<div class="d-flex align-items-center">
+						<div class="stats-icon bg-warning">
+							<i class="fas fa-shopping-cart"></i>
+						</div>
+						<div class="ms-3">
+							<h5 class="card-title mb-0">Items</h5>
+							<p class="card-text text-muted">De cobro</p>
+							<h3 class="mb-0">28</h3>
+						</div>
+					</div>
+				</div>
+			</div>
+		</div>
+
+		<div class="col-lg-3 col-md-6 mb-4">
+			<div class="card stats-card">
+				<div class="card-body">
+					<div class="d-flex align-items-center">
+						<div class="stats-icon bg-info">
+							<i class="fas fa-dollar-sign"></i>
+						</div>
+						<div class="ms-3">
+							<h5 class="card-title mb-0">Parámetros</h5>
+							<p class="card-text text-muted">Económicos</p>
+							<h3 class="mb-0">12</h3>
+						</div>
+					</div>
+				</div>
+			</div>
+		</div>
+	</div>
+
+	<div class="row">
+		<!-- Quick Actions -->
+		<div class="col-lg-6 mb-4">
+			<div class="card">
+				<div class="card-header">
+					<h5 class="mb-0">Acciones Rápidas</h5>
+				</div>
+				<div class="card-body">
+					<div class="row g-3">
+						<div class="col-6">
+							<a href="/usuarios/nuevo" class="btn btn-outline-primary w-100">
+								<i class="fas fa-user-plus me-2"></i>
+								Nuevo Usuario
+							</a>
+						</div>
+						<div class="col-6">
+							<a href="/materias/nuevo" class="btn btn-outline-success w-100">
+								<i class="fas fa-book-open me-2"></i>
+								Nueva Materia
+							</a>
+						</div>
+						<div class="col-6">
+							<a href="/parametros" class="btn btn-outline-info w-100">
+								<i class="fas fa-cog me-2"></i>
+								Parámetros
+							</a>
+						</div>
+						<div class="col-6">
+							<a href="/roles/nuevo" class="btn btn-outline-warning w-100">
+								<i class="fas fa-shield-alt me-2"></i>
+								Nuevo Rol
+							</a>
+						</div>
+					</div>
+				</div>
+			</div>
+		</div>
+
+		<!-- Recent Activity -->
+		<div class="col-lg-6 mb-4">
+			<div class="card">
+				<div class="card-header">
+					<h5 class="mb-0">Actividad Reciente</h5>
+				</div>
+				<div class="card-body">
+					<div class="activity-item">
+						<div class="activity-icon bg-success">
+							<i class="fas fa-check"></i>
+						</div>
+						<div class="activity-content">
+							<p class="mb-1">Usuario creado exitosamente</p>
+							<small class="text-muted">Hace 2 horas</small>
+						</div>
+					</div>
+					<div class="activity-item">
+						<div class="activity-icon bg-info">
+							<i class="fas fa-edit"></i>
+						</div>
+						<div class="activity-content">
+							<p class="mb-1">Parámetro económico actualizado</p>
+							<small class="text-muted">Hace 4 horas</small>
+						</div>
+					</div>
+					<div class="activity-item">
+						<div class="activity-icon bg-warning">
+							<i class="fas fa-plus"></i>
+						</div>
+						<div class="activity-content">
+							<p class="mb-1">Nueva materia agregada</p>
+							<small class="text-muted">Hace 1 día</small>
+						</div>
+					</div>
+				</div>
+			</div>
+		</div>
+	</div>
+</div>

@@ -1,0 +1,545 @@
+<!-- Alert Messages -->
+<div *ngIf="showAlert" [class]="'alert alert-' + alertType + ' alert-dismissible fade show'" 
+     style="position: fixed; top: 20px; right: 20px; z-index: 9999; min-width: 300px;">
+	<i class="fas" [class.fa-check-circle]="alertType === 'success'" [class.fa-exclamation-triangle]="alertType === 'danger'"></i>
+	{{ alertMessage }}
+	<button type="button" class="btn-close" (click)="showAlert = false"></button>
+</div>
+
+<!-- Page Header -->
+<div class="d-flex justify-content-between align-items-center mb-4">
+	<h2 class="page-title">Parámetros del Sistema</h2>
+</div>
+
+<!-- Navigation Tabs -->
+<ul class="nav nav-tabs mb-4">
+	<li class="nav-item">
+		<button 
+			class="nav-link" 
+			[class.active]="activeTab === 'parametros-economicos'"
+			(click)="setActiveTab('parametros-economicos')"
+		>
+			<i class="fas fa-dollar-sign me-2"></i>Parámetros Económicos
+		</button>
+	</li>
+	<li class="nav-item">
+		<button 
+			class="nav-link" 
+			[class.active]="activeTab === 'items-cobro'"
+			(click)="setActiveTab('items-cobro')"
+		>
+			<i class="fas fa-shopping-cart me-2"></i>Items de Cobro
+		</button>
+	</li>
+	<li class="nav-item">
+		<button 
+			class="nav-link" 
+			[class.active]="activeTab === 'materias'"
+			(click)="setActiveTab('materias')"
+		>
+			<i class="fas fa-book me-2"></i>Materias
+		</button>
+	</li>
+</ul>
+
+<!-- Tab Content -->
+<div class="tab-content">
+	
+	<!-- Parámetros Económicos Tab -->
+	<div *ngIf="activeTab === 'parametros-economicos'" class="tab-pane fade show active">
+		<div class="card">
+			<div class="card-header d-flex justify-content-between align-items-center">
+				<h5 class="mb-0">Parámetros Económicos</h5>
+				<button class="btn btn-primary" (click)="openParametroModal()">
+					<i class="fas fa-plus me-2"></i>Nuevo Parámetro
+				</button>
+			</div>
+			<div class="card-body">
+				<!-- Search Filter -->
+				<div class="row mb-3">
+					<div class="col-md-6">
+						<div class="input-group">
+							<span class="input-group-text"><i class="fas fa-search"></i></span>
+							<input 
+								type="text" 
+								class="form-control" 
+								placeholder="Buscar parámetros..."
+								[(ngModel)]="searchFilters.parametros"
+							>
+						</div>
+					</div>
+				</div>
+
+				<!-- Table -->
+				<div class="table-responsive">
+					<table class="table table-striped">
+						<thead>
+							<tr>
+								<th>ID</th>
+								<th>Nombre</th>
+								<th>Descripción</th>
+								<th>Valor</th>
+								<th>Tipo</th>
+								<th>Estado</th>
+								<th>Acciones</th>
+							</tr>
+						</thead>
+						<tbody>
+							<tr *ngIf="loading.parametros">
+								<td colspan="7" class="text-center">
+									<div class="spinner-border" role="status"></div>
+									Cargando...
+								</td>
+							</tr>
+							<tr *ngIf="!loading.parametros && filteredParametros.length === 0">
+								<td colspan="7" class="text-center">No hay parámetros registrados</td>
+							</tr>
+							<tr *ngFor="let parametro of filteredParametros">
+								<td>{{ parametro.id_parametro_economico }}</td>
+								<td>{{ parametro.nombre }}</td>
+								<td>{{ parametro.descripcion }}</td>
+								<td>{{ parametro.valor }}</td>
+								<td>{{ parametro.tipo }}</td>
+								<td>
+									<span [class]="'badge badge-' + (parametro.estado ? 'success' : 'danger')">
+										{{ parametro.estado ? 'Activo' : 'Inactivo' }}
+									</span>
+								</td>
+								<td>
+									<button class="btn btn-sm btn-info me-1" (click)="openParametroModal(parametro)">
+										<i class="fas fa-edit"></i>
+									</button>
+									<button class="btn btn-sm btn-danger me-1" 
+											(click)="confirmDelete(parametro.id_parametro_economico, 'parametro')">
+										<i class="fas fa-trash"></i>
+									</button>
+									<button [class]="'btn btn-sm ' + (parametro.estado ? 'btn-warning' : 'btn-success')" 
+											(click)="toggleStatus(parametro, 'parametro')">
+										<i [class]="'fas ' + (parametro.estado ? 'fa-ban' : 'fa-check')"></i>
+									</button>
+								</td>
+							</tr>
+						</tbody>
+					</table>
+				</div>
+			</div>
+		</div>
+	</div>
+
+	<!-- Items de Cobro Tab -->
+	<div *ngIf="activeTab === 'items-cobro'" class="tab-pane fade show active">
+		<div class="card">
+			<div class="card-header d-flex justify-content-between align-items-center">
+				<h5 class="mb-0">Items de Cobro</h5>
+				<button class="btn btn-primary" (click)="openItemModal()">
+					<i class="fas fa-plus me-2"></i>Nuevo Item
+				</button>
+			</div>
+			<div class="card-body">
+				<!-- Search Filter -->
+				<div class="row mb-3">
+					<div class="col-md-6">
+						<div class="input-group">
+							<span class="input-group-text"><i class="fas fa-search"></i></span>
+							<input 
+								type="text" 
+								class="form-control" 
+								placeholder="Buscar items..."
+								[(ngModel)]="searchFilters.items"
+							>
+						</div>
+					</div>
+				</div>
+
+				<!-- Table -->
+				<div class="table-responsive">
+					<table class="table table-striped">
+						<thead>
+							<tr>
+								<th>ID</th>
+								<th>Código</th>
+								<th>Nombre</th>
+								<th>Costo</th>
+								<th>Unidad</th>
+								<th>Tipo</th>
+								<th>Estado</th>
+								<th>Acciones</th>
+							</tr>
+						</thead>
+						<tbody>
+							<tr *ngIf="loading.items">
+								<td colspan="8" class="text-center">
+									<div class="spinner-border" role="status"></div>
+									Cargando...
+								</td>
+							</tr>
+							<tr *ngIf="!loading.items && filteredItems.length === 0">
+								<td colspan="8" class="text-center">No hay items registrados</td>
+							</tr>
+							<tr *ngFor="let item of filteredItems">
+								<td>{{ item.id_item }}</td>
+								<td>{{ item.codigo_producto_interno }}</td>
+								<td>{{ item.nombre_servicio }}</td>
+								<td>{{ item.costo }}</td>
+								<td>{{ item.unidad_medida }}</td>
+								<td>{{ item.tipo_item }}</td>
+								<td>
+									<span [class]="'badge badge-' + (item.estado ? 'success' : 'danger')">
+										{{ item.estado ? 'Activo' : 'Inactivo' }}
+									</span>
+								</td>
+								<td>
+									<button class="btn btn-sm btn-info me-1" (click)="openItemModal(item)">
+										<i class="fas fa-edit"></i>
+									</button>
+									<button class="btn btn-sm btn-danger me-1" 
+											(click)="confirmDelete(item.id_item, 'item')">
+										<i class="fas fa-trash"></i>
+									</button>
+									<button [class]="'btn btn-sm ' + (item.estado ? 'btn-warning' : 'btn-success')" 
+											(click)="toggleStatus(item, 'item')">
+										<i [class]="'fas ' + (item.estado ? 'fa-ban' : 'fa-check')"></i>
+									</button>
+								</td>
+							</tr>
+						</tbody>
+					</table>
+				</div>
+			</div>
+		</div>
+	</div>
+
+	<!-- Materias Tab -->
+	<div *ngIf="activeTab === 'materias'" class="tab-pane fade show active">
+		<div class="card">
+			<div class="card-header d-flex justify-content-between align-items-center">
+				<h5 class="mb-0">Materias</h5>
+				<button class="btn btn-primary" (click)="openMateriaModal()">
+					<i class="fas fa-plus me-2"></i>Nueva Materia
+				</button>
+			</div>
+			<div class="card-body">
+				<!-- Search Filter -->
+				<div class="row mb-3">
+					<div class="col-md-6">
+						<div class="input-group">
+							<span class="input-group-text"><i class="fas fa-search"></i></span>
+							<input 
+								type="text" 
+								class="form-control" 
+								placeholder="Buscar materias..."
+								[(ngModel)]="searchFilters.materias"
+							>
+						</div>
+					</div>
+				</div>
+
+				<!-- Table -->
+				<div class="table-responsive">
+					<table class="table table-striped">
+						<thead>
+							<tr>
+								<th>Sigla</th>
+								<th>Pensum</th>
+								<th>Nombre</th>
+								<th>Créditos</th>
+								<th>H. Teóricas</th>
+								<th>H. Prácticas</th>
+								<th>Estado</th>
+								<th>Acciones</th>
+							</tr>
+						</thead>
+						<tbody>
+							<tr *ngIf="loading.materias">
+								<td colspan="8" class="text-center">
+									<div class="spinner-border" role="status"></div>
+									Cargando...
+								</td>
+							</tr>
+							<tr *ngIf="!loading.materias && filteredMaterias.length === 0">
+								<td colspan="8" class="text-center">No hay materias registradas</td>
+							</tr>
+							<tr *ngFor="let materia of filteredMaterias">
+								<td>{{ materia.sigla }}</td>
+								<td>{{ materia.pensum }}</td>
+								<td>{{ materia.nombre }}</td>
+								<td>{{ materia.creditos }}</td>
+								<td>{{ materia.horas_teoricas }}</td>
+								<td>{{ materia.horas_practicas }}</td>
+								<td>
+									<span [class]="'badge badge-' + (materia.estado ? 'success' : 'danger')">
+										{{ materia.estado ? 'Activo' : 'Inactivo' }}
+									</span>
+								</td>
+								<td>
+									<button class="btn btn-sm btn-info me-1" (click)="openMateriaModal(materia)">
+										<i class="fas fa-edit"></i>
+									</button>
+									<button class="btn btn-sm btn-danger me-1" 
+											(click)="confirmDelete('', 'materia', materia.sigla, materia.pensum)">
+										<i class="fas fa-trash"></i>
+									</button>
+									<button [class]="'btn btn-sm ' + (materia.estado ? 'btn-warning' : 'btn-success')" 
+											(click)="toggleStatus(materia, 'materia')">
+										<i [class]="'fas ' + (materia.estado ? 'fa-ban' : 'fa-check')"></i>
+									</button>
+								</td>
+							</tr>
+						</tbody>
+					</table>
+				</div>
+			</div>
+		</div>
+	</div>
+</div>
+
+<!-- Modal Parámetro Económico -->
+<div class="modal fade" [class.show]="showParametroModal" [style.display]="showParametroModal ? 'block' : 'none'">
+	<div class="modal-dialog">
+		<div class="modal-content">
+			<div class="modal-header">
+				<h5 class="modal-title">{{ editingParametro ? 'Editar' : 'Nuevo' }} Parámetro Económico</h5>
+				<button type="button" class="btn-close" (click)="closeModals()"></button>
+			</div>
+			<form [formGroup]="parametroForm" (ngSubmit)="saveParametro()">
+				<div class="modal-body">
+					<div class="mb-3">
+						<label class="form-label">Nombre *</label>
+						<input type="text" class="form-control" formControlName="nombre">
+					</div>
+					<div class="mb-3">
+						<label class="form-label">Descripción</label>
+						<textarea class="form-control" formControlName="descripcion" rows="3"></textarea>
+					</div>
+					<div class="mb-3">
+						<label class="form-label">Valor *</label>
+						<input type="number" class="form-control" formControlName="valor">
+					</div>
+					<div class="mb-3">
+						<label class="form-label">Tipo *</label>
+						<select class="form-select" formControlName="tipo">
+							<option value="">Seleccione un tipo</option>
+							<option value="MONETARIO">Monetario</option>
+							<option value="PORCENTAJE">Porcentaje</option>
+							<option value="NUMERICO">Numérico</option>
+							<option value="TEXTO">Texto</option>
+						</select>
+					</div>
+					<div class="mb-3">
+						<div class="form-check">
+							<input class="form-check-input" type="checkbox" formControlName="estado">
+							<label class="form-check-label">Activo</label>
+						</div>
+					</div>
+				</div>
+				<div class="modal-footer">
+					<button type="button" class="btn btn-secondary" (click)="closeModals()">Cancelar</button>
+					<button type="submit" class="btn btn-primary" [disabled]="parametroForm.invalid">
+						{{ editingParametro ? 'Actualizar' : 'Guardar' }}
+					</button>
+				</div>
+			</form>
+		</div>
+	</div>
+</div>
+
+<!-- Modal Item de Cobro -->
+<div class="modal fade" [class.show]="showItemModal" [style.display]="showItemModal ? 'block' : 'none'">
+	<div class="modal-dialog modal-lg">
+		<div class="modal-content">
+			<div class="modal-header">
+				<h5 class="modal-title">{{ editingItem ? 'Editar' : 'Nuevo' }} Item de Cobro</h5>
+				<button type="button" class="btn-close" (click)="closeModals()"></button>
+			</div>
+			<form [formGroup]="itemForm" (ngSubmit)="saveItem()">
+				<div class="modal-body">
+					<div class="row">
+						<div class="col-md-6">
+							<div class="mb-3">
+								<label class="form-label">Nombre del Servicio *</label>
+								<input type="text" class="form-control" formControlName="nombre_servicio">
+							</div>
+						</div>
+						<div class="col-md-6">
+							<div class="mb-3">
+								<label class="form-label">Código Interno *</label>
+								<input type="text" class="form-control" formControlName="codigo_producto_interno">
+							</div>
+						</div>
+					</div>
+					<div class="row">
+						<div class="col-md-6">
+							<div class="mb-3">
+								<label class="form-label">Código Impuesto</label>
+								<input type="text" class="form-control" formControlName="codigo_producto_impuesto">
+							</div>
+						</div>
+						<div class="col-md-6">
+							<div class="mb-3">
+								<label class="form-label">Unidad de Medida *</label>
+								<select class="form-select" formControlName="unidad_medida">
+									<option value="">Seleccione</option>
+									<option value="UNIDAD">Unidad</option>
+									<option value="HORA">Hora</option>
+									<option value="MES">Mes</option>
+									<option value="SEMESTRE">Semestre</option>
+								</select>
+							</div>
+						</div>
+					</div>
+					<div class="row">
+						<div class="col-md-6">
+							<div class="mb-3">
+								<label class="form-label">Costo</label>
+								<input type="number" class="form-control" formControlName="costo">
+							</div>
+						</div>
+						<div class="col-md-6">
+							<div class="mb-3">
+								<label class="form-label">Número de Créditos *</label>
+								<input type="number" class="form-control" formControlName="nro_creditos">
+							</div>
+						</div>
+					</div>
+					<div class="row">
+						<div class="col-md-6">
+							<div class="mb-3">
+								<label class="form-label">Actividad Económica *</label>
+								<input type="text" class="form-control" formControlName="actividad_economica">
+							</div>
+						</div>
+						<div class="col-md-6">
+							<div class="mb-3">
+								<label class="form-label">Tipo de Item *</label>
+								<select class="form-select" formControlName="tipo_item">
+									<option value="">Seleccione</option>
+									<option value="SERVICIO">Servicio</option>
+									<option value="PRODUCTO">Producto</option>
+									<option value="MATERIA">Materia</option>
+								</select>
+							</div>
+						</div>
+					</div>
+					<div class="mb-3">
+						<label class="form-label">Descripción</label>
+						<textarea class="form-control" formControlName="descripcion" rows="3"></textarea>
+					</div>
+					<div class="row">
+						<div class="col-md-6">
+							<div class="form-check mb-3">
+								<input class="form-check-input" type="checkbox" formControlName="facturado">
+								<label class="form-check-label">Facturado</label>
+							</div>
+						</div>
+						<div class="col-md-6">
+							<div class="form-check mb-3">
+								<input class="form-check-input" type="checkbox" formControlName="estado">
+								<label class="form-check-label">Activo</label>
+							</div>
+						</div>
+					</div>
+				</div>
+				<div class="modal-footer">
+					<button type="button" class="btn btn-secondary" (click)="closeModals()">Cancelar</button>
+					<button type="submit" class="btn btn-primary" [disabled]="itemForm.invalid">
+						{{ editingItem ? 'Actualizar' : 'Guardar' }}
+					</button>
+				</div>
+			</form>
+		</div>
+	</div>
+</div>
+
+<!-- Modal Materia -->
+<div class="modal fade" [class.show]="showMateriaModal" [style.display]="showMateriaModal ? 'block' : 'none'">
+	<div class="modal-dialog">
+		<div class="modal-content">
+			<div class="modal-header">
+				<h5 class="modal-title">{{ editingMateria ? 'Editar' : 'Nueva' }} Materia</h5>
+				<button type="button" class="btn-close" (click)="closeModals()"></button>
+			</div>
+			<form [formGroup]="materiaForm" (ngSubmit)="saveMateria()">
+				<div class="modal-body">
+					<div class="row">
+						<div class="col-md-6">
+							<div class="mb-3">
+								<label class="form-label">Sigla *</label>
+								<input type="text" class="form-control" formControlName="sigla">
+							</div>
+						</div>
+						<div class="col-md-6">
+							<div class="mb-3">
+								<label class="form-label">Pensum *</label>
+								<input type="text" class="form-control" formControlName="pensum">
+							</div>
+						</div>
+					</div>
+					<div class="mb-3">
+						<label class="form-label">Nombre *</label>
+						<input type="text" class="form-control" formControlName="nombre">
+					</div>
+					<div class="row">
+						<div class="col-md-4">
+							<div class="mb-3">
+								<label class="form-label">Créditos *</label>
+								<input type="number" class="form-control" formControlName="creditos">
+							</div>
+						</div>
+						<div class="col-md-4">
+							<div class="mb-3">
+								<label class="form-label">Horas Teóricas</label>
+								<input type="number" class="form-control" formControlName="horas_teoricas">
+							</div>
+						</div>
+						<div class="col-md-4">
+							<div class="mb-3">
+								<label class="form-label">Horas Prácticas</label>
+								<input type="number" class="form-control" formControlName="horas_practicas">
+							</div>
+						</div>
+					</div>
+					<div class="mb-3">
+						<label class="form-label">Descripción</label>
+						<textarea class="form-control" formControlName="descripcion" rows="3"></textarea>
+					</div>
+					<div class="mb-3">
+						<div class="form-check">
+							<input class="form-check-input" type="checkbox" formControlName="estado">
+							<label class="form-check-label">Activo</label>
+						</div>
+					</div>
+				</div>
+				<div class="modal-footer">
+					<button type="button" class="btn btn-secondary" (click)="closeModals()">Cancelar</button>
+					<button type="submit" class="btn btn-primary" [disabled]="materiaForm.invalid">
+						{{ editingMateria ? 'Actualizar' : 'Guardar' }}
+					</button>
+				</div>
+			</form>
+		</div>
+	</div>
+</div>
+
+<!-- Modal de Confirmación de Eliminación -->
+<div class="modal fade" [class.show]="showDeleteModal" [style.display]="showDeleteModal ? 'block' : 'none'">
+	<div class="modal-dialog">
+		<div class="modal-content">
+			<div class="modal-header">
+				<h5 class="modal-title">Confirmar Eliminación</h5>
+				<button type="button" class="btn-close" (click)="closeModals()"></button>
+			</div>
+			<div class="modal-body">
+				<p>¿Está seguro que desea eliminar este elemento?</p>
+				<p class="text-muted">Esta acción no se puede deshacer.</p>
+			</div>
+			<div class="modal-footer">
+				<button type="button" class="btn btn-secondary" (click)="closeModals()">Cancelar</button>
+				<button type="button" class="btn btn-danger" (click)="executeDelete()">Eliminar</button>
+			</div>
+		</div>
+	</div>
+</div>
+
+<!-- Modal Backdrop -->
+<div *ngIf="showParametroModal || showItemModal || showMateriaModal || showDeleteModal" 
+     class="modal-backdrop fade show" (click)="closeModals()"></div>

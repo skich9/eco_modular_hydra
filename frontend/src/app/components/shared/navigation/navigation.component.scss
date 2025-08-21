@@ -1,0 +1,25 @@
+/* Navigation Component Styles - Using existing styles.css classes */
+
+/* Additional component-specific styles if needed */
+.nav-dropdown {
+	z-index: 1050; /* Ensure dropdown appears above other elements */
+}
+
+.nav-submenu {
+	z-index: 1050; /* Ensure submenu appears above other elements */
+}
+
+/* Ensure proper spacing for mobile */
+@media (max-width: 768px) {
+	.nav-user-info {
+		.text-sm {
+			display: none;
+		}
+	}
+	
+	.nav-menu-secondary {
+		.d-flex {
+			flex-wrap: wrap;
+		}
+	}
+}

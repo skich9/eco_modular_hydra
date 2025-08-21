@@ -1,6 +1,7 @@
-import { Component, OnInit } from '@angular/core';
+import { Component, OnInit, HostListener } from '@angular/core';
 import { CommonModule } from '@angular/common';
 import { Router, RouterModule } from '@angular/router';
+import { ReactiveFormsModule, FormBuilder, FormGroup, Validators } from '@angular/forms';
 import { AuthService } from '../../../services/auth.service';
 import { Usuario } from '../../../models/usuario.model';
 
@@ -20,101 +21,20 @@ interface SubMenuItem {
 @Component({
 	selector: 'app-navigation',
 	standalone: true,
-	imports: [CommonModule, RouterModule],
-	template: `
-		<!-- Navigation Header -->
-		<nav class="nav-menu">
-			<div class="container-fluid px-4">
-				<div class="d-flex justify-content-between align-items-center" style="height: 4rem;">
-					<div class="d-flex align-items-center">
-						<a routerLink="/dashboard" class="nav-logo text-decoration-none">
-							<div class="nav-logo-icon">
-								<img src="assets/images/logo-ceta.png" alt="Logo CETA" class="login-logo-image">
-							</div>
-							<div class="nav-logo-text">
-								<span class="nav-logo-title">Sistema de Cobros</span>
-								<p class="nav-logo-subtitle mb-0">Instituto Tecnológico CETA</p>
-							</div>
-						</a>
-					</div>
-
-					<div class="nav-user-info" *ngIf="currentUser">
-						<div class="text-sm me-3">
-							<span class="nav-user-name">{{ currentUser.nombre_completo }}</span>
-							<span class="nav-user-role">({{ currentUser.rol?.nombre }})</span>
-						</div>
-						
-						<div class="position-relative">
-							<button 
-								type="button" 
-								class="btn btn-link p-0 d-flex align-items-center text-decoration-none"
-								(click)="toggleDropdown()"
-							>
-								<div class="nav-user-avatar">
-									{{ getUserInitial() }}
-								</div>
-							</button>
-							
-							<div 
-								[class]="'nav-dropdown' + (showUserDropdown ? '' : ' d-none')"
-								id="userDropdown"
-							>
-								<a href="#" class="nav-dropdown-item text-decoration-none" (click)="changePassword($event)">
-									<i class="fas fa-key me-2"></i>Cambiar Contraseña
-								</a>
-								<a href="#" class="nav-dropdown-item text-decoration-none" (click)="logout($event)">
-									<i class="fas fa-sign-out-alt me-2"></i>Cerrar Sesión
-								</a>
-							</div>
-						</div>
-					</div>
-				</div>
-			</div>
-		</nav>
-
-		<!-- Secondary Navigation -->
-		<nav class="nav-menu-secondary">
-			<div class="container-fluid px-4">
-				<div class="d-flex">
-					<div 
-						*ngFor="let item of menuItems; let i = index" 
-						class="nav-menu-item position-relative"
-					>
-						<button 
-							type="button" 
-							class="nav-menu-button btn btn-link text-decoration-none"
-							(click)="toggleConfigMenu(i)"
-						>
-							<i class="{{ item.icon }} nav-menu-icon"></i>
-							{{ item.name }}
-							<i class="fas fa-chevron-down ms-2" style="font-size: 0.75rem;"></i>
-						</button>
-						
-						<div 
-							[class]="'nav-submenu' + (activeSubmenu === i ? '' : ' d-none')"
-							[id]="'configDropdown' + i"
-						>
-							<a 
-								*ngFor="let subitem of item.submenu"
-								[routerLink]="subitem.route"
-								class="nav-submenu-item text-decoration-none"
-								[class.active]="isActiveRoute(subitem.route)"
-								(click)="closeAllMenus()"
-							>
-								<i class="fas {{ subitem.icon }} me-2"></i>{{ subitem.name }}
-							</a>
-						</div>
-					</div>
-				</div>
-			</div>
-		</nav>
-	`,
-	styles: []
+	imports: [CommonModule, RouterModule, ReactiveFormsModule],
+	templateUrl: './navigation.component.html',
+	styleUrls: ['./navigation.component.scss']
 })
 export class NavigationComponent implements OnInit {
 	currentUser: Usuario | null = null;
 	showUserDropdown = false;
 	activeSubmenu: number | null = null;
+	
+	// Change password form
+	changePasswordForm: FormGroup;
+	changePasswordError: string = '';
+	changePasswordSuccess: string = '';
+	isChangingPassword: boolean = false;
 
 	menuItems: MenuItem[] = [
 		{
@@ -139,15 +59,22 @@ export class NavigationComponent implements OnInit {
 			submenu: [
 				{ name: 'Usuarios', icon: 'fa-users', route: '/usuarios' },
 				{ name: 'Roles', icon: 'fa-user-shield', route: '/roles' },
-				{ name: 'Parámetros', icon: 'fa-sliders-h', route: '/parametros' }
+				{ name: 'Parámetros de Sistema', icon: 'fa-sliders-h', route: '/parametros' }
 			]
 		}
 	];
 
 	constructor(
 		private authService: AuthService,
-		private router: Router
-	) {}
+		private router: Router,
+		private formBuilder: FormBuilder
+	) {
+		this.changePasswordForm = this.formBuilder.group({
+			currentPassword: ['', [Validators.required]],
+			newPassword: ['', [Validators.required, Validators.minLength(6)]],
+			confirmPassword: ['', [Validators.required]]
+		}, { validators: this.passwordMatchValidator });
+	}
 
 	ngOnInit(): void {
 		// Suscribirse a los cambios del usuario actual
@@ -197,10 +124,67 @@ export class NavigationComponent implements OnInit {
 		return this.router.url.startsWith(route);
 	}
 
+	passwordMatchValidator(form: FormGroup) {
+		const newPassword = form.get('newPassword');
+		const confirmPassword = form.get('confirmPassword');
+		
+		if (newPassword && confirmPassword && newPassword.value !== confirmPassword.value) {
+			confirmPassword.setErrors({ mismatch: true });
+			return { mismatch: true };
+		}
+		
+		if (confirmPassword?.hasError('mismatch')) {
+			confirmPassword.setErrors(null);
+		}
+		
+		return null;
+	}
+
 	changePassword(event: Event): void {
 		event.preventDefault();
 		this.closeAllMenus();
-		this.router.navigate(['/change-password']);
+		
+		// Reset form and messages
+		this.changePasswordForm.reset();
+		this.changePasswordError = '';
+		this.changePasswordSuccess = '';
+		
+		// Show modal (using Bootstrap modal)
+		const modal = document.getElementById('changePasswordModal');
+		if (modal) {
+			const bootstrapModal = new (window as any).bootstrap.Modal(modal);
+			bootstrapModal.show();
+		}
+	}
+
+	onChangePassword(): void {
+		if (this.changePasswordForm.invalid) {
+			return;
+		}
+
+		this.isChangingPassword = true;
+		this.changePasswordError = '';
+		this.changePasswordSuccess = '';
+
+		const formData = this.changePasswordForm.value;
+
+		// Aquí iría la llamada al servicio para cambiar la contraseña
+		// Por ahora simularemos la respuesta
+		setTimeout(() => {
+			this.isChangingPassword = false;
+			this.changePasswordSuccess = 'Contraseña cambiada exitosamente';
+			
+			// Cerrar modal después de 2 segundos
+			setTimeout(() => {
+				const modal = document.getElementById('changePasswordModal');
+				if (modal) {
+					const bootstrapModal = (window as any).bootstrap.Modal.getInstance(modal);
+					if (bootstrapModal) {
+						bootstrapModal.hide();
+					}
+				}
+			}, 2000);
+		}, 1500);
 	}
 
 	logout(event: Event): void {

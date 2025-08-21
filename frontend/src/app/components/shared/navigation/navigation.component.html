@@ -1,0 +1,163 @@
+<!-- Navigation Header -->
+<nav class="nav-menu">
+	<div class="container-fluid px-4">
+		<div class="d-flex justify-content-between align-items-center" style="height: 4rem;">
+			<div class="d-flex align-items-center">
+				<a routerLink="/dashboard" class="nav-logo text-decoration-none">
+					<div class="nav-logo-icon">
+						<img src="assets/images/logo-ceta.png" alt="Logo CETA" class="login-logo-image">
+					</div>
+					<div class="nav-logo-text">
+						<span class="nav-logo-title">Sistema de Cobros</span>
+						<p class="nav-logo-subtitle mb-0">Instituto Tecnológico CETA</p>
+					</div>
+				</a>
+			</div>
+
+			<div class="nav-user-info" *ngIf="currentUser">
+				<div class="text-sm me-3">
+					<span class="nav-user-name">{{ currentUser.nombre_completo }}</span>
+					<span class="nav-user-role">({{ currentUser.rol?.nombre }})</span>
+				</div>
+				
+				<div class="position-relative">
+					<button 
+						type="button" 
+						class="btn btn-link p-0 d-flex align-items-center text-decoration-none"
+						(click)="toggleDropdown()"
+					>
+						<div class="nav-user-avatar">
+							{{ getUserInitial() }}
+						</div>
+					</button>
+					
+					<div 
+						[class]="'nav-dropdown' + (showUserDropdown ? '' : ' d-none')"
+						id="userDropdown"
+					>
+						<a href="#" class="nav-dropdown-item text-decoration-none" (click)="changePassword($event)">
+							<i class="fas fa-key me-2"></i>Cambiar Contraseña
+						</a>
+						<a href="#" class="nav-dropdown-item text-decoration-none" (click)="logout($event)">
+							<i class="fas fa-sign-out-alt me-2"></i>Cerrar Sesión
+						</a>
+					</div>
+				</div>
+			</div>
+		</div>
+	</div>
+</nav>
+
+<!-- Secondary Navigation -->
+<nav class="nav-menu-secondary">
+	<div class="container-fluid px-4">
+		<div class="d-flex">
+			<div 
+				*ngFor="let item of menuItems; let i = index" 
+				class="nav-menu-item position-relative"
+			>
+				<button 
+					type="button" 
+					class="nav-menu-button btn btn-link text-decoration-none"
+					(click)="toggleConfigMenu(i)"
+				>
+					<i class="{{ item.icon }} nav-menu-icon"></i>
+					{{ item.name }}
+					<i class="fas fa-chevron-down ms-2" style="font-size: 0.75rem;"></i>
+				</button>
+				
+				<div 
+					[class]="'nav-submenu' + (activeSubmenu === i ? '' : ' d-none')"
+					[id]="'configDropdown' + i"
+				>
+					<a 
+						*ngFor="let subitem of item.submenu"
+						[routerLink]="subitem.route"
+						class="nav-submenu-item text-decoration-none"
+						[class.active]="isActiveRoute(subitem.route)"
+						(click)="closeAllMenus()"
+					>
+						<i class="fas {{ subitem.icon }} me-2"></i>{{ subitem.name }}
+					</a>
+				</div>
+			</div>
+		</div>
+	</div>
+</nav>
+
+<!-- Modal de Cambiar Contraseña -->
+<div class="modal fade" id="changePasswordModal" tabindex="-1" aria-labelledby="changePasswordModalLabel" aria-hidden="true">
+	<div class="modal-dialog">
+		<div class="modal-content">
+			<div class="modal-header">
+				<h5 class="modal-title" id="changePasswordModalLabel">Cambiar Contraseña</h5>
+				<button type="button" class="btn-close" data-bs-dismiss="modal" aria-label="Close"></button>
+			</div>
+			<div class="modal-body">
+				<form [formGroup]="changePasswordForm" (ngSubmit)="onChangePassword()">
+					<div class="mb-3">
+						<label for="currentPassword" class="form-label">Contraseña Actual</label>
+						<input 
+							type="password" 
+							class="form-control" 
+							id="currentPassword"
+							formControlName="currentPassword"
+							[class.is-invalid]="changePasswordForm.get('currentPassword')?.invalid && changePasswordForm.get('currentPassword')?.touched"
+						>
+						<div *ngIf="changePasswordForm.get('currentPassword')?.invalid && changePasswordForm.get('currentPassword')?.touched" class="invalid-feedback">
+							La contraseña actual es requerida
+						</div>
+					</div>
+					
+					<div class="mb-3">
+						<label for="newPassword" class="form-label">Nueva Contraseña</label>
+						<input 
+							type="password" 
+							class="form-control" 
+							id="newPassword"
+							formControlName="newPassword"
+							[class.is-invalid]="changePasswordForm.get('newPassword')?.invalid && changePasswordForm.get('newPassword')?.touched"
+						>
+						<div *ngIf="changePasswordForm.get('newPassword')?.invalid && changePasswordForm.get('newPassword')?.touched" class="invalid-feedback">
+							La nueva contraseña debe tener al menos 6 caracteres
+						</div>
+					</div>
+					
+					<div class="mb-3">
+						<label for="confirmPassword" class="form-label">Confirmar Nueva Contraseña</label>
+						<input 
+							type="password" 
+							class="form-control" 
+							id="confirmPassword"
+							formControlName="confirmPassword"
+							[class.is-invalid]="changePasswordForm.get('confirmPassword')?.invalid && changePasswordForm.get('confirmPassword')?.touched"
+						>
+						<div *ngIf="changePasswordForm.get('confirmPassword')?.invalid && changePasswordForm.get('confirmPassword')?.touched" class="invalid-feedback">
+							Las contraseñas no coinciden
+						</div>
+					</div>
+					
+					<div *ngIf="changePasswordError" class="alert alert-danger">
+						{{ changePasswordError }}
+					</div>
+					
+					<div *ngIf="changePasswordSuccess" class="alert alert-success">
+						{{ changePasswordSuccess }}
+					</div>
+				</form>
+			</div>
+			<div class="modal-footer">
+				<button type="button" class="btn btn-secondary" data-bs-dismiss="modal">Cancelar</button>
+				<button 
+					type="button" 
+					class="btn btn-primary" 
+					[disabled]="changePasswordForm.invalid || isChangingPassword"
+					(click)="onChangePassword()"
+				>
+					<span class="spinner-border spinner-border-sm me-2" *ngIf="isChangingPassword"></span>
+					{{ isChangingPassword ? 'Cambiando...' : 'Cambiar Contraseña' }}
+				</button>
+			</div>
+		</div>
+	</div>
+</div>

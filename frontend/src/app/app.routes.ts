@@ -1,7 +1,6 @@
 import { Routes } from '@angular/router';
 import { ApiTestComponent } from './components/api-test/api-test.component';
 import { LoginComponent } from './components/auth/login/login.component';
-import { DashboardComponent } from './components/dashboard/dashboard.component';
 import { LayoutComponent } from './components/shared/layout/layout.component';
 import { UsuariosListComponent } from './components/usuarios/usuarios-list/usuarios-list.component';
 import { UsuarioFormComponent } from './components/usuarios/usuario-form/usuario-form.component';
@@ -27,7 +26,10 @@ export const routes: Routes = [
 		component: LayoutComponent,
 		canActivate: [authGuard],
 		children: [
-			{ path: 'dashboard', component: DashboardComponent },
+			{
+				path: 'dashboard',
+				loadComponent: () => import('./components/pages/dashboard/dashboard.component').then(m => m.DashboardComponent)
+			},
 			
 			// Rutas para usuarios
 			{ path: 'usuarios', component: UsuariosListComponent },
@@ -45,9 +47,10 @@ export const routes: Routes = [
 			{ path: 'roles/editar/:id', component: RolFormComponent },
 			
 			// Rutas para parámetros del sistema
-			{ path: 'parametros', component: ParametrosSistemaFormComponent },
-			{ path: 'parametros/nuevo', component: ParametrosSistemaFormComponent },
-			{ path: 'parametros/editar/:id', component: ParametrosSistemaFormComponent },
+			{
+				path: 'parametros',
+				loadComponent: () => import('./components/pages/parametros/parametros.component').then(m => m.ParametrosComponent)
+			},
 			
 			// Ruta por defecto
 			{ path: '', redirectTo: 'dashboard', pathMatch: 'full' }
