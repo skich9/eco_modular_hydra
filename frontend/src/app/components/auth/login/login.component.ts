@@ -14,92 +14,87 @@ const USE_MOCK_AUTH = false; // Cambiar a false para usar el servicio real
 	standalone: true,
 	imports: [CommonModule, ReactiveFormsModule],
 	template: `
-		<div class="min-vh-100 d-flex align-items-center justify-content-center bg-primary">
-			<div class="card shadow-lg" style="max-width: 400px; width: 100%;">
-				<div class="card-body p-4">
-					<!-- Header -->
-					<div class="text-center mb-4">
-						<img src="assets/images/logo-ceta.png" alt="Logo CETA" class="mb-3" style="height: 80px;">
-						<h2 class="h4 text-dark mb-1">Sistema de Cobros</h2>
-						<p class="text-muted small">Instituto Tecnológico CETA</p>
+		<div class="login-container">
+			<div class="login-card">
+				<!-- Header -->
+				<div class="login-header">
+					<div class="login-logo">
+						<img src="assets/images/logo-ceta.png" alt="Logo CETA" class="login-logo-image">
+					</div>
+					<h2 class="login-title">Sistema de Cobros</h2>
+					<p class="login-subtitle">Instituto Tecnológico CETA</p>
+				</div>
+
+				<!-- Login Form -->
+				<form [formGroup]="loginForm" (ngSubmit)="onSubmit()" class="login-form">
+					<!-- Errores -->
+					<div *ngIf="errorMessage" class="alert alert-danger d-flex align-items-center" role="alert">
+						<i class="fas fa-exclamation-triangle me-2"></i>
+						<span>{{ errorMessage }}</span>
 					</div>
 
-					<!-- Login Form -->
-					<form [formGroup]="loginForm" (ngSubmit)="onSubmit()">
-						<!-- Errores -->
-						<div *ngIf="errorMessage" class="alert alert-danger d-flex align-items-center" role="alert">
-							<i class="fas fa-exclamation-triangle me-2"></i>
-							<span>{{ errorMessage }}</span>
-						</div>
-
-						<!-- Usuario -->
-						<div class="mb-3">
-							<label for="nickname" class="form-label">Usuario</label>
-							<div class="input-group">
-								<span class="input-group-text">
-									<i class="fas fa-user"></i>
-								</span>
-								<input 
-									id="nickname" 
-									formControlName="nickname" 
-									type="text" 
-									class="form-control"
-									[class.is-invalid]="loginForm.get('nickname')?.invalid && loginForm.get('nickname')?.touched"
-									placeholder="Ingrese su usuario o CI"
-								>
-							</div>
-							<div *ngIf="loginForm.get('nickname')?.invalid && loginForm.get('nickname')?.touched" class="invalid-feedback d-block">
-								Usuario requerido
+					<!-- Usuario -->
+					<div class="login-form-group">
+						<label for="nickname" class="login-label">Usuario</label>
+						<div class="position-relative">
+							<input 
+								id="nickname" 
+								formControlName="nickname" 
+								type="text" 
+								class="login-input"
+								[class.is-invalid]="loginForm.get('nickname')?.invalid && loginForm.get('nickname')?.touched"
+								placeholder="Ingrese su usuario o CI"
+							>
+							<div class="position-absolute top-50 end-0 translate-middle-y pe-3">
+								<i class="fas fa-user text-muted"></i>
 							</div>
 						</div>
-
-						<!-- Contraseña -->
-						<div class="mb-3">
-							<label for="contrasenia" class="form-label">Contraseña</label>
-							<div class="input-group">
-								<span class="input-group-text">
-									<i class="fas fa-lock"></i>
-								</span>
-								<input 
-									id="contrasenia" 
-									formControlName="contrasenia" 
-									[type]="showPassword ? 'text' : 'password'" 
-									class="form-control"
-									[class.is-invalid]="loginForm.get('contrasenia')?.invalid && loginForm.get('contrasenia')?.touched"
-									placeholder="••••••••"
-								>
-								<button 
-									type="button" 
-									class="btn btn-outline-secondary"
-									(click)="togglePasswordVisibility()"
-								>
-									<i class="fas" [ngClass]="showPassword ? 'fa-eye-slash' : 'fa-eye'"></i>
-								</button>
-							</div>
-							<div *ngIf="loginForm.get('contrasenia')?.invalid && loginForm.get('contrasenia')?.touched" class="invalid-feedback d-block">
-								Contraseña requerida
-							</div>
+						<div *ngIf="loginForm.get('nickname')?.invalid && loginForm.get('nickname')?.touched" class="text-danger small mt-1">
+							Usuario requerido
 						</div>
+					</div>
 
-						<!-- Botón de Iniciar Sesión -->
-						<div class="d-grid">
-							<button type="submit" [disabled]="loginForm.invalid || isLoading" class="btn btn-primary btn-lg">
-								<span class="d-flex align-items-center justify-content-center">
-									<i class="fas fa-sign-in-alt me-2" *ngIf="!isLoading"></i>
-									<span class="spinner-border spinner-border-sm me-2" *ngIf="isLoading"></span>
-									<span *ngIf="isLoading">Cargando...</span>
-									<span *ngIf="!isLoading">Iniciar Sesión</span>
-								</span>
+					<!-- Contraseña -->
+					<div class="login-form-group">
+						<label for="contrasenia" class="login-label">Contraseña</label>
+						<div class="login-password-container">
+							<input 
+								id="contrasenia" 
+								formControlName="contrasenia" 
+								[type]="showPassword ? 'text' : 'password'" 
+								class="login-input"
+								[class.is-invalid]="loginForm.get('contrasenia')?.invalid && loginForm.get('contrasenia')?.touched"
+								placeholder="••••••••"
+							>
+							<button 
+								type="button" 
+								class="login-password-toggle btn btn-link p-0"
+								(click)="togglePasswordVisibility()"
+							>
+								<i class="fas" [ngClass]="showPassword ? 'fa-eye-slash' : 'fa-eye'"></i>
 							</button>
 						</div>
-					</form>
-
-					<!-- Footer -->
-					<div class="text-center mt-4">
-						<small class="text-muted">
-							© {{ currentYear }} Instituto Tecnológico CETA. Todos los derechos reservados.
-						</small>
+						<div *ngIf="loginForm.get('contrasenia')?.invalid && loginForm.get('contrasenia')?.touched" class="text-danger small mt-1">
+							Contraseña requerida
+						</div>
 					</div>
+
+					<!-- Botón de Iniciar Sesión -->
+					<div class="d-grid">
+						<button type="submit" [disabled]="loginForm.invalid || isLoading" class="login-button btn btn-primary btn-lg">
+							<span class="d-flex align-items-center justify-content-center">
+								<i class="fas fa-sign-in-alt me-2" *ngIf="!isLoading"></i>
+								<span class="spinner-border spinner-border-sm me-2" *ngIf="isLoading"></span>
+								<span *ngIf="isLoading">Cargando...</span>
+								<span *ngIf="!isLoading">Iniciar Sesión</span>
+							</span>
+						</button>
+					</div>
+				</form>
+
+				<!-- Footer -->
+				<div class="login-footer text-center">
+					<small>© {{ currentYear }} Instituto Tecnológico CETA. Todos los derechos reservados.</small>
 				</div>
 			</div>
 		</div>
