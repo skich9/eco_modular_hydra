@@ -97,7 +97,7 @@ const USE_MOCK_AUTH = false; // Cambiar a false para usar el servicio real
 					<!-- Footer -->
 					<div class="text-center mt-4">
 						<small class="text-muted">
-							© {{ currentYear }} - Laravel + Angular Integration
+							© {{ currentYear }} Instituto Tecnológico CETA. Todos los derechos reservados.
 						</small>
 					</div>
 				</div>
