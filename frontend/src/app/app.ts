@@ -7,17 +7,9 @@ import { RouterOutlet } from '@angular/router';
   imports: [RouterOutlet],
   template: `
     <div class="app-container">
-      <header>
-        <h1>Laravel Angular App</h1>
-      </header>
-      
       <main>
         <router-outlet></router-outlet>
       </main>
-      
-      <footer>
-        <p>&copy; 2025 - Laravel + Angular Integration</p>
-      </footer>
     </div>
   `,
   styles: `
@@ -31,7 +23,7 @@ import { RouterOutlet } from '@angular/router';
       text-align: center;
     }
     main {
-      padding: 2rem;
+      padding: 0rem;
     }
     footer {
       background: #f5f5f5;
