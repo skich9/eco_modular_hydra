@@ -32,7 +32,7 @@ import { MateriaService } from '../../../services/materia.service';
 							formControlName="sigla_materia" 
 							class="form-control"
 							[class.is-invalid]="submitted && f['sigla_materia'].errors"
-							[readonly]="isEditMode"
+							[disabled]="isEditMode"
 						>
 						<div class="invalid-feedback" *ngIf="submitted && f['sigla_materia'].errors">
 							<span *ngIf="f['sigla_materia'].errors['required']">Sigla es requerida</span>
@@ -56,11 +56,26 @@ import { MateriaService } from '../../../services/materia.service';
 
 				<div class="form-row">
 					<div class="form-group">
+						<label for="nombre_material_oficial">Nombre Material Oficial *</label>
+						<input 
+							type="text" 
+							id="nombre_material_oficial" 
+							formControlName="nombre_material_oficial" 
+							class="form-control"
+							[class.is-invalid]="submitted && f['nombre_material_oficial'].errors"
+						>
+						<div class="invalid-feedback" *ngIf="submitted && f['nombre_material_oficial'].errors">
+							<span *ngIf="f['nombre_material_oficial'].errors['required']">Nombre Material Oficial es requerido</span>
+						</div>
+					</div>
+
+					<div class="form-group">
 						<label for="cod_pensum">Pensum *</label>
 						<select 
 							id="cod_pensum" 
 							formControlName="cod_pensum" 
 							class="form-control"
+							[disabled]="isEditMode"
 							[class.is-invalid]="submitted && f['cod_pensum'].errors"
 						>
 							<option [ngValue]="null" disabled>Seleccione un pensum</option>
@@ -72,7 +87,9 @@ import { MateriaService } from '../../../services/materia.service';
 							<span *ngIf="f['cod_pensum'].errors['required']">Pensum es requerido</span>
 						</div>
 					</div>
+				</div>
 
+				<div class="form-row">
 					<div class="form-group">
 						<label for="id_parametro_economico">Parámetro Económico *</label>
 						<select 
@@ -90,9 +107,7 @@ import { MateriaService } from '../../../services/materia.service';
 							<span *ngIf="f['id_parametro_economico'].errors['required']">Parámetro económico es requerido</span>
 						</div>
 					</div>
-				</div>
 
-				<div class="form-row">
 					<div class="form-group">
 						<label for="nro_creditos">Número de Créditos *</label>
 						<input 
@@ -108,20 +123,22 @@ import { MateriaService } from '../../../services/materia.service';
 							<span *ngIf="f['nro_creditos'].errors['min']">Número de créditos debe ser mayor a 0</span>
 						</div>
 					</div>
+				</div>
 
+				<div class="form-row">
 					<div class="form-group">
-						<label for="carga_horaria">Carga Horaria *</label>
+						<label for="orden">Orden *</label>
 						<input 
 							type="number" 
-							id="carga_horaria" 
-							formControlName="carga_horaria" 
+							id="orden" 
+							formControlName="orden" 
 							class="form-control"
-							[class.is-invalid]="submitted && f['carga_horaria'].errors"
+							[class.is-invalid]="submitted && f['orden'].errors"
 							min="1"
 						>
-						<div class="invalid-feedback" *ngIf="submitted && f['carga_horaria'].errors">
-							<span *ngIf="f['carga_horaria'].errors['required']">Carga horaria es requerida</span>
-							<span *ngIf="f['carga_horaria'].errors['min']">Carga horaria debe ser mayor a 0</span>
+						<div class="invalid-feedback" *ngIf="submitted && f['orden'].errors">
+							<span *ngIf="f['orden'].errors['required']">Orden es requerido</span>
+							<span *ngIf="f['orden'].errors['min']">Orden debe ser mayor a 0</span>
 						</div>
 					</div>
 				</div>
@@ -377,6 +394,7 @@ export class MateriaFormComponent implements OnInit {
 	isSubmitting = false;
 	error = '';
 	materiaSigla: string | null = null;
+	materiaPensum: string | null = null;
 
 	constructor(
 		private formBuilder: FormBuilder,
@@ -387,10 +405,11 @@ export class MateriaFormComponent implements OnInit {
 		this.materiaForm = this.formBuilder.group({
 			sigla_materia: ['', Validators.required],
 			nombre_materia: ['', Validators.required],
+			nombre_material_oficial: ['', Validators.required],
 			cod_pensum: [null, Validators.required],
 			id_parametro_economico: [null, Validators.required],
 			nro_creditos: [null, [Validators.required, Validators.min(1)]],
-			carga_horaria: [null, [Validators.required, Validators.min(1)]],
+			orden: [null, [Validators.required, Validators.min(1)]],
 			descripcion: [''],
 			estado: [true]
 		});
@@ -402,10 +421,12 @@ export class MateriaFormComponent implements OnInit {
 		
 		// Verificar si estamos en modo edición
 		const sigla = this.route.snapshot.paramMap.get('sigla');
-		if (sigla) {
+		const pensum = this.route.snapshot.paramMap.get('pensum');
+		if (sigla && pensum) {
 			this.isEditMode = true;
 			this.materiaSigla = sigla;
-			this.loadMateria(this.materiaSigla);
+			this.materiaPensum = pensum;
+			this.loadMateria(this.materiaSigla, this.materiaPensum);
 		}
 	}
 
@@ -428,19 +449,19 @@ export class MateriaFormComponent implements OnInit {
 		];
 	}
 
-	loadMateria(sigla: string): void {
-		// Usar el método correcto del servicio para obtener la materia por sigla
-		this.materiaService.getBySignature(sigla).subscribe({
+	loadMateria(sigla: string, pensum: string): void {
+		this.materiaService.getOne(sigla, pensum).subscribe({
 			next: (response) => {
 				if (response.success && response.data) {
 					const materia = response.data;
 					this.materiaForm.patchValue({
 						sigla_materia: materia.sigla_materia,
 						nombre_materia: materia.nombre_materia,
+						nombre_material_oficial: materia.nombre_material_oficial,
 						cod_pensum: materia.cod_pensum,
 						id_parametro_economico: materia.id_parametro_economico,
 						nro_creditos: materia.nro_creditos,
-						// Quitar carga_horaria que no existe en el modelo
+						orden: materia.orden,
 						descripcion: materia.descripcion,
 						estado: materia.estado
 					});
@@ -467,9 +488,9 @@ export class MateriaFormComponent implements OnInit {
 		this.isSubmitting = true;
 		const formData = this.materiaForm.value;
 
-		if (this.isEditMode && this.materiaSigla) {
+		if (this.isEditMode && this.materiaSigla && this.materiaPensum) {
 			// En modo edición, actualizar materia existente
-			this.materiaService.update(this.materiaSigla, formData).subscribe({
+			this.materiaService.update(this.materiaSigla, this.materiaPensum, formData).subscribe({
 				next: (response) => {
 					if (response.success) {
 						this.router.navigate(['/materias']);

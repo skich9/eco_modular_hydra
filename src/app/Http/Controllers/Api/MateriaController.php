@@ -18,7 +18,7 @@ class MateriaController extends Controller
     public function index()
     {
         try {
-            $materias = Materia::with('parametroEconomico')->get();
+            $materias = Materia::with(['parametroEconomico', 'pensum'])->get();
             return response()->json([
                 'success' => true,
                 'data' => $materias
@@ -97,7 +97,7 @@ class MateriaController extends Controller
     public function show($sigla, $pensum)
     {
         try {
-            $materia = Materia::with('parametroEconomico')
+            $materia = Materia::with(['parametroEconomico', 'pensum'])
                 ->where('sigla_materia', $sigla)
                 ->where('cod_pensum', $pensum)
                 ->first();

@@ -31,5 +31,6 @@ export interface ParametroEconomico {
 	tipo: string;
 	valor: number;
 	descripcion?: string;
+	modulo?: string; // Módulo al que pertenece el parámetro
 	estado: boolean;
 }

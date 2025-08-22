@@ -8,7 +8,6 @@ import { MateriasListComponent } from './components/materias/materias-list/mater
 import { MateriaFormComponent } from './components/materias/materia-form/materia-form.component';
 import { RolesListComponent } from './components/roles/roles-list/roles-list.component';
 import { RolFormComponent } from './components/roles/rol-form/rol-form.component';
-import { ParametrosSistemaFormComponent } from './components/parametros/parametros-sistema-form/parametros-sistema-form.component';
 import { authGuard, publicOnlyGuard } from './guards/auth.guard';
 
 export const routes: Routes = [
@@ -39,7 +38,7 @@ export const routes: Routes = [
 			// Rutas para materias
 			{ path: 'materias', component: MateriasListComponent },
 			{ path: 'materias/nuevo', component: MateriaFormComponent },
-			{ path: 'materias/editar/:sigla', component: MateriaFormComponent },
+			{ path: 'materias/editar/:sigla/:pensum', component: MateriaFormComponent },
 			
 			// Rutas para roles
 			{ path: 'roles', component: RolesListComponent },

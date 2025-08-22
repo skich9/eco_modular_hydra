@@ -2,6 +2,8 @@
 
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\Route;
+use App\Http\Controllers\Api\ParametrosEconomicosController;
+use App\Http\Controllers\Api\ItemsCobroController;
 
 /*
 |--------------------------------------------------------------------------
@@ -25,3 +27,11 @@ Route::post('/verify', [\App\Http\Controllers\Api\AuthController::class, 'verify
 
 // Ruta de prueba
 Route::get('/test', [\App\Http\Controllers\Api\TestController::class, 'test']);
+
+// Recursos: Parámetros Económicos
+Route::apiResource('parametros-economicos', ParametrosEconomicosController::class);
+Route::patch('parametros-economicos/{id}/toggle-status', [ParametrosEconomicosController::class, 'toggleStatus']);
+
+// Recursos: Items de Cobro
+Route::apiResource('items-cobro', ItemsCobroController::class);
+Route::patch('items-cobro/{id}/toggle-status', [ItemsCobroController::class, 'toggleStatus']);

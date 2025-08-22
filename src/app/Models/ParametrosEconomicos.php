@@ -48,6 +48,7 @@ class ParametrosEconomicos extends Model
 	 * @var array<string, string>
 	 */
 	protected $casts = [
+		// Mantener compatibilidad con la BD actual: el campo 'valor' es VARCHAR(255)
 		'valor' => 'string',
 		'estado' => 'boolean',
 	];
@@ -68,3 +69,4 @@ class ParametrosEconomicos extends Model
 		return $this->hasMany(Materia::class, 'id_parametro_economico', 'id_parametro_economico');
 	}
 }
+

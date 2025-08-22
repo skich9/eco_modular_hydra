@@ -34,7 +34,7 @@ import { MateriaService } from '../../../services/materia.service';
 							</option>
 						</select>
 					</div>
-					<button class="btn-primary" [routerLink]="['/materias/nueva']">
+					<button class="btn-primary" [routerLink]="['/materias/nuevo']">
 						<i class="fas fa-plus"></i> Nueva Materia
 					</button>
 				</div>
@@ -67,7 +67,7 @@ import { MateriaService } from '../../../services/materia.service';
 								</span>
 							</td>
 							<td class="actions-column">
-								<button class="btn-icon btn-edit" [routerLink]="['/materias/editar', materia.sigla_materia]" title="Editar">
+								<button class="btn-icon btn-edit" [routerLink]="['/materias/editar', materia.sigla_materia, materia.cod_pensum]" title="Editar">
 									<i class="fas fa-edit"></i>
 								</button>
 								<button class="btn-icon btn-toggle" (click)="toggleMateriaStatus(materia)" title="Cambiar estado">
@@ -391,6 +391,7 @@ import { MateriaService } from '../../../services/materia.service';
 })
 export class MateriasListComponent implements OnInit {
 	materias: Materia[] = [];
+	allMaterias: Materia[] = [];
 	filteredMaterias: Materia[] = [];
 	pensumsList: { cod_pensum: string; nombre: string }[] = [];
 	searchTerm = '';
@@ -417,9 +418,8 @@ export class MateriasListComponent implements OnInit {
 		this.materiaService.getAll().subscribe({
 			next: (response) => {
 				if (response.success && response.data) {
-					this.materias = response.data;
-					this.filteredMaterias = [...this.materias];
-					this.applyPagination();
+					this.allMaterias = response.data;
+					this.applyFilters();
 				}
 				this.isLoading = false;
 			},
@@ -449,7 +449,7 @@ export class MateriasListComponent implements OnInit {
 	}
 
 	applyFilters(): void {
-		let filtered = [...this.materias];
+		let filtered = [...this.allMaterias];
 		
 		// Aplicar búsqueda por texto
 		if (this.searchTerm.trim() !== '') {
@@ -472,15 +472,15 @@ export class MateriasListComponent implements OnInit {
 	}
 
 	toggleMateriaStatus(materia: Materia): void {
-		this.materiaService.toggleStatus(materia.sigla_materia).subscribe({
+		this.materiaService.toggleStatus(materia.sigla_materia, materia.cod_pensum).subscribe({
 			next: (response) => {
 				if (response.success && response.data) {
-					// Actualizar la materia en la lista local
-					const index = this.materias.findIndex(m => m.sigla_materia === materia.sigla_materia);
-					if (index !== -1) {
-						this.materias[index].estado = !this.materias[index].estado;
-						this.applyFilters(); // Reaplica filtros y paginación
+					// Actualizar la materia en la lista completa y reaplicar filtros/paginación
+					const indexAll = this.allMaterias.findIndex(m => m.sigla_materia === response.data.sigla_materia && m.cod_pensum === response.data.cod_pensum);
+					if (indexAll !== -1) {
+						this.allMaterias[indexAll] = response.data;
 					}
+					this.applyFilters();
 				}
 			},
 			error: (error) => {
@@ -502,11 +502,11 @@ export class MateriasListComponent implements OnInit {
 	deleteMateria(): void {
 		if (!this.materiaToDelete) return;
 
-		this.materiaService.delete(this.materiaToDelete.sigla_materia).subscribe({
+		this.materiaService.delete(this.materiaToDelete.sigla_materia, this.materiaToDelete.cod_pensum).subscribe({
 			next: (response) => {
 				if (response.success) {
-					// Eliminar la materia de la lista local
-					this.materias = this.materias.filter(m => m.sigla_materia !== this.materiaToDelete?.sigla_materia);
+					// Eliminar la materia de la lista completa y reaplicar filtros
+					this.allMaterias = this.allMaterias.filter(m => !(m.sigla_materia === this.materiaToDelete?.sigla_materia && m.cod_pensum === this.materiaToDelete?.cod_pensum));
 					this.applyFilters(); // Reaplica filtros y paginación
 				}
 				this.showDeleteModal = false;

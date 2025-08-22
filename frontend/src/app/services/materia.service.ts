@@ -2,12 +2,13 @@ import { Injectable } from '@angular/core';
 import { HttpClient } from '@angular/common/http';
 import { Observable } from 'rxjs';
 import { Materia } from '../models/materia.model';
+import { environment } from '../../environments/environment';
 
 @Injectable({
 	providedIn: 'root'
 })
 export class MateriaService {
-	private apiUrl = 'http://localhost:8080/api/materias';
+	private apiUrl = `${environment.apiUrl}/materias`;
 
 	constructor(private http: HttpClient) {}
 
@@ -16,9 +17,9 @@ export class MateriaService {
 		return this.http.get<{ success: boolean; data: Materia[] }>(this.apiUrl);
 	}
 
-	// Obtener una materia por sigla
-	getBySignature(sigla: string): Observable<{ success: boolean; data: Materia }> {
-		return this.http.get<{ success: boolean; data: Materia }>(`${this.apiUrl}/${sigla}`);
+	// Obtener una materia por clave compuesta (sigla, pensum)
+	getOne(sigla: string, pensum: string): Observable<{ success: boolean; data: Materia }> {
+		return this.http.get<{ success: boolean; data: Materia }>(`${this.apiUrl}/${sigla}/${pensum}`);
 	}
 
 	// Crear una nueva materia
@@ -27,13 +28,13 @@ export class MateriaService {
 	}
 
 	// Actualizar una materia
-	update(sigla: string, materia: Materia): Observable<{ success: boolean; data: Materia; message: string }> {
-		return this.http.put<{ success: boolean; data: Materia; message: string }>(`${this.apiUrl}/${sigla}`, materia);
+	update(sigla: string, pensum: string, materia: Materia): Observable<{ success: boolean; data: Materia; message: string }> {
+		return this.http.put<{ success: boolean; data: Materia; message: string }>(`${this.apiUrl}/${sigla}/${pensum}`, materia);
 	}
 
 	// Eliminar una materia
-	delete(sigla: string): Observable<{ success: boolean; message: string }> {
-		return this.http.delete<{ success: boolean; message: string }>(`${this.apiUrl}/${sigla}`);
+	delete(sigla: string, pensum: string): Observable<{ success: boolean; message: string }> {
+		return this.http.delete<{ success: boolean; message: string }>(`${this.apiUrl}/${sigla}/${pensum}`);
 	}
 
 	// Buscar materias por nombre o sigla
@@ -49,7 +50,7 @@ export class MateriaService {
 	}
 
 	// Cambiar el estado de una materia
-	toggleStatus(sigla: string): Observable<{ success: boolean; data: Materia; message: string }> {
-		return this.http.patch<{ success: boolean; data: Materia; message: string }>(`${this.apiUrl}/${sigla}/toggle-status`, {});
+	toggleStatus(sigla: string, pensum: string): Observable<{ success: boolean; data: Materia; message: string }> {
+		return this.http.put<{ success: boolean; data: Materia; message: string }>(`${this.apiUrl}/${sigla}/${pensum}/toggle-status`, {});
 	}
 }

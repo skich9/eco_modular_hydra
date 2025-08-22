@@ -41,8 +41,8 @@ class ParametrosEconomicosController extends Controller
         try {
             $validator = Validator::make($request->all(), [
                 'nombre' => 'required|string|max:20',
-                'valor' => 'required|numeric',
-                'descripcion' => 'nullable|string|max:50',
+                'valor' => 'required|string|max:255',
+                'descripcion' => 'nullable|string|max:255',
                 'estado' => 'required|boolean'
             ]);
 
@@ -78,7 +78,14 @@ class ParametrosEconomicosController extends Controller
     public function show($id)
     {
         try {
-            $parametro = ParametrosEconomicos::find($id);
+            $nombre = request()->query('nombre');
+            if ($nombre !== null) {
+                $parametro = ParametrosEconomicos::where('id_parametro_economico', $id)
+                    ->where('nombre', $nombre)
+                    ->first();
+            } else {
+                $parametro = ParametrosEconomicos::find($id);
+            }
 
             if (!$parametro) {
                 return response()->json([
@@ -109,7 +116,14 @@ class ParametrosEconomicosController extends Controller
     public function update(Request $request, $id)
     {
         try {
-            $parametro = ParametrosEconomicos::find($id);
+            $nombre = $request->query('nombre');
+            if ($nombre !== null) {
+                $parametro = ParametrosEconomicos::where('id_parametro_economico', $id)
+                    ->where('nombre', $nombre)
+                    ->first();
+            } else {
+                $parametro = ParametrosEconomicos::find($id);
+            }
 
             if (!$parametro) {
                 return response()->json([
@@ -120,8 +134,8 @@ class ParametrosEconomicosController extends Controller
 
             $validator = Validator::make($request->all(), [
                 'nombre' => 'required|string|max:20',
-                'valor' => 'required|numeric',
-                'descripcion' => 'nullable|string|max:50',
+                'valor' => 'required|string|max:255',
+                'descripcion' => 'nullable|string|max:255',
                 'estado' => 'required|boolean'
             ]);
 
@@ -133,7 +147,19 @@ class ParametrosEconomicosController extends Controller
                 ], 422);
             }
 
-            $parametro->update($request->all());
+            if ($nombre !== null) {
+                ParametrosEconomicos::where('id_parametro_economico', $id)
+                    ->where('nombre', $nombre)
+                    ->update($request->all());
+
+                // Si el nombre cambió, recargar usando el nuevo valor
+                $nombreActual = $request->input('nombre', $nombre);
+                $parametro = ParametrosEconomicos::where('id_parametro_economico', $id)
+                    ->where('nombre', $nombreActual)
+                    ->first();
+            } else {
+                $parametro->update($request->all());
+            }
 
             return response()->json([
                 'success' => true,
@@ -157,7 +183,14 @@ class ParametrosEconomicosController extends Controller
     public function destroy($id)
     {
         try {
-            $parametro = ParametrosEconomicos::find($id);
+            $nombre = request()->query('nombre');
+            if ($nombre !== null) {
+                $parametro = ParametrosEconomicos::where('id_parametro_economico', $id)
+                    ->where('nombre', $nombre)
+                    ->first();
+            } else {
+                $parametro = ParametrosEconomicos::find($id);
+            }
 
             if (!$parametro) {
                 return response()->json([
@@ -192,7 +225,13 @@ class ParametrosEconomicosController extends Controller
                 ], 409); // 409 Conflict
             }
 
-            $parametro->delete();
+            if ($nombre !== null) {
+                ParametrosEconomicos::where('id_parametro_economico', $id)
+                    ->where('nombre', $nombre)
+                    ->delete();
+            } else {
+                $parametro->delete();
+            }
 
             return response()->json([
                 'success' => true,
@@ -215,7 +254,14 @@ class ParametrosEconomicosController extends Controller
     public function toggleStatus($id)
     {
         try {
-            $parametro = ParametrosEconomicos::find($id);
+            $nombre = request()->query('nombre');
+            if ($nombre !== null) {
+                $parametro = ParametrosEconomicos::where('id_parametro_economico', $id)
+                    ->where('nombre', $nombre)
+                    ->first();
+            } else {
+                $parametro = ParametrosEconomicos::find($id);
+            }
 
             if (!$parametro) {
                 return response()->json([
@@ -224,8 +270,17 @@ class ParametrosEconomicosController extends Controller
                 ], 404);
             }
 
-            $parametro->estado = !$parametro->estado;
-            $parametro->save();
+            $nuevoEstado = !$parametro->estado;
+
+            if ($nombre !== null) {
+                ParametrosEconomicos::where('id_parametro_economico', $id)
+                    ->where('nombre', $nombre)
+                    ->update(['estado' => $nuevoEstado]);
+                $parametro->estado = $nuevoEstado;
+            } else {
+                $parametro->estado = $nuevoEstado;
+                $parametro->save();
+            }
 
             return response()->json([
                 'success' => true,

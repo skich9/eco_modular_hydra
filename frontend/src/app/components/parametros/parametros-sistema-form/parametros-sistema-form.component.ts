@@ -2,8 +2,8 @@ import { Component, OnInit } from '@angular/core';
 import { CommonModule } from '@angular/common';
 import { FormsModule, ReactiveFormsModule, FormBuilder, FormGroup, Validators } from '@angular/forms';
 import { Router, ActivatedRoute, RouterModule } from '@angular/router';
-import { ParametrosSistemaService } from '../../../services/parametros-sistema.service';
-import { ParametroSistema } from '../../../models/parametro-sistema.model';
+// import { ParametrosSistemaService } from '../../../services/parametros-sistema.service';
+// import { ParametroSistema } from '../../../models/parametro-sistema.model';
 
 @Component({
 	selector: 'app-parametros-sistema-form',
@@ -327,7 +327,7 @@ export class ParametrosSistemaFormComponent implements OnInit {
 
 	constructor(
 		private formBuilder: FormBuilder,
-		private parametrosSistemaService: ParametrosSistemaService,
+		// private parametrosSistemaService: ParametrosSistemaService,
 		private router: Router,
 		private route: ActivatedRoute
 	) {
@@ -351,24 +351,9 @@ export class ParametrosSistemaFormComponent implements OnInit {
 	}
 
 	loadParametro(id: number): void {
-		this.parametrosSistemaService.getById(id).subscribe({
-			next: (response) => {
-				if (response.success && response.data) {
-					const parametro = response.data;
-					this.parametroForm.patchValue({
-						nombre: parametro.nombre,
-						tipo: parametro.tipo, // Usando tipo del modelo
-						valor: parametro.valor,
-						descripcion: parametro.descripcion,
-						estado: parametro.estado
-					});
-				}
-			},
-			error: (error) => {
-				console.error('Error al cargar parámetro:', error);
-				this.error = 'No se pudo cargar la información del parámetro. Intente nuevamente más tarde.';
-			}
-		});
+		// Método deshabilitado - servicio no disponible
+		console.log('Cargando parámetro ID:', id);
+		this.error = 'Funcionalidad no disponible - usar componente principal de parámetros';
 	}
 
 	get f() { 
@@ -385,40 +370,14 @@ export class ParametrosSistemaFormComponent implements OnInit {
 		this.isSubmitting = true;
 		const formData = this.parametroForm.value;
 
-		if (this.isEditMode && this.parametroId) {
-			// En modo edición, actualizar parámetro existente
-			this.parametrosSistemaService.update(this.parametroId, formData).subscribe({
-				next: (response) => {
-					if (response.success) {
-						this.router.navigate(['/parametros']);
-					} else {
-						this.error = response.message || 'Error al actualizar parámetro';
-					}
-					this.isSubmitting = false;
-				},
-				error: (error) => {
-					console.error('Error al actualizar parámetro:', error);
-					this.error = error.error?.message || 'Error al actualizar parámetro. Intente nuevamente más tarde.';
-					this.isSubmitting = false;
-				}
-			});
-		} else {
-			// En modo creación, crear nuevo parámetro
-			this.parametrosSistemaService.create(formData).subscribe({
-				next: (response) => {
-					if (response.success) {
-						this.router.navigate(['/parametros']);
-					} else {
-						this.error = response.message || 'Error al crear parámetro';
-					}
-					this.isSubmitting = false;
-				},
-				error: (error) => {
-					console.error('Error al crear parámetro:', error);
-					this.error = error.error?.message || 'Error al crear parámetro. Intente nuevamente más tarde.';
-					this.isSubmitting = false;
-				}
-			});
-		}
+		// Funcionalidad deshabilitada - redirigir al componente principal
+		console.log('Datos del formulario:', formData);
+		this.error = 'Esta funcionalidad ha sido movida al componente principal de parámetros';
+		this.isSubmitting = false;
+		
+		// Redirigir después de 2 segundos
+		setTimeout(() => {
+			this.router.navigate(['/parametros']);
+		}, 2000);
 	}
 }
