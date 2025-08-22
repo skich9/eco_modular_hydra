@@ -1,25 +1,89 @@
-/* Navigation Component Styles - Using existing styles.css classes */
+/* Navigation Component Styles - Bootstrap 5 Enhanced */
 
-/* Additional component-specific styles if needed */
-.nav-dropdown {
-	z-index: 1050; /* Ensure dropdown appears above other elements */
+/* Ensure dropdowns appear above other elements */
+.dropdown-menu {
+	z-index: 1050;
+	min-width: 200px;
+	border: 1px solid rgba(0, 0, 0, 0.15);
+	box-shadow: 0 0.5rem 1rem rgba(0, 0, 0, 0.15);
+	transform: translateX(-50%);
+	right: auto !important;
+	left: 50% !important;
 }
 
-.nav-submenu {
-	z-index: 1050; /* Ensure submenu appears above other elements */
+/* Fix dropdown positioning for user menu */
+.dropdown .dropdown-menu {
+	position: absolute !important;
+	top: 100% !important;
+	right: 0 !important;
+	left: auto !important;
+	transform: none !important;
+	margin-top: 0.125rem;
 }
 
-/* Ensure proper spacing for mobile */
+/* User avatar hover effect */
+.nav-user-avatar {
+	transition: all 0.2s ease;
+	cursor: pointer;
+}
+
+.nav-user-avatar:hover {
+	transform: scale(1.05);
+	box-shadow: 0 0 0 3px rgba(13, 110, 253, 0.25);
+}
+
+/* Secondary navigation improvements */
+.navbar-dark .btn-link.nav-link {
+	color: rgba(255, 255, 255, 0.85) !important;
+	text-decoration: none;
+	padding: 0.5rem 1rem;
+	border-radius: 0.375rem;
+	transition: all 0.2s ease;
+}
+
+.navbar-dark .btn-link.nav-link:hover {
+	color: white !important;
+	background-color: rgba(255, 255, 255, 0.1);
+}
+
+.navbar-dark .btn-link.nav-link:focus {
+	box-shadow: 0 0 0 0.2rem rgba(255, 255, 255, 0.25);
+}
+
+/* Dropdown item active state */
+.dropdown-item.active {
+	background-color: var(--bs-primary);
+	color: white;
+}
+
+/* Logo responsiveness */
+.nav-logo-icon img {
+	transition: transform 0.2s ease;
+}
+
+.navbar-brand:hover .nav-logo-icon img {
+	transform: scale(1.05);
+}
+
+/* Mobile responsiveness */
 @media (max-width: 768px) {
-	.nav-user-info {
-		.text-sm {
-			display: none;
-		}
+	.navbar-nav {
+		flex-direction: column !important;
+		width: 100%;
 	}
 	
-	.nav-menu-secondary {
-		.d-flex {
-			flex-wrap: wrap;
-		}
+	.nav-item.dropdown {
+		margin-right: 0 !important;
+		margin-bottom: 0.5rem;
+	}
+	
+	.dropdown-menu {
+		position: static !important;
+		float: none;
+		width: 100%;
+		margin-top: 0;
+		background-color: rgba(255, 255, 255, 0.95);
+		border: none;
+		box-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.15);
 	}
 }

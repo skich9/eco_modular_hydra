@@ -1,292 +1,307 @@
-<!-- Alert Messages -->
-<div *ngIf="showAlert" [class]="'alert alert-' + alertType + ' alert-dismissible fade show'" 
-     style="position: fixed; top: 20px; right: 20px; z-index: 9999; min-width: 300px;">
-	<i class="fas" [class.fa-check-circle]="alertType === 'success'" [class.fa-exclamation-triangle]="alertType === 'danger'"></i>
-	{{ alertMessage }}
-	<button type="button" class="btn-close" (click)="showAlert = false"></button>
-</div>
-
-<!-- Page Header -->
-<div class="d-flex justify-content-between align-items-center mb-4">
-	<h2 class="page-title">Parámetros del Sistema</h2>
-</div>
-
-<!-- Navigation Tabs -->
-<ul class="nav nav-tabs mb-4">
-	<li class="nav-item">
-		<button 
-			class="nav-link" 
-			[class.active]="activeTab === 'parametros-economicos'"
-			(click)="setActiveTab('parametros-economicos')"
-		>
-			<i class="fas fa-dollar-sign me-2"></i>Parámetros Económicos
-		</button>
-	</li>
-	<li class="nav-item">
-		<button 
-			class="nav-link" 
-			[class.active]="activeTab === 'items-cobro'"
-			(click)="setActiveTab('items-cobro')"
-		>
-			<i class="fas fa-shopping-cart me-2"></i>Items de Cobro
-		</button>
-	</li>
-	<li class="nav-item">
-		<button 
-			class="nav-link" 
-			[class.active]="activeTab === 'materias'"
-			(click)="setActiveTab('materias')"
-		>
-			<i class="fas fa-book me-2"></i>Materias
-		</button>
-	</li>
-</ul>
-
-<!-- Tab Content -->
-<div class="tab-content">
-	
-	<!-- Parámetros Económicos Tab -->
-	<div *ngIf="activeTab === 'parametros-economicos'" class="tab-pane fade show active">
-		<div class="card">
-			<div class="card-header d-flex justify-content-between align-items-center">
-				<h5 class="mb-0">Parámetros Económicos</h5>
-				<button class="btn btn-primary" (click)="openParametroModal()">
-					<i class="fas fa-plus me-2"></i>Nuevo Parámetro
-				</button>
-			</div>
-			<div class="card-body">
-				<!-- Search Filter -->
-				<div class="row mb-3">
-					<div class="col-md-6">
-						<div class="input-group">
-							<span class="input-group-text"><i class="fas fa-search"></i></span>
-							<input 
-								type="text" 
-								class="form-control" 
-								placeholder="Buscar parámetros..."
-								[(ngModel)]="searchFilters.parametros"
-							>
-						</div>
-					</div>
+<!-- Parámetros del Sistema Component -->
+<div class="parametros-container">
+	<!-- Header Section -->
+	<div class="parametros-header">
+		<div class="container-fluid px-4 py-4">
+			<div class="d-flex align-items-center">
+				<div class="parametros-icon me-3">
+					<i class="fas fa-cogs"></i>
 				</div>
-
-				<!-- Table -->
-				<div class="table-responsive">
-					<table class="table table-striped">
-						<thead>
-							<tr>
-								<th>ID</th>
-								<th>Nombre</th>
-								<th>Descripción</th>
-								<th>Valor</th>
-								<th>Tipo</th>
-								<th>Estado</th>
-								<th>Acciones</th>
-							</tr>
-						</thead>
-						<tbody>
-							<tr *ngIf="loading.parametros">
-								<td colspan="7" class="text-center">
-									<div class="spinner-border" role="status"></div>
-									Cargando...
-								</td>
-							</tr>
-							<tr *ngIf="!loading.parametros && filteredParametros.length === 0">
-								<td colspan="7" class="text-center">No hay parámetros registrados</td>
-							</tr>
-							<tr *ngFor="let parametro of filteredParametros">
-								<td>{{ parametro.id_parametro_economico }}</td>
-								<td>{{ parametro.nombre }}</td>
-								<td>{{ parametro.descripcion }}</td>
-								<td>{{ parametro.valor }}</td>
-								<td>{{ parametro.tipo }}</td>
-								<td>
-									<span [class]="'badge badge-' + (parametro.estado ? 'success' : 'danger')">
-										{{ parametro.estado ? 'Activo' : 'Inactivo' }}
-									</span>
-								</td>
-								<td>
-									<button class="btn btn-sm btn-info me-1" (click)="openParametroModal(parametro)">
-										<i class="fas fa-edit"></i>
-									</button>
-									<button class="btn btn-sm btn-danger me-1" 
-											(click)="confirmDelete(parametro.id_parametro_economico, 'parametro')">
-										<i class="fas fa-trash"></i>
-									</button>
-									<button [class]="'btn btn-sm ' + (parametro.estado ? 'btn-warning' : 'btn-success')" 
-											(click)="toggleStatus(parametro, 'parametro')">
-										<i [class]="'fas ' + (parametro.estado ? 'fa-ban' : 'fa-check')"></i>
-									</button>
-								</td>
-							</tr>
-						</tbody>
-					</table>
+				<div>
+					<h1 class="parametros-title mb-1">Parámetros del Sistema</h1>
+					<p class="parametros-subtitle mb-0">Configuración de parámetros económicos y elementos de cobro</p>
 				</div>
 			</div>
 		</div>
 	</div>
 
-	<!-- Items de Cobro Tab -->
-	<div *ngIf="activeTab === 'items-cobro'" class="tab-pane fade show active">
-		<div class="card">
-			<div class="card-header d-flex justify-content-between align-items-center">
-				<h5 class="mb-0">Items de Cobro</h5>
-				<button class="btn btn-primary" (click)="openItemModal()">
-					<i class="fas fa-plus me-2"></i>Nuevo Item
-				</button>
+	<!-- Guide Section -->
+	<div class="parametros-guide">
+		<div class="container-fluid px-4 py-3">
+			<div class="guide-content">
+				<div class="guide-icon me-3">
+					<i class="fas fa-info-circle"></i>
+				</div>
+				<div>
+					<h6 class="guide-title mb-1">Guía de Configuración</h6>
+					<p class="guide-description mb-0">Configure los parámetros del sistema para optimizar el funcionamiento de los cobros y gestión académica del Instituto CETA.</p>
+				</div>
 			</div>
-			<div class="card-body">
-				<!-- Search Filter -->
-				<div class="row mb-3">
-					<div class="col-md-6">
-						<div class="input-group">
-							<span class="input-group-text"><i class="fas fa-search"></i></span>
-							<input 
-								type="text" 
-								class="form-control" 
-								placeholder="Buscar items..."
-								[(ngModel)]="searchFilters.items"
-							>
-						</div>
+			
+			<div class="row mt-4">
+				<div class="col-md-4">
+					<div class="guide-card">
+						<h6 class="guide-card-title">Parámetros del Sistema</h6>
+						<p class="guide-card-text">Configuraciones generales que afectan el comportamiento del sistema académico.</p>
 					</div>
 				</div>
-
-				<!-- Table -->
-				<div class="table-responsive">
-					<table class="table table-striped">
-						<thead>
-							<tr>
-								<th>ID</th>
-								<th>Código</th>
-								<th>Nombre</th>
-								<th>Costo</th>
-								<th>Unidad</th>
-								<th>Tipo</th>
-								<th>Estado</th>
-								<th>Acciones</th>
-							</tr>
-						</thead>
-						<tbody>
-							<tr *ngIf="loading.items">
-								<td colspan="8" class="text-center">
-									<div class="spinner-border" role="status"></div>
-									Cargando...
-								</td>
-							</tr>
-							<tr *ngIf="!loading.items && filteredItems.length === 0">
-								<td colspan="8" class="text-center">No hay items registrados</td>
-							</tr>
-							<tr *ngFor="let item of filteredItems">
-								<td>{{ item.id_item }}</td>
-								<td>{{ item.codigo_producto_interno }}</td>
-								<td>{{ item.nombre_servicio }}</td>
-								<td>{{ item.costo }}</td>
-								<td>{{ item.unidad_medida }}</td>
-								<td>{{ item.tipo_item }}</td>
-								<td>
-									<span [class]="'badge badge-' + (item.estado ? 'success' : 'danger')">
-										{{ item.estado ? 'Activo' : 'Inactivo' }}
-									</span>
-								</td>
-								<td>
-									<button class="btn btn-sm btn-info me-1" (click)="openItemModal(item)">
-										<i class="fas fa-edit"></i>
-									</button>
-									<button class="btn btn-sm btn-danger me-1" 
-											(click)="confirmDelete(item.id_item, 'item')">
-										<i class="fas fa-trash"></i>
-									</button>
-									<button [class]="'btn btn-sm ' + (item.estado ? 'btn-warning' : 'btn-success')" 
-											(click)="toggleStatus(item, 'item')">
-										<i [class]="'fas ' + (item.estado ? 'fa-ban' : 'fa-check')"></i>
-									</button>
-								</td>
-							</tr>
-						</tbody>
-					</table>
+				<div class="col-md-4">
+					<div class="guide-card">
+						<h6 class="guide-card-title">Parámetros Económicos</h6>
+						<p class="guide-card-text">Tasas, comisiones y descuentos aplicables a las transacciones financieras.</p>
+					</div>
+				</div>
+				<div class="col-md-4">
+					<div class="guide-card">
+						<h6 class="guide-card-title">Items de Cobro</h6>
+						<p class="guide-card-text">Elementos específicos que pueden ser cobrados a los estudiantes.</p>
+					</div>
 				</div>
 			</div>
 		</div>
 	</div>
 
-	<!-- Materias Tab -->
-	<div *ngIf="activeTab === 'materias'" class="tab-pane fade show active">
-		<div class="card">
-			<div class="card-header d-flex justify-content-between align-items-center">
-				<h5 class="mb-0">Materias</h5>
-				<button class="btn btn-primary" (click)="openMateriaModal()">
-					<i class="fas fa-plus me-2"></i>Nueva Materia
+	<!-- Tabs Navigation -->
+	<div class="parametros-tabs">
+		<div class="container-fluid px-4">
+			<nav class="nav nav-tabs">
+				<button 
+					class="nav-link" 
+					[class.active]="activeTab === 'sistema'"
+					(click)="setActiveTab('sistema')"
+				>
+					<i class="fas fa-cog me-2"></i>Parámetros del Sistema
 				</button>
+				<button 
+					class="nav-link" 
+					[class.active]="activeTab === 'economicos'"
+					(click)="setActiveTab('economicos')"
+				>
+					<i class="fas fa-dollar-sign me-2"></i>Parámetros Económicos
+				</button>
+				<button 
+					class="nav-link" 
+					[class.active]="activeTab === 'items'"
+					(click)="setActiveTab('items')"
+				>
+					<i class="fas fa-receipt me-2"></i>Items de Cobro
+				</button>
+			</nav>
+		</div>
+	</div>
+
+	<!-- Content Section -->
+	<div class="parametros-content">
+		<div class="container-fluid px-4 py-4">
+			<!-- Alert Messages -->
+			<div *ngIf="alertMessage" class="alert" [ngClass]="'alert-' + alertType" role="alert">
+				{{ alertMessage }}
 			</div>
-			<div class="card-body">
-				<!-- Search Filter -->
-				<div class="row mb-3">
-					<div class="col-md-6">
-						<div class="input-group">
-							<span class="input-group-text"><i class="fas fa-search"></i></span>
-							<input 
-								type="text" 
-								class="form-control" 
-								placeholder="Buscar materias..."
-								[(ngModel)]="searchFilters.materias"
-							>
+
+			<!-- Loading State -->
+			<div *ngIf="loading" class="d-flex justify-content-center p-4">
+				<div class="spinner-border text-primary" role="status">
+					<span class="visually-hidden">Cargando...</span>
+				</div>
+			</div>
+
+			<!-- Tab Content -->
+			<div *ngIf="!loading" class="tab-content">
+				<!-- Parámetros del Sistema Tab -->
+				<div *ngIf="activeTab === 'sistema'" class="tab-pane active">
+					<div class="content-section">
+						<div class="section-header">
+							<h5 class="section-title">Parámetros del Sistema</h5>
+							<p class="section-subtitle">Configuraciones generales del sistema académico</p>
+						</div>
+
+						<div class="d-flex justify-content-between align-items-center mb-3">
+							<div class="search-container">
+								<div class="input-group">
+									<span class="input-group-text">
+										<i class="fas fa-search"></i>
+									</span>
+									<input 
+										type="text" 
+										class="form-control" 
+										placeholder="Buscar parámetros..."
+										[(ngModel)]="searchTerm"
+										(input)="filterData()"
+									>
+								</div>
+							</div>
+							<button type="button" class="btn btn-primary" (click)="openCreateModal('sistema')">
+								<i class="fas fa-plus me-2"></i>Nuevo Parámetro
+							</button>
+						</div>
+
+						<!-- Table -->
+						<div class="table-container">
+							<table class="table table-dark table-hover">
+								<thead>
+									<tr>
+										<th>N°</th>
+										<th>Pensum</th>
+										<th>Parámetro</th>
+										<th>Valor</th>
+										<th>Estado</th>
+										<th>Módulo</th>
+										<th>Acciones</th>
+									</tr>
+								</thead>
+								<tbody>
+									<tr *ngFor="let item of getFilteredData('sistema'); let i = index">
+										<td>{{ i + 1 }}</td>
+										<td><span class="badge bg-info">{{ item.pensum }}</span></td>
+										<td>{{ item.parametro }}</td>
+										<td>{{ item.valor }}</td>
+										<td>
+											<span class="badge" [ngClass]="item.estado === 'Activo' ? 'bg-success' : 'bg-secondary'">
+												{{ item.estado }}
+											</span>
+										</td>
+										<td>{{ item.modulo }}</td>
+										<td>
+											<button type="button" class="btn btn-sm btn-outline-light me-1" (click)="openEditModal('sistema', item)">
+												<i class="fas fa-edit"></i>
+											</button>
+											<button type="button" class="btn btn-sm btn-outline-danger" (click)="openDeleteModal('sistema', item)">
+												<i class="fas fa-trash"></i>
+											</button>
+										</td>
+									</tr>
+								</tbody>
+							</table>
 						</div>
 					</div>
 				</div>
 
-				<!-- Table -->
-				<div class="table-responsive">
-					<table class="table table-striped">
-						<thead>
-							<tr>
-								<th>Sigla</th>
-								<th>Pensum</th>
-								<th>Nombre</th>
-								<th>Créditos</th>
-								<th>H. Teóricas</th>
-								<th>H. Prácticas</th>
-								<th>Estado</th>
-								<th>Acciones</th>
-							</tr>
-						</thead>
-						<tbody>
-							<tr *ngIf="loading.materias">
-								<td colspan="8" class="text-center">
-									<div class="spinner-border" role="status"></div>
-									Cargando...
-								</td>
-							</tr>
-							<tr *ngIf="!loading.materias && filteredMaterias.length === 0">
-								<td colspan="8" class="text-center">No hay materias registradas</td>
-							</tr>
-							<tr *ngFor="let materia of filteredMaterias">
-								<td>{{ materia.sigla }}</td>
-								<td>{{ materia.pensum }}</td>
-								<td>{{ materia.nombre }}</td>
-								<td>{{ materia.creditos }}</td>
-								<td>{{ materia.horas_teoricas }}</td>
-								<td>{{ materia.horas_practicas }}</td>
-								<td>
-									<span [class]="'badge badge-' + (materia.estado ? 'success' : 'danger')">
-										{{ materia.estado ? 'Activo' : 'Inactivo' }}
+				<!-- Parámetros Económicos Tab -->
+				<div *ngIf="activeTab === 'economicos'" class="tab-pane active">
+					<div class="content-section">
+						<div class="section-header">
+							<h5 class="section-title">Parámetros Económicos</h5>
+							<p class="section-subtitle">Tasas, comisiones y descuentos aplicables a las transacciones financieras</p>
+						</div>
+
+						<div class="d-flex justify-content-between align-items-center mb-3">
+							<div class="search-container">
+								<div class="input-group">
+									<span class="input-group-text">
+										<i class="fas fa-search"></i>
 									</span>
-								</td>
-								<td>
-									<button class="btn btn-sm btn-info me-1" (click)="openMateriaModal(materia)">
-										<i class="fas fa-edit"></i>
-									</button>
-									<button class="btn btn-sm btn-danger me-1" 
-											(click)="confirmDelete('', 'materia', materia.sigla, materia.pensum)">
-										<i class="fas fa-trash"></i>
-									</button>
-									<button [class]="'btn btn-sm ' + (materia.estado ? 'btn-warning' : 'btn-success')" 
-											(click)="toggleStatus(materia, 'materia')">
-										<i [class]="'fas ' + (materia.estado ? 'fa-ban' : 'fa-check')"></i>
-									</button>
-								</td>
-							</tr>
-						</tbody>
-					</table>
+									<input 
+										type="text" 
+										class="form-control" 
+										placeholder="Buscar parámetros..."
+										[(ngModel)]="searchTerm"
+										(input)="filterData()"
+									>
+								</div>
+							</div>
+							<button type="button" class="btn btn-primary" (click)="openCreateModal('economicos')">
+								<i class="fas fa-plus me-2"></i>Nuevo Parámetro
+							</button>
+						</div>
+
+						<!-- Table -->
+						<div class="table-container">
+							<table class="table table-dark table-hover">
+								<thead>
+									<tr>
+										<th>N°</th>
+										<th>Pensum</th>
+										<th>Parámetro</th>
+										<th>Valor</th>
+										<th>Estado</th>
+										<th>Módulo</th>
+										<th>Acciones</th>
+									</tr>
+								</thead>
+								<tbody>
+									<tr *ngFor="let item of getFilteredData('economicos'); let i = index">
+										<td>{{ i + 1 }}</td>
+										<td><span class="badge bg-info">{{ item.pensum }}</span></td>
+										<td>{{ item.parametro }}</td>
+										<td>{{ item.valor }}</td>
+										<td>
+											<span class="badge" [ngClass]="item.estado === 'Activo' ? 'bg-success' : 'bg-secondary'">
+												{{ item.estado }}
+											</span>
+										</td>
+										<td>{{ item.modulo }}</td>
+										<td>
+											<button type="button" class="btn btn-sm btn-outline-light me-1" (click)="openEditModal('economicos', item)">
+												<i class="fas fa-edit"></i>
+											</button>
+											<button type="button" class="btn btn-sm btn-outline-danger" (click)="openDeleteModal('economicos', item)">
+												<i class="fas fa-trash"></i>
+											</button>
+										</td>
+									</tr>
+								</tbody>
+							</table>
+						</div>
+					</div>
+				</div>
+
+				<!-- Items de Cobro Tab -->
+				<div *ngIf="activeTab === 'items'" class="tab-pane active">
+					<div class="content-section">
+						<div class="section-header">
+							<h5 class="section-title">Items de Cobro</h5>
+							<p class="section-subtitle">Elementos específicos que pueden ser cobrados a los estudiantes</p>
+						</div>
+
+						<div class="d-flex justify-content-between align-items-center mb-3">
+							<div class="search-container">
+								<div class="input-group">
+									<span class="input-group-text">
+										<i class="fas fa-search"></i>
+									</span>
+									<input 
+										type="text" 
+										class="form-control" 
+										placeholder="Buscar items..."
+										[(ngModel)]="searchTerm"
+										(input)="filterData()"
+									>
+								</div>
+							</div>
+							<button type="button" class="btn btn-primary" (click)="openCreateModal('items')">
+								<i class="fas fa-plus me-2"></i>Nuevo Item
+							</button>
+						</div>
+
+						<!-- Table -->
+						<div class="table-container">
+							<table class="table table-dark table-hover">
+								<thead>
+									<tr>
+										<th>N°</th>
+										<th>Pensum</th>
+										<th>Parámetro</th>
+										<th>Valor</th>
+										<th>Estado</th>
+										<th>Módulo</th>
+										<th>Acciones</th>
+									</tr>
+								</thead>
+								<tbody>
+									<tr *ngFor="let item of getFilteredData('items'); let i = index">
+										<td>{{ i + 1 }}</td>
+										<td><span class="badge bg-info">{{ item.pensum }}</span></td>
+										<td>{{ item.parametro }}</td>
+										<td>{{ item.valor }}</td>
+										<td>
+											<span class="badge" [ngClass]="item.estado === 'Activo' ? 'bg-success' : 'bg-secondary'">
+												{{ item.estado }}
+											</span>
+										</td>
+										<td>{{ item.modulo }}</td>
+										<td>
+											<button type="button" class="btn btn-sm btn-outline-light me-1" (click)="openEditModal('items', item)">
+												<i class="fas fa-edit"></i>
+											</button>
+											<button type="button" class="btn btn-sm btn-outline-danger" (click)="openDeleteModal('items', item)">
+												<i class="fas fa-trash"></i>
+											</button>
+										</td>
+									</tr>
+								</tbody>
+							</table>
+						</div>
+					</div>
 				</div>
 			</div>
 		</div>
@@ -294,14 +309,14 @@
 </div>
 
 <!-- Modal Parámetro Económico -->
-<div class="modal fade" [class.show]="showParametroModal" [style.display]="showParametroModal ? 'block' : 'none'">
+<div class="modal fade" [class.show]="showModal" [style.display]="showModal ? 'block' : 'none'">
 	<div class="modal-dialog">
 		<div class="modal-content">
 			<div class="modal-header">
-				<h5 class="modal-title">{{ editingParametro ? 'Editar' : 'Nuevo' }} Parámetro Económico</h5>
+				<h5 class="modal-title">{{ editingItem ? 'Editar' : 'Nuevo' }} Parámetro</h5>
 				<button type="button" class="btn-close" (click)="closeModals()"></button>
 			</div>
-			<form [formGroup]="parametroForm" (ngSubmit)="saveParametro()">
+			<form [formGroup]="itemForm" (ngSubmit)="saveItem()">
 				<div class="modal-body">
 					<div class="mb-3">
 						<label class="form-label">Nombre *</label>
@@ -334,8 +349,8 @@
 				</div>
 				<div class="modal-footer">
 					<button type="button" class="btn btn-secondary" (click)="closeModals()">Cancelar</button>
-					<button type="submit" class="btn btn-primary" [disabled]="parametroForm.invalid">
-						{{ editingParametro ? 'Actualizar' : 'Guardar' }}
+					<button type="submit" class="btn btn-primary" [disabled]="itemForm.invalid">
+						{{ editingItem ? 'Actualizar' : 'Guardar' }}
 					</button>
 				</div>
 			</form>
@@ -344,7 +359,7 @@
 </div>
 
 <!-- Modal Item de Cobro -->
-<div class="modal fade" [class.show]="showItemModal" [style.display]="showItemModal ? 'block' : 'none'">
+<div class="modal fade" [class.show]="showModal" [style.display]="showModal ? 'block' : 'none'">
 	<div class="modal-dialog modal-lg">
 		<div class="modal-content">
 			<div class="modal-header">
@@ -451,14 +466,14 @@
 </div>
 
 <!-- Modal Materia -->
-<div class="modal fade" [class.show]="showMateriaModal" [style.display]="showMateriaModal ? 'block' : 'none'">
+<div class="modal fade" [class.show]="showModal" [style.display]="showModal ? 'block' : 'none'">
 	<div class="modal-dialog">
 		<div class="modal-content">
 			<div class="modal-header">
-				<h5 class="modal-title">{{ editingMateria ? 'Editar' : 'Nueva' }} Materia</h5>
+				<h5 class="modal-title">{{ editingItem ? 'Editar' : 'Nueva' }} Materia</h5>
 				<button type="button" class="btn-close" (click)="closeModals()"></button>
 			</div>
-			<form [formGroup]="materiaForm" (ngSubmit)="saveMateria()">
+			<form [formGroup]="itemForm" (ngSubmit)="saveItem()">
 				<div class="modal-body">
 					<div class="row">
 						<div class="col-md-6">
@@ -511,8 +526,8 @@
 				</div>
 				<div class="modal-footer">
 					<button type="button" class="btn btn-secondary" (click)="closeModals()">Cancelar</button>
-					<button type="submit" class="btn btn-primary" [disabled]="materiaForm.invalid">
-						{{ editingMateria ? 'Actualizar' : 'Guardar' }}
+					<button type="submit" class="btn btn-primary" [disabled]="itemForm.invalid">
+						{{ editingItem ? 'Actualizar' : 'Guardar' }}
 					</button>
 				</div>
 			</form>
@@ -541,5 +556,5 @@
 </div>
 
 <!-- Modal Backdrop -->
-<div *ngIf="showParametroModal || showItemModal || showMateriaModal || showDeleteModal" 
+<div *ngIf="showModal || showDeleteModal" 
      class="modal-backdrop fade show" (click)="closeModals()"></div>

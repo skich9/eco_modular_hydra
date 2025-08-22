@@ -1,47 +1,47 @@
 <!-- Navigation Header -->
-<nav class="nav-menu">
+<nav class="navbar navbar-expand-lg navbar-light bg-white shadow-sm">
 	<div class="container-fluid px-4">
-		<div class="d-flex justify-content-between align-items-center" style="height: 4rem;">
-			<div class="d-flex align-items-center">
-				<a routerLink="/dashboard" class="nav-logo text-decoration-none">
-					<div class="nav-logo-icon">
-						<img src="assets/images/logo-ceta.png" alt="Logo CETA" class="login-logo-image">
-					</div>
-					<div class="nav-logo-text">
-						<span class="nav-logo-title">Sistema de Cobros</span>
-						<p class="nav-logo-subtitle mb-0">Instituto Tecnológico CETA</p>
-					</div>
-				</a>
+		<a routerLink="/dashboard" class="navbar-brand d-flex align-items-center">
+			<div class="nav-logo-icon me-3">
+				<img src="assets/images/logo-ceta.png" alt="Logo CETA" class="img-fluid" style="height: 40px;">
 			</div>
+			<div class="nav-logo-text">
+				<span class="nav-logo-title fw-bold fs-5 text-dark">Sistema de Cobros</span>
+				<p class="nav-logo-subtitle mb-0 text-muted small">Instituto Tecnológico CETA</p>
+			</div>
+		</a>
 
-			<div class="nav-user-info" *ngIf="currentUser">
-				<div class="text-sm me-3">
-					<span class="nav-user-name">{{ currentUser.nombre_completo }}</span>
-					<span class="nav-user-role">({{ currentUser.rol?.nombre }})</span>
-				</div>
-				
-				<div class="position-relative">
-					<button 
-						type="button" 
-						class="btn btn-link p-0 d-flex align-items-center text-decoration-none"
-						(click)="toggleDropdown()"
-					>
-						<div class="nav-user-avatar">
-							{{ getUserInitial() }}
-						</div>
-					</button>
-					
-					<div 
-						[class]="'nav-dropdown' + (showUserDropdown ? '' : ' d-none')"
-						id="userDropdown"
-					>
-						<a href="#" class="nav-dropdown-item text-decoration-none" (click)="changePassword($event)">
-							<i class="fas fa-key me-2"></i>Cambiar Contraseña
-						</a>
-						<a href="#" class="nav-dropdown-item text-decoration-none" (click)="logout($event)">
-							<i class="fas fa-sign-out-alt me-2"></i>Cerrar Sesión
-						</a>
+		<div class="d-flex align-items-center" *ngIf="currentUser">
+			<div class="me-3 d-none d-md-block">
+				<span class="fw-semibold text-dark">{{ currentUser.nombre_completo }}</span>
+				<span class="text-muted ms-1">({{ currentUser.rol?.nombre }})</span>
+			</div>
+			
+			<div class="dropdown">
+				<button 
+					type="button" 
+					class="btn btn-link p-0 border-0"
+					data-user-dropdown
+					(click)="toggleDropdown()"
+					[attr.aria-expanded]="showUserDropdown"
+				>
+					<div class="nav-user-avatar d-flex align-items-center justify-content-center rounded-circle bg-primary text-white fw-semibold" 
+						 style="width: 40px; height: 40px;">
+						{{ getUserInitial() }}
 					</div>
+				</button>
+				
+				<div 
+					class="dropdown-menu dropdown-menu-end"
+					[class.show]="showUserDropdown"
+				>
+					<a href="#" class="dropdown-item py-2" (click)="changePassword($event)">
+						<i class="fas fa-key me-2 text-primary"></i>Cambiar Contraseña
+					</a>
+					<div class="dropdown-divider"></div>
+					<a href="#" class="dropdown-item py-2 text-danger" (click)="logout($event)">
+						<i class="fas fa-sign-out-alt me-2"></i>Cerrar Sesión
+					</a>
 				</div>
 			</div>
 		</div>
@@ -49,31 +49,31 @@
 </nav>
 
 <!-- Secondary Navigation -->
-<nav class="nav-menu-secondary">
+<nav class="navbar navbar-expand-lg navbar-dark bg-dark">
 	<div class="container-fluid px-4">
-		<div class="d-flex">
+		<div class="navbar-nav d-flex flex-row">
 			<div 
 				*ngFor="let item of menuItems; let i = index" 
-				class="nav-menu-item position-relative"
+				class="nav-item dropdown me-3"
 			>
 				<button 
 					type="button" 
-					class="nav-menu-button btn btn-link text-decoration-none"
+					class="btn btn-link nav-link dropdown-toggle text-white border-0 d-flex align-items-center"
 					(click)="toggleConfigMenu(i)"
+					[attr.aria-expanded]="activeSubmenu === i"
 				>
-					<i class="{{ item.icon }} nav-menu-icon"></i>
+					<i class="{{ item.icon }} me-2"></i>
 					{{ item.name }}
-					<i class="fas fa-chevron-down ms-2" style="font-size: 0.75rem;"></i>
 				</button>
 				
 				<div 
-					[class]="'nav-submenu' + (activeSubmenu === i ? '' : ' d-none')"
-					[id]="'configDropdown' + i"
+					class="dropdown-menu"
+					[class.show]="activeSubmenu === i"
 				>
 					<a 
 						*ngFor="let subitem of item.submenu"
 						[routerLink]="subitem.route"
-						class="nav-submenu-item text-decoration-none"
+						class="dropdown-item py-2"
 						[class.active]="isActiveRoute(subitem.route)"
 						(click)="closeAllMenus()"
 					>

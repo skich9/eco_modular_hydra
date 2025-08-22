@@ -10,363 +10,226 @@ import { ReactiveFormsModule, FormBuilder, FormGroup, Validators, FormsModule } 
 	styleUrls: ['./parametros.component.scss']
 })
 export class ParametrosComponent implements OnInit {
-	activeTab: string = 'parametros-economicos';
+	activeTab: string = 'sistema';
 	
 	// Datos
+	parametrosSistema: any[] = [];
 	parametrosEconomicos: any[] = [];
 	itemsCobro: any[] = [];
 	materias: any[] = [];
 	
 	// Estados de carga
-	loading = {
-		parametros: false,
-		items: false,
-		materias: false
-	};
-	
-	// Formularios
-	parametroForm: FormGroup;
-	itemForm: FormGroup;
-	materiaForm: FormGroup;
-	
-	// Estados de modales
-	showParametroModal = false;
-	showItemModal = false;
-	showMateriaModal = false;
-	showDeleteModal = false;
-	
-	// Datos para eliminación
-	deleteData = {
-		id: '',
-		type: '',
-		sigla: '',
-		pensum: ''
-	};
+	loading: boolean = false;
 	
 	// Filtros de búsqueda
-	searchFilters = {
-		parametros: '',
-		items: '',
-		materias: ''
-	};
+	searchTerm: string = '';
+	
+	// Estados de modales
+	showModal: boolean = false;
+	showDeleteModal: boolean = false;
 	
 	// Estados de edición
-	editingParametro: any = null;
 	editingItem: any = null;
-	editingMateria: any = null;
+	itemToDelete: any = null;
+	deleteType: string = '';
 	
-	// Mensajes
-	alertMessage = '';
-	alertType = '';
-	showAlert = false;
-
-	constructor(private formBuilder: FormBuilder) {
-		this.parametroForm = this.formBuilder.group({
-			nombre: ['', [Validators.required]],
-			descripcion: [''],
-			valor: ['', [Validators.required]],
-			tipo: ['', [Validators.required]],
-			estado: [true]
-		});
-
-		this.itemForm = this.formBuilder.group({
-			nombre_servicio: ['', [Validators.required]],
-			codigo_producto_interno: ['', [Validators.required]],
-			codigo_producto_impuesto: [''],
-			unidad_medida: ['', [Validators.required]],
-			costo: [''],
-			nro_creditos: [0, [Validators.required]],
-			facturado: [false],
-			actividad_economica: ['', [Validators.required]],
-			id_parametro_economico: ['', [Validators.required]],
-			tipo_item: ['', [Validators.required]],
-			descripcion: [''],
-			estado: [true]
-		});
-
-		this.materiaForm = this.formBuilder.group({
-			sigla: ['', [Validators.required]],
+	// Formularios reactivos
+	itemForm: FormGroup;
+	
+	// Mensajes de alerta
+	alertMessage: string = '';
+	alertType: string = 'success';
+	
+	constructor(private fb: FormBuilder) {
+		this.itemForm = this.fb.group({
 			pensum: ['', [Validators.required]],
-			nombre: ['', [Validators.required]],
-			creditos: [0, [Validators.required]],
-			horas_teoricas: [0],
-			horas_practicas: [0],
-			id_parametro_economico: ['', [Validators.required]],
-			descripcion: [''],
-			estado: [true]
+			parametro: ['', [Validators.required]],
+			valor: ['', [Validators.required]],
+			estado: ['Activo'],
+			modulo: ['', [Validators.required]]
 		});
 	}
 
 	ngOnInit(): void {
-		this.loadAllData();
+		// Datos de ejemplo para parámetros del sistema (simulando estructura de base de datos)
+		this.parametrosSistema = [
+			{ id: 1, nombre: 'max_estudiantes', valor: '30', estado: true, descripcion: 'Máximo número de estudiantes por aula', modulo: 'Académico' },
+			{ id: 2, nombre: 'duracion_semestre', valor: '18', descripcion: 'Duración del semestre en semanas', estado: true, modulo: 'Académico' },
+			{ id: 3, nombre: 'nota_minima', valor: '51', descripcion: 'Nota mínima para aprobar', estado: true, modulo: 'Evaluación' }
+		];
+
+		// Datos de ejemplo para parámetros económicos (basado en modelo ParametrosEconomicos)
+		this.parametrosEconomicos = [
+			{ id_parametro_economico: 1, nombre: 'descuento_hermanos', valor: '10', descripcion: 'Descuento por hermanos estudiando', estado: true },
+			{ id_parametro_economico: 2, nombre: 'recargo_mora', valor: '5', descripcion: 'Recargo por mora en pagos', estado: true },
+			{ id_parametro_economico: 3, nombre: 'beca_excelencia', valor: '50', descripcion: 'Porcentaje de beca por excelencia académica', estado: true }
+		];
+
+		// Datos de ejemplo para items de cobro (basado en modelo ItemsCobro)
+		this.itemsCobro = [
+			{ 
+				id_item: 1, 
+				codigo_producto_interno: 'MAT-001', 
+				nombre_servicio: 'Matrícula', 
+				costo: 500.00, 
+				descripcion: 'Costo de matrícula semestral',
+				tipo_item: 'Inscripción',
+				estado: true,
+				id_parametro_economico: 1
+			},
+			{ 
+				id_item: 2, 
+				codigo_producto_interno: 'MEN-001', 
+				nombre_servicio: 'Mensualidad', 
+				costo: 800.00, 
+				descripcion: 'Pago mensual de colegiatura',
+				tipo_item: 'Recurrente',
+				estado: true,
+				id_parametro_economico: 2
+			},
+			{ 
+				id_item: 3, 
+				codigo_producto_interno: 'LAB-001', 
+				nombre_servicio: 'Laboratorio', 
+				costo: 150.00, 
+				descripcion: 'Costo de uso de laboratorio',
+				tipo_item: 'Adicional',
+				estado: true,
+				id_parametro_economico: 1
+			}
+		];
 	}
 
-	loadAllData(): void {
-		this.loadParametrosEconomicos();
-		this.loadItemsCobro();
-		this.loadMaterias();
-	}
+	// Método removido - datos cargados en ngOnInit
 
 	// Gestión de pestañas
 	setActiveTab(tab: string): void {
 		this.activeTab = tab;
+		this.searchTerm = '';
 	}
 
-	// Parámetros Económicos
-	loadParametrosEconomicos(): void {
-		this.loading.parametros = true;
-		// Simulación de datos - aquí iría la llamada al servicio
-		setTimeout(() => {
-			this.parametrosEconomicos = [
-				{
-					id_parametro_economico: 1,
-					nombre: 'Costo por Crédito',
-					descripcion: 'Costo unitario por crédito académico',
-					valor: 150,
-					tipo: 'MONETARIO',
-					estado: true
-				},
-				{
-					id_parametro_economico: 2,
-					nombre: 'Descuento Estudiante',
-					descripcion: 'Porcentaje de descuento para estudiantes',
-					valor: 10,
-					tipo: 'PORCENTAJE',
-					estado: true
-				}
-			];
-			this.loading.parametros = false;
-		}, 1000);
-	}
+	// Filtrado de datos
+	getFilteredData(tab: string): any[] {
+		let data: any[] = [];
+		
+		switch (tab) {
+			case 'sistema':
+				data = this.parametrosSistema;
+				break;
+			case 'economicos':
+				data = this.parametrosEconomicos;
+				break;
+			case 'items':
+				data = this.itemsCobro;
+				break;
+		}
 
-	loadItemsCobro(): void {
-		this.loading.items = true;
-		// Simulación de datos - aquí iría la llamada al servicio
-		setTimeout(() => {
-			this.itemsCobro = [
-				{
-					id_item: 1,
-					codigo_producto_interno: 'MAT001',
-					nombre_servicio: 'Matrícula Semestral',
-					costo: 500,
-					unidad_medida: 'UNIDAD',
-					tipo_item: 'SERVICIO',
-					estado: true,
-					nro_creditos: 0,
-					facturado: true,
-					actividad_economica: '85421',
-					id_parametro_economico: 1
-				}
-			];
-			this.loading.items = false;
-		}, 1000);
-	}
+		if (!this.searchTerm) {
+			return data;
+		}
 
-	loadMaterias(): void {
-		this.loading.materias = true;
-		// Simulación de datos - aquí iría la llamada al servicio
-		setTimeout(() => {
-			this.materias = [
-				{
-					sigla: 'MAT101',
-					pensum: '2024',
-					nombre: 'Matemáticas I',
-					creditos: 4,
-					horas_teoricas: 60,
-					horas_practicas: 30,
-					id_parametro_economico: 1,
-					estado: true
-				}
-			];
-			this.loading.materias = false;
-		}, 1000);
-	}
-
-	// Filtros
-	get filteredParametros() {
-		return this.parametrosEconomicos.filter(p => 
-			p.nombre.toLowerCase().includes(this.searchFilters.parametros.toLowerCase()) ||
-			p.descripcion.toLowerCase().includes(this.searchFilters.parametros.toLowerCase())
+		return data.filter(item => 
+			Object.values(item).some(value => 
+				value?.toString().toLowerCase().includes(this.searchTerm.toLowerCase())
+			)
 		);
 	}
 
-	get filteredItems() {
-		return this.itemsCobro.filter(item => 
-			item.nombre_servicio.toLowerCase().includes(this.searchFilters.items.toLowerCase()) ||
-			item.codigo_producto_interno.toLowerCase().includes(this.searchFilters.items.toLowerCase())
-		);
-	}
-
-	get filteredMaterias() {
-		return this.materias.filter(materia => 
-			materia.nombre.toLowerCase().includes(this.searchFilters.materias.toLowerCase()) ||
-			materia.sigla.toLowerCase().includes(this.searchFilters.materias.toLowerCase())
-		);
+	filterData(): void {
+		// La funcionalidad de filtrado se maneja a través del método getFilteredData
 	}
 
 	// Gestión de modales
-	openParametroModal(parametro?: any): void {
-		this.editingParametro = parametro;
-		if (parametro) {
-			this.parametroForm.patchValue(parametro);
-		} else {
-			this.parametroForm.reset();
-			this.parametroForm.patchValue({ estado: true });
-		}
-		this.showParametroModal = true;
+	openCreateModal(type: string): void {
+		this.editingItem = null;
+		this.itemForm.reset();
+		this.showModal = true;
 	}
 
-	openItemModal(item?: any): void {
+	openEditModal(type: string, item: any): void {
 		this.editingItem = item;
-		if (item) {
-			this.itemForm.patchValue(item);
-		} else {
-			this.itemForm.reset();
-			this.itemForm.patchValue({ estado: true, nro_creditos: 0, facturado: false });
-		}
-		this.showItemModal = true;
+		this.itemForm.patchValue(item);
+		this.showModal = true;
 	}
 
-	openMateriaModal(materia?: any): void {
-		this.editingMateria = materia;
-		if (materia) {
-			this.materiaForm.patchValue(materia);
-		} else {
-			this.materiaForm.reset();
-			this.materiaForm.patchValue({ 
-				estado: true, 
-				creditos: 0, 
-				horas_teoricas: 0, 
-				horas_practicas: 0 
-			});
-		}
-		this.showMateriaModal = true;
-	}
-
-	closeModals(): void {
-		this.showParametroModal = false;
-		this.showItemModal = false;
-		this.showMateriaModal = false;
-		this.showDeleteModal = false;
-	}
-
-	// Operaciones CRUD
-	saveParametro(): void {
-		if (this.parametroForm.invalid) return;
-
-		const parametroData = this.parametroForm.value;
-		
-		// Simulación de guardado
-		setTimeout(() => {
-			if (this.editingParametro) {
-				// Actualizar
-				const index = this.parametrosEconomicos.findIndex(p => p.id_parametro_economico === this.editingParametro.id_parametro_economico);
-				this.parametrosEconomicos[index] = { ...this.editingParametro, ...parametroData };
-				this.showAlertMessage('success', 'Parámetro actualizado correctamente');
-			} else {
-				// Crear nuevo
-				const newParametro = {
-					id_parametro_economico: Date.now(),
-					...parametroData
-				};
-				this.parametrosEconomicos.push(newParametro);
-				this.showAlertMessage('success', 'Parámetro creado correctamente');
-			}
-			this.closeModals();
-		}, 500);
-	}
-
-	saveItem(): void {
-		if (this.itemForm.invalid) return;
-
-		const itemData = this.itemForm.value;
-		
-		// Simulación de guardado
-		setTimeout(() => {
-			if (this.editingItem) {
-				// Actualizar
-				const index = this.itemsCobro.findIndex(i => i.id_item === this.editingItem.id_item);
-				this.itemsCobro[index] = { ...this.editingItem, ...itemData };
-				this.showAlertMessage('success', 'Item actualizado correctamente');
-			} else {
-				// Crear nuevo
-				const newItem = {
-					id_item: Date.now(),
-					...itemData
-				};
-				this.itemsCobro.push(newItem);
-				this.showAlertMessage('success', 'Item creado correctamente');
-			}
-			this.closeModals();
-		}, 500);
-	}
-
-	saveMateria(): void {
-		if (this.materiaForm.invalid) return;
-
-		const materiaData = this.materiaForm.value;
-		
-		// Simulación de guardado
-		setTimeout(() => {
-			if (this.editingMateria) {
-				// Actualizar
-				const index = this.materias.findIndex(m => 
-					m.sigla === this.editingMateria.sigla && m.pensum === this.editingMateria.pensum
-				);
-				this.materias[index] = { ...this.editingMateria, ...materiaData };
-				this.showAlertMessage('success', 'Materia actualizada correctamente');
-			} else {
-				// Crear nueva
-				this.materias.push(materiaData);
-				this.showAlertMessage('success', 'Materia creada correctamente');
-			}
-			this.closeModals();
-		}, 500);
-	}
-
-	// Confirmación de eliminación
-	confirmDelete(id: any, type: string, sigla?: string, pensum?: string): void {
-		this.deleteData = { id, type, sigla: sigla || '', pensum: pensum || '' };
+	openDeleteModal(type: string, item: any): void {
+		this.itemToDelete = item;
+		this.deleteType = type;
 		this.showDeleteModal = true;
 	}
 
+	closeModals(): void {
+		this.showModal = false;
+		this.showDeleteModal = false;
+		this.editingItem = null;
+		this.itemToDelete = null;
+	}
+
+	// Operaciones CRUD
+	saveItem(): void {
+		if (this.itemForm.valid) {
+			const formData = this.itemForm.value;
+			
+			if (this.editingItem) {
+				// Actualizar item existente
+				const index = this.getDataArray().findIndex(item => item.id === this.editingItem.id);
+				if (index !== -1) {
+					this.getDataArray()[index] = { ...this.editingItem, ...formData };
+				}
+			} else {
+				// Crear nuevo item
+				const newItem = {
+					id: Date.now(),
+					...formData
+				};
+				this.getDataArray().push(newItem);
+			}
+			
+			this.closeModals();
+			this.showAlert('Elemento guardado exitosamente', 'success');
+		}
+	}
+
 	executeDelete(): void {
-		const { id, type, sigla, pensum } = this.deleteData;
+		if (this.itemToDelete) {
+			const dataArray = this.getDataArray();
+			const index = dataArray.findIndex(item => item.id === this.itemToDelete.id);
+			if (index !== -1) {
+				dataArray.splice(index, 1);
+			}
+			
+			this.closeModals();
+			this.showAlert('Elemento eliminado exitosamente', 'success');
+		}
+	}
+
+	private getDataArray(): any[] {
+		switch (this.activeTab) {
+			case 'sistema':
+				return this.parametrosSistema;
+			case 'economicos':
+				return this.parametrosEconomicos;
+			case 'items':
+				return this.itemsCobro;
+			default:
+				return [];
+		}
+	}
+
+	// Utilidades
+	private showAlert(message: string, type: string = 'success'): void {
+		this.alertMessage = message;
+		this.alertType = type;
 		
 		setTimeout(() => {
-			switch (type) {
-				case 'parametro':
-					this.parametrosEconomicos = this.parametrosEconomicos.filter(p => p.id_parametro_economico !== id);
-					this.showAlertMessage('success', 'Parámetro eliminado correctamente');
-					break;
-				case 'item':
-					this.itemsCobro = this.itemsCobro.filter(i => i.id_item !== id);
-					this.showAlertMessage('success', 'Item eliminado correctamente');
-					break;
-				case 'materia':
-					this.materias = this.materias.filter(m => !(m.sigla === sigla && m.pensum === pensum));
-					this.showAlertMessage('success', 'Materia eliminada correctamente');
-					break;
-			}
-			this.closeModals();
-		}, 500);
+			this.alertMessage = '';
+		}, 3000);
 	}
 
 	// Cambiar estado
 	toggleStatus(item: any, type: string): void {
 		item.estado = !item.estado;
 		const statusText = item.estado ? 'activado' : 'desactivado';
-		this.showAlertMessage('success', `Estado ${statusText} correctamente`);
-	}
-
-	// Utilidades
-	showAlertMessage(type: string, message: string): void {
-		this.alertType = type;
-		this.alertMessage = message;
-		this.showAlert = true;
-		
-		setTimeout(() => {
-			this.showAlert = false;
-		}, 5000);
+		this.showAlert(`Estado ${statusText} correctamente`, 'success');
 	}
 }

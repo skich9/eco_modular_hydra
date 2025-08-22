@@ -85,7 +85,7 @@ export class NavigationComponent implements OnInit {
 		// Cerrar menús al hacer clic fuera
 		document.addEventListener('click', (event) => {
 			const target = event.target as HTMLElement;
-			const isInsideMenu = target.closest('.nav-dropdown, .nav-submenu, .nav-menu-button, [data-dropdown-toggle]');
+			const isInsideMenu = target.closest('.dropdown, .dropdown-menu, .dropdown-item, .nav-user-avatar, .btn[data-user-dropdown]');
 			
 			if (!isInsideMenu) {
 				this.closeAllMenus();
