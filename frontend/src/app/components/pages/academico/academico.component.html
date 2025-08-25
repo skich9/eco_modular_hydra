@@ -69,10 +69,13 @@
           </div>
         </div>
         <div class="card-body">
-          <div class="mb-3">
-            <input type="text" class="form-control" placeholder="Buscar por sigla o nombre" [(ngModel)]="materiaFilter" (ngModelChange)="applyMateriaFilter()" />
+          <div class="mb-3 d-flex align-items-center gap-2">
+            <input type="text" class="form-control flex-grow-1" placeholder="Buscar por sigla o nombre" [(ngModel)]="materiaFilter" (ngModelChange)="applyMateriaFilter()" />
+            <button class="btn btn-primary btn-sm" (click)="openCreateModal()" [disabled]="!selectedPensum">
+              <i class="fas fa-plus me-1"></i> Nueva materia
+            </button>
           </div>
-
+          
           <div *ngIf="loadingMaterias" class="text-center py-4">
             <div class="spinner-border text-primary" role="status"></div>
             <div class="text-muted mt-2">Cargando materias...</div>
@@ -82,19 +85,21 @@
             <table class="table table-hover align-middle mb-0">
               <thead class="table-light">
                 <tr>
-                  <th style="width: 15%">Sigla</th>
+                  <th style="width: 12%">Sigla</th>
                   <th>Nombre</th>
                   <th style="width: 10%" class="text-center">Créditos</th>
                   <th style="width: 10%" class="text-center">Orden</th>
-                  <th style="width: 15%" class="text-center">Estado</th>
+                  <th style="width: 12%" class="text-end">Costo</th>
+                  <th style="width: 12%" class="text-center">Estado</th>
+                  <th style="width: 1%" class="text-center">Acciones</th>
                 </tr>
               </thead>
               <tbody>
                 <tr *ngIf="!selectedPensum">
-                  <td colspan="5" class="text-center text-muted py-4">Seleccione un pensum para ver sus materias</td>
+                  <td colspan="7" class="text-center text-muted py-4">Seleccione un pensum para ver sus materias</td>
                 </tr>
                 <tr *ngIf="selectedPensum && filteredMaterias.length === 0">
-                  <td colspan="5" class="text-center text-muted py-4">No hay materias para el pensum seleccionado</td>
+                  <td colspan="7" class="text-center text-muted py-4">No hay materias para el pensum seleccionado</td>
                 </tr>
                 <tr *ngFor="let m of filteredMaterias">
                   <td class="text-monospace">{{ m.sigla_materia }}</td>
@@ -104,14 +109,91 @@
                   </td>
                   <td class="text-center">{{ m.nro_creditos }}</td>
                   <td class="text-center">{{ m.orden }}</td>
+                  <td class="text-end">{{ m.monto_materia != null ? (m.monto_materia | number:'1.2-2') : '-' }}</td>
                   <td class="text-center">
                     <span class="badge" [class.bg-success]="m.estado" [class.bg-secondary]="!m.estado">{{ m.estado ? 'Activa' : 'Inactiva' }}</span>
+                  </td>
+                  <td class="text-center">
+                    <div class="btn-group btn-group-sm">
+                      <button class="btn btn-outline-secondary" (click)="openEditModal(m)"><i class="fas fa-pen"></i></button>
+                      <button class="btn btn-outline-danger" (click)="deleteMateria(m)"><i class="fas fa-trash"></i></button>
+                    </div>
                   </td>
                 </tr>
               </tbody>
             </table>
           </div>
         </div>
+      </div>
+    </div>
+  </div>
+
+  <!-- Modal Crear/Editar Materia -->
+  <div class="modal-backdrop fade show" *ngIf="modalOpen"></div>
+  <div class="custom-modal" *ngIf="modalOpen" (click)="onModalContainerClick($event)">
+    <div class="modal-dialog modal-lg">
+      <div class="modal-content">
+        <div class="modal-header">
+          <h5 class="modal-title">{{ modalMode === 'create' ? 'Nueva materia' : 'Editar materia' }}</h5>
+          <button type="button" class="btn-close" aria-label="Close" (click)="closeModal()" [disabled]="loadingAux"></button>
+        </div>
+        <form [formGroup]="form" (ngSubmit)="saveMateria()">
+          <div class="modal-body">
+            <div class="row g-3">
+              <div class="col-12 col-md-4">
+                <label class="form-label">Sigla</label>
+                <input type="text" class="form-control" formControlName="sigla_materia" [readonly]="modalMode === 'edit'" />
+              </div>
+              <div class="col-12 col-md-4">
+                <label class="form-label">Pensum</label>
+                <input type="text" class="form-control" formControlName="cod_pensum" readonly />
+              </div>
+              <div class="col-12 col-md-4">
+                <label class="form-label">Créditos</label>
+                <input type="number" class="form-control" formControlName="nro_creditos" min="1" />
+              </div>
+
+              <div class="col-12">
+                <label class="form-label">Nombre</label>
+                <input type="text" class="form-control" formControlName="nombre_materia" />
+              </div>
+              <div class="col-12">
+                <label class="form-label">Nombre oficial</label>
+                <input type="text" class="form-control" formControlName="nombre_material_oficial" />
+              </div>
+
+              <div class="col-12 col-md-4">
+                <label class="form-label">Orden</label>
+                <input type="number" class="form-control" formControlName="orden" min="1" />
+              </div>
+              <div class="col-12 col-md-8">
+                <label class="form-label">Parámetro económico</label>
+                <select class="form-select" formControlName="id_parametro_economico">
+                  <option [ngValue]="null">Seleccione...</option>
+                  <option *ngFor="let p of parametrosEconomicos" [ngValue]="p.id_parametro_economico">{{ p.nombre }}</option>
+                </select>
+              </div>
+
+              <div class="col-12">
+                <label class="form-label">Descripción</label>
+                <textarea rows="3" class="form-control" formControlName="descripcion"></textarea>
+              </div>
+
+              <div class="col-12">
+                <div class="form-check">
+                  <input class="form-check-input" type="checkbox" formControlName="estado" id="chkEstado" />
+                  <label class="form-check-label" for="chkEstado"> Activa </label>
+                </div>
+              </div>
+            </div>
+          </div>
+          <div class="modal-footer">
+            <button type="button" class="btn btn-light" (click)="closeModal()" [disabled]="loadingAux">Cancelar</button>
+            <button type="submit" class="btn btn-primary" [disabled]="loadingAux || form.invalid">
+              {{ modalMode === 'create' ? 'Crear' : 'Guardar cambios' }}
+            </button>
+          </div>
+        </form>
       </div>
     </div>
   </div>

@@ -8,6 +8,8 @@ export interface Materia {
 	descripcion?: string;
 	id_parametro_economico: number;
 	nro_creditos: number;
+	// Costo de la materia para la gestión actual (merge desde endpoint costo-materia)
+	monto_materia?: number;
 	parametroEconomico?: ParametroEconomico;
 	pensum?: Pensum;
 	created_at?: string;

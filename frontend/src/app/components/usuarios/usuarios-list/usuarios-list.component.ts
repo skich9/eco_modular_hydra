@@ -38,7 +38,7 @@ import { UsuarioService } from '../../../services/usuario.service';
 					<thead>
 						<tr>
 							<th>ID</th>
-							<th>Nickname</th>
+							<th>Nickname<th>
 							<th>Nombre Completo</th>
 							<th>CI</th>
 							<th>Rol</th>
