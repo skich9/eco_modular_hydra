@@ -3,6 +3,8 @@ import { CommonModule } from '@angular/common';
 import { Router, RouterModule } from '@angular/router';
 import { ReactiveFormsModule, FormBuilder, FormGroup, Validators } from '@angular/forms';
 import { AuthService } from '../../../services/auth.service';
+import { Carrera } from '../../../models/carrera.model';
+import { CarreraService } from '../../../services/carrera.service';
 import { Usuario } from '../../../models/usuario.model';
 
 interface MenuItem {
@@ -36,6 +38,9 @@ export class NavigationComponent implements OnInit {
 	changePasswordSuccess: string = '';
 	isChangingPassword: boolean = false;
 
+	carreras: Carrera[] = [];
+	loadingCarreras = false;
+
 	menuItems: MenuItem[] = [
 		{
 			name: 'Cobros',
@@ -46,13 +51,10 @@ export class NavigationComponent implements OnInit {
 			]
 		},
         {
-			name: 'Académico',
-			icon: 'fas fa-graduation-cap',
-			submenu: [
-				{ name: 'Materias', icon: 'fa-book', route: '/materias' },
-				{ name: 'Carreras', icon: 'fa-university', route: '/carreras' }
-			]
-		},
+            name: 'Académico',
+            icon: 'fas fa-graduation-cap',
+            submenu: []
+        },
         {
 			name: 'Configuración',
 			icon: 'fas fa-cog',
@@ -67,7 +69,8 @@ export class NavigationComponent implements OnInit {
 	constructor(
 		private authService: AuthService,
 		private router: Router,
-		private formBuilder: FormBuilder
+		private formBuilder: FormBuilder,
+		private carreraService: CarreraService
 	) {
 		this.changePasswordForm = this.formBuilder.group({
 			currentPassword: ['', [Validators.required]],
@@ -89,6 +92,32 @@ export class NavigationComponent implements OnInit {
 			
 			if (!isInsideMenu) {
 				this.closeAllMenus();
+			}
+		});
+
+		// Cargar carreras para el menú académico
+		this.loadCarreras();
+	}
+
+	private loadCarreras(): void {
+		this.loadingCarreras = true;
+		this.carreraService.getAll().subscribe({
+			next: (res) => {
+				this.carreras = res.data || [];
+				const idx = this.menuItems.findIndex(mi => mi.name === 'Académico');
+				if (idx !== -1) {
+					this.menuItems[idx].submenu = this.carreras.map(c => ({
+						name: c.nombre,
+						icon: 'fa-university',
+						route: `/academico/${c.codigo_carrera}`
+					}));
+				}
+			},
+			error: (err) => {
+				console.error('Error cargando carreras:', err);
+			},
+			complete: () => {
+				this.loadingCarreras = false;
 			}
 		});
 	}

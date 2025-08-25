@@ -12,43 +12,32 @@ use Illuminate\Support\Facades\DB;
  */
 class AsignacionCostosFactory extends Factory
 {
-    /**
-     * Define the model's default state.
-     *
-     * @return array<string, mixed>
-     */
     protected $model = AsignacionCostos::class;
     
     public function definition(): array
     {
         // Obtener inscripciones existentes
-        $inscripciones = DB::table('inscripciones')->select('cod_inscrip')->get();
-        if ($inscripciones->isEmpty()) {
-            // Si no hay inscripciones, usar valores por defecto
-            $cod_inscrip = 1;
-        } else {
-            $cod_inscrip = $this->faker->randomElement($inscripciones)->cod_inscrip;
+        $inscripciones = DB::table('inscripciones')->pluck('cod_inscrip')->toArray();
+        if (empty($inscripciones)) {
+            throw new \Exception("No hay inscripciones en la base de datos. Ejecuta primero InscripcionSeeder.");
         }
+        $cod_inscrip = $this->faker->randomElement($inscripciones);
         
         // Obtener costos semestrales existentes
-        $costosSemestrales = CostoSemestral::select('id_costo_semestral', 'cod_pensum')->get();
+        $costosSemestrales = CostoSemestral::all();
         if ($costosSemestrales->isEmpty()) {
-            // Si no hay costos semestrales, usar valores por defecto
-            $id_costo_semestral = 1;
-            $cod_pensum = 'ING-SIS';
-        } else {
-            $costoSeleccionado = $this->faker->randomElement($costosSemestrales);
-            $id_costo_semestral = $costoSeleccionado->id_costo_semestral;
-            $cod_pensum = $costoSeleccionado->cod_pensum;
+            throw new \Exception("No hay costos semestrales en la base de datos. Ejecuta primero CostoSemestralSeeder.");
         }
+        $costoSeleccionado = $this->faker->randomElement($costosSemestrales);
         
         return [
-            'cod_pensum' => $cod_pensum,
-            'cod_inscrip' => $cod_inscrip,
+            'cod_pensum' => $costoSeleccionado->cod_pensum, // siempre existente
+            'cod_inscrip' => $cod_inscrip,                  // siempre existente
             'monto' => $this->faker->randomFloat(2, 100, 1000),
             'observaciones' => $this->faker->sentence(),
             'estado' => $this->faker->boolean(),
-            'id_costo_semestral' => $id_costo_semestral,
+            'id_costo_semestral' => $costoSeleccionado->id_costo_semestral, // siempre existente
         ];
     }
 }
+

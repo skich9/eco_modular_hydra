@@ -1,0 +1,19 @@
+.card {
+  border-radius: 0.5rem;
+}
+
+.table td, .table th {
+  vertical-align: middle;
+}
+
+.table .text-monospace {
+  font-family: ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, "Liberation Mono", "Courier New", monospace;
+}
+
+.table-hover tbody tr.table-active:hover {
+  background-color: rgba(13,110,253,.1);
+}
+
+.badge {
+  min-width: 72px;
+}

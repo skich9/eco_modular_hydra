@@ -1,0 +1,225 @@
+<div class="page">
+  <h1>Parámetros del Sistema</h1>
+
+  <div class="alerts" *ngIf="alertMessage">
+    <div class="alert" [class.success]="alertType==='success'" [class.error]="alertType==='error'" [class.warning]="alertType==='warning'">
+      {{ alertMessage }}
+    </div>
+  </div>
+
+  <!-- Parámetros Económicos -->
+  <section class="card">
+    <div class="card-header">
+      <h2>Parámetros Económicos</h2>
+      <div class="actions">
+        <input type="text" placeholder="Buscar por nombre o descripción..." [(ngModel)]="searchPE" />
+        <button class="primary" (click)="openNewParametro()">Nuevo</button>
+      </div>
+    </div>
+    <div class="card-body">
+      <div class="table-wrapper">
+        <table>
+          <thead>
+            <tr>
+              <th>ID</th>
+              <th>Nombre</th>
+              <th>Valor</th>
+              <th>Descripción</th>
+              <th>Estado</th>
+              <th class="th-actions">Acciones</th>
+            </tr>
+          </thead>
+          <tbody>
+            <tr *ngFor="let p of filteredParametros">
+              <td>{{ p.id_parametro_economico }}</td>
+              <td>{{ p.nombre }}</td>
+              <td>{{ p.valor }}</td>
+              <td>{{ p.descripcion }}</td>
+              <td>
+                <span class="badge" [class.active]="p.estado" [class.inactive]="!p.estado">{{ p.estado ? 'Activo' : 'Inactivo' }}</span>
+              </td>
+              <td class="td-actions">
+                <button (click)="toggleParametro(p)">{{ p.estado ? 'Desactivar' : 'Activar' }}</button>
+                <button (click)="openEditParametro(p)">Editar</button>
+                <button class="danger" (click)="confirmDelete(p, 'pe')">Eliminar</button>
+              </td>
+            </tr>
+            <tr *ngIf="filteredParametros.length === 0">
+              <td colspan="6" class="empty">Sin resultados</td>
+            </tr>
+          </tbody>
+        </table>
+      </div>
+    </div>
+  </section>
+
+  <!-- Items de Cobro -->
+  <section class="card">
+    <div class="card-header">
+      <h2>Items de Cobro</h2>
+      <div class="actions">
+        <input type="text" placeholder="Buscar por nombre, código o descripción..." [(ngModel)]="searchIC" />
+        <button class="primary" (click)="openNewItem()">Nuevo</button>
+      </div>
+    </div>
+    <div class="card-body">
+      <div class="table-wrapper scroll-x">
+        <table>
+          <thead>
+            <tr>
+              <th>ID</th>
+              <th>Cód. Impuesto</th>
+              <th>Cód. Interno</th>
+              <th>Unidad Medida</th>
+              <th>Nombre Servicio</th>
+              <th>Créditos</th>
+              <th>Costo</th>
+              <th>Actividad Económica</th>
+              <th>Descripción</th>
+              <th>Tipo Item</th>
+              <th>Facturado</th>
+              <th>Estado</th>
+              <th>ID Param. Econ.</th>
+              <th class="th-actions">Acciones</th>
+            </tr>
+          </thead>
+          <tbody>
+            <tr *ngFor="let i of filteredItems">
+              <td>{{ i.id_item }}</td>
+              <td>{{ i.codigo_producto_impuesto || '-' }}</td>
+              <td>{{ i.codigo_producto_interno }}</td>
+              <td>{{ i.unidad_medida }}</td>
+              <td>{{ i.nombre_servicio }}</td>
+              <td>{{ i.nro_creditos }}</td>
+              <td>{{ i.costo != null ? (i.costo | currency) : '-' }}</td>
+              <td>{{ i.actividad_economica }}</td>
+              <td>{{ i.descripcion || '-' }}</td>
+              <td>{{ i.tipo_item }}</td>
+              <td>
+                <span class="badge" [class.active]="i.facturado" [class.inactive]="!i.facturado">{{ i.facturado ? 'Sí' : 'No' }}</span>
+              </td>
+              <td>
+                <span class="badge" [class.active]="i.estado" [class.inactive]="!i.estado">{{ i.estado ? 'Activo' : 'Inactivo' }}</span>
+              </td>
+              <td>{{ i.id_parametro_economico }}</td>
+              <td class="td-actions">
+                <button (click)="toggleItem(i)">{{ i.estado ? 'Desactivar' : 'Activar' }}</button>
+                <button (click)="openEditItem(i)">Editar</button>
+                <button class="danger" (click)="confirmDelete(i, 'ic')">Eliminar</button>
+              </td>
+            </tr>
+            <tr *ngIf="filteredItems.length === 0">
+              <td colspan="14" class="empty">Sin resultados</td>
+            </tr>
+          </tbody>
+        </table>
+      </div>
+    </div>
+  </section>
+
+  <!-- Modal: Parámetro Económico -->
+  <div class="modal-backdrop" *ngIf="showParamModal">
+    <div class="modal">
+      <h3>{{ editingParam ? 'Editar Parámetro' : 'Nuevo Parámetro' }}</h3>
+      <form [formGroup]="parametroForm" (ngSubmit)="saveParametro()">
+        <div class="grid">
+          <label>
+            Nombre
+            <input type="text" formControlName="nombre" />
+          </label>
+          <label>
+            Valor
+            <input type="text" formControlName="valor" />
+          </label>
+          <label class="col-span-2">
+            Descripción
+            <textarea rows="2" formControlName="descripcion"></textarea>
+          </label>
+          <label class="row-center">
+            <input type="checkbox" formControlName="estado" /> Activo
+          </label>
+        </div>
+        <div class="modal-actions">
+          <button type="submit" class="primary" [disabled]="parametroForm.invalid">Guardar</button>
+          <button type="button" (click)="closeModals()">Cancelar</button>
+        </div>
+      </form>
+    </div>
+  </div>
+
+  <!-- Modal: Item de Cobro -->
+  <div class="modal-backdrop" *ngIf="showItemModal">
+    <div class="modal">
+      <h3>{{ editingItem ? 'Editar Item de Cobro' : 'Nuevo Item de Cobro' }}</h3>
+      <form [formGroup]="itemForm" (ngSubmit)="saveItem()">
+        <div class="grid">
+          <label>
+            Cód. Impuesto
+            <input type="number" formControlName="codigo_producto_impuesto" />
+          </label>
+          <label>
+            Cód. Interno
+            <input type="text" formControlName="codigo_producto_interno" />
+          </label>
+          <label>
+            Unidad Medida
+            <input type="number" formControlName="unidad_medida" />
+          </label>
+          <label>
+            Nombre Servicio
+            <input type="text" formControlName="nombre_servicio" />
+          </label>
+          <label>
+            Créditos
+            <input type="number" formControlName="nro_creditos" />
+          </label>
+          <label>
+            Costo
+            <input type="number" step="0.01" formControlName="costo" />
+          </label>
+          <label>
+            Actividad Económica
+            <input type="text" formControlName="actividad_economica" />
+          </label>
+          <label class="col-span-2">
+            Descripción (máx. 50)
+            <textarea rows="2" maxlength="50" formControlName="descripcion"></textarea>
+          </label>
+          <label>
+            Tipo Item
+            <input type="text" formControlName="tipo_item" />
+          </label>
+          <label>
+            Parámetro Económico
+            <select formControlName="id_parametro_economico">
+              <option [ngValue]="null">Seleccione...</option>
+              <option *ngFor="let p of parametros" [ngValue]="p.id_parametro_economico">{{ p.nombre }}</option>
+            </select>
+          </label>
+          <label class="row-center">
+            <input type="checkbox" formControlName="facturado" /> Facturado
+          </label>
+          <label class="row-center">
+            <input type="checkbox" formControlName="estado" /> Activo
+          </label>
+        </div>
+        <div class="modal-actions">
+          <button type="submit" class="primary" [disabled]="itemForm.invalid">Guardar</button>
+          <button type="button" (click)="closeModals()">Cancelar</button>
+        </div>
+      </form>
+    </div>
+  </div>
+
+  <!-- Modal: Confirmación Eliminar -->
+  <div class="modal-backdrop" *ngIf="showDeleteModal">
+    <div class="modal">
+      <h3>Confirmar eliminación</h3>
+      <p>¿Seguro que deseas eliminar este registro?</p>
+      <div class="modal-actions">
+        <button class="danger" (click)="doDelete()">Eliminar</button>
+        <button (click)="cancelDelete()">Cancelar</button>
+      </div>
+    </div>
+  </div>
+</div>

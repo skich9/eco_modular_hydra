@@ -56,7 +56,14 @@ class ItemsCobro extends Model
 	 * @var array<string, string>
 	 */
 	protected $casts = [
-		'nro_creditos' => 'decimal:2',
+		// Numéricos como números en JSON
+		'id_item' => 'integer',
+		'codigo_producto_impuesto' => 'integer',
+		'unidad_medida' => 'integer',
+		'id_parametro_economico' => 'integer',
+		'nro_creditos' => 'float',
+		'costo' => 'float',
+		// Booleanos
 		'facturado' => 'boolean',
 		'estado' => 'boolean',
 	];

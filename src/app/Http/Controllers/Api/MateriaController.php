@@ -7,6 +7,7 @@ use App\Models\Materia;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\Validator;
 use Illuminate\Validation\Rule;
+use Illuminate\Support\Facades\Log;
 
 class MateriaController extends Controller
 {
@@ -244,6 +245,59 @@ class MateriaController extends Controller
             return response()->json([
                 'success' => false,
                 'message' => 'Error al cambiar estado de materia: ' . $e->getMessage()
+            ], 500);
+        }
+    }
+
+    /**
+     * Obtener materias por código de pensum
+     */
+    public function getByPensum(string $codPensum)
+    {
+        try {
+            $materias = Materia::with(['parametroEconomico', 'pensum'])
+                ->where('cod_pensum', $codPensum)
+                ->get();
+            return response()->json([
+                'success' => true,
+                'data' => $materias,
+            ]);
+        } catch (\Exception $e) {
+            Log::error('Error al obtener materias por pensum: ' . $e->getMessage());
+            return response()->json([
+                'success' => false,
+                'message' => 'Error al obtener materias por pensum',
+            ], 500);
+        }
+    }
+
+    /**
+     * Buscar materias por nombre o sigla
+     */
+    public function search(Request $request)
+    {
+        try {
+            $term = trim((string) $request->query('term', ''));
+            $query = Materia::with(['parametroEconomico', 'pensum']);
+
+            if ($term !== '') {
+                $query->where(function ($q) use ($term) {
+                    $q->where('nombre_materia', 'like', "%{$term}%")
+                      ->orWhere('sigla_materia', 'like', "%{$term}%");
+                });
+            }
+
+            $materias = $query->limit(100)->get();
+
+            return response()->json([
+                'success' => true,
+                'data' => $materias,
+            ]);
+        } catch (\Exception $e) {
+            Log::error('Error al buscar materias: ' . $e->getMessage());
+            return response()->json([
+                'success' => false,
+                'message' => 'Error al buscar materias',
             ], 500);
         }
     }

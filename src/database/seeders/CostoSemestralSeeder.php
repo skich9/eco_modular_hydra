@@ -13,28 +13,27 @@ class CostoSemestralSeeder extends Seeder
      */
     public function run(): void
     {
-        // Crear costos semestrales para Ingeniería de Sistemas
+        // Ingeniería de Sistemas
         for ($semestre = 1; $semestre <= 10; $semestre++) {
             CostoSemestral::create([
-                'cod_pensum' => 'ING-SIS',
+                'cod_pensum' => 'SIS-2025', // corregido
                 'gestion' => '2025-1',
                 'semestre' => (string)$semestre,
-                'monto_semestre' => 1000 + ($semestre * 50), // Incremento por semestre
+                'monto_semestre' => 1000 + ($semestre * 50),
                 'id_usuario' => 1,
             ]);
         }
-        
-        // Crear costos semestrales para otra carrera (ejemplo)
+
+        // Administración de Empresas
         for ($semestre = 1; $semestre <= 8; $semestre++) {
             CostoSemestral::create([
-                'cod_pensum' => 'ADM-EMP',
+                'cod_pensum' => 'ADM-2024', // corregido
                 'gestion' => '2025-1',
                 'semestre' => (string)$semestre,
-                'monto_semestre' => 900 + ($semestre * 40), // Incremento por semestre
+                'monto_semestre' => 900 + ($semestre * 40),
                 'id_usuario' => 1,
             ]);
         }
-        
         // Crear algunos costos semestrales aleatorios adicionales
         CostoSemestral::factory()->count(5)->create();
     }

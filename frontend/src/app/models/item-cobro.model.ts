@@ -5,7 +5,7 @@ export interface ItemCobro {
 	unidad_medida: number;
 	nombre_servicio: string;
 	nro_creditos: number;
-	costo?: number;
+	costo: number | null;
 	facturado: boolean;
 	actividad_economica: string;
 	descripcion?: string;

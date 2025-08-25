@@ -4,6 +4,8 @@ use Illuminate\Http\Request;
 use Illuminate\Support\Facades\Route;
 use App\Http\Controllers\Api\ParametrosEconomicosController;
 use App\Http\Controllers\Api\ItemsCobroController;
+use App\Http\Controllers\Api\CarreraController as ApiCarreraController;
+use App\Http\Controllers\Api\MateriaController as ApiMateriaController;
 
 /*
 |--------------------------------------------------------------------------
@@ -35,3 +37,11 @@ Route::patch('parametros-economicos/{id}/toggle-status', [ParametrosEconomicosCo
 // Recursos: Items de Cobro
 Route::apiResource('items-cobro', ItemsCobroController::class);
 Route::patch('items-cobro/{id}/toggle-status', [ItemsCobroController::class, 'toggleStatus']);
+
+// Carreras
+Route::get('carreras', [ApiCarreraController::class, 'index']);
+Route::get('carreras/{codigo}/pensums', [ApiCarreraController::class, 'pensums']);
+
+// Materias: endpoints adicionales
+Route::get('materias/pensum/{codPensum}', [ApiMateriaController::class, 'getByPensum']);
+Route::get('materias/search', [ApiMateriaController::class, 'search']);

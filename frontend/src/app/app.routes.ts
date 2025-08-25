@@ -44,11 +44,17 @@ export const routes: Routes = [
 			{ path: 'roles', component: RolesListComponent },
 			{ path: 'roles/nuevo', component: RolFormComponent },
 			{ path: 'roles/editar/:id', component: RolFormComponent },
-			
+            
+            // Ruta para Académico (carreras -> pensums + materias)
+            {
+                path: 'academico/:codigo',
+                loadComponent: () => import('./components/pages/academico/academico.component').then(m => m.AcademicoComponent)
+            },
+            
 			// Rutas para parámetros del sistema
 			{
 				path: 'parametros',
-				loadComponent: () => import('./components/pages/parametros/parametros.component').then(m => m.ParametrosComponent)
+				loadComponent: () => import('./components/pages/parametros-simple/parametros-simple.component').then(m => m.ParametrosSimpleComponent)
 			},
 			
 			// Ruta por defecto

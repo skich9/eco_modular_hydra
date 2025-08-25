@@ -65,13 +65,6 @@ Route::prefix('api')->group(function () {
     Route::put('/roles/{id}', [RolController::class, 'update']);
     Route::delete('/roles/{id}', [RolController::class, 'destroy']);
     
-    // Rutas de Carreras
-    Route::get('/carreras', [CarreraController::class, 'index']);
-    Route::post('/carreras', [CarreraController::class, 'store']);
-    Route::get('/carreras/{id}', [CarreraController::class, 'show']);
-    Route::put('/carreras/{id}', [CarreraController::class, 'update']);
-    Route::delete('/carreras/{id}', [CarreraController::class, 'destroy']);
-    
     // Rutas de Parámetros del Sistema
     Route::get('/parametros-sistema', [ParametrosSistemaController::class, 'index']);
     Route::post('/parametros-sistema', [ParametrosSistemaController::class, 'store']);

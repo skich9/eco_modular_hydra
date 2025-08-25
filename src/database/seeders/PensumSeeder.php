@@ -2,7 +2,6 @@
 
 namespace Database\Seeders;
 
-use Illuminate\Database\Console\Seeds\WithoutModelEvents;
 use Illuminate\Database\Seeder;
 use Illuminate\Support\Facades\DB;
 
@@ -15,30 +14,30 @@ class PensumSeeder extends Seeder
     {
         // Insertar pensums básicos para pruebas
         DB::table('pensums')->insert([
-            'cod_pensum' => 'ING-SIS',
-            'nombre' => 'Ingeniería de Sistemas',
-            'descripcion' => 'Carrera de Ingeniería de Sistemas',
-            'codigo_carrera' => 'SIS',
+            'cod_pensum' => 'SIS-2025',
+            'nombre' => 'Pensum 2025 - Ingeniería de Sistemas',
+            'descripcion' => 'Plan de estudios Ingeniería de Sistemas 2025',
+            'codigo_carrera' => 'ING-SIS', // coincidencia exacta con CarreraSeeder
             'estado' => true,
             'created_at' => now(),
             'updated_at' => now(),
         ]);
-        
+
         DB::table('pensums')->insert([
-            'cod_pensum' => 'ADM-EMP',
-            'nombre' => 'Administración de Empresas',
-            'descripcion' => 'Carrera de Administración de Empresas',
-            'codigo_carrera' => 'ADM',
+            'cod_pensum' => 'ADM-2024',
+            'nombre' => 'Pensum 2024 - Administración de Empresas',
+            'descripcion' => 'Plan de estudios Administración de Empresas 2024',
+            'codigo_carrera' => 'ADM-EMP', // coincidencia exacta
             'estado' => true,
             'created_at' => now(),
             'updated_at' => now(),
         ]);
-        
+
         DB::table('pensums')->insert([
-            'cod_pensum' => 'CONT-PUB',
-            'nombre' => 'Contaduría Pública',
-            'descripcion' => 'Carrera de Contaduría Pública',
-            'codigo_carrera' => 'CONT',
+            'cod_pensum' => 'IND-2025',
+            'nombre' => 'Pensum 2025 - Ingeniería Industrial',
+            'descripcion' => 'Plan de estudios Ingeniería Industrial 2025',
+            'codigo_carrera' => 'ING-IND', // coincidencia exacta
             'estado' => true,
             'created_at' => now(),
             'updated_at' => now(),

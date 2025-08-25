@@ -17,15 +17,18 @@ class CostoSemestralFactory extends Factory
      * @return array<string, mixed>
      */
     protected $model = CostoSemestral::class;
-    
+
     public function definition(): array
     {
         $usuarios = Usuario::pluck('id_usuario')->toArray();
         $gestiones = ['2024-1', '2024-2', '2025-1', '2025-2'];
         $semestres = ['1', '2', '3', '4', '5', '6', '7', '8', '9', '10'];
-        
+
+        // Obtener cod_pensum válidos desde la base de datos
+        $codPensums = \DB::table('pensums')->pluck('cod_pensum')->toArray();
+
         return [
-            'cod_pensum' => 'ING-SIS', // Valor por defecto, puede cambiarse según necesidad
+            'cod_pensum' => $this->faker->randomElement($codPensums), // ahora siempre válido
             'gestion' => $this->faker->randomElement($gestiones),
             'semestre' => $this->faker->randomElement($semestres),
             'monto_semestre' => $this->faker->randomFloat(2, 500, 2000),
