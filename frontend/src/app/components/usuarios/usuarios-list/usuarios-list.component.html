@@ -1,0 +1,236 @@
+<div class="usuarios-container">
+  <div class="usuarios-header">
+    <h1 class="usuarios-title">Gestión de Usuarios</h1>
+    <div class="usuarios-actions">
+      <div class="search-container">
+        <input
+          type="text"
+          [(ngModel)]="searchTerm"
+          (input)="onSearch()"
+          placeholder="Buscar usuario..."
+          class="search-input"
+        />
+        <button class="search-button" (click)="onSearch()" title="Buscar">
+          <i class="fas fa-search"></i>
+        </button>
+      </div>
+      <button class="btn-primary" (click)="openCreateModal()">
+        <i class="fas fa-plus"></i> Nuevo Usuario
+      </button>
+    </div>
+  </div>
+
+  <!-- Tabla de Usuarios -->
+  <div class="table-responsive">
+    <table class="usuarios-table">
+      <thead>
+        <tr>
+          <th>ID</th>
+          <th>Nickname</th>
+          <th>Nombre Completo</th>
+          <th>CI</th>
+          <th>Rol</th>
+          <th>Estado</th>
+          <th>Acciones</th>
+        </tr>
+      </thead>
+      <tbody>
+        <tr *ngFor="let usuario of paginatedUsuarios">
+          <td>{{ usuario.id_usuario }}</td>
+          <td>{{ usuario.nickname }}</td>
+          <td>{{ usuario.nombre }} {{ usuario.ap_paterno }} {{ usuario.ap_materno }}</td>
+          <td>{{ usuario.ci }}</td>
+          <td>{{ usuario.rol?.nombre || 'Sin rol' }}</td>
+          <td>
+            <span class="badge" [ngClass]="usuario.estado ? 'badge-active' : 'badge-inactive'">
+              {{ usuario.estado ? 'Activo' : 'Inactivo' }}
+            </span>
+          </td>
+          <td class="actions-column">
+            <button
+              class="btn-icon btn-edit"
+              [routerLink]="['/usuarios/editar', usuario.id_usuario]"
+              title="Editar"
+            >
+              <i class="fas fa-edit"></i>
+            </button>
+            <button
+              class="btn-icon btn-toggle"
+              (click)="toggleUsuarioStatus(usuario)"
+              title="Cambiar estado"
+            >
+              <i class="fas" [ngClass]="usuario.estado ? 'fa-toggle-on' : 'fa-toggle-off'"></i>
+            </button>
+            <button
+              class="btn-icon btn-delete"
+              (click)="confirmDelete(usuario)"
+              title="Eliminar"
+            >
+              <i class="fas fa-trash"></i>
+            </button>
+          </td>
+        </tr>
+        <tr *ngIf="!isLoading && paginatedUsuarios.length === 0">
+          <td colspan="7" class="no-data">No se encontraron usuarios</td>
+        </tr>
+        <tr *ngIf="isLoading">
+          <td colspan="7" class="no-data">Cargando usuarios...</td>
+        </tr>
+      </tbody>
+    </table>
+  </div>
+
+  <!-- Paginación -->
+  <div class="pagination" *ngIf="filteredUsuarios.length > 0">
+    <button
+      class="pagination-button"
+      [disabled]="currentPage === 1"
+      (click)="goToPage(currentPage - 1)"
+    >
+      <i class="fas fa-chevron-left"></i>
+    </button>
+    <span class="pagination-info">
+      Página {{ currentPage }} de {{ totalPages }}
+    </span>
+    <button
+      class="pagination-button"
+      [disabled]="currentPage === totalPages"
+      (click)="goToPage(currentPage + 1)"
+    >
+      <i class="fas fa-chevron-right"></i>
+    </button>
+  </div>
+
+  <!-- Modal de Confirmación para Eliminar -->
+  <div class="modal" *ngIf="showDeleteModal">
+    <div class="modal-content">
+      <div class="modal-header">
+        <h2 class="modal-title">Confirmar Eliminación</h2>
+        <button class="modal-close" (click)="cancelDelete()">×</button>
+      </div>
+      <div class="modal-body">
+        <p>
+          ¿Está seguro que desea eliminar el usuario
+          "{{ usuarioToDelete?.nickname }}"?
+        </p>
+        <p class="modal-warning">Esta acción no se puede deshacer.</p>
+      </div>
+      <div class="modal-footer">
+        <button class="btn-secondary" (click)="cancelDelete()">Cancelar</button>
+        <button class="btn-danger" (click)="deleteUsuario()">Eliminar</button>
+      </div>
+    </div>
+  </div>
+
+  <!-- Modal de Creación de Usuario -->
+  <div class="modal" *ngIf="showCreateModal">
+    <div class="modal-content modal-lg">
+      <div class="modal-header">
+        <h2 class="modal-title">Nuevo Usuario</h2>
+        <button class="modal-close" (click)="closeCreateModal()">×</button>
+      </div>
+      <div class="modal-body">
+        <form [formGroup]="createForm" (ngSubmit)="submitCreateForm()">
+          <div class="form-grid">
+            <div class="form-group">
+              <label for="nickname">Nickname</label>
+              <input id="nickname" type="text" formControlName="nickname" />
+              <div class="invalid" *ngIf="createSubmitted && createForm.get('nickname')?.invalid">
+                Requerido.
+              </div>
+            </div>
+
+            <div class="form-group">
+              <label for="nombre">Nombre</label>
+              <input id="nombre" type="text" formControlName="nombre" />
+              <div class="invalid" *ngIf="createSubmitted && createForm.get('nombre')?.invalid">
+                Requerido.
+              </div>
+            </div>
+
+            <div class="form-group">
+              <label for="ap_paterno">Apellido Paterno</label>
+              <input id="ap_paterno" type="text" formControlName="ap_paterno" />
+              <div class="invalid" *ngIf="createSubmitted && createForm.get('ap_paterno')?.invalid">
+                Requerido.
+              </div>
+            </div>
+
+            <div class="form-group">
+              <label for="ap_materno">Apellido Materno</label>
+              <input id="ap_materno" type="text" formControlName="ap_materno" />
+            </div>
+
+            <div class="form-group">
+              <label for="ci">CI</label>
+              <input id="ci" type="text" formControlName="ci" />
+              <div class="invalid" *ngIf="createSubmitted && createForm.get('ci')?.invalid">
+                Requerido.
+              </div>
+            </div>
+
+            <div class="form-group">
+              <label for="id_rol">Rol</label>
+              <select id="id_rol" formControlName="id_rol">
+                <option [ngValue]="null" disabled>Seleccione un rol</option>
+                <option *ngFor="let r of roles" [ngValue]="r.id_rol">{{ r.nombre }}</option>
+              </select>
+              <div class="invalid" *ngIf="createSubmitted && createForm.get('id_rol')?.invalid">
+                Requerido.
+              </div>
+            </div>
+
+            <div class="form-group checkbox-group">
+              <label for="estado">Activo</label>
+              <input id="estado" type="checkbox" formControlName="estado" />
+            </div>
+
+            <div class="form-group">
+              <label for="contrasenia">Contraseña</label>
+              <div class="password-field">
+                <input
+                  id="contrasenia"
+                  [type]="showPassword ? 'text' : 'password'"
+                  formControlName="contrasenia"
+                />
+                <button type="button" class="toggle-password" (click)="togglePasswordVisibility()">
+                  <i class="fas" [ngClass]="showPassword ? 'fa-eye-slash' : 'fa-eye'"></i>
+                </button>
+              </div>
+              <div class="invalid" *ngIf="createSubmitted && createForm.get('contrasenia')?.invalid">
+                Mínimo 6 caracteres.
+              </div>
+            </div>
+
+            <div class="form-group">
+              <label for="contraseniaConfirm">Confirmar Contraseña</label>
+              <div class="password-field">
+                <input
+                  id="contraseniaConfirm"
+                  [type]="showConfirmPassword ? 'text' : 'password'"
+                  formControlName="contraseniaConfirm"
+                />
+                <button type="button" class="toggle-password" (click)="toggleConfirmPasswordVisibility()">
+                  <i class="fas" [ngClass]="showConfirmPassword ? 'fa-eye-slash' : 'fa-eye'"></i>
+                </button>
+              </div>
+            </div>
+          </div>
+
+          <div class="invalid" *ngIf="createSubmitted && createForm.errors?.matching">
+            Las contraseñas no coinciden.
+          </div>
+
+          <div class="server-error" *ngIf="createError">{{ createError }}</div>
+
+          <div class="modal-footer">
+            <button type="button" class="btn-secondary" (click)="closeCreateModal()">Cancelar</button>
+            <button type="submit" class="btn-primary" [disabled]="isCreating">
+              {{ isCreating ? 'Creando...' : 'Crear' }}
+            </button>
+          </div>
+        </form>
+      </div>
+    </div>
+  </div>
+</div>

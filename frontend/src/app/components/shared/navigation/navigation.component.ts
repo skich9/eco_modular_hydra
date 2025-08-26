@@ -73,15 +73,15 @@ export class NavigationComponent implements OnInit {
 		private carreraService: CarreraService
 	) {
 		this.changePasswordForm = this.formBuilder.group({
-			currentPassword: ['', [Validators.required]],
-			newPassword: ['', [Validators.required, Validators.minLength(6)]],
-			confirmPassword: ['', [Validators.required]]
-		}, { validators: this.passwordMatchValidator });
+			contraseniaActual: ['', [Validators.required]],
+			contraseniaNueva: ['', [Validators.required, Validators.minLength(6)]],
+			contraseniaNuevaConfirm: ['', [Validators.required]]
+		}, { validators: this.contraseniaMatchValidator });
 	}
 
 	ngOnInit(): void {
 		// Suscribirse a los cambios del usuario actual
-		this.authService.currentUser$.subscribe(user => {
+		this.authService.currentUser$.subscribe((user: Usuario | null) => {
 			this.currentUser = user;
 		});
 
@@ -102,7 +102,7 @@ export class NavigationComponent implements OnInit {
 	private loadCarreras(): void {
 		this.loadingCarreras = true;
 		this.carreraService.getAll().subscribe({
-			next: (res) => {
+			next: (res: any) => {
 				this.carreras = res.data || [];
 				const idx = this.menuItems.findIndex(mi => mi.name === 'Académico');
 				if (idx !== -1) {
@@ -113,7 +113,7 @@ export class NavigationComponent implements OnInit {
 					}));
 				}
 			},
-			error: (err) => {
+			error: (err: any) => {
 				console.error('Error cargando carreras:', err);
 			},
 			complete: () => {
@@ -153,17 +153,17 @@ export class NavigationComponent implements OnInit {
 		return this.router.url.startsWith(route);
 	}
 
-	passwordMatchValidator(form: FormGroup) {
-		const newPassword = form.get('newPassword');
-		const confirmPassword = form.get('confirmPassword');
+	contraseniaMatchValidator(form: FormGroup) {
+		const nueva = form.get('contraseniaNueva');
+		const confirmar = form.get('contraseniaNuevaConfirm');
 		
-		if (newPassword && confirmPassword && newPassword.value !== confirmPassword.value) {
-			confirmPassword.setErrors({ mismatch: true });
+		if (nueva && confirmar && nueva.value !== confirmar.value) {
+			confirmar.setErrors({ mismatch: true });
 			return { mismatch: true };
 		}
 		
-		if (confirmPassword?.hasError('mismatch')) {
-			confirmPassword.setErrors(null);
+		if (confirmar?.hasError('mismatch')) {
+			confirmar.setErrors(null);
 		}
 		
 		return null;
@@ -195,25 +195,28 @@ export class NavigationComponent implements OnInit {
 		this.changePasswordError = '';
 		this.changePasswordSuccess = '';
 
-		const formData = this.changePasswordForm.value;
+		const { contraseniaActual, contraseniaNueva, contraseniaNuevaConfirm } = this.changePasswordForm.value;
 
-		// Aquí iría la llamada al servicio para cambiar la contraseña
-		// Por ahora simularemos la respuesta
-		setTimeout(() => {
-			this.isChangingPassword = false;
-			this.changePasswordSuccess = 'Contraseña cambiada exitosamente';
-			
-			// Cerrar modal después de 2 segundos
-			setTimeout(() => {
-				const modal = document.getElementById('changePasswordModal');
-				if (modal) {
-					const bootstrapModal = (window as any).bootstrap.Modal.getInstance(modal);
-					if (bootstrapModal) {
-						bootstrapModal.hide();
+		this.authService.changePassword(contraseniaActual, contraseniaNueva, contraseniaNuevaConfirm).subscribe({
+			next: () => {
+				this.isChangingPassword = false;
+				this.changePasswordSuccess = 'Contraseña cambiada exitosamente';
+				// Cerrar modal después de 2 segundos
+				setTimeout(() => {
+					const modal = document.getElementById('changePasswordModal');
+					if (modal) {
+						const bootstrapModal = (window as any).bootstrap.Modal.getInstance(modal);
+						if (bootstrapModal) {
+							bootstrapModal.hide();
+						}
 					}
-				}
-			}, 2000);
-		}, 1500);
+				}, 2000);
+			},
+			error: (err: any) => {
+				this.isChangingPassword = false;
+				this.changePasswordError = err?.error?.message || 'Error al cambiar la contraseña';
+			}
+		});
 	}
 
 	logout(event: Event): void {
@@ -224,7 +227,7 @@ export class NavigationComponent implements OnInit {
 			next: () => {
 				this.router.navigate(['/login']);
 			},
-			error: (error) => {
+			error: (error: any) => {
 				console.error('Error al cerrar sesión:', error);
 				// Limpiar sesión localmente aunque falle la petición al servidor
 				this.authService.clearSession();

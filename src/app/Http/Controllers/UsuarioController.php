@@ -269,11 +269,17 @@ class UsuarioController extends Controller
                 ], 404);
             }
 
-            $validated = $request->validate([
-                'estado' => 'required|boolean'
-            ]);
+            // Si viene 'estado' se valida y usa; si no, se hace toggle automático
+            if ($request->has('estado')) {
+                $validated = $request->validate([
+                    'estado' => 'required|boolean'
+                ]);
+                $usuario->estado = (bool) $validated['estado'];
+            } else {
+                $usuario->estado = !$usuario->estado;
+            }
 
-            $usuario->update(['estado' => $validated['estado']]);
+            $usuario->save();
 
             return response()->json([
                 'success' => true,
@@ -284,6 +290,81 @@ class UsuarioController extends Controller
             return response()->json([
                 'success' => false,
                 'message' => 'Error al cambiar estado: ' . $e->getMessage()
+            ], 500);
+        }
+    }
+
+    /**
+     * Buscar usuarios por término parcial en varios campos
+     */
+    public function search(Request $request)
+    {
+        try {
+            $term = trim((string) $request->query('term', ''));
+
+            $query = Usuario::with(['rol', 'funciones']);
+            if ($term !== '') {
+                $query->where(function ($q) use ($term) {
+                    $q->where('nickname', 'like', "%{$term}%")
+                      ->orWhere('nombre', 'like', "%{$term}%")
+                      ->orWhere('ap_paterno', 'like', "%{$term}%")
+                      ->orWhere('ap_materno', 'like', "%{$term}%")
+                      ->orWhere('ci', 'like', "%{$term}%");
+                });
+            }
+
+            $usuarios = $query->get();
+
+            return response()->json([
+                'success' => true,
+                'data' => $usuarios,
+                'message' => 'Usuarios obtenidos exitosamente'
+            ], 200);
+        } catch (\Exception $e) {
+            return response()->json([
+                'success' => false,
+                'message' => 'Error al buscar usuarios: ' . $e->getMessage()
+            ], 500);
+        }
+    }
+
+    /**
+     * Resetear la contraseña de un usuario (para administradores)
+     */
+    public function resetPassword(Request $request, $id)
+    {
+        try {
+            $usuario = Usuario::find($id);
+
+            if (!$usuario) {
+                return response()->json([
+                    'success' => false,
+                    'message' => 'Usuario no encontrado'
+                ], 404);
+            }
+
+            $validated = $request->validate([
+                'contrasenia' => 'required|string|min:6'
+            ]);
+
+            // El mutator setContraseniaAttribute se encarga del hash
+            $usuario->contrasenia = $validated['contrasenia'];
+            $usuario->save();
+
+            return response()->json([
+                'success' => true,
+                'message' => 'Contraseña actualizada exitosamente'
+            ], 200);
+        } catch (\Illuminate\Validation\ValidationException $e) {
+            return response()->json([
+                'success' => false,
+                'message' => 'Error de validación',
+                'errors' => $e->errors()
+            ], 422);
+        } catch (\Exception $e) {
+            return response()->json([
+                'success' => false,
+                'message' => 'Error al actualizar contraseña: ' . $e->getMessage()
             ], 500);
         }
     }

@@ -23,12 +23,12 @@ export class UsuarioService {
 	}
 
 	// Crear un nuevo usuario
-	create(usuario: Usuario): Observable<{ success: boolean; data: Usuario; message: string }> {
+	create(usuario: any): Observable<{ success: boolean; data: Usuario; message: string }> {
 		return this.http.post<{ success: boolean; data: Usuario; message: string }>(this.apiUrl, usuario);
 	}
 
 	// Actualizar un usuario
-	update(id: number, usuario: Usuario): Observable<{ success: boolean; data: Usuario; message: string }> {
+	update(id: number, usuario: any): Observable<{ success: boolean; data: Usuario; message: string }> {
 		return this.http.put<{ success: boolean; data: Usuario; message: string }>(`${this.apiUrl}/${id}`, usuario);
 	}
 

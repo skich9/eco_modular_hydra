@@ -188,11 +188,17 @@ class RolController extends Controller
                 ], 404);
             }
 
-            $validated = $request->validate([
-                'estado' => 'required|boolean'
-            ]);
+            // Si se envía 'estado', se valida; de lo contrario, se hace toggle automático
+            if ($request->has('estado')) {
+                $validated = $request->validate([
+                    'estado' => 'required|boolean'
+                ]);
+                $rol->estado = (bool) $validated['estado'];
+            } else {
+                $rol->estado = !$rol->estado;
+            }
 
-            $rol->update(['estado' => $validated['estado']]);
+            $rol->save();
 
             return response()->json([
                 'success' => true,

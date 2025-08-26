@@ -96,43 +96,43 @@
 			<div class="modal-body">
 				<form [formGroup]="changePasswordForm" (ngSubmit)="onChangePassword()">
 					<div class="mb-3">
-						<label for="currentPassword" class="form-label">Contraseña Actual</label>
+						<label for="contraseniaActual" class="form-label">Contraseña Actual</label>
 						<input 
 							type="password" 
 							class="form-control" 
-							id="currentPassword"
-							formControlName="currentPassword"
-							[class.is-invalid]="changePasswordForm.get('currentPassword')?.invalid && changePasswordForm.get('currentPassword')?.touched"
+							id="contraseniaActual"
+							formControlName="contraseniaActual"
+							[class.is-invalid]="changePasswordForm.get('contraseniaActual')?.invalid && changePasswordForm.get('contraseniaActual')?.touched"
 						>
-						<div *ngIf="changePasswordForm.get('currentPassword')?.invalid && changePasswordForm.get('currentPassword')?.touched" class="invalid-feedback">
+						<div *ngIf="changePasswordForm.get('contraseniaActual')?.invalid && changePasswordForm.get('contraseniaActual')?.touched" class="invalid-feedback">
 							La contraseña actual es requerida
 						</div>
 					</div>
 					
 					<div class="mb-3">
-						<label for="newPassword" class="form-label">Nueva Contraseña</label>
+						<label for="contraseniaNueva" class="form-label">Nueva Contraseña</label>
 						<input 
 							type="password" 
 							class="form-control" 
-							id="newPassword"
-							formControlName="newPassword"
-							[class.is-invalid]="changePasswordForm.get('newPassword')?.invalid && changePasswordForm.get('newPassword')?.touched"
+							id="contraseniaNueva"
+							formControlName="contraseniaNueva"
+							[class.is-invalid]="changePasswordForm.get('contraseniaNueva')?.invalid && changePasswordForm.get('contraseniaNueva')?.touched"
 						>
-						<div *ngIf="changePasswordForm.get('newPassword')?.invalid && changePasswordForm.get('newPassword')?.touched" class="invalid-feedback">
+						<div *ngIf="changePasswordForm.get('contraseniaNueva')?.invalid && changePasswordForm.get('contraseniaNueva')?.touched" class="invalid-feedback">
 							La nueva contraseña debe tener al menos 6 caracteres
 						</div>
 					</div>
 					
 					<div class="mb-3">
-						<label for="confirmPassword" class="form-label">Confirmar Nueva Contraseña</label>
+						<label for="contraseniaNuevaConfirm" class="form-label">Confirmar Nueva Contraseña</label>
 						<input 
 							type="password" 
 							class="form-control" 
-							id="confirmPassword"
-							formControlName="confirmPassword"
-							[class.is-invalid]="changePasswordForm.get('confirmPassword')?.invalid && changePasswordForm.get('confirmPassword')?.touched"
+							id="contraseniaNuevaConfirm"
+							formControlName="contraseniaNuevaConfirm"
+							[class.is-invalid]="changePasswordForm.get('contraseniaNuevaConfirm')?.invalid && changePasswordForm.get('contraseniaNuevaConfirm')?.touched"
 						>
-						<div *ngIf="changePasswordForm.get('confirmPassword')?.invalid && changePasswordForm.get('confirmPassword')?.touched" class="invalid-feedback">
+						<div *ngIf="changePasswordForm.get('contraseniaNuevaConfirm')?.invalid && changePasswordForm.get('contraseniaNuevaConfirm')?.touched" class="invalid-feedback">
 							Las contraseñas no coinciden
 						</div>
 					</div>

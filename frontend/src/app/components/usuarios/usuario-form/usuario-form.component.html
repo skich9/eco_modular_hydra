@@ -1,0 +1,187 @@
+<div class="usuario-form-container">
+  <div class="form-header">
+    <h1 class="form-title">{{ isEditMode ? 'Editar Usuario' : 'Nuevo Usuario' }}</h1>
+    <button class="btn-secondary" routerLink="/usuarios">
+      <i class="fas fa-arrow-left"></i> Volver
+    </button>
+  </div>
+
+  <div class="alert alert-danger" *ngIf="error">
+    {{ error }}
+  </div>
+
+  <form [formGroup]="usuarioForm" (ngSubmit)="onSubmit()" class="usuario-form">
+    <div class="form-row">
+      <div class="form-group">
+        <label for="nickname">Nickname *</label>
+        <input 
+          type="text" 
+          id="nickname" 
+          formControlName="nickname" 
+          class="form-control"
+          [class.is-invalid]="submitted && f['nickname'].errors"
+        >
+        <div class="invalid-feedback" *ngIf="submitted && f['nickname'].errors">
+          <span *ngIf="f['nickname'].errors['required']">Nickname es requerido</span>
+        </div>
+      </div>
+
+      <div class="form-group">
+        <label for="ci">CI *</label>
+        <input 
+          type="text" 
+          id="ci" 
+          formControlName="ci" 
+          class="form-control"
+          [class.is-invalid]="submitted && f['ci'].errors"
+        >
+        <div class="invalid-feedback" *ngIf="submitted && f['ci'].errors">
+          <span *ngIf="f['ci'].errors['required']">CI es requerido</span>
+        </div>
+      </div>
+    </div>
+
+    <div class="form-row">
+      <div class="form-group">
+        <label for="nombre">Nombre *</label>
+        <input 
+          type="text" 
+          id="nombre" 
+          formControlName="nombre" 
+          class="form-control"
+          [class.is-invalid]="submitted && f['nombre'].errors"
+        >
+        <div class="invalid-feedback" *ngIf="submitted && f['nombre'].errors">
+          <span *ngIf="f['nombre'].errors['required']">Nombre es requerido</span>
+        </div>
+      </div>
+
+      <div class="form-group">
+        <label for="ap_paterno">Apellido Paterno *</label>
+        <input 
+          type="text" 
+          id="ap_paterno" 
+          formControlName="ap_paterno" 
+          class="form-control"
+          [class.is-invalid]="submitted && f['ap_paterno'].errors"
+        >
+        <div class="invalid-feedback" *ngIf="submitted && f['ap_paterno'].errors">
+          <span *ngIf="f['ap_paterno'].errors['required']">Apellido Paterno es requerido</span>
+        </div>
+      </div>
+    </div>
+
+    <div class="form-row">
+      <div class="form-group">
+        <label for="ap_materno">Apellido Materno</label>
+        <input 
+          type="text" 
+          id="ap_materno" 
+          formControlName="ap_materno" 
+          class="form-control"
+        >
+      </div>
+
+      <div class="form-group">
+        <label for="id_rol">Rol *</label>
+        <select 
+          id="id_rol" 
+          formControlName="id_rol" 
+          class="form-control"
+          [class.is-invalid]="submitted && f['id_rol'].errors"
+        >
+          <option [ngValue]="null" disabled>Seleccione un rol</option>
+          <option *ngFor="let rol of roles" [ngValue]="rol.id_rol">
+            {{ rol.nombre }}
+          </option>
+        </select>
+        <div class="invalid-feedback" *ngIf="submitted && f['id_rol'].errors">
+          <span *ngIf="f['id_rol'].errors['required']">Rol es requerido</span>
+        </div>
+      </div>
+    </div>
+
+    <div class="form-row" *ngIf="!isEditMode">
+      <div class="form-group">
+        <label for="contrasenia">Contraseña *</label>
+        <div class="password-input-wrapper">
+          <input 
+            [type]="showPassword ? 'text' : 'password'" 
+            id="contrasenia" 
+            formControlName="contrasenia" 
+            class="form-control"
+            [class.is-invalid]="submitted && f['contrasenia'].errors"
+          >
+          <button 
+            type="button" 
+            class="password-toggle-btn" 
+            (click)="togglePasswordVisibility()"
+          >
+            <i class="fas" [ngClass]="showPassword ? 'fa-eye-slash' : 'fa-eye'"></i>
+          </button>
+        </div>
+        <div class="invalid-feedback" *ngIf="submitted && f['contrasenia'].errors">
+          <span *ngIf="f['contrasenia'].errors['required']">Contraseña es requerida</span>
+          <span *ngIf="f['contrasenia'].errors['minlength']">Contraseña debe tener al menos 6 caracteres</span>
+        </div>
+      </div>
+
+      <div class="form-group">
+        <label for="contraseniaConfirm">Confirmar Contraseña *</label>
+        <div class="password-input-wrapper">
+          <input 
+            [type]="showConfirmPassword ? 'text' : 'password'" 
+            id="contraseniaConfirm" 
+            formControlName="contraseniaConfirm" 
+            class="form-control"
+            [class.is-invalid]="submitted && (f['contraseniaConfirm'].errors || usuarioForm.errors?.matching)"
+          >
+          <button 
+            type="button" 
+            class="password-toggle-btn" 
+            (click)="toggleConfirmPasswordVisibility()"
+          >
+            <i class="fas" [ngClass]="showConfirmPassword ? 'fa-eye-slash' : 'fa-eye'"></i>
+          </button>
+        </div>
+        <div class="invalid-feedback" *ngIf="submitted && (f['contraseniaConfirm'].errors || usuarioForm.errors?.matching)">
+          <span *ngIf="f['contraseniaConfirm'].errors?.['required']">Confirmar contraseña es requerido</span>
+          <span *ngIf="usuarioForm.errors?.matching">Las contraseñas no coinciden</span>
+        </div>
+      </div>
+    </div>
+
+    <div class="form-row" *ngIf="isEditMode">
+      <div class="form-group">
+        <label for="estado">Estado</label>
+        <div class="toggle-switch">
+          <input 
+            type="checkbox" 
+            id="estado" 
+            formControlName="estado" 
+            class="toggle-input"
+          >
+          <label for="estado" class="toggle-label">
+            <span class="toggle-inner"></span>
+            <span class="toggle-switch-indicator"></span>
+          </label>
+          <span class="toggle-status">
+            {{ usuarioForm.get('estado')?.value ? 'Activo' : 'Inactivo' }}
+          </span>
+        </div>
+      </div>
+    </div>
+
+    <div class="form-actions">
+      <button type="button" class="btn-secondary" routerLink="/usuarios">Cancelar</button>
+      <button type="submit" class="btn-primary" [disabled]="isSubmitting">
+        <span *ngIf="isSubmitting">
+          <i class="fas fa-spinner fa-spin"></i> Guardando...
+        </span>
+        <span *ngIf="!isSubmitting">
+          <i class="fas fa-save"></i> {{ isEditMode ? 'Actualizar' : 'Guardar' }}
+        </span>
+      </button>
+    </div>
+  </form>
+</div>

@@ -1,5 +1,5 @@
 import { Injectable } from '@angular/core';
-import { HttpClient } from '@angular/common/http';
+import { HttpClient, HttpHeaders } from '@angular/common/http';
 import { BehaviorSubject, Observable, tap } from 'rxjs';
 import { AuthResponse, LoginRequest, Usuario } from '../models/usuario.model';
 import { environment } from '../../environments/environment';
@@ -36,7 +36,7 @@ export class AuthService {
 		
 		return this.http.post<AuthResponse>(`${this.apiUrl}/login`, credentials)
 			.pipe(
-				tap(response => {
+				tap((response: AuthResponse) => {
 					console.log('Respuesta del servidor:', response);
 					
 					if (response.success && response.token && response.usuario) {
@@ -99,10 +99,14 @@ export class AuthService {
 	}
 
 	// Método para cambiar la contraseña
-	changePassword(oldPassword: string, newPassword: string): Observable<any> {
+	changePassword(contraseniaActual: string, contraseniaNueva: string, contraseniaNuevaConfirm: string): Observable<any> {
+		const token = this.getToken();
+		const options = token ? { headers: new HttpHeaders({ Authorization: `Bearer ${token}` }) } : {};
+
 		return this.http.post<any>(`${this.apiUrl}/change-password`, {
-			old_password: oldPassword,
-			new_password: newPassword
-		});
+			contrasenia_actual: contraseniaActual,
+			contrasenia_nueva: contraseniaNueva,
+			contrasenia_nueva_confirmation: contraseniaNuevaConfirm
+		}, options);
 	}
 }

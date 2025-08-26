@@ -8,6 +8,8 @@ use App\Http\Controllers\Api\CarreraController as ApiCarreraController;
 use App\Http\Controllers\Api\MateriaController as ApiMateriaController;
 use App\Http\Controllers\CostoMateriaController;
 use App\Http\Controllers\GestionController;
+use App\Http\Controllers\UsuarioController;
+use App\Http\Controllers\RolController;
 
 /*
 |--------------------------------------------------------------------------
@@ -28,6 +30,7 @@ Route::middleware('auth:sanctum')->get('/user', function (Request $request) {
 Route::post('/login', [\App\Http\Controllers\Api\AuthController::class, 'login']);
 Route::post('/logout', [\App\Http\Controllers\Api\AuthController::class, 'logout']);
 Route::post('/verify', [\App\Http\Controllers\Api\AuthController::class, 'verify']);
+Route::post('/change-password', [\App\Http\Controllers\Api\AuthController::class, 'changePassword']);
 
 // Ruta de prueba
 Route::get('/test', [\App\Http\Controllers\Api\TestController::class, 'test']);
@@ -68,3 +71,15 @@ Route::get('gestiones/actual/actual', [GestionController::class, 'gestionActual'
 Route::get('gestiones/estado/activas', [GestionController::class, 'gestionesActivas']);
 Route::get('gestiones/ano/{anio}', [GestionController::class, 'porAnio']);
 Route::patch('gestiones/{gestion}/estado', [GestionController::class, 'cambiarEstado']);
+
+// ===================== Usuarios =====================
+Route::apiResource('usuarios', UsuarioController::class);
+Route::get('usuarios/search', [UsuarioController::class, 'search']);
+Route::get('usuarios/rol/{idRol}', [UsuarioController::class, 'usuariosPorRol']);
+Route::patch('usuarios/{id}/toggle-status', [UsuarioController::class, 'cambiarEstado']);
+Route::post('usuarios/{id}/reset-password', [UsuarioController::class, 'resetPassword']);
+
+// ===================== Roles =====================
+Route::apiResource('roles', RolController::class);
+Route::get('roles/active', [RolController::class, 'rolesActivos']);
+Route::patch('roles/{id}/toggle-status', [RolController::class, 'cambiarEstado']);

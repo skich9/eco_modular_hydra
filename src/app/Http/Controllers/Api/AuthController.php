@@ -167,4 +167,81 @@ class AuthController extends Controller
 			], 401);
 		}
 	}
+
+    /**
+     * Cambiar contraseña (API)
+     */
+    public function changePassword(Request $request)
+    {
+        $token = $request->bearerToken();
+        if (!$token) {
+            return response()->json([
+                'success' => false,
+                'message' => 'Token no proporcionado'
+            ], 401);
+        }
+
+        try {
+            $decoded = base64_decode($token);
+            $parts = explode('|', $decoded);
+
+            if (count($parts) !== 3) {
+                throw new \Exception('Token inválido');
+            }
+
+            $userId = $parts[0];
+            $usuario = Usuario::find($userId);
+
+            if (!$usuario || !$usuario->estado) {
+                return response()->json([
+                    'success' => false,
+                    'message' => 'Usuario no autorizado'
+                ], 401);
+            }
+
+            // Validación de campos
+            $validator = Validator::make($request->all(), [
+                'contrasenia_actual' => 'required|string',
+                'contrasenia_nueva' => 'required|string|min:6|confirmed',
+            ], [
+                'contrasenia_actual.required' => 'La contraseña actual es obligatoria',
+                'contrasenia_nueva.required' => 'La nueva contraseña es obligatoria',
+                'contrasenia_nueva.min' => 'La nueva contraseña debe tener al menos 6 caracteres',
+                'contrasenia_nueva.confirmed' => 'La confirmación de contraseña no coincide',
+            ]);
+
+            if ($validator->fails()) {
+                return response()->json([
+                    'success' => false,
+                    'message' => 'Datos de entrada inválidos',
+                    'errors' => $validator->errors()
+                ], 422);
+            }
+
+            // Verificar contraseña actual
+            if (!Hash::check($request->contrasenia_actual, $usuario->contrasenia)) {
+                return response()->json([
+                    'success' => false,
+                    'message' => 'La contraseña actual no es correcta',
+                    'errors' => [ 'contrasenia_actual' => ['La contraseña actual no es correcta'] ]
+                ], 422);
+            }
+
+            // Actualizar contraseña (mutator aplica hash)
+            $usuario->update([
+                'contrasenia' => $request->contrasenia_nueva
+            ]);
+
+            return response()->json([
+                'success' => true,
+                'message' => 'Contraseña actualizada correctamente'
+            ]);
+
+        } catch (\Exception $e) {
+            return response()->json([
+                'success' => false,
+                'message' => 'Error al actualizar la contraseña'
+            ], 500);
+        }
+    }
 }
