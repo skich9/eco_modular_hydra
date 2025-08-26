@@ -6,6 +6,7 @@ use App\Http\Controllers\Api\ParametrosEconomicosController;
 use App\Http\Controllers\Api\ItemsCobroController;
 use App\Http\Controllers\Api\CarreraController as ApiCarreraController;
 use App\Http\Controllers\Api\MateriaController as ApiMateriaController;
+use App\Http\Controllers\Api\DescuentoController;
 
 /*
 |--------------------------------------------------------------------------
@@ -37,6 +38,11 @@ Route::patch('parametros-economicos/{id}/toggle-status', [ParametrosEconomicosCo
 // Recursos: Items de Cobro
 Route::apiResource('items-cobro', ItemsCobroController::class);
 Route::patch('items-cobro/{id}/toggle-status', [ItemsCobroController::class, 'toggleStatus']);
+
+// Descuentos
+Route::get('descuentos/active', [DescuentoController::class, 'active']);
+Route::patch('descuentos/{id}/toggle-status', [DescuentoController::class, 'toggleStatus']);
+Route::apiResource('descuentos', DescuentoController::class);
 
 // Carreras
 Route::get('carreras', [ApiCarreraController::class, 'index']);
