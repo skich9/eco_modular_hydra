@@ -80,6 +80,6 @@ Route::patch('usuarios/{id}/toggle-status', [UsuarioController::class, 'cambiarE
 Route::post('usuarios/{id}/reset-password', [UsuarioController::class, 'resetPassword']);
 
 // ===================== Roles =====================
-Route::apiResource('roles', RolController::class);
 Route::get('roles/active', [RolController::class, 'rolesActivos']);
+Route::apiResource('roles', RolController::class);
 Route::patch('roles/{id}/toggle-status', [RolController::class, 'cambiarEstado']);

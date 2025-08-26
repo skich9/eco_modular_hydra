@@ -134,7 +134,7 @@
             id="contraseniaConfirm" 
             formControlName="contraseniaConfirm" 
             class="form-control"
-            [class.is-invalid]="submitted && (f['contraseniaConfirm'].errors || usuarioForm.errors?.matching)"
+            [class.is-invalid]="submitted && (f['contraseniaConfirm'].errors || usuarioForm.errors?.['matching'])"
           >
           <button 
             type="button" 
@@ -144,9 +144,9 @@
             <i class="fas" [ngClass]="showConfirmPassword ? 'fa-eye-slash' : 'fa-eye'"></i>
           </button>
         </div>
-        <div class="invalid-feedback" *ngIf="submitted && (f['contraseniaConfirm'].errors || usuarioForm.errors?.matching)">
+        <div class="invalid-feedback" *ngIf="submitted && (f['contraseniaConfirm'].errors || usuarioForm.errors?.['matching'])">
           <span *ngIf="f['contraseniaConfirm'].errors?.['required']">Confirmar contraseña es requerido</span>
-          <span *ngIf="usuarioForm.errors?.matching">Las contraseñas no coinciden</span>
+          <span *ngIf="usuarioForm.errors?.['matching']">Las contraseñas no coinciden</span>
         </div>
       </div>
     </div>

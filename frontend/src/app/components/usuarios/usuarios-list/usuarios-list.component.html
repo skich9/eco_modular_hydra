@@ -217,7 +217,7 @@
             </div>
           </div>
 
-          <div class="invalid" *ngIf="createSubmitted && createForm.errors?.matching">
+          <div class="invalid" *ngIf="createSubmitted && createForm.errors?.['matching']">
             Las contraseñas no coinciden.
           </div>
 
