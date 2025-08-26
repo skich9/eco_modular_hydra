@@ -56,6 +56,11 @@ export const routes: Routes = [
 				path: 'parametros',
 				loadComponent: () => import('./components/pages/parametros-simple/parametros-simple.component').then(m => m.ParametrosSimpleComponent)
 			},
+			// Ruta para descuentos
+			{
+				path: 'descuentos',
+				loadComponent: () => import('./components/pages/descuentos/descuentos.component').then(m => m.DescuentosComponent)
+			},
 			
 			// Ruta por defecto
 			{ path: '', redirectTo: 'dashboard', pathMatch: 'full' }

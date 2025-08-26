@@ -1,0 +1,151 @@
+<div class="container py-3">
+	<div class="d-flex flex-wrap justify-content-between align-items-center mb-3 gap-2">
+		<h1 class="h4 m-0">Configuración de Descuentos</h1>
+		<div class="d-flex gap-2 align-items-center">
+			<div class="position-relative">
+				<input type="text" [(ngModel)]="searchTerm" (input)="onSearch()" class="form-control pe-5" placeholder="Buscar descuento...">
+				<button class="btn btn-link position-absolute top-50 end-0 translate-middle-y text-muted" (click)="onSearch()">
+					<i class="fas fa-search"></i>
+				</button>
+			</div>
+			<button class="btn btn-primary" (click)="openCreate()">
+				<i class="fas fa-plus me-1"></i> Nuevo Descuento
+			</button>
+		</div>
+	</div>
+
+	<div class="table-responsive">
+		<table class="table align-middle">
+			<thead class="table-light">
+				<tr>
+					<th>#</th>
+					<th>Nombre</th>
+					<th>Porcentaje</th>
+					<th>Tipo</th>
+					<th>Pensum</th>
+					<th>Estudiante</th>
+					<th>Inscripción</th>
+					<th>Estado</th>
+					<th class="text-nowrap">Acciones</th>
+				</tr>
+			</thead>
+			<tbody>
+				<tr *ngFor="let d of descuentos">
+					<td>{{ d.id_descuentos }}</td>
+					<td>{{ d.nombre }}</td>
+					<td>{{ d.porcentaje }}%</td>
+					<td>{{ d.tipo || '-' }}</td>
+					<td>{{ d.cod_pensum }}</td>
+					<td>{{ d.cod_ceta }}</td>
+					<td>{{ d.cod_inscrip }}</td>
+					<td>
+						<span class="badge" [ngClass]="d.estado ? 'bg-success' : 'bg-danger'">{{ d.estado ? 'Activo' : 'Inactivo' }}</span>
+					</td>
+					<td class="text-nowrap">
+						<button class="btn btn-sm btn-outline-primary me-1" (click)="openEdit(d)" title="Editar"><i class="fas fa-edit"></i></button>
+						<button class="btn btn-sm btn-outline-secondary me-1" (click)="toggle(d)" title="Cambiar estado">
+							<i class="fas" [ngClass]="d.estado ? 'fa-toggle-on' : 'fa-toggle-off'"></i>
+						</button>
+						<button class="btn btn-sm btn-outline-danger" (click)="confirmDelete(d)" title="Eliminar"><i class="fas fa-trash"></i></button>
+					</td>
+				</tr>
+				<tr *ngIf="descuentos.length === 0">
+					<td colspan="9" class="text-center py-4">
+						<div *ngIf="isLoading">Cargando descuentos...</div>
+						<div *ngIf="!isLoading">No se encontraron descuentos</div>
+					</td>
+				</tr>
+			</tbody>
+		</table>
+	</div>
+
+	<div class="d-flex justify-content-center align-items-center gap-2" *ngIf="descuentos.length > 0">
+		<button class="btn btn-light" [disabled]="currentPage === 1" (click)="goToPage(currentPage - 1)"><i class="fas fa-chevron-left"></i></button>
+		<span class="text-muted">Página {{ currentPage }} de {{ totalPages }}</span>
+		<button class="btn btn-light" [disabled]="currentPage === totalPages" (click)="goToPage(currentPage + 1)"><i class="fas fa-chevron-right"></i></button>
+	</div>
+
+	<!-- Modal Crear/Editar -->
+	<div class="modal-backdrop" *ngIf="showFormModal">
+		<div class="modal-dialog">
+			<div class="modal-content">
+				<div class="modal-header">
+					<h5 class="modal-title">{{ editing ? 'Editar' : 'Nuevo' }} Descuento</h5>
+					<button class="btn-close" (click)="closeForm()"></button>
+				</div>
+				<div class="modal-body">
+					<form [formGroup]="form">
+						<div class="row g-3">
+							<div class="col-md-6">
+								<label class="form-label">Nombre</label>
+								<input type="text" class="form-control" formControlName="nombre">
+							</div>
+							<div class="col-md-3">
+								<label class="form-label">Porcentaje</label>
+								<input type="number" class="form-control" formControlName="porcentaje" min="0" max="100" step="0.01">
+							</div>
+							<div class="col-md-3">
+								<label class="form-label">Tipo</label>
+								<input type="text" class="form-control" formControlName="tipo">
+							</div>
+
+							<div class="col-md-4">
+								<label class="form-label">Pensum</label>
+								<input type="text" class="form-control" formControlName="cod_pensum" placeholder="COD_PENSUM">
+							</div>
+							<div class="col-md-4">
+								<label class="form-label">Estudiante (cod_ceta)</label>
+								<input type="number" class="form-control" formControlName="cod_ceta">
+							</div>
+							<div class="col-md-4">
+								<label class="form-label">Inscripción (cod_inscrip)</label>
+								<input type="number" class="form-control" formControlName="cod_inscrip">
+							</div>
+							<div class="col-md-6">
+								<label class="form-label">Usuario (id_usuario)</label>
+								<input type="number" class="form-control" formControlName="id_usuario">
+							</div>
+							<div class="col-md-6 d-flex align-items-end">
+								<div class="form-check">
+									<input class="form-check-input" type="checkbox" formControlName="estado" id="estadoCheck">
+									<label class="form-check-label" for="estadoCheck">Activo</label>
+								</div>
+							</div>
+							<div class="col-12">
+								<label class="form-label">Observaciones</label>
+								<textarea rows="3" class="form-control" formControlName="observaciones"></textarea>
+							</div>
+						</div>
+					</form>
+				</div>
+				<div class="modal-footer">
+					<button class="btn btn-secondary" (click)="closeForm()">Cancelar</button>
+					<button class="btn btn-primary" [disabled]="form.invalid || isSaving" (click)="save()">
+						<span class="spinner-border spinner-border-sm me-2" *ngIf="isSaving"></span>
+						{{ editing ? 'Actualizar' : 'Crear' }}
+					</button>
+				</div>
+			</div>
+		</div>
+	</div>
+
+	<!-- Modal Confirmar Eliminación -->
+	<div class="modal-backdrop" *ngIf="showDeleteModal">
+		<div class="modal-dialog">
+			<div class="modal-content">
+				<div class="modal-header">
+					<h5 class="modal-title">Confirmar Eliminación</h5>
+					<button class="btn-close" (click)="cancelDelete()"></button>
+				</div>
+				<div class="modal-body">
+					<p>¿Está seguro que desea eliminar el descuento "{{ itemToDelete?.nombre }}"?</p>
+					<p class="text-danger small mb-0">Esta acción no se puede deshacer.</p>
+				</div>
+				<div class="modal-footer">
+					<button class="btn btn-secondary" (click)="cancelDelete()">Cancelar</button>
+					<button class="btn btn-danger" (click)="deleteConfirm()">Eliminar</button>
+				</div>
+			</div>
+		</div>
+	</div>
+</div>

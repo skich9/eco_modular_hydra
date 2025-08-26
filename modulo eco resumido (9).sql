@@ -107,9 +107,9 @@ CREATE TABLE `descuento_detalle` (
 );
 
 CREATE TABLE `descuentos` (
-  `cod_ceta` bigint NOT NULL,
-  `cod_pensum` varchar(50) NOT NULL,
-  `cod_inscrip` bigint NOT NULL,
+  `cod_ceta` bigint DEFAULT null,
+  `cod_pensum` varchar(50) DEFAULT null,
+  `cod_inscrip` bigint DEFAULT null,
   `id_usuario` bigint NOT NULL,
   `id_descuentos` bigint PRIMARY KEY NOT NULL AUTO_INCREMENT,
   `nombre` varchar(255) NOT NULL,
