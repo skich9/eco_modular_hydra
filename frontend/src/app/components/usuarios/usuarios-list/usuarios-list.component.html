@@ -25,8 +25,8 @@
     <table class="usuarios-table">
       <thead>
         <tr>
-          <th>ID</th>
-          <th>Nickname</th>
+          <th>Nro</th>
+          <th>Usuario</th>
           <th>Nombre Completo</th>
           <th>CI</th>
           <th>Rol</th>
@@ -133,7 +133,7 @@
         <form [formGroup]="createForm" (ngSubmit)="submitCreateForm()">
           <div class="form-grid">
             <div class="form-group">
-              <label for="nickname">Nickname</label>
+              <label for="nickname">Usuario</label>
               <input id="nickname" type="text" formControlName="nickname" />
               <div class="invalid" *ngIf="createSubmitted && createForm.get('nickname')?.invalid">
                 Requerido.

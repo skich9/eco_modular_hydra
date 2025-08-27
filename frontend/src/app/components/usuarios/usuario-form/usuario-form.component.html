@@ -13,7 +13,7 @@
   <form [formGroup]="usuarioForm" (ngSubmit)="onSubmit()" class="usuario-form">
     <div class="form-row">
       <div class="form-group">
-        <label for="nickname">Nickname *</label>
+        <label for="nickname">Usuario</label>
         <input 
           type="text" 
           id="nickname" 
@@ -22,7 +22,7 @@
           [class.is-invalid]="submitted && f['nickname'].errors"
         >
         <div class="invalid-feedback" *ngIf="submitted && f['nickname'].errors">
-          <span *ngIf="f['nickname'].errors['required']">Nickname es requerido</span>
+          <span *ngIf="f['nickname'].errors['required']">Usuario es requerido</span>
         </div>
       </div>
 
