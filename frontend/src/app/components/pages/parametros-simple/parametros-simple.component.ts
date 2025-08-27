@@ -224,7 +224,13 @@ export class ParametrosSimpleComponent implements OnInit {
         },
         error: (err: any) => {
           console.error('Update IC:', err);
-          this.showAlert('No se pudo actualizar el item', 'error');
+          if (err?.status === 422 && err?.error?.errors) {
+            const msg = this.formatBackendErrors(err.error.errors);
+            this.applyBackendErrorsToForm(err.error.errors);
+            this.showAlert(`Errores de validación: ${msg}`, 'error');
+          } else {
+            this.showAlert('No se pudo actualizar el item', 'error');
+          }
         }
       });
     } else {
@@ -238,7 +244,13 @@ export class ParametrosSimpleComponent implements OnInit {
         },
         error: (err: any) => {
           console.error('Create IC:', err);
-          this.showAlert('No se pudo crear el item', 'error');
+          if (err?.status === 422 && err?.error?.errors) {
+            const msg = this.formatBackendErrors(err.error.errors);
+            this.applyBackendErrorsToForm(err.error.errors);
+            this.showAlert(`Errores de validación: ${msg}`, 'error');
+          } else {
+            this.showAlert('No se pudo crear el item', 'error');
+          }
         }
       });
     }
@@ -328,5 +340,27 @@ export class ParametrosSimpleComponent implements OnInit {
     this.alertMessage = message;
     this.alertType = type;
     setTimeout(() => (this.alertMessage = ''), 4000);
+  }
+
+  private formatBackendErrors(errors: any): string {
+    try {
+      return Object.keys(errors)
+        .map(k => `${k}: ${Array.isArray(errors[k]) ? errors[k].join(', ') : errors[k]}`)
+        .join(' | ');
+    } catch {
+      return 'Error de validación';
+    }
+  }
+
+  private applyBackendErrorsToForm(errors: any): void {
+    if (!errors) return;
+    Object.keys(errors).forEach(key => {
+      const ctrl = this.itemForm.get(key);
+      if (ctrl) {
+        const msg = Array.isArray(errors[key]) ? errors[key][0] : errors[key];
+        ctrl.setErrors({ ...(ctrl.errors || {}), backend: true, message: msg });
+        ctrl.markAsTouched();
+      }
+    });
   }
 }

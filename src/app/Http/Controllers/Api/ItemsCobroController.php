@@ -40,18 +40,18 @@ class ItemsCobroController extends Controller
     {
         try {
             $validator = Validator::make($request->all(), [
-                'codigo_producto_interno' => 'required|string|max:15',
+                'codigo_producto_interno' => 'required|string|max:15|unique:items_cobro,codigo_producto_interno',
                 'nombre_servicio' => 'required|string|max:100',
                 'codigo_producto_impuesto' => 'nullable|integer',
                 'unidad_medida' => 'required|integer',
-                'costo' => 'nullable|numeric',
-                'nro_creditos' => 'required|numeric',
+                'costo' => 'nullable|numeric|min:0',
+                'nro_creditos' => 'required|numeric|min:0',
                 'tipo_item' => 'required|string|max:40',
                 'descripcion' => 'nullable|string|max:50',
                 'estado' => 'nullable|boolean',
                 'facturado' => 'required|boolean',
                 'actividad_economica' => 'required|string|max:255',
-                'id_parametro_economico' => 'required|integer'
+                'id_parametro_economico' => 'required|integer|exists:parametros_economicos,id_parametro_economico'
             ]);
 
             if ($validator->fails()) {
@@ -131,14 +131,14 @@ class ItemsCobroController extends Controller
                 'nombre_servicio' => 'required|string|max:100',
                 'codigo_producto_impuesto' => 'nullable|integer',
                 'unidad_medida' => 'required|integer',
-                'costo' => 'nullable|numeric',
-                'nro_creditos' => 'required|numeric',
+                'costo' => 'nullable|numeric|min:0',
+                'nro_creditos' => 'required|numeric|min:0',
                 'tipo_item' => 'required|string|max:40',
                 'descripcion' => 'nullable|string|max:50',
                 'estado' => 'nullable|boolean',
                 'facturado' => 'required|boolean',
                 'actividad_economica' => 'required|string|max:255',
-                'id_parametro_economico' => 'required|integer'
+                'id_parametro_economico' => 'required|integer|exists:parametros_economicos,id_parametro_economico'
             ]);
 
             if ($validator->fails()) {

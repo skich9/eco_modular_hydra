@@ -118,8 +118,8 @@
   </section>
 
   <!-- Modal: Parámetro Económico -->
-  <div class="modal-backdrop" *ngIf="showParamModal">
-    <div class="modal">
+  <div class="overlay-backdrop" *ngIf="showParamModal">
+    <div class="overlay-modal">
       <h3>{{ editingParam ? 'Editar Parámetro' : 'Nuevo Parámetro' }}</h3>
       <form [formGroup]="parametroForm" (ngSubmit)="saveParametro()">
         <div class="grid">
@@ -148,8 +148,8 @@
   </div>
 
   <!-- Modal: Item de Cobro -->
-  <div class="modal-backdrop" *ngIf="showItemModal">
-    <div class="modal">
+  <div class="overlay-backdrop" *ngIf="showItemModal">
+    <div class="overlay-modal">
       <h3>{{ editingItem ? 'Editar Item de Cobro' : 'Nuevo Item de Cobro' }}</h3>
       <form [formGroup]="itemForm" (ngSubmit)="saveItem()">
         <div class="grid">
@@ -212,8 +212,8 @@
   </div>
 
   <!-- Modal: Confirmación Eliminar -->
-  <div class="modal-backdrop" *ngIf="showDeleteModal">
-    <div class="modal">
+  <div class="overlay-backdrop" *ngIf="showDeleteModal">
+    <div class="overlay-modal">
       <h3>Confirmar eliminación</h3>
       <p>¿Seguro que deseas eliminar este registro?</p>
       <div class="modal-actions">
