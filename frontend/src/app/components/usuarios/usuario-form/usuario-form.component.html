@@ -1,7 +1,7 @@
 <div class="usuario-form-container">
-  <div class="form-header">
+  <div class="form-header" *ngIf="!modalMode">
     <h1 class="form-title">{{ isEditMode ? 'Editar Usuario' : 'Nuevo Usuario' }}</h1>
-    <button class="btn-secondary" routerLink="/usuarios">
+    <button class="btn-secondary" (click)="onCancel()">
       <i class="fas fa-arrow-left"></i> Volver
     </button>
   </div>
@@ -19,10 +19,11 @@
           id="nickname" 
           formControlName="nickname" 
           class="form-control"
-          [class.is-invalid]="submitted && f['nickname'].errors"
+          [class.is-invalid]="(submitted || f['nickname'].touched) && f['nickname'].errors"
         >
-        <div class="invalid-feedback" *ngIf="submitted && f['nickname'].errors">
+        <div class="invalid-feedback" *ngIf="(submitted || f['nickname'].touched) && f['nickname'].errors">
           <span *ngIf="f['nickname'].errors['required']">Usuario es requerido</span>
+          <span *ngIf="f['nickname'].errors?.['server']">{{ f['nickname'].errors?.['server'] }}</span>
         </div>
       </div>
 
@@ -33,10 +34,11 @@
           id="ci" 
           formControlName="ci" 
           class="form-control"
-          [class.is-invalid]="submitted && f['ci'].errors"
+          [class.is-invalid]="(submitted || f['ci'].touched) && f['ci'].errors"
         >
-        <div class="invalid-feedback" *ngIf="submitted && f['ci'].errors">
+        <div class="invalid-feedback" *ngIf="(submitted || f['ci'].touched) && f['ci'].errors">
           <span *ngIf="f['ci'].errors['required']">CI es requerido</span>
+          <span *ngIf="f['ci'].errors?.['server']">{{ f['ci'].errors?.['server'] }}</span>
         </div>
       </div>
     </div>
@@ -49,10 +51,11 @@
           id="nombre" 
           formControlName="nombre" 
           class="form-control"
-          [class.is-invalid]="submitted && f['nombre'].errors"
+          [class.is-invalid]="(submitted || f['nombre'].touched) && f['nombre'].errors"
         >
-        <div class="invalid-feedback" *ngIf="submitted && f['nombre'].errors">
+        <div class="invalid-feedback" *ngIf="(submitted || f['nombre'].touched) && f['nombre'].errors">
           <span *ngIf="f['nombre'].errors['required']">Nombre es requerido</span>
+          <span *ngIf="f['nombre'].errors?.['server']">{{ f['nombre'].errors?.['server'] }}</span>
         </div>
       </div>
 
@@ -63,10 +66,11 @@
           id="ap_paterno" 
           formControlName="ap_paterno" 
           class="form-control"
-          [class.is-invalid]="submitted && f['ap_paterno'].errors"
+          [class.is-invalid]="(submitted || f['ap_paterno'].touched) && f['ap_paterno'].errors"
         >
-        <div class="invalid-feedback" *ngIf="submitted && f['ap_paterno'].errors">
+        <div class="invalid-feedback" *ngIf="(submitted || f['ap_paterno'].touched) && f['ap_paterno'].errors">
           <span *ngIf="f['ap_paterno'].errors['required']">Apellido Paterno es requerido</span>
+          <span *ngIf="f['ap_paterno'].errors?.['server']">{{ f['ap_paterno'].errors?.['server'] }}</span>
         </div>
       </div>
     </div>
@@ -88,19 +92,21 @@
           id="id_rol" 
           formControlName="id_rol" 
           class="form-control"
-          [class.is-invalid]="submitted && f['id_rol'].errors"
+          [class.is-invalid]="(submitted || f['id_rol'].touched) && f['id_rol'].errors"
         >
           <option [ngValue]="null" disabled>Seleccione un rol</option>
           <option *ngFor="let rol of roles" [ngValue]="rol.id_rol">
             {{ rol.nombre }}
           </option>
         </select>
-        <div class="invalid-feedback" *ngIf="submitted && f['id_rol'].errors">
+        <div class="invalid-feedback" *ngIf="(submitted || f['id_rol'].touched) && f['id_rol'].errors">
           <span *ngIf="f['id_rol'].errors['required']">Rol es requerido</span>
+          <span *ngIf="f['id_rol'].errors?.['server']">{{ f['id_rol'].errors?.['server'] }}</span>
         </div>
       </div>
     </div>
 
+    <!-- Contraseñas en creación -->
     <div class="form-row" *ngIf="!isEditMode">
       <div class="form-group">
         <label for="contrasenia">Contraseña *</label>
@@ -110,7 +116,7 @@
             id="contrasenia" 
             formControlName="contrasenia" 
             class="form-control"
-            [class.is-invalid]="submitted && f['contrasenia'].errors"
+            [class.is-invalid]="(submitted || f['contrasenia'].touched) && f['contrasenia'].errors"
           >
           <button 
             type="button" 
@@ -120,9 +126,10 @@
             <i class="fas" [ngClass]="showPassword ? 'fa-eye-slash' : 'fa-eye'"></i>
           </button>
         </div>
-        <div class="invalid-feedback" *ngIf="submitted && f['contrasenia'].errors">
+        <div class="invalid-feedback" *ngIf="(submitted || f['contrasenia'].touched) && f['contrasenia'].errors">
           <span *ngIf="f['contrasenia'].errors['required']">Contraseña es requerida</span>
           <span *ngIf="f['contrasenia'].errors['minlength']">Contraseña debe tener al menos 6 caracteres</span>
+          <span *ngIf="f['contrasenia'].errors?.['server']">{{ f['contrasenia'].errors?.['server'] }}</span>
         </div>
       </div>
 
@@ -134,7 +141,7 @@
             id="contraseniaConfirm" 
             formControlName="contraseniaConfirm" 
             class="form-control"
-            [class.is-invalid]="submitted && (f['contraseniaConfirm'].errors || usuarioForm.errors?.['matching'])"
+            [class.is-invalid]="(submitted || f['contraseniaConfirm'].touched) && (f['contraseniaConfirm'].errors || usuarioForm.errors?.['matching'])"
           >
           <button 
             type="button" 
@@ -144,9 +151,73 @@
             <i class="fas" [ngClass]="showConfirmPassword ? 'fa-eye-slash' : 'fa-eye'"></i>
           </button>
         </div>
-        <div class="invalid-feedback" *ngIf="submitted && (f['contraseniaConfirm'].errors || usuarioForm.errors?.['matching'])">
+        <div class="invalid-feedback" *ngIf="(submitted || f['contraseniaConfirm'].touched) && (f['contraseniaConfirm'].errors || usuarioForm.errors?.['matching'])">
           <span *ngIf="f['contraseniaConfirm'].errors?.['required']">Confirmar contraseña es requerido</span>
           <span *ngIf="usuarioForm.errors?.['matching']">Las contraseñas no coinciden</span>
+          <span *ngIf="f['contraseniaConfirm'].errors?.['server']">{{ f['contraseniaConfirm'].errors?.['server'] }}</span>
+        </div>
+      </div>
+    </div>
+
+    <!-- Opción de restablecer contraseña en edición -->
+    <div class="form-row" *ngIf="isEditMode">
+      <div class="form-group">
+        <div class="form-check">
+          <input type="checkbox" id="resetPassword" formControlName="resetPassword" class="form-check-input">
+          <label for="resetPassword" class="form-check-label">Restablecer contraseña</label>
+        </div>
+      </div>
+    </div>
+
+    <!-- Contraseñas visibles cuando se restablece en edición -->
+    <div class="form-row" *ngIf="isEditMode && usuarioForm.get('resetPassword')?.value">
+      <div class="form-group">
+        <label for="contrasenia">Nueva Contraseña *</label>
+        <div class="password-input-wrapper">
+          <input 
+            [type]="showPassword ? 'text' : 'password'" 
+            id="contrasenia" 
+            formControlName="contrasenia" 
+            class="form-control"
+            [class.is-invalid]="(submitted || f['contrasenia'].touched) && f['contrasenia'].errors"
+          >
+          <button 
+            type="button" 
+            class="password-toggle-btn" 
+            (click)="togglePasswordVisibility()"
+          >
+            <i class="fas" [ngClass]="showPassword ? 'fa-eye-slash' : 'fa-eye'"></i>
+          </button>
+        </div>
+        <div class="invalid-feedback" *ngIf="(submitted || f['contrasenia'].touched) && f['contrasenia'].errors">
+          <span *ngIf="f['contrasenia'].errors['required']">Contraseña es requerida</span>
+          <span *ngIf="f['contrasenia'].errors['minlength']">Contraseña debe tener al menos 6 caracteres</span>
+          <span *ngIf="f['contrasenia'].errors?.['server']">{{ f['contrasenia'].errors?.['server'] }}</span>
+        </div>
+      </div>
+
+      <div class="form-group">
+        <label for="contraseniaConfirm">Confirmar Nueva Contraseña *</label>
+        <div class="password-input-wrapper">
+          <input 
+            [type]="showConfirmPassword ? 'text' : 'password'" 
+            id="contraseniaConfirm" 
+            formControlName="contraseniaConfirm" 
+            class="form-control"
+            [class.is-invalid]="(submitted || f['contraseniaConfirm'].touched) && (f['contraseniaConfirm'].errors || usuarioForm.errors?.['matching'])"
+          >
+          <button 
+            type="button" 
+            class="password-toggle-btn" 
+            (click)="toggleConfirmPasswordVisibility()"
+          >
+            <i class="fas" [ngClass]="showConfirmPassword ? 'fa-eye-slash' : 'fa-eye'"></i>
+          </button>
+        </div>
+        <div class="invalid-feedback" *ngIf="(submitted || f['contraseniaConfirm'].touched) && (f['contraseniaConfirm'].errors || usuarioForm.errors?.['matching'])">
+          <span *ngIf="f['contraseniaConfirm'].errors?.['required']">Confirmar contraseña es requerido</span>
+          <span *ngIf="usuarioForm.errors?.['matching']">Las contraseñas no coinciden</span>
+          <span *ngIf="f['contraseniaConfirm'].errors?.['server']">{{ f['contraseniaConfirm'].errors?.['server'] }}</span>
         </div>
       </div>
     </div>
@@ -173,7 +244,7 @@
     </div>
 
     <div class="form-actions">
-      <button type="button" class="btn-secondary" routerLink="/usuarios">Cancelar</button>
+      <button type="button" class="btn-secondary" (click)="onCancel()">Cancelar</button>
       <button type="submit" class="btn-primary" [disabled]="isSubmitting">
         <span *ngIf="isSubmitting">
           <i class="fas fa-spinner fa-spin"></i> Guardando...

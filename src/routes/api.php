@@ -11,6 +11,8 @@ use App\Http\Controllers\GestionController;
 use App\Http\Controllers\UsuarioController;
 use App\Http\Controllers\RolController;
 use App\Http\Controllers\Api\DescuentoController;
+use App\Http\Controllers\Api\DefDescuentoController;
+use App\Http\Controllers\Api\DefDescuentoBecaController;
 
 /*
 |--------------------------------------------------------------------------
@@ -48,6 +50,12 @@ Route::patch('items-cobro/{id}/toggle-status', [ItemsCobroController::class, 'to
 Route::get('descuentos/active', [DescuentoController::class, 'active']);
 Route::patch('descuentos/{id}/toggle-status', [DescuentoController::class, 'toggleStatus']);
 Route::apiResource('descuentos', DescuentoController::class);
+
+// Definiciones de descuentos
+Route::apiResource('def-descuentos', DefDescuentoController::class);
+Route::patch('def-descuentos/{id}/toggle-status', [DefDescuentoController::class, 'toggleStatus']);
+Route::apiResource('def-descuentos-beca', DefDescuentoBecaController::class);
+Route::patch('def-descuentos-beca/{id}/toggle-status', [DefDescuentoBecaController::class, 'toggleStatus']);
 
 // Carreras
 Route::get('carreras', [ApiCarreraController::class, 'index']);

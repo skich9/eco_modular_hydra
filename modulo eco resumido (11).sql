@@ -107,9 +107,11 @@ CREATE TABLE `descuento_detalle` (
 );
 
 CREATE TABLE `descuentos` (
-  `cod_ceta` bigint DEFAULT null,
-  `cod_pensum` varchar(50) DEFAULT null,
-  `cod_inscrip` bigint DEFAULT null,
+  `cod_descuento` bigint DEFAULT null,
+  `cod_ceta` bigint NOT NULL,
+  `cod_pensum` varchar(50) NOT NULL,
+  `cod_inscrip` bigint NOT NULL,
+  `cod_beca` bigint DEFAULT null,
   `id_usuario` bigint NOT NULL,
   `id_descuentos` bigint PRIMARY KEY NOT NULL AUTO_INCREMENT,
   `nombre` varchar(255) NOT NULL,
@@ -119,6 +121,26 @@ CREATE TABLE `descuentos` (
   `estado` bool DEFAULT null,
   `created_at` timestamp DEFAULT null,
   `updated_at` timestamp DEFAULT null
+);
+
+CREATE TABLE `def_descuentos` (
+  `cod_descuento` bigint NOT NULL AUTO_INCREMENT,
+  `nombre_descuento` varchar(255) NOT NULL,
+  `descripcion` text DEFAULT null,
+  `monto` int NOT NULL,
+  `porcentaje` bool NOT NULL,
+  `estado` bool NOT NULL,
+  PRIMARY KEY (`cod_descuento`, `nombre_descuento`)
+);
+
+CREATE TABLE `def_descuentos_beca` (
+  `cod_beca` bigint NOT NULL AUTO_INCREMENT,
+  `nombre_beca` varchar(255) NOT NULL,
+  `descripcion` text DEFAULT null,
+  `monto` int NOT NULL,
+  `porcentaje` bool NOT NULL,
+  `estado` bool NOT NULL,
+  PRIMARY KEY (`cod_beca`, `nombre_beca`)
 );
 
 CREATE TABLE `egresos` (
@@ -995,3 +1017,7 @@ ALTER TABLE `costo_materia` ADD CONSTRAINT `costo_materia_gestion_materia_id_for
 ALTER TABLE `costo_materia` ADD CONSTRAINT `costo_materia_gestion_id_foreign` FOREIGN KEY (`gestion`) REFERENCES `gestion` (`gestion`) ON DELETE RESTRICT ON UPDATE RESTRICT;
 
 ALTER TABLE `pensums` ADD CONSTRAINT `carrera_pensum_id_foreign` FOREIGN KEY (`codigo_carrera`) REFERENCES `carrera` (`codigo_carrera`) ON DELETE RESTRICT ON UPDATE RESTRICT;
+
+ALTER TABLE `descuentos` ADD CONSTRAINT `descuentos_id_def_descuentos_foreign` FOREIGN KEY (`cod_descuento`) REFERENCES `def_descuentos` (`cod_descuento`) ON DELETE RESTRICT ON UPDATE RESTRICT;
+
+ALTER TABLE `descuentos` ADD CONSTRAINT `descuentos_id_def_descuentos_beca_foreign` FOREIGN KEY (`cod_beca`) REFERENCES `def_descuentos_beca` (`cod_beca`) ON DELETE RESTRICT ON UPDATE RESTRICT;

@@ -2,6 +2,7 @@ import { Component, OnInit } from '@angular/core';
 import { CommonModule } from '@angular/common';
 import { FormsModule, ReactiveFormsModule, FormBuilder, FormGroup, Validators, ValidationErrors } from '@angular/forms';
 import { RouterModule } from '@angular/router';
+import { UsuarioFormComponent } from '../usuario-form/usuario-form.component';
 import { Usuario, Rol } from '../../../models/usuario.model';
 import { UsuarioService } from '../../../services/usuario.service';
 import { RolService } from '../../../services/rol.service';
@@ -9,7 +10,7 @@ import { RolService } from '../../../services/rol.service';
 @Component({
     selector: 'app-usuarios-list',
     standalone: true,
-    imports: [CommonModule, FormsModule, ReactiveFormsModule, RouterModule],
+    imports: [CommonModule, FormsModule, ReactiveFormsModule, RouterModule, UsuarioFormComponent],
     templateUrl: './usuarios-list.component.html',
     styleUrls: ['./usuarios-list.component.scss']
 })
@@ -30,6 +31,10 @@ export class UsuariosListComponent implements OnInit {
     roles: Rol[] = [];
     showPassword = false;
     showConfirmPassword = false;
+    
+    // Modal de edición
+    showEditModal = false;
+    editUsuarioId: number | null = null;
     
     // Paginación
     currentPage = 1;
@@ -225,5 +230,24 @@ export class UsuariosListComponent implements OnInit {
                 this.isCreating = false;
             }
         });
+    }
+
+    // ====== Modal de edición ======
+    openEditModal(usuario: Usuario): void {
+        this.editUsuarioId = usuario.id_usuario;
+        this.showEditModal = true;
+    }
+
+    closeEditModal(): void {
+        this.showEditModal = false;
+        this.editUsuarioId = null;
+    }
+
+    onEditClosed(saved: boolean): void {
+        this.showEditModal = false;
+        this.editUsuarioId = null;
+        if (saved) {
+            this.loadUsuarios();
+        }
     }
 }
