@@ -13,6 +13,7 @@ use App\Http\Controllers\RolController;
 use App\Http\Controllers\Api\DescuentoController;
 use App\Http\Controllers\Api\DefDescuentoController;
 use App\Http\Controllers\Api\DefDescuentoBecaController;
+use App\Http\Controllers\Api\ParametroGeneralController;
 
 /*
 |--------------------------------------------------------------------------
@@ -57,6 +58,10 @@ Route::patch('def-descuentos/{id}/toggle-status', [DefDescuentoController::class
 Route::apiResource('def-descuentos-beca', DefDescuentoBecaController::class);
 Route::patch('def-descuentos-beca/{id}/toggle-status', [DefDescuentoBecaController::class, 'toggleStatus']);
 
+// Parámetros generales
+Route::apiResource('parametros-generales', ParametroGeneralController::class);
+Route::patch('parametros-generales/{id}/toggle-status', [ParametroGeneralController::class, 'toggleStatus']);
+
 // Carreras
 Route::get('carreras', [ApiCarreraController::class, 'index']);
 Route::get('carreras/{codigo}/pensums', [ApiCarreraController::class, 'pensums']);
@@ -80,11 +85,16 @@ Route::get('costo-materia/gestion/{gestion}', [CostoMateriaController::class, 'g
 
 //Gestión
 // Rutas para gestión
-Route::apiResource('gestiones', GestionController::class);
+Route::apiResource('gestiones', GestionController::class)->only(['index', 'store']);
+// Rutas específicas (primero)
 Route::get('gestiones/actual/actual', [GestionController::class, 'gestionActual']);
 Route::get('gestiones/estado/activas', [GestionController::class, 'gestionesActivas']);
 Route::get('gestiones/ano/{anio}', [GestionController::class, 'porAnio']);
-Route::patch('gestiones/{gestion}/estado', [GestionController::class, 'cambiarEstado']);
+Route::patch('gestiones/{gestion}/estado', [GestionController::class, 'cambiarEstado'])->where('gestion', '.*');
+// Rutas con parámetro catch-all (después)
+Route::get('gestiones/{gestion}', [GestionController::class, 'show'])->where('gestion', '.*');
+Route::put('gestiones/{gestion}', [GestionController::class, 'update'])->where('gestion', '.*');
+Route::delete('gestiones/{gestion}', [GestionController::class, 'destroy'])->where('gestion', '.*');
 
 // ===================== Usuarios =====================
 Route::apiResource('usuarios', UsuarioController::class);

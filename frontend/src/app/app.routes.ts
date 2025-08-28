@@ -62,6 +62,11 @@ export const routes: Routes = [
 				path: 'parametros',
 				loadComponent: () => import('./components/pages/parametros-simple/parametros-simple.component').then(m => m.ParametrosSimpleComponent)
 			},
+			// Ruta para Configuraciones Generales
+			{
+				path: 'configuraciones-generales',
+				loadComponent: () => import('./components/pages/configuraciones-generales/configuraciones-generales.component').then(m => m.ConfiguracionesGeneralesComponent)
+			},
 
 			
 			// Ruta por defecto

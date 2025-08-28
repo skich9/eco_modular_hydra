@@ -62,7 +62,8 @@ export class NavigationComponent implements OnInit {
 				{ name: 'Usuarios', icon: 'fa-users', route: '/usuarios' },
 				{ name: 'Roles', icon: 'fa-user-shield', route: '/roles' },
 				{ name: 'Parámetros de Sistema', icon: 'fa-sliders-h', route: '/parametros' },
-				{ name: 'Configuración de Descuentos', icon: 'fa-percent', route: '/descuentos' }
+				{ name: 'Configuración de Descuentos', icon: 'fa-percent', route: '/descuentos' },
+				{ name: 'Configuraciones Generales', icon: 'fa-cogs', route: '/configuraciones-generales' }
 			]
 		}
 	];

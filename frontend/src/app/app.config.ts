@@ -1,4 +1,4 @@
-import { ApplicationConfig, provideBrowserGlobalErrorListeners, provideZoneChangeDetection } from '@angular/core';
+import { ApplicationConfig, LOCALE_ID, provideBrowserGlobalErrorListeners, provideZoneChangeDetection } from '@angular/core';
 import { provideRouter, withHashLocation } from '@angular/router';
 import { provideHttpClient, withFetch, withInterceptors } from '@angular/common/http';
 
@@ -15,6 +15,7 @@ export const appConfig: ApplicationConfig = {
     provideHttpClient(
       withFetch(),
       withInterceptors([authInterceptor])
-    )
+    ),
+    { provide: LOCALE_ID, useValue: 'es' }
   ]
 };

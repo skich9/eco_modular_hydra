@@ -1,0 +1,215 @@
+<div class="container py-3">
+	<div class="d-flex flex-wrap justify-content-between align-items-center mb-3 gap-2">
+		<h1 class="h4 m-0">Configuraciones Generales</h1>
+		<div class="d-flex gap-2 align-items-center">
+			<div class="position-relative" *ngIf="activeTab==='pg'">
+				<input type="text" class="form-control pe-5" placeholder="Buscar parámetro..." [(ngModel)]="searchPG">
+			</div>
+			<div class="position-relative" *ngIf="activeTab==='gestion'">
+				<input type="text" class="form-control pe-5" placeholder="Buscar gestión..." [(ngModel)]="searchG">
+			</div>
+			<button class="btn btn-primary" *ngIf="activeTab==='pg'" (click)="openNewPG()">
+				<i class="fas fa-plus me-1"></i> Nuevo Parámetro
+			</button>
+			<button class="btn btn-primary" *ngIf="activeTab==='gestion'" (click)="openNewG()">
+				<i class="fas fa-plus me-1"></i> Nueva Gestión
+			</button>
+		</div>
+	</div>
+
+	<!-- Alertas -->
+	<div *ngIf="alertMessage" class="alert" [ngClass]="{
+		'alert-success': alertType==='success',
+		'alert-danger': alertType==='error',
+		'alert-warning': alertType==='warning'
+	}">
+		{{ alertMessage }}
+	</div>
+
+	<ul class="nav nav-tabs mb-3">
+		<li class="nav-item">
+			<button class="nav-link" [class.active]="activeTab==='pg'" (click)="setTab('pg')">
+				<i class="fas fa-cogs me-1"></i> Parámetros Generales
+			</button>
+		</li>
+		<li class="nav-item">
+			<button class="nav-link" [class.active]="activeTab==='gestion'" (click)="setTab('gestion')">
+				<i class="fas fa-calendar me-1"></i> Gestiones
+			</button>
+		</li>
+	</ul>
+
+	<!-- Tabla: Parámetros Generales -->
+	<div [hidden]="activeTab!=='pg'">
+		<div class="table-responsive">
+			<table class="table align-middle">
+				<thead class="table-light">
+					<tr>
+						<th>ID</th>
+						<th>Nombre</th>
+						<th>Valor</th>
+						<th>Estado</th>
+						<th class="text-nowrap">Acciones</th>
+					</tr>
+				</thead>
+				<tbody>
+					<tr *ngFor="let p of filteredPG">
+						<td>{{ p.id_parametros_generales }}</td>
+						<td>{{ p.nombre }}</td>
+						<td>{{ p.valor }}</td>
+						<td>
+							<span class="badge" [ngClass]="p.estado ? 'bg-success' : 'bg-danger'">{{ p.estado ? 'Activo' : 'Inactivo' }}</span>
+						</td>
+						<td class="text-nowrap">
+							<button class="btn btn-sm btn-outline-primary me-1" (click)="openEditPG(p)"><i class="fas fa-edit"></i></button>
+							<button class="btn btn-sm btn-outline-secondary" (click)="togglePG(p)"><i class="fas" [ngClass]="p.estado ? 'fa-toggle-on' : 'fa-toggle-off'"></i></button>
+							<button class="btn btn-sm btn-outline-danger ms-1" (click)="confirmDelete(p, 'pg')"><i class="fas fa-trash"></i></button>
+						</td>
+					</tr>
+					<tr *ngIf="filteredPG.length === 0">
+						<td colspan="5" class="text-center py-4">
+							<div *ngIf="loading">Cargando parámetros...</div>
+							<div *ngIf="!loading">No se encontraron parámetros</div>
+						</td>
+					</tr>
+				</tbody>
+			</table>
+		</div>
+	</div>
+
+	<!-- Tabla: Gestiones -->
+	<div [hidden]="activeTab!=='gestion'">
+		<div class="table-responsive">
+			<table class="table align-middle">
+				<thead class="table-light">
+					<tr>
+						<th>Gestión</th>
+						<th>Fecha inicio</th>
+						<th>Fecha fin</th>
+						<th>Orden</th>
+						<th>Graduación</th>
+						<th>Estado</th>
+						<th class="text-nowrap">Acciones</th>
+					</tr>
+				</thead>
+				<tbody>
+					<tr *ngFor="let g of filteredGestiones">
+						<td>{{ g.gestion }}</td>
+						<td>{{ g.fecha_ini | date:'d, MMMM, y' }}</td>
+						<td>{{ g.fecha_fin | date:'d, MMMM, y' }}</td>
+						<td>{{ g.orden }}</td>
+						<td>{{ g.fecha_graduacion ? (g.fecha_graduacion | date:'d, MMMM, y') : '-' }}</td>
+						<td>
+							<span class="badge" [ngClass]="g.estado ? 'bg-success' : 'bg-danger'">{{ g.estado ? 'Activo' : 'Inactivo' }}</span>
+						</td>
+						<td class="text-nowrap">
+							<button class="btn btn-sm btn-outline-primary me-1" (click)="openEditG(g)"><i class="fas fa-edit"></i></button>
+							<button class="btn btn-sm btn-outline-secondary" (click)="toggleG(g)"><i class="fas" [ngClass]="g.estado ? 'fa-toggle-on' : 'fa-toggle-off'"></i></button>
+							<button class="btn btn-sm btn-outline-danger ms-1" (click)="confirmDelete(g, 'g')"><i class="fas fa-trash"></i></button>
+						</td>
+					</tr>
+					<tr *ngIf="filteredGestiones.length === 0">
+						<td colspan="7" class="text-center py-4">
+							<div *ngIf="loading">Cargando gestiones...</div>
+							<div *ngIf="!loading">No se encontraron gestiones</div>
+						</td>
+					</tr>
+				</tbody>
+			</table>
+		</div>
+	</div>
+
+	<!-- Modal PG -->
+	<div class="modal" *ngIf="showPgModal">
+		<div class="modal-content modal-lg">
+			<div class="modal-header">
+				<h2 class="modal-title">{{ editingPG ? 'Editar Parámetro' : 'Nuevo Parámetro' }}</h2>
+				<button class="modal-close" (click)="closeModals()">×</button>
+			</div>
+			<div class="modal-body">
+				<form [formGroup]="pgForm">
+					<div class="form-grid">
+						<div class="form-group">
+							<label>Nombre</label>
+							<input class="form-control" type="text" formControlName="nombre" />
+						</div>
+						<div class="form-group">
+							<label>Valor</label>
+							<input class="form-control" type="text" formControlName="valor" />
+						</div>
+						<div class="form-group checkbox-group">
+							<label>Activo</label>
+							<input type="checkbox" formControlName="estado" />
+						</div>
+					</div>
+				</form>
+			</div>
+			<div class="modal-footer">
+				<button class="btn btn-secondary" (click)="closeModals()">Cancelar</button>
+				<button class="btn btn-primary" (click)="savePG()">Guardar</button>
+			</div>
+		</div>
+	</div>
+
+	<!-- Modal Gestión -->
+	<div class="modal" *ngIf="showGModal">
+		<div class="modal-content modal-lg">
+			<div class="modal-header">
+				<h2 class="modal-title">{{ editingG ? 'Editar Gestión' : 'Nueva Gestión' }}</h2>
+				<button class="modal-close" (click)="closeModals()">×</button>
+			</div>
+			<div class="modal-body">
+				<form [formGroup]="gForm">
+					<div class="form-grid">
+						<div class="form-group">
+							<label>Gestión</label>
+							<input class="form-control" type="text" formControlName="gestion" />
+						</div>
+						<div class="form-group">
+							<label>Fecha Inicio</label>
+							<input class="form-control" type="date" formControlName="fecha_ini" />
+						</div>
+						<div class="form-group">
+							<label>Fecha Fin</label>
+							<input class="form-control" type="date" formControlName="fecha_fin" />
+						</div>
+						<div class="form-group">
+							<label>Orden</label>
+							<input class="form-control" type="number" formControlName="orden" />
+						</div>
+						<div class="form-group">
+							<label>Fecha Graduación</label>
+							<input class="form-control" type="date" formControlName="fecha_graduacion" />
+						</div>
+						<div class="form-group checkbox-group">
+							<label>Activo</label>
+							<input type="checkbox" formControlName="estado" />
+						</div>
+					</div>
+				</form>
+			</div>
+			<div class="modal-footer">
+				<button class="btn btn-secondary" (click)="closeModals()">Cancelar</button>
+				<button class="btn btn-primary" (click)="saveG()">Guardar</button>
+			</div>
+		</div>
+	</div>
+
+	<!-- Modal Confirmación Eliminar -->
+	<div class="modal" *ngIf="showDeleteModal">
+		<div class="modal-content">
+			<div class="modal-header">
+				<h2 class="modal-title">Confirmar Eliminación</h2>
+				<button class="modal-close" (click)="cancelDelete()">×</button>
+			</div>
+			<div class="modal-body">
+				<p>¿Seguro que desea eliminar este registro?</p>
+				<p class="modal-warning">Esta acción no se puede deshacer.</p>
+			</div>
+			<div class="modal-footer">
+				<button class="btn btn-secondary" (click)="cancelDelete()">Cancelar</button>
+				<button class="btn btn-danger" (click)="doDelete()">Eliminar</button>
+			</div>
+		</div>
+	</div>
+</div>

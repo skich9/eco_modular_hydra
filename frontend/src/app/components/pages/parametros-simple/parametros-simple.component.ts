@@ -30,6 +30,8 @@ export class ParametrosSimpleComponent implements OnInit {
   loading = false;
   alertMessage = '';
   alertType: 'success' | 'error' | 'warning' = 'success';
+  // Pestañas
+  activeTab: 'pe' | 'ic' = 'pe';
 
   // Modales
   showParamModal = false;
@@ -118,6 +120,11 @@ export class ParametrosSimpleComponent implements OnInit {
         this.loading = false;
       }
     });
+  }
+
+  // PESTAÑAS
+  setTab(tab: 'pe' | 'ic'): void {
+    this.activeTab = tab;
   }
 
   // FILTROS EN TIEMPO REAL

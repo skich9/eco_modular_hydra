@@ -7,8 +7,14 @@
     </div>
   </div>
 
+  <!-- Navegación de pestañas -->
+  <div class="tabs">
+    <button class="tab-btn" [class.active]="activeTab==='pe'" (click)="setTab('pe')">Parámetros Económicos</button>
+    <button class="tab-btn" [class.active]="activeTab==='ic'" (click)="setTab('ic')">Items de Cobro</button>
+  </div>
+
   <!-- Parámetros Económicos -->
-  <section class="card">
+  <section class="card" *ngIf="activeTab === 'pe'">
     <div class="card-header">
       <h2>Parámetros Económicos</h2>
       <div class="actions">
@@ -26,6 +32,8 @@
               <th>Valor</th>
               <th>Descripción</th>
               <th>Estado</th>
+              <th>Creado</th>
+              <th>Actualizado</th>
               <th class="th-actions">Acciones</th>
             </tr>
           </thead>
@@ -38,6 +46,8 @@
               <td>
                 <span class="badge" [class.active]="p.estado" [class.inactive]="!p.estado">{{ p.estado ? 'Activo' : 'Inactivo' }}</span>
               </td>
+              <td>{{ p.created_at ? (p.created_at | date:'d, MMMM, y') : '-' }}</td>
+              <td>{{ p.updated_at ? (p.updated_at | date:'d, MMMM, y') : '-' }}</td>
               <td class="td-actions">
                 <button (click)="toggleParametro(p)">{{ p.estado ? 'Desactivar' : 'Activar' }}</button>
                 <button (click)="openEditParametro(p)">Editar</button>
@@ -45,7 +55,7 @@
               </td>
             </tr>
             <tr *ngIf="filteredParametros.length === 0">
-              <td colspan="6" class="empty">Sin resultados</td>
+              <td colspan="8" class="empty">Sin resultados</td>
             </tr>
           </tbody>
         </table>
@@ -54,7 +64,7 @@
   </section>
 
   <!-- Items de Cobro -->
-  <section class="card">
+  <section class="card" *ngIf="activeTab === 'ic'">
     <div class="card-header">
       <h2>Items de Cobro</h2>
       <div class="actions">
@@ -67,41 +77,35 @@
         <table>
           <thead>
             <tr>
-              <th>ID</th>
+              <th>Nro</th>
               <th>Cód. Impuesto</th>
               <th>Cód. Interno</th>
-              <th>Unidad Medida</th>
               <th>Nombre Servicio</th>
               <th>Créditos</th>
               <th>Costo</th>
               <th>Actividad Económica</th>
               <th>Descripción</th>
-              <th>Tipo Item</th>
               <th>Facturado</th>
               <th>Estado</th>
-              <th>ID Param. Econ.</th>
               <th class="th-actions">Acciones</th>
             </tr>
           </thead>
           <tbody>
-            <tr *ngFor="let i of filteredItems">
-              <td>{{ i.id_item }}</td>
+            <tr *ngFor="let i of filteredItems; let idx = index">
+              <td>{{ idx + 1 }}</td>
               <td>{{ i.codigo_producto_impuesto || '-' }}</td>
               <td>{{ i.codigo_producto_interno }}</td>
-              <td>{{ i.unidad_medida }}</td>
               <td>{{ i.nombre_servicio }}</td>
               <td>{{ i.nro_creditos }}</td>
               <td>{{ i.costo != null ? (i.costo | currency) : '-' }}</td>
               <td>{{ i.actividad_economica }}</td>
               <td>{{ i.descripcion || '-' }}</td>
-              <td>{{ i.tipo_item }}</td>
               <td>
                 <span class="badge" [class.active]="i.facturado" [class.inactive]="!i.facturado">{{ i.facturado ? 'Sí' : 'No' }}</span>
               </td>
               <td>
                 <span class="badge" [class.active]="i.estado" [class.inactive]="!i.estado">{{ i.estado ? 'Activo' : 'Inactivo' }}</span>
               </td>
-              <td>{{ i.id_parametro_economico }}</td>
               <td class="td-actions">
                 <button (click)="toggleItem(i)">{{ i.estado ? 'Desactivar' : 'Activar' }}</button>
                 <button (click)="openEditItem(i)">Editar</button>
@@ -109,7 +113,7 @@
               </td>
             </tr>
             <tr *ngIf="filteredItems.length === 0">
-              <td colspan="14" class="empty">Sin resultados</td>
+              <td colspan="11" class="empty">Sin resultados</td>
             </tr>
           </tbody>
         </table>

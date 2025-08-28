@@ -1,3 +1,12 @@
+CREATE TABLE `parametros_generales` (
+  `id_parametros_generales` bigint PRIMARY KEY NOT NULL AUTO_INCREMENT,
+  `nombre` varchar(150) NOT NULL,
+  `valor` varchar(255) DEFAULT null,
+  `estado` bool NOT NULL,
+  `created_at` timestamp DEFAULT null,
+  `updated_at` timestamp DEFAULT null
+);
+
 CREATE TABLE `cache` (
   `key` varchar(255) PRIMARY KEY NOT NULL,
   `value` mediumtext NOT NULL,
