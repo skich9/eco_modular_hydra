@@ -35,6 +35,26 @@ export class DescuentosConfigComponent implements OnInit {
 	becaCurrentPage = 1;
 	becaTotalPages = 1;
 
+	// UI estado - Descuentos (crear/editar/eliminar)
+	showDefModal = false;
+	defEditing: DefDescuento | null = null;
+	defForm: Partial<DefDescuento> = {};
+	defSaving = false;
+	defError: string | null = null;
+	showDefDeleteModal = false;
+	defToDelete: DefDescuento | null = null;
+	defDeleting = false;
+
+	// UI estado - Becas (crear/editar/eliminar)
+	showBecaModal = false;
+	becaEditing: DefDescuentoBeca | null = null;
+	becaForm: Partial<DefDescuentoBeca> = {};
+	becaSaving = false;
+	becaError: string | null = null;
+	showBecaDeleteModal = false;
+	becaToDelete: DefDescuentoBeca | null = null;
+	becaDeleting = false;
+
 	constructor(
 		private defSrv: DefDescuentosService,
 		private becaSrv: DefDescuentosBecaService
@@ -158,6 +178,174 @@ export class DescuentosConfigComponent implements OnInit {
 				}
 			},
 			error: (err: any) => console.error('Error al cambiar estado', err)
+		});
+	}
+
+	// CRUD Descuentos
+	openNewDef(): void {
+		this.defEditing = null;
+		this.defForm = { nombre_descuento: '', descripcion: null, porcentaje: true, monto: 0, estado: true } as Partial<DefDescuento>;
+		this.defError = null;
+		this.showDefModal = true;
+	}
+
+	openEditDef(item: DefDescuento): void {
+		this.defEditing = item;
+		this.defForm = { ...item };
+		this.defError = null;
+		this.showDefModal = true;
+	}
+
+	closeDefModal(): void {
+		this.showDefModal = false;
+		this.defEditing = null;
+		this.defForm = {};
+		this.defSaving = false;
+		this.defError = null;
+	}
+
+	saveDef(): void {
+		if (this.defSaving) return;
+		this.defSaving = true;
+		this.defError = null;
+		const payload: any = {
+			nombre_descuento: this.defForm.nombre_descuento,
+			descripcion: this.defForm.descripcion ?? null,
+			monto: Number(this.defForm.monto ?? 0),
+			porcentaje: !!this.defForm.porcentaje,
+			estado: !!this.defForm.estado,
+		};
+		const obs = this.defEditing
+			? this.defSrv.update(this.defEditing.cod_descuento, payload)
+			: this.defSrv.create(payload);
+		obs.subscribe({
+			next: (res) => {
+				if (res?.success && res.data) {
+					if (this.defEditing) {
+						const idx = this.defAll.findIndex(x => x.cod_descuento === res.data.cod_descuento);
+						if (idx !== -1) this.defAll[idx] = res.data;
+					} else {
+						this.defAll = [res.data, ...this.defAll];
+					}
+					this.applyFiltersDef();
+					this.closeDefModal();
+				}
+				this.defSaving = false;
+			},
+			error: (err) => {
+				this.defError = err?.error?.message || 'Error al guardar';
+				this.defSaving = false;
+			}
+		});
+	}
+
+	confirmDeleteDef(item: DefDescuento): void {
+		this.defToDelete = item;
+		this.showDefDeleteModal = true;
+	}
+
+	cancelDeleteDef(): void {
+		this.showDefDeleteModal = false;
+		this.defToDelete = null;
+		this.defDeleting = false;
+	}
+
+	deleteDef(): void {
+		if (!this.defToDelete || this.defDeleting) return;
+		this.defDeleting = true;
+		this.defSrv.delete(this.defToDelete.cod_descuento).subscribe({
+			next: (res) => {
+				if (res?.success) {
+					this.defAll = this.defAll.filter(x => x.cod_descuento !== this.defToDelete!.cod_descuento);
+					this.applyFiltersDef();
+				}
+				this.cancelDeleteDef();
+			},
+			error: () => { this.cancelDeleteDef(); }
+		});
+	}
+
+	// CRUD Becas
+	openNewBeca(): void {
+		this.becaEditing = null;
+		this.becaForm = { nombre_beca: '', descripcion: null, porcentaje: true, monto: 0, estado: true } as Partial<DefDescuentoBeca>;
+		this.becaError = null;
+		this.showBecaModal = true;
+	}
+
+	openEditBeca(item: DefDescuentoBeca): void {
+		this.becaEditing = item;
+		this.becaForm = { ...item };
+		this.becaError = null;
+		this.showBecaModal = true;
+	}
+
+	closeBecaModal(): void {
+		this.showBecaModal = false;
+		this.becaEditing = null;
+		this.becaForm = {};
+		this.becaSaving = false;
+		this.becaError = null;
+	}
+
+	saveBeca(): void {
+		if (this.becaSaving) return;
+		this.becaSaving = true;
+		this.becaError = null;
+		const payload: any = {
+			nombre_beca: this.becaForm.nombre_beca,
+			descripcion: this.becaForm.descripcion ?? null,
+			monto: Number(this.becaForm.monto ?? 0),
+			porcentaje: !!this.becaForm.porcentaje,
+			estado: !!this.becaForm.estado,
+		};
+		const obs = this.becaEditing
+			? this.becaSrv.update(this.becaEditing.cod_beca, payload)
+			: this.becaSrv.create(payload);
+		obs.subscribe({
+			next: (res) => {
+				if (res?.success && res.data) {
+					if (this.becaEditing) {
+						const idx = this.becaAll.findIndex(x => x.cod_beca === res.data.cod_beca);
+						if (idx !== -1) this.becaAll[idx] = res.data;
+					} else {
+						this.becaAll = [res.data, ...this.becaAll];
+					}
+					this.applyFiltersBeca();
+					this.closeBecaModal();
+				}
+				this.becaSaving = false;
+			},
+			error: (err) => {
+				this.becaError = err?.error?.message || 'Error al guardar';
+				this.becaSaving = false;
+			}
+		});
+	}
+
+	confirmDeleteBeca(item: DefDescuentoBeca): void {
+		this.becaToDelete = item;
+		this.showBecaDeleteModal = true;
+	}
+
+	cancelDeleteBeca(): void {
+		this.showBecaDeleteModal = false;
+		this.becaToDelete = null;
+		this.becaDeleting = false;
+	}
+
+	deleteBeca(): void {
+		if (!this.becaToDelete || this.becaDeleting) return;
+		this.becaDeleting = true;
+		this.becaSrv.delete(this.becaToDelete.cod_beca).subscribe({
+			next: (res) => {
+				if (res?.success) {
+					this.becaAll = this.becaAll.filter(x => x.cod_beca !== this.becaToDelete!.cod_beca);
+					this.applyFiltersBeca();
+				}
+				this.cancelDeleteBeca();
+			},
+			error: () => { this.cancelDeleteBeca(); }
 		});
 	}
 }

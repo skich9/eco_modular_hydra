@@ -40,4 +40,22 @@ export class DefDescuentosService {
 			map((res: any) => ({ success: !!res?.success, data: this.normalize(res?.data), message: res?.message }))
 		);
 	}
+
+	create(payload: Partial<DefDescuento>): Observable<{ success: boolean; data: DefDescuento; message?: string }> {
+		return this.http.post<any>(this.apiUrl, payload).pipe(
+			map((res: any) => ({ success: !!res?.success, data: this.normalize(res?.data), message: res?.message }))
+		);
+	}
+
+	update(id: number, payload: Partial<DefDescuento>): Observable<{ success: boolean; data: DefDescuento; message?: string }> {
+		return this.http.put<any>(`${this.apiUrl}/${id}`, payload).pipe(
+			map((res: any) => ({ success: !!res?.success, data: this.normalize(res?.data), message: res?.message }))
+		);
+	}
+
+	delete(id: number): Observable<{ success: boolean; message?: string }> {
+		return this.http.delete<any>(`${this.apiUrl}/${id}`).pipe(
+			map((res: any) => ({ success: !!res?.success, message: res?.message }))
+		);
+	}
 }

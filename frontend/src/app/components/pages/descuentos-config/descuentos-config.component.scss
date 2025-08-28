@@ -14,3 +14,94 @@
 .container .form-control {
   min-width: 240px;
 }
+
+/* Modal styles (reused pattern) */
+.modal {
+	position: fixed;
+	top: 0;
+	left: 0;
+	width: 100%;
+	height: 100%;
+	background-color: rgba(0, 0, 0, 0.5);
+	display: flex;
+	justify-content: center;
+	align-items: center;
+	z-index: 1000;
+}
+
+.modal-content {
+	background-color: #fff;
+	border-radius: 8px;
+	max-width: 500px;
+	width: 90%;
+	box-shadow: 0 10px 30px rgba(0, 0, 0, 0.2);
+}
+
+.modal-content.modal-lg {
+	max-width: 800px;
+}
+
+.modal-header {
+	display: flex;
+	justify-content: space-between;
+	align-items: center;
+	padding: 1rem;
+	border-bottom: 1px solid #e9ecef;
+}
+
+.modal-title {
+	margin: 0;
+	font-size: 1.25rem;
+}
+
+.modal-close {
+	background: none;
+	border: none;
+	font-size: 1.5rem;
+	cursor: pointer;
+	color: #6c757d;
+}
+
+.modal-body {
+	padding: 1rem;
+}
+
+.modal-warning {
+	color: #dc3545;
+	font-weight: 500;
+}
+
+.modal-footer {
+	display: flex;
+	justify-content: flex-end;
+	gap: 0.5rem;
+	padding: 1rem;
+	border-top: 1px solid #e9ecef;
+}
+
+.form-grid {
+	display: grid;
+	grid-template-columns: repeat(2, minmax(0, 1fr));
+	gap: 1rem;
+}
+
+.form-group {
+	display: flex;
+	flex-direction: column;
+	gap: 0.25rem;
+}
+
+.checkbox-group {
+	flex-direction: row;
+	align-items: center;
+	gap: 0.5rem;
+}
+
+.server-error {
+	color: #dc3545;
+	margin-top: 0.5rem;
+}
+
+@media (max-width: 767.98px) {
+	.form-grid { grid-template-columns: 1fr; }
+}
