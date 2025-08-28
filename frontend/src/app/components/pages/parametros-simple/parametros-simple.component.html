@@ -1,5 +1,5 @@
-<div class="page">
-  <h1>Parámetros del Sistema</h1>
+<div class="page container py-3">
+  <h1 class="h4 m-0 mb-3">Parámetros del Sistema</h1>
 
   <div class="alerts" *ngIf="alertMessage">
     <div class="alert" [class.success]="alertType==='success'" [class.error]="alertType==='error'" [class.warning]="alertType==='warning'">
@@ -8,24 +8,32 @@
   </div>
 
   <!-- Navegación de pestañas -->
-  <div class="tabs">
-    <button class="tab-btn" [class.active]="activeTab==='pe'" (click)="setTab('pe')">Parámetros Económicos</button>
-    <button class="tab-btn" [class.active]="activeTab==='ic'" (click)="setTab('ic')">Items de Cobro</button>
-  </div>
+  <ul class="nav nav-tabs mb-3">
+    <li class="nav-item">
+      <button class="nav-link" [class.active]="activeTab==='pe'" (click)="setTab('pe')">
+        <i class="fas fa-coins me-1"></i> Parámetros Económicos
+      </button>
+    </li>
+    <li class="nav-item">
+      <button class="nav-link" [class.active]="activeTab==='ic'" (click)="setTab('ic')">
+        <i class="fas fa-file-invoice-dollar me-1"></i> Items de Cobro
+      </button>
+    </li>
+  </ul>
 
   <!-- Parámetros Económicos -->
   <section class="card" *ngIf="activeTab === 'pe'">
-    <div class="card-header">
-      <h2>Parámetros Económicos</h2>
-      <div class="actions">
-        <input type="text" placeholder="Buscar por nombre o descripción..." [(ngModel)]="searchPE" />
-        <button class="primary" (click)="openNewParametro()">Nuevo</button>
+    <div class="d-flex flex-wrap justify-content-between align-items-center mb-3 gap-2">
+      <h2 class="h5 m-0">Parámetros Económicos</h2>
+      <div class="d-flex gap-2 align-items-center">
+        <input type="text" class="form-control" placeholder="Buscar por nombre o descripción..." [(ngModel)]="searchPE" />
+        <button class="btn btn-primary" (click)="openNewParametro()"><i class="fas fa-plus me-1"></i> Nuevo</button>
       </div>
     </div>
     <div class="card-body">
-      <div class="table-wrapper">
-        <table>
-          <thead>
+      <div class="table-responsive">
+        <table class="table align-middle">
+          <thead class="table-light">
             <tr>
               <th>ID</th>
               <th>Nombre</th>
@@ -34,28 +42,36 @@
               <th>Estado</th>
               <th>Creado</th>
               <th>Actualizado</th>
-              <th class="th-actions">Acciones</th>
+              <th class="text-nowrap">Acciones</th>
             </tr>
           </thead>
           <tbody>
             <tr *ngFor="let p of filteredParametros">
               <td>{{ p.id_parametro_economico }}</td>
-              <td>{{ p.nombre }}</td>
+              <td>
+                <div class="fw-semibold">{{ p.nombre }}</div>
+              </td>
               <td>{{ p.valor }}</td>
               <td>{{ p.descripcion }}</td>
               <td>
-                <span class="badge" [class.active]="p.estado" [class.inactive]="!p.estado">{{ p.estado ? 'Activo' : 'Inactivo' }}</span>
+                <span class="badge" [ngClass]="p.estado ? 'bg-success' : 'bg-danger'">{{ p.estado ? 'Activo' : 'Inactivo' }}</span>
               </td>
-              <td>{{ p.created_at ? (p.created_at | date:'d, MMMM, y') : '-' }}</td>
-              <td>{{ p.updated_at ? (p.updated_at | date:'d, MMMM, y') : '-' }}</td>
-              <td class="td-actions">
-                <button (click)="toggleParametro(p)">{{ p.estado ? 'Desactivar' : 'Activar' }}</button>
-                <button (click)="openEditParametro(p)">Editar</button>
-                <button class="danger" (click)="confirmDelete(p, 'pe')">Eliminar</button>
+              <td>{{ p.created_at ? (p.created_at | date:'dd/MM/yyyy') : '-' }}</td>
+              <td>{{ p.updated_at ? (p.updated_at | date:'dd/MM/yyyy') : '-' }}</td>
+              <td class="text-nowrap">
+                <button class="btn btn-sm btn-outline-secondary me-1" title="Cambiar estado" (click)="toggleParametro(p)">
+                  <i class="fas" [ngClass]="p.estado ? 'fa-toggle-on' : 'fa-toggle-off'"></i>
+                </button>
+                <button class="btn btn-sm btn-outline-primary me-1" title="Editar" (click)="openEditParametro(p)">
+                  <i class="fas fa-edit"></i>
+                </button>
+                <button class="btn btn-sm btn-outline-danger" title="Eliminar" (click)="confirmDelete(p, 'pe')">
+                  <i class="fas fa-trash"></i>
+                </button>
               </td>
             </tr>
             <tr *ngIf="filteredParametros.length === 0">
-              <td colspan="8" class="empty">Sin resultados</td>
+              <td colspan="8" class="text-center py-4">Sin resultados</td>
             </tr>
           </tbody>
         </table>
@@ -65,17 +81,17 @@
 
   <!-- Items de Cobro -->
   <section class="card" *ngIf="activeTab === 'ic'">
-    <div class="card-header">
-      <h2>Items de Cobro</h2>
-      <div class="actions">
-        <input type="text" placeholder="Buscar por nombre, código o descripción..." [(ngModel)]="searchIC" />
-        <button class="primary" (click)="openNewItem()">Nuevo</button>
+    <div class="d-flex flex-wrap justify-content-between align-items-center mb-3 gap-2">
+      <h2 class="h5 m-0">Items de Cobro</h2>
+      <div class="d-flex gap-2 align-items-center">
+        <input type="text" class="form-control" placeholder="Buscar por nombre, código o descripción..." [(ngModel)]="searchIC" />
+        <button class="btn btn-primary" (click)="openNewItem()"><i class="fas fa-plus me-1"></i> Nuevo</button>
       </div>
     </div>
     <div class="card-body">
-      <div class="table-wrapper scroll-x">
-        <table>
-          <thead>
+      <div class="table-responsive">
+        <table class="table align-middle">
+          <thead class="table-light">
             <tr>
               <th>Nro</th>
               <th>Cód. Impuesto</th>
@@ -87,7 +103,7 @@
               <th>Descripción</th>
               <th>Facturado</th>
               <th>Estado</th>
-              <th class="th-actions">Acciones</th>
+              <th class="text-nowrap">Acciones</th>
             </tr>
           </thead>
           <tbody>
@@ -95,25 +111,33 @@
               <td>{{ idx + 1 }}</td>
               <td>{{ i.codigo_producto_impuesto || '-' }}</td>
               <td>{{ i.codigo_producto_interno }}</td>
-              <td>{{ i.nombre_servicio }}</td>
+              <td>
+                <div class="fw-semibold">{{ i.nombre_servicio }}</div>
+              </td>
               <td>{{ i.nro_creditos }}</td>
               <td>{{ i.costo != null ? (i.costo | currency) : '-' }}</td>
               <td>{{ i.actividad_economica }}</td>
               <td>{{ i.descripcion || '-' }}</td>
               <td>
-                <span class="badge" [class.active]="i.facturado" [class.inactive]="!i.facturado">{{ i.facturado ? 'Sí' : 'No' }}</span>
+                <span class="badge" [ngClass]="i.facturado ? 'bg-success' : 'bg-danger'">{{ i.facturado ? 'Sí' : 'No' }}</span>
               </td>
               <td>
-                <span class="badge" [class.active]="i.estado" [class.inactive]="!i.estado">{{ i.estado ? 'Activo' : 'Inactivo' }}</span>
+                <span class="badge" [ngClass]="i.estado ? 'bg-success' : 'bg-danger'">{{ i.estado ? 'Activo' : 'Inactivo' }}</span>
               </td>
-              <td class="td-actions">
-                <button (click)="toggleItem(i)">{{ i.estado ? 'Desactivar' : 'Activar' }}</button>
-                <button (click)="openEditItem(i)">Editar</button>
-                <button class="danger" (click)="confirmDelete(i, 'ic')">Eliminar</button>
+              <td class="text-nowrap">
+                <button class="btn btn-sm btn-outline-secondary me-1" title="Cambiar estado" (click)="toggleItem(i)">
+                  <i class="fas" [ngClass]="i.estado ? 'fa-toggle-on' : 'fa-toggle-off'"></i>
+                </button>
+                <button class="btn btn-sm btn-outline-primary me-1" title="Editar" (click)="openEditItem(i)">
+                  <i class="fas fa-edit"></i>
+                </button>
+                <button class="btn btn-sm btn-outline-danger" title="Eliminar" (click)="confirmDelete(i, 'ic')">
+                  <i class="fas fa-trash"></i>
+                </button>
               </td>
             </tr>
             <tr *ngIf="filteredItems.length === 0">
-              <td colspan="11" class="empty">Sin resultados</td>
+              <td colspan="11" class="text-center py-4">Sin resultados</td>
             </tr>
           </tbody>
         </table>
@@ -144,8 +168,8 @@
           </label>
         </div>
         <div class="modal-actions">
-          <button type="submit" class="primary" [disabled]="parametroForm.invalid">Guardar</button>
-          <button type="button" (click)="closeModals()">Cancelar</button>
+          <button type="submit" class="btn btn-primary" [disabled]="parametroForm.invalid">Guardar</button>
+          <button type="button" class="btn btn-secondary" (click)="closeModals()">Cancelar</button>
         </div>
       </form>
     </div>
@@ -228,8 +252,8 @@
           </label>
         </div>
         <div class="modal-actions">
-          <button type="submit" class="primary" [disabled]="itemForm.invalid">Guardar</button>
-          <button type="button" (click)="closeModals()">Cancelar</button>
+          <button type="submit" class="btn btn-primary" [disabled]="itemForm.invalid">Guardar</button>
+          <button type="button" class="btn btn-secondary" (click)="closeModals()">Cancelar</button>
         </div>
       </form>
     </div>
@@ -241,8 +265,8 @@
       <h3>Confirmar eliminación</h3>
       <p>¿Seguro que deseas eliminar este registro?</p>
       <div class="modal-actions">
-        <button class="danger" (click)="doDelete()">Eliminar</button>
-        <button (click)="cancelDelete()">Cancelar</button>
+        <button class="btn btn-danger" (click)="doDelete()">Eliminar</button>
+        <button class="btn btn-secondary" (click)="cancelDelete()">Cancelar</button>
       </div>
     </div>
   </div>
