@@ -51,16 +51,18 @@ export const routes: Routes = [
                 loadComponent: () => import('./components/pages/academico/academico.component').then(m => m.AcademicoComponent)
             },
             
+			// Ruta para descuentos
+			{
+				path: 'descuentos',
+				loadComponent: () => import('./components/pages/descuentos-config/descuentos-config.component').then(m => m.DescuentosConfigComponent)
+			},
+			
 			// Rutas para parámetros del sistema
 			{
 				path: 'parametros',
 				loadComponent: () => import('./components/pages/parametros-simple/parametros-simple.component').then(m => m.ParametrosSimpleComponent)
 			},
-			// Ruta para descuentos
-			{
-				path: 'descuentos',
-				loadComponent: () => import('./components/pages/descuentos/descuentos.component').then(m => m.DescuentosComponent)
-			},
+
 			
 			// Ruta por defecto
 			{ path: '', redirectTo: 'dashboard', pathMatch: 'full' }

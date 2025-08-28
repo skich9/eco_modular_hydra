@@ -160,26 +160,41 @@
           <label>
             Cód. Interno
             <input type="text" formControlName="codigo_producto_interno" />
+            <small class="error" *ngIf="itemForm.get('codigo_producto_interno')?.touched && itemForm.get('codigo_producto_interno')?.hasError('required')">Requerido.</small>
+            <small class="error" *ngIf="itemForm.get('codigo_producto_interno')?.touched && itemForm.get('codigo_producto_interno')?.hasError('maxlength')">Máximo 15 caracteres.</small>
+            <small class="error" *ngIf="itemForm.get('codigo_producto_interno')?.touched && itemForm.get('codigo_producto_interno')?.hasError('backend')">{{ itemForm.get('codigo_producto_interno')?.errors?.['message'] }}</small>
           </label>
           <label>
             Unidad Medida
             <input type="number" formControlName="unidad_medida" />
+            <small class="error" *ngIf="itemForm.get('unidad_medida')?.touched && itemForm.get('unidad_medida')?.hasError('required')">Requerido.</small>
+            <small class="error" *ngIf="itemForm.get('unidad_medida')?.touched && itemForm.get('unidad_medida')?.hasError('backend')">{{ itemForm.get('unidad_medida')?.errors?.['message'] }}</small>
           </label>
           <label>
             Nombre Servicio
             <input type="text" formControlName="nombre_servicio" />
+            <small class="error" *ngIf="itemForm.get('nombre_servicio')?.touched && itemForm.get('nombre_servicio')?.hasError('required')">Requerido.</small>
+            <small class="error" *ngIf="itemForm.get('nombre_servicio')?.touched && itemForm.get('nombre_servicio')?.hasError('maxlength')">Máximo 100 caracteres.</small>
+            <small class="error" *ngIf="itemForm.get('nombre_servicio')?.touched && itemForm.get('nombre_servicio')?.hasError('backend')">{{ itemForm.get('nombre_servicio')?.errors?.['message'] }}</small>
           </label>
           <label>
             Créditos
             <input type="number" formControlName="nro_creditos" />
+            <small class="error" *ngIf="itemForm.get('nro_creditos')?.touched && itemForm.get('nro_creditos')?.hasError('required')">Requerido.</small>
+            <small class="error" *ngIf="itemForm.get('nro_creditos')?.touched && itemForm.get('nro_creditos')?.hasError('min')">Debe ser mayor o igual a 0.</small>
+            <small class="error" *ngIf="itemForm.get('nro_creditos')?.touched && itemForm.get('nro_creditos')?.hasError('backend')">{{ itemForm.get('nro_creditos')?.errors?.['message'] }}</small>
           </label>
           <label>
             Costo
             <input type="number" step="0.01" formControlName="costo" />
+            <small class="error" *ngIf="itemForm.get('costo')?.touched && itemForm.get('costo')?.hasError('min')">Debe ser mayor o igual a 0.</small>
+            <small class="error" *ngIf="itemForm.get('costo')?.touched && itemForm.get('costo')?.hasError('backend')">{{ itemForm.get('costo')?.errors?.['message'] }}</small>
           </label>
           <label>
             Actividad Económica
             <input type="text" formControlName="actividad_economica" />
+            <small class="error" *ngIf="itemForm.get('actividad_economica')?.touched && itemForm.get('actividad_economica')?.hasError('required')">Requerido.</small>
+            <small class="error" *ngIf="itemForm.get('actividad_economica')?.touched && itemForm.get('actividad_economica')?.hasError('backend')">{{ itemForm.get('actividad_economica')?.errors?.['message'] }}</small>
           </label>
           <label class="col-span-2">
             Descripción (máx. 50)
@@ -188,6 +203,9 @@
           <label>
             Tipo Item
             <input type="text" formControlName="tipo_item" />
+            <small class="error" *ngIf="itemForm.get('tipo_item')?.touched && itemForm.get('tipo_item')?.hasError('required')">Requerido.</small>
+            <small class="error" *ngIf="itemForm.get('tipo_item')?.touched && itemForm.get('tipo_item')?.hasError('maxlength')">Máximo 40 caracteres.</small>
+            <small class="error" *ngIf="itemForm.get('tipo_item')?.touched && itemForm.get('tipo_item')?.hasError('backend')">{{ itemForm.get('tipo_item')?.errors?.['message'] }}</small>
           </label>
           <label>
             Parámetro Económico
@@ -195,6 +213,8 @@
               <option [ngValue]="null">Seleccione...</option>
               <option *ngFor="let p of parametros" [ngValue]="p.id_parametro_economico">{{ p.nombre }}</option>
             </select>
+            <small class="error" *ngIf="itemForm.get('id_parametro_economico')?.touched && itemForm.get('id_parametro_economico')?.hasError('required')">Requerido.</small>
+            <small class="error" *ngIf="itemForm.get('id_parametro_economico')?.touched && itemForm.get('id_parametro_economico')?.hasError('backend')">{{ itemForm.get('id_parametro_economico')?.errors?.['message'] }}</small>
           </label>
           <label class="row-center">
             <input type="checkbox" formControlName="facturado" /> Facturado

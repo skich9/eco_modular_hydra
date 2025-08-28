@@ -1,0 +1,128 @@
+<div class="container py-3">
+	<div class="d-flex flex-wrap justify-content-between align-items-center mb-3 gap-2">
+		<h1 class="h4 m-0">Configuración de Descuentos</h1>
+		<div class="d-flex gap-2 align-items-center">
+			<div class="position-relative">
+				<input type="text" [(ngModel)]="searchTerm" (input)="onSearch()" class="form-control pe-5" placeholder="Buscar...">
+				<button class="btn btn-link position-absolute top-50 end-0 translate-middle-y text-muted" (click)="onSearch()">
+					<i class="fas fa-search"></i>
+				</button>
+			</div>
+		</div>
+	</div>
+
+	<ul class="nav nav-tabs mb-3">
+		<li class="nav-item">
+			<button class="nav-link" [class.active]="activeTab==='descuentos'" (click)="setTab('descuentos')">
+				<i class="fas fa-percent me-1"></i> Configuración Descuentos
+			</button>
+		</li>
+		<li class="nav-item">
+			<button class="nav-link" [class.active]="activeTab==='becas'" (click)="setTab('becas')">
+				<i class="fas fa-graduation-cap me-1"></i> Configuración Becas
+			</button>
+		</li>
+	</ul>
+
+	<!-- Tabla: Definición de Descuentos -->
+	<div [hidden]="activeTab!=='descuentos'">
+		<div class="table-responsive">
+			<table class="table align-middle">
+				<thead class="table-light">
+					<tr>
+						<th>#</th>
+						<th>Nombre</th>
+						<th>Tipo</th>
+						<th class="text-end">Valor</th>
+						<th>Estado</th>
+						<th class="text-nowrap">Acciones</th>
+					</tr>
+				</thead>
+				<tbody>
+					<tr *ngFor="let i of defPage">
+						<td>{{ i.cod_descuento }}</td>
+						<td>
+							<div class="fw-semibold">{{ i.nombre_descuento }}</div>
+							<div class="text-muted small" *ngIf="i.descripcion">{{ i.descripcion }}</div>
+						</td>
+						<td>
+							<span class="badge bg-info" *ngIf="i.porcentaje">Porcentaje</span>
+							<span class="badge bg-secondary" *ngIf="!i.porcentaje">Monto fijo</span>
+						</td>
+						<td class="text-end">{{ i.porcentaje ? (i.monto | number:'1.0-2') + '%' : (i.monto | number:'1.0-2') }}</td>
+						<td>
+							<span class="badge" [ngClass]="i.estado ? 'bg-success' : 'bg-danger'">{{ i.estado ? 'Activo' : 'Inactivo' }}</span>
+						</td>
+						<td class="text-nowrap">
+							<button class="btn btn-sm btn-outline-secondary" title="Cambiar estado" (click)="toggleDef(i)">
+								<i class="fas" [ngClass]="i.estado ? 'fa-toggle-on' : 'fa-toggle-off'"></i>
+							</button>
+						</td>
+					</tr>
+					<tr *ngIf="defPage.length === 0">
+						<td colspan="6" class="text-center py-4">
+							<div *ngIf="defLoading">Cargando definiciones...</div>
+							<div *ngIf="!defLoading">No se encontraron definiciones de descuentos</div>
+						</td>
+					</tr>
+				</tbody>
+			</table>
+		</div>
+		<div class="d-flex justify-content-center align-items-center gap-2" *ngIf="defFiltered.length > 0">
+			<button class="btn btn-light" [disabled]="defCurrentPage===1" (click)="goToPageDef(defCurrentPage-1)"><i class="fas fa-chevron-left"></i></button>
+			<span class="text-muted">Página {{defCurrentPage}} de {{defTotalPages}}</span>
+			<button class="btn btn-light" [disabled]="defCurrentPage===defTotalPages" (click)="goToPageDef(defCurrentPage+1)"><i class="fas fa-chevron-right"></i></button>
+		</div>
+	</div>
+
+	<!-- Tabla: Definición de Becas -->
+	<div [hidden]="activeTab!=='becas'">
+		<div class="table-responsive">
+			<table class="table align-middle">
+				<thead class="table-light">
+					<tr>
+						<th>#</th>
+						<th>Nombre</th>
+						<th>Tipo</th>
+						<th class="text-end">Valor</th>
+						<th>Estado</th>
+						<th class="text-nowrap">Acciones</th>
+					</tr>
+				</thead>
+				<tbody>
+					<tr *ngFor="let i of becaPage">
+						<td>{{ i.cod_beca }}</td>
+						<td>
+							<div class="fw-semibold">{{ i.nombre_beca }}</div>
+							<div class="text-muted small" *ngIf="i.descripcion">{{ i.descripcion }}</div>
+						</td>
+						<td>
+							<span class="badge bg-info" *ngIf="i.porcentaje">Porcentaje</span>
+							<span class="badge bg-secondary" *ngIf="!i.porcentaje">Monto fijo</span>
+						</td>
+						<td class="text-end">{{ i.porcentaje ? (i.monto | number:'1.0-2') + '%' : (i.monto | number:'1.0-2') }}</td>
+						<td>
+							<span class="badge" [ngClass]="i.estado ? 'bg-success' : 'bg-danger'">{{ i.estado ? 'Activo' : 'Inactivo' }}</span>
+						</td>
+						<td class="text-nowrap">
+							<button class="btn btn-sm btn-outline-secondary" title="Cambiar estado" (click)="toggleBeca(i)">
+								<i class="fas" [ngClass]="i.estado ? 'fa-toggle-on' : 'fa-toggle-off'"></i>
+							</button>
+						</td>
+					</tr>
+					<tr *ngIf="becaPage.length === 0">
+						<td colspan="6" class="text-center py-4">
+							<div *ngIf="becaLoading">Cargando definiciones...</div>
+							<div *ngIf="!becaLoading">No se encontraron definiciones de becas</div>
+						</td>
+					</tr>
+				</tbody>
+			</table>
+		</div>
+		<div class="d-flex justify-content-center align-items-center gap-2" *ngIf="becaFiltered.length > 0">
+			<button class="btn btn-light" [disabled]="becaCurrentPage===1" (click)="goToPageBeca(becaCurrentPage-1)"><i class="fas fa-chevron-left"></i></button>
+			<span class="text-muted">Página {{becaCurrentPage}} de {{becaTotalPages}}</span>
+			<button class="btn btn-light" [disabled]="becaCurrentPage===becaTotalPages" (click)="goToPageBeca(becaCurrentPage+1)"><i class="fas fa-chevron-right"></i></button>
+		</div>
+	</div>
+</div>
