@@ -4,6 +4,7 @@ use Illuminate\Http\Request;
 use Illuminate\Support\Facades\Route;
 use App\Http\Controllers\Api\ParametrosEconomicosController;
 use App\Http\Controllers\Api\ItemsCobroController;
+use App\Http\Controllers\Api\CobroController;
 use App\Http\Controllers\Api\CarreraController as ApiCarreraController;
 use App\Http\Controllers\Api\MateriaController as ApiMateriaController;
 use App\Http\Controllers\CostoMateriaController;
@@ -46,6 +47,13 @@ Route::patch('parametros-economicos/{id}/toggle-status', [ParametrosEconomicosCo
 // Recursos: Items de Cobro
 Route::apiResource('items-cobro', ItemsCobroController::class);
 Route::patch('items-cobro/{id}/toggle-status', [ItemsCobroController::class, 'toggleStatus']);
+
+// Cobros (clave compuesta)
+Route::get('cobros', [CobroController::class, 'index']);
+Route::post('cobros', [CobroController::class, 'store']);
+Route::get('cobros/{cod_ceta}/{cod_pensum}/{tipo_inscripcion}/{nro_cobro}', [CobroController::class, 'show']);
+Route::put('cobros/{cod_ceta}/{cod_pensum}/{tipo_inscripcion}/{nro_cobro}', [CobroController::class, 'update']);
+Route::delete('cobros/{cod_ceta}/{cod_pensum}/{tipo_inscripcion}/{nro_cobro}', [CobroController::class, 'destroy']);
 
 // Descuentos
 Route::get('descuentos/active', [DescuentoController::class, 'active']);

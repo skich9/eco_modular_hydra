@@ -85,7 +85,7 @@ CREATE TABLE `cuentas_bancarias` (
 );
 
 CREATE TABLE `cuotas` (
-  `id` bigint PRIMARY KEY NOT NULL AUTO_INCREMENT,
+  `id_cuota` bigint PRIMARY KEY NOT NULL AUTO_INCREMENT,
   `nombre` varchar(255) NOT NULL,
   `descripcion` text,
   `monto` decimal(10,2) NOT NULL,
@@ -398,24 +398,25 @@ CREATE TABLE `migrations` (
 );
 
 CREATE TABLE `cobro` (
-  `cod_ceta` varchar(255) NOT NULL,
-  `cod_pensum` varchar(255) NOT NULL,
+  `cod_ceta` bigint NOT NULL,
+  `cod_pensum` varchar(50) NOT NULL,
   `tipo_inscripcion` varchar(255) NOT NULL,
-  `cuota_id` bigint DEFAULT null,
+  `id_cuota` bigint DEFAULT null,
+  `gestion` varchar(255) DEFAULT null,
   `nro_cobro` int NOT NULL,
   `monto` decimal(10,2) NOT NULL,
   `fecha_cobro` date NOT NULL,
   `cobro_completo` bool DEFAULT null,
   `observaciones` text,
   `id_usuario` bigint NOT NULL,
-  `id_formadeCobro` varchar(255) NOT NULL,
+  `id_forma_cobro` varchar(255) NOT NULL,
   `pu_mensualidad` decimal(10,2) NOT NULL,
   `order` int(2) NOT NULL,
   `descuento` varchar(255) DEFAULT null,
-  `id_cuenta_bancaria` bigint DEFAULT null,
-  `id_factura` bigint DEFAULT null,
-  `id_recibo` bigint DEFAULT null,
-  `id_item_service` int DEFAULT null,
+  `id_cuentas_bancarias` int DEFAULT null,
+  `nro_factura` int DEFAULT null,
+  `nro_recibo` int DEFAULT null,
+  `id_item` int DEFAULT null,
   `id_asignacion_costo` int DEFAULT null,
   `created_at` timestamp DEFAULT null,
   `updated_at` timestamp DEFAULT null,
@@ -425,13 +426,15 @@ CREATE TABLE `cobro` (
 CREATE TABLE `cobros_detalle_regular` (
   `nro_cobro` int PRIMARY KEY NOT NULL,
   `cod_inscrip` bigint NOT NULL,
+  `pu_mensualidad` decimal(10,2) NOT NULL,
+  `turno` varchar(100) NOT NULL,
   `created_at` timestamp DEFAULT null,
   `updated_at` timestamp DEFAULT null
 );
 
 CREATE TABLE `cobros_detalle_multa` (
   `nro_cobro` int PRIMARY KEY NOT NULL,
-  `gestion` varchar(255) NOT NULL,
+  `pu_multa` decimal(10,2) NOT NULL,
   `dias_multa` int NOT NULL,
   `created_at` timestamp DEFAULT null,
   `updated_at` timestamp DEFAULT null
@@ -845,11 +848,11 @@ CREATE INDEX `matriculas_inscripcion_id_foreign` ON `matriculas` (`cod_inscrip`)
 
 CREATE INDEX `pagos_usuario_id_foreign` ON `cobro` (`id_usuario`) USING BTREE;
 
-CREATE INDEX `pagos_cuota_id_foreign` ON `cobro` (`cuota_id`) USING BTREE;
+CREATE INDEX `pagos_cuota_id_foreign` ON `cobro` (`id_cuota`) USING BTREE;
 
-CREATE INDEX `pagos_forma_pago_id_foreign` ON `cobro` (`id_formadeCobro`) USING BTREE;
+CREATE INDEX `pagos_forma_pago_id_foreign` ON `cobro` (`id_forma_cobro`) USING BTREE;
 
-CREATE INDEX `pagos_cuenta_bancaria_id_foreign` ON `cobro` (`id_cuenta_bancaria`) USING BTREE;
+CREATE INDEX `pagos_cuenta_bancaria_id_foreign` ON `cobro` (`id_cuentas_bancarias`) USING BTREE;
 
 CREATE INDEX `prorrogas_usuario_id_foreign` ON `prorrogas` (`usuario_id`) USING BTREE;
 
@@ -865,7 +868,7 @@ ALTER TABLE `compromisos` ADD CONSTRAINT `compromisos_usuario_id_foreign` FOREIG
 
 ALTER TABLE `costo_detalle` ADD CONSTRAINT `costo_aplicado_costo_id_foreign` FOREIGN KEY (`costo_id`) REFERENCES `costos` (`cod_costo`) ON DELETE RESTRICT ON UPDATE RESTRICT;
 
-ALTER TABLE `descuento_detalle` ADD CONSTRAINT `descuento_usuario_cuota_id_foreign` FOREIGN KEY (`id_cuota`) REFERENCES `cuotas` (`id`) ON DELETE RESTRICT ON UPDATE RESTRICT;
+ALTER TABLE `descuento_detalle` ADD CONSTRAINT `descuento_usuario_cuota_id_foreign` FOREIGN KEY (`id_cuota`) REFERENCES `cuotas` (`id_cuota`) ON DELETE RESTRICT ON UPDATE RESTRICT;
 
 ALTER TABLE `descuento_detalle` ADD CONSTRAINT `descuento_usuario_descuento_id_foreign` FOREIGN KEY (`id_descuento`) REFERENCES `descuentos` (`id_descuentos`) ON DELETE RESTRICT ON UPDATE RESTRICT;
 
@@ -889,15 +892,15 @@ ALTER TABLE `matriculas` ADD CONSTRAINT `matriculas_inscripcion_id_foreign` FORE
 
 ALTER TABLE `matriculas` ADD CONSTRAINT `matriculas_usuario_id_foreign` FOREIGN KEY (`usuario_id`) REFERENCES `usuarios` (`id_usuario`) ON DELETE RESTRICT ON UPDATE RESTRICT;
 
-ALTER TABLE `cobro` ADD CONSTRAINT `pagos_cuenta_bancaria_id_foreign` FOREIGN KEY (`id_cuenta_bancaria`) REFERENCES `cuentas_bancarias` (`id_cuentas_bancarias`) ON DELETE RESTRICT ON UPDATE RESTRICT;
+ALTER TABLE `cobro` ADD CONSTRAINT `pagos_cuenta_bancaria_id_foreign` FOREIGN KEY (`id_cuentas_bancarias`) REFERENCES `cuentas_bancarias` (`id_cuentas_bancarias`) ON DELETE RESTRICT ON UPDATE RESTRICT;
 
-ALTER TABLE `cobro` ADD CONSTRAINT `pagos_cuota_id_foreign` FOREIGN KEY (`cuota_id`) REFERENCES `cuotas` (`id`) ON DELETE RESTRICT ON UPDATE RESTRICT;
+ALTER TABLE `cobro` ADD CONSTRAINT `pagos_cuota_id_foreign` FOREIGN KEY (`id_cuota`) REFERENCES `cuotas` (`id_cuota`) ON DELETE RESTRICT ON UPDATE RESTRICT;
 
-ALTER TABLE `cobro` ADD CONSTRAINT `pagos_forma_pago_id_foreign` FOREIGN KEY (`id_formadeCobro`) REFERENCES `formas_cobro` (`id_forma_cobro`) ON DELETE RESTRICT ON UPDATE RESTRICT;
+ALTER TABLE `cobro` ADD CONSTRAINT `pagos_forma_pago_id_foreign` FOREIGN KEY (`id_forma_cobro`) REFERENCES `formas_cobro` (`id_forma_cobro`) ON DELETE RESTRICT ON UPDATE RESTRICT;
 
 ALTER TABLE `cobro` ADD CONSTRAINT `pagos_usuario_id_foreign` FOREIGN KEY (`id_usuario`) REFERENCES `usuarios` (`id_usuario`) ON DELETE RESTRICT ON UPDATE RESTRICT;
 
-ALTER TABLE `prorrogas` ADD CONSTRAINT `prorrogas_cuota_id_foreign` FOREIGN KEY (`cuota_id`) REFERENCES `cuotas` (`id`) ON DELETE RESTRICT ON UPDATE RESTRICT;
+ALTER TABLE `prorrogas` ADD CONSTRAINT `prorrogas_cuota_id_foreign` FOREIGN KEY (`cuota_id`) REFERENCES `cuotas` (`id_cuota`) ON DELETE RESTRICT ON UPDATE RESTRICT;
 
 ALTER TABLE `prorrogas` ADD CONSTRAINT `prorrogas_usuario_id_foreign` FOREIGN KEY (`usuario_id`) REFERENCES `usuarios` (`id_usuario`) ON DELETE RESTRICT ON UPDATE RESTRICT;
 
@@ -925,9 +928,9 @@ ALTER TABLE `costos` ADD CONSTRAINT `costos_gestion_id_foreign` FOREIGN KEY (`ge
 
 ALTER TABLE `inscripciones` ADD CONSTRAINT `inscripciones_gestion_id_foreign` FOREIGN KEY (`gestion`) REFERENCES `gestion` (`gestion`) ON DELETE RESTRICT ON UPDATE RESTRICT;
 
-ALTER TABLE `cobro` ADD CONSTRAINT `cobro_recibo_id_foreign` FOREIGN KEY (`id_recibo`) REFERENCES `recibo` (`nro_recibo`) ON DELETE RESTRICT ON UPDATE RESTRICT;
+ALTER TABLE `cobro` ADD CONSTRAINT `cobro_recibo_id_foreign` FOREIGN KEY (`nro_recibo`) REFERENCES `recibo` (`nro_recibo`) ON DELETE RESTRICT ON UPDATE RESTRICT;
 
-ALTER TABLE `cobro` ADD CONSTRAINT `cobro_factura_id_foreign` FOREIGN KEY (`id_factura`) REFERENCES `factura` (`nro_factura`) ON DELETE RESTRICT ON UPDATE RESTRICT;
+ALTER TABLE `cobro` ADD CONSTRAINT `cobro_factura_id_foreign` FOREIGN KEY (`nro_factura`) REFERENCES `factura` (`nro_factura`) ON DELETE RESTRICT ON UPDATE RESTRICT;
 
 ALTER TABLE `costos` ADD CONSTRAINT `costos_descuento_id_foreign` FOREIGN KEY (`id_descuento`) REFERENCES `descuentos` (`id_descuentos`) ON DELETE RESTRICT ON UPDATE RESTRICT;
 
@@ -943,7 +946,7 @@ ALTER TABLE `factura` ADD CONSTRAINT `parametros_factura_id_parametros_factura_f
 
 ALTER TABLE `factura` ADD CONSTRAINT `sucursal_codigo_sucursal_factura_foreign` FOREIGN KEY (`codigo_sucursal`) REFERENCES `sucursal` (`codigo_sucursal`) ON DELETE RESTRICT ON UPDATE RESTRICT;
 
-ALTER TABLE `cobro` ADD CONSTRAINT `cobros_id_items_service_id_foreign` FOREIGN KEY (`id_item_service`) REFERENCES `item_service` (`id_item_service`) ON DELETE RESTRICT ON UPDATE RESTRICT;
+ALTER TABLE `cobro` ADD CONSTRAINT `cobros_id_items_cobro_id_foreign` FOREIGN KEY (`id_item`) REFERENCES `items_cobro` (`id_item`) ON DELETE RESTRICT ON UPDATE RESTRICT;
 
 ALTER TABLE `nota_respaldo` ADD CONSTRAINT `nota_respaldo_recibo_id_foreign` FOREIGN KEY (`nro_recibo`) REFERENCES `recibo` (`nro_recibo`) ON DELETE RESTRICT ON UPDATE RESTRICT;
 
@@ -1030,3 +1033,7 @@ ALTER TABLE `pensums` ADD CONSTRAINT `carrera_pensum_id_foreign` FOREIGN KEY (`c
 ALTER TABLE `descuentos` ADD CONSTRAINT `descuentos_id_def_descuentos_foreign` FOREIGN KEY (`cod_descuento`) REFERENCES `def_descuentos` (`cod_descuento`) ON DELETE RESTRICT ON UPDATE RESTRICT;
 
 ALTER TABLE `descuentos` ADD CONSTRAINT `descuentos_id_def_descuentos_beca_foreign` FOREIGN KEY (`cod_beca`) REFERENCES `def_descuentos_beca` (`cod_beca`) ON DELETE RESTRICT ON UPDATE RESTRICT;
+
+ALTER TABLE `cobros_detalle_regular` ADD CONSTRAINT `cobro_nro_cobro_foreign` FOREIGN KEY (`nro_cobro`) REFERENCES `cobro` (`nro_cobro`) ON DELETE RESTRICT ON UPDATE RESTRICT;
+
+ALTER TABLE `cobros_detalle_multa` ADD CONSTRAINT `cobro_nro_cobro_foreign` FOREIGN KEY (`nro_cobro`) REFERENCES `cobro` (`nro_cobro`) ON DELETE RESTRICT ON UPDATE RESTRICT;
