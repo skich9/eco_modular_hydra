@@ -46,3 +46,98 @@ textarea { resize: vertical; }
 
 /* Pestañas Bootstrap */
 .nav-tabs .nav-link { cursor: pointer; }
+
+/* Estilos para la tabla de parámetros económicos */
+.parametros-table {
+  width: 100%;
+  
+  th, td {
+    padding: 0.75rem;
+    vertical-align: top;
+  }
+  
+  // Columna ID
+  .col-id {
+    width: 60px;
+    text-align: center;
+  }
+  
+  // Columna Nombre (ajustada según lo solicitado)
+  .col-nombre {
+    width: 280px; // Ancho fijo como antes
+    min-width: 280px;
+    max-width: 280px;
+    
+    .nombre-texto {
+      word-wrap: break-word;
+      white-space: normal;
+    }
+    
+    .descripcion-texto {
+      word-wrap: break-word;
+      white-space: normal;
+    }
+  }
+  
+  // Columna Valor
+  .col-valor {
+    width: 150px;
+    max-width: 150px;
+    
+    .valor-content {
+      word-wrap: break-word;
+      white-space: normal;
+    }
+  }
+  
+  // Columna Estado
+  .col-estado {
+    width: 100px;
+    text-align: center;
+  }
+  
+  // Columna Acciones
+  .col-acciones {
+    width: 140px;
+    text-align: center;
+    
+    .btn {
+      padding: 0.25rem 0.5rem;
+    }
+  }
+}
+
+// Ajustes responsivos
+@media (max-width: 992px) {
+  .parametros-table {
+    .col-nombre {
+      width: 220px;
+      min-width: 220px;
+      max-width: 220px;
+    }
+    
+    .col-valor {
+      width: 120px;
+      max-width: 120px;
+    }
+  }
+}
+
+@media (max-width: 768px) {
+  .parametros-table {
+    .col-nombre {
+      width: 180px;
+      min-width: 180px;
+      max-width: 180px;
+    }
+    
+    .col-valor {
+      width: 100px;
+      max-width: 100px;
+    }
+    
+    .col-acciones {
+      width: 110px;
+    }
+  }
+}

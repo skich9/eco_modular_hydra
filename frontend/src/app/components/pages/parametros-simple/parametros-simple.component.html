@@ -32,33 +32,30 @@
     </div>
     <div class="card-body">
       <div class="table-responsive">
-        <table class="table align-middle">
+        <table class="table align-middle parametros-table">
           <thead class="table-light">
             <tr>
-              <th>ID</th>
-              <th>Nombre</th>
-              <th>Valor</th>
-              <th>Descripción</th>
-              <th>Estado</th>
-              <th>Creado</th>
-              <th>Actualizado</th>
-              <th class="text-nowrap">Acciones</th>
+              <th class="col-id">ID</th>
+              <th class="col-nombre">Nombre</th>
+              <th class="col-valor">Valor</th>
+              <th class="col-estado">Estado</th>
+              <th class="col-acciones text-nowrap">Acciones</th>
             </tr>
           </thead>
           <tbody>
             <tr *ngFor="let p of filteredParametros">
-              <td>{{ p.id_parametro_economico }}</td>
-              <td>
-                <div class="fw-semibold">{{ p.nombre }}</div>
+              <td class="col-id">{{ p.id_parametro_economico }}</td>
+              <td class="col-nombre">
+                <div class="fw-semibold nombre-texto">{{ p.nombre }}</div>
+                <div class="text-muted small descripcion-texto">{{ p.descripcion }}</div>
               </td>
-              <td>{{ p.valor }}</td>
-              <td>{{ p.descripcion }}</td>
-              <td>
+              <td class="col-valor">
+                <div class="valor-content">{{ p.valor }}</div>
+              </td>
+              <td class="col-estado">
                 <span class="badge" [ngClass]="p.estado ? 'bg-success' : 'bg-danger'">{{ p.estado ? 'Activo' : 'Inactivo' }}</span>
               </td>
-              <td>{{ p.created_at ? (p.created_at | date:'dd/MM/yyyy') : '-' }}</td>
-              <td>{{ p.updated_at ? (p.updated_at | date:'dd/MM/yyyy') : '-' }}</td>
-              <td class="text-nowrap">
+              <td class="col-acciones text-nowrap">
                 <button class="btn btn-sm btn-outline-secondary me-1" title="Cambiar estado" (click)="toggleParametro(p)">
                   <i class="fas" [ngClass]="p.estado ? 'fa-toggle-on' : 'fa-toggle-off'"></i>
                 </button>
