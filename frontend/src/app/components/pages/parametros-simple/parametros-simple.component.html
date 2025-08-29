@@ -97,7 +97,6 @@
               <th>Créditos</th>
               <th>Costo</th>
               <th>Actividad Económica</th>
-              <th>Descripción</th>
               <th>Facturado</th>
               <th>Estado</th>
               <th class="text-nowrap">Acciones</th>
@@ -110,11 +109,11 @@
               <td>{{ i.codigo_producto_interno }}</td>
               <td>
                 <div class="fw-semibold">{{ i.nombre_servicio }}</div>
+                <div class="text-muted small">{{ i.descripcion }}</div>
               </td>
               <td>{{ i.nro_creditos }}</td>
               <td>{{ i.costo != null ? (i.costo | currency) : '-' }}</td>
               <td>{{ i.actividad_economica }}</td>
-              <td>{{ i.descripcion || '-' }}</td>
               <td>
                 <span class="badge" [ngClass]="i.facturado ? 'bg-success' : 'bg-danger'">{{ i.facturado ? 'Sí' : 'No' }}</span>
               </td>
