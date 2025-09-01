@@ -19,16 +19,16 @@ class AsignacionCostos extends Model
 	/**
 	 * Clave primaria del modelo.
 	 *
-	 * @var array
+	 * @var string
 	 */
-	protected $primaryKey = ['cod_pensum', 'cod_inscrip', 'id_asignacion_costo'];
+	protected $primaryKey = 'id_asignacion_costo';
 	
 	/**
 	 * Indica si la clave primaria es auto-incrementable.
 	 *
 	 * @var bool
 	 */
-	public $incrementing = false;
+	public $incrementing = true;
 	
 	/**
 	 * Atributos que son asignables en masa.
@@ -79,7 +79,7 @@ class AsignacionCostos extends Model
 	 */
 	public function costoSemestral()
 	{
-		return $this->belongsTo(CostoSemestral::class, ['id_costo_semestral', 'cod_pensum'], ['id_costo_semestral', 'cod_pensum']);
+		return $this->belongsTo(CostoSemestral::class, 'id_costo_semestral', 'id_costo_semestral');
 	}
 	
 	/**
@@ -89,38 +89,5 @@ class AsignacionCostos extends Model
 	{
 		return $this->hasMany(RecargoMora::class, 'id_asignacion_costo', 'id_asignacion_costo');
 	}
-	
-	/**
-	 * Configuración para claves primarias compuestas en Laravel.
-	 * Este método es necesario para que Laravel maneje correctamente las claves primarias compuestas.
-	 */
-	protected function setKeysForSaveQuery($query)
-	{
-		$keys = $this->getKeyName();
-		if(!is_array($keys)){
-			return parent::setKeysForSaveQuery($query);
-		}
-		
-		foreach($keys as $keyName){
-			$query->where($keyName, '=', $this->getKeyForSaveQuery($keyName));
-		}
-		
-		return $query;
-	}
-	
-	/**
-	 * Obtiene el valor de una clave específica para la consulta de guardado.
-	 */
-	protected function getKeyForSaveQuery($keyName = null)
-	{
-		if(is_null($keyName)){
-			$keyName = $this->getKeyName();
-		}
-		
-		if(isset($this->original[$keyName])){
-			return $this->original[$keyName];
-		}
-		
-		return $this->getAttribute($keyName);
-	}
 }
+

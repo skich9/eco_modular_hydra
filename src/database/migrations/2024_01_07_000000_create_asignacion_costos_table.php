@@ -13,16 +13,16 @@ return new class extends Migration
 	{
 		if (!Schema::hasTable('asignacion_costos')) {
 			Schema::create('asignacion_costos', function (Blueprint $table) {
-			$table->bigInteger('id_asignacion_costo')->autoIncrement();
+			$table->bigIncrements('id_asignacion_costo');
 			$table->string('cod_pensum', 50);
 			$table->unsignedBigInteger('cod_inscrip');
 			$table->decimal('monto', 10, 2);
 			$table->text('observaciones')->nullable();
 			$table->boolean('estado')->nullable();
-			$table->bigInteger('id_costo_semestral');
-			$table->string('id_descuentoDetalle', 255)->nullable();
-			$table->integer('id_prorroga')->nullable();
-			$table->integer('id_compromisos')->nullable();
+			$table->unsignedBigInteger('id_costo_semestral');
+			$table->unsignedBigInteger('id_descuentoDetalle')->nullable();
+			$table->unsignedBigInteger('id_prorroga')->nullable();
+			$table->unsignedBigInteger('id_compromisos')->nullable();
 			$table->timestamps();
 			
 			// Definimos la clave primaria solo con id_asignacion_costo
@@ -34,9 +34,9 @@ return new class extends Migration
 				  ->on('pensums')
 				  ->onDelete('restrict')
 				  ->onUpdate('restrict');
-				  
-			$table->foreign(['id_costo_semestral', 'cod_pensum'])
-				  ->references(['id_costo_semestral', 'cod_pensum'])
+			
+			$table->foreign('id_costo_semestral')
+				  ->references('id_costo_semestral')
 				  ->on('costo_semestral')
 				  ->onDelete('restrict')
 				  ->onUpdate('restrict');
@@ -58,3 +58,4 @@ return new class extends Migration
 		Schema::dropIfExists('asignacion_costos');
 	}
 };
+

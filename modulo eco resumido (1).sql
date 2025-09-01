@@ -603,6 +603,18 @@ CREATE TABLE `parametros_economicos` (
   PRIMARY KEY (`id_parametro_economico`, `nombre`)
 );
 
+CREATE TABLE `parametros_costos` (
+  `id_parametro_costo` int NOT NULL AUTO_INCREMENT,
+  `nombre` varchar(20) NOT NULL,
+  `valor` decimal(10,2) NOT NULL,
+  `descripcion` varchar(150) NOT NULL,
+  `gestion` varchar(30) NOT NULL,
+  `estado` bool NOT NULL,
+  `created_at` timestamp DEFAULT null,
+  `updated_at` timestamp DEFAULT null,
+  PRIMARY KEY (`id_parametro_costo`, `nombre`)
+);
+
 CREATE TABLE `items_cobro` (
   `id_item` int PRIMARY KEY NOT NULL AUTO_INCREMENT,
   `codigo_producto_impuesto` int DEFAULT null,
@@ -657,7 +669,13 @@ CREATE TABLE `costo_semestral` (
   `cod_inscrip` bigint,
   `semestre` varchar(30) NOT NULL,
   `monto_semestre` decimal(10,2) NOT NULL,
+  `tipo_costo` varchar(50),
+  `costo_fijo` decimal(10,2) NOT NULL,
+  `costo_materias_arrastre` decimal(10,2) NOT NULL,
+  `cantidad_materias` int DEFAULT null,
+  `cantidad_materias_arrastre` int DEFAULT null,
   `id_usuario` bigint NOT NULL,
+  `id_parametro_costo` int NOT NULL,
   `created_at` timestamp DEFAULT null,
   `updated_at` timestamp DEFAULT null,
   PRIMARY KEY (`id_costo_semestral`, `cod_pensum`, `gestion`)
@@ -1037,3 +1055,5 @@ ALTER TABLE `descuentos` ADD CONSTRAINT `descuentos_id_def_descuentos_beca_forei
 ALTER TABLE `cobros_detalle_regular` ADD CONSTRAINT `cobro_nro_cobro_foreign` FOREIGN KEY (`nro_cobro`) REFERENCES `cobro` (`nro_cobro`) ON DELETE RESTRICT ON UPDATE RESTRICT;
 
 ALTER TABLE `cobros_detalle_multa` ADD CONSTRAINT `cobro_nro_cobro_foreign` FOREIGN KEY (`nro_cobro`) REFERENCES `cobro` (`nro_cobro`) ON DELETE RESTRICT ON UPDATE RESTRICT;
+
+ALTER TABLE `parametros_costos` ADD CONSTRAINT `parametros_costos_gestion_id_foreign` FOREIGN KEY (`gestion`) REFERENCES `gestion` (`gestion`) ON DELETE RESTRICT ON UPDATE RESTRICT;

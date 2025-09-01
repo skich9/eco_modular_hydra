@@ -19,6 +19,7 @@ class DatabaseSeeder extends Seeder
             ParametrosEconomicosSeeder::class,
             CarreraSeeder::class,
             PensumSeeder::class,
+            GestionSeeder::class,
             CostoSemestralSeeder::class,
             AsignacionCostosSeeder::class,
         ]);

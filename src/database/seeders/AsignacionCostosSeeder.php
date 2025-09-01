@@ -45,7 +45,7 @@ class AsignacionCostosSeeder extends Seeder
                 AsignacionCostos::create([
                     'cod_pensum' => $inscripcion->cod_pensum,
                     'cod_inscrip' => $inscripcion->cod_inscrip,
-                    'monto' => $costo->monto * (rand(80, 100) / 100), // Variación aleatoria del monto
+                    'monto' => $costo->monto_semestre * (rand(80, 100) / 100), // Variación aleatoria del monto
                     'observaciones' => 'Asignación automática por seeder',
                     'estado' => true,
                     'id_costo_semestral' => $costo->id_costo_semestral,
