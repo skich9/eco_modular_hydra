@@ -2,13 +2,13 @@
 
 /* Ensure dropdowns appear above other elements */
 .dropdown-menu {
-	z-index: 1050;
+	z-index: 1060;
 	min-width: 200px;
 	border: 1px solid rgba(0, 0, 0, 0.15);
 	box-shadow: 0 0.5rem 1rem rgba(0, 0, 0, 0.15);
-	transform: translateX(-50%);
-	right: auto !important;
-	left: 50% !important;
+	/* Keep inside viewport vertically */
+	max-height: calc(100vh - 6rem);
+	overflow-y: auto;
 }
 
 /* Fix dropdown positioning for user menu */
@@ -19,6 +19,17 @@
 	left: auto !important;
 	transform: none !important;
 	margin-top: 0.125rem;
+}
+
+/* Proper positioning for secondary navbar dropdowns */
+.navbar-dark .nav-item.dropdown .dropdown-menu {
+	position: absolute !important;
+	top: 100% !important;
+	left: 0 !important;
+	right: auto !important;
+	transform: none !important;
+	/* Avoid horizontal overflow on small screens */
+	max-width: calc(100vw - 2rem);
 }
 
 /* User avatar hover effect */

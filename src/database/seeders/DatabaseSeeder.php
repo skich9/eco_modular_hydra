@@ -22,6 +22,9 @@ class DatabaseSeeder extends Seeder
             GestionSeeder::class,
             CostoSemestralSeeder::class,
             AsignacionCostosSeeder::class,
+            FormasCobroSeeder::class,
+            CuentasBancariasSeeder::class,
+            CuotasSeeder::class,
         ]);
     }
 }

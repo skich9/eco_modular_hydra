@@ -4,8 +4,14 @@ namespace App\Http\Controllers\Api;
 
 use App\Http\Controllers\Controller;
 use App\Models\Cobro;
+use App\Models\Estudiante;
+use App\Models\Inscripcion;
+use App\Models\AsignacionCostos;
+use App\Models\CostoSemestral;
+use App\Models\Gestion;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\Validator;
+use Illuminate\Support\Facades\DB;
 
 class CobroController extends Controller
 {
@@ -171,6 +177,195 @@ class CobroController extends Controller
 			return response()->json([
 				'success' => false,
 				'message' => 'Error al actualizar cobro: ' . $e->getMessage()
+			], 500);
+		}
+	}
+
+	/**
+	 * Resumen de pagos y deudas por estudiante y gestión
+	 */
+	public function resumen(Request $request)
+	{
+		try {
+			$validator = Validator::make($request->all(), [
+				'cod_ceta' => 'required|integer',
+				'gestion' => 'nullable|string|max:255',
+			]);
+			if ($validator->fails()) {
+				return response()->json([
+					'success' => false,
+					'message' => 'Error de validación',
+					'errors' => $validator->errors()
+				], 422);
+			}
+
+			$codCeta = (int) $request->input('cod_ceta');
+			$gestionReq = $request->input('gestion');
+			$gestion = $gestionReq ?: optional(Gestion::gestionActual())->gestion;
+
+			$estudiante = Estudiante::with('pensum')->find($codCeta);
+			if (!$estudiante) {
+				return response()->json([
+					'success' => false,
+					'message' => 'Estudiante no encontrado'
+				], 404);
+			}
+
+			$inscripcionQuery = Inscripcion::where('cod_ceta', $codCeta)
+				->when($gestion, function ($q) use ($gestion) {
+					$q->where('gestion', $gestion);
+				})
+				->orderByDesc('fecha_inscripcion')
+				->orderByDesc('created_at');
+			$inscripcion = $inscripcionQuery->first();
+
+			$costoSemestral = null;
+			if ($gestion) {
+				$costoSemestral = CostoSemestral::where('cod_pensum', $estudiante->cod_pensum)
+					->where('gestion', $gestion)
+					->first();
+			}
+
+			$asignacion = null;
+			if ($inscripcion && $costoSemestral) {
+				$asignacion = AsignacionCostos::where('cod_pensum', $estudiante->cod_pensum)
+					->where('cod_inscrip', $inscripcion->cod_inscrip)
+					->where('id_costo_semestral', $costoSemestral->id_costo_semestral)
+					->first();
+			}
+
+			$cobrosBase = Cobro::where('cod_ceta', $codCeta)
+				->where('cod_pensum', $estudiante->cod_pensum)
+				->when($gestion, function ($q) use ($gestion) {
+					$q->where('gestion', $gestion);
+				});
+
+			$cobrosMensualidad = (clone $cobrosBase)->whereNotNull('id_cuota')->get();
+			$cobrosItems = (clone $cobrosBase)->whereNotNull('id_item')->get();
+
+			$totalMensualidad = $cobrosMensualidad->sum('monto');
+			$totalItems = $cobrosItems->sum('monto');
+
+			$montoSemestre = optional($costoSemestral)->monto_semestre ?: optional($asignacion)->monto;
+			$saldoMensualidad = isset($montoSemestre) ? (float)$montoSemestre - (float)$totalMensualidad : null;
+
+			return response()->json([
+				'success' => true,
+				'data' => [
+					'estudiante' => $estudiante,
+					'inscripcion' => $inscripcion,
+					'gestion' => $gestion,
+					'costo_semestral' => $costoSemestral,
+					'asignacion_costos' => $asignacion,
+					'cobros' => [
+						'mensualidad' => [
+							'total' => (float) $totalMensualidad,
+							'count' => $cobrosMensualidad->count(),
+							'items' => $cobrosMensualidad,
+						],
+						'items' => [
+							'total' => (float) $totalItems,
+							'count' => $cobrosItems->count(),
+							'items' => $cobrosItems,
+						],
+					],
+					'totales' => [
+						'monto_semestral' => isset($montoSemestre) ? (float)$montoSemestre : null,
+						'saldo_mensualidad' => $saldoMensualidad,
+						'total_pagado' => (float) ($totalMensualidad + $totalItems),
+					],
+				]
+			]);
+		} catch (\Exception $e) {
+			return response()->json([
+				'success' => false,
+				'message' => 'Error al generar resumen: ' . $e->getMessage()
+			], 500);
+		}
+	}
+
+	/**
+	 * Registro por lote de cobros
+	 */
+	public function batchStore(Request $request)
+	{
+		$rules = [
+			'cod_ceta' => 'required|integer',
+			'cod_pensum' => 'required|string|max:50',
+			'tipo_inscripcion' => 'required|string|max:255',
+			'gestion' => 'nullable|string|max:255',
+			'id_usuario' => 'required|integer|exists:usuarios,id_usuario',
+			'id_forma_cobro' => 'required|string|exists:formas_cobro,id_forma_cobro',
+			'id_cuentas_bancarias' => 'nullable|integer|exists:cuentas_bancarias,id_cuentas_bancarias',
+			'pagos' => 'required|array|min:1',
+			'pagos.*.nro_cobro' => 'required|integer',
+			'pagos.*.monto' => 'required|numeric|min:0',
+			'pagos.*.fecha_cobro' => 'required|date',
+			'pagos.*.pu_mensualidad' => 'nullable|numeric|min:0',
+			'pagos.*.order' => 'nullable|integer',
+			'pagos.*.descuento' => 'nullable|string|max:255',
+			'pagos.*.observaciones' => 'nullable|string',
+			'pagos.*.nro_factura' => 'nullable|integer',
+			'pagos.*.nro_recibo' => 'nullable|integer',
+			'pagos.*.id_item' => 'nullable|integer|exists:items_cobro,id_item',
+			'pagos.*.id_asignacion_costo' => 'nullable|integer',
+			'pagos.*.id_cuota' => 'nullable|integer|exists:cuotas,id_cuota',
+		];
+
+		$validator = Validator::make($request->all(), $rules);
+		if ($validator->fails()) {
+			return response()->json([
+				'success' => false,
+				'message' => 'Error de validación',
+				'errors' => $validator->errors(),
+			], 422);
+		}
+
+		try {
+			$created = [];
+			DB::transaction(function () use ($request, & $created) {
+				foreach ($request->input('pagos') as $pago) {
+					$composite = [
+						'cod_ceta' => (int)$request->cod_ceta,
+						'cod_pensum' => (string)$request->cod_pensum,
+						'tipo_inscripcion' => (string)$request->tipo_inscripcion,
+						'nro_cobro' => (int)$pago['nro_cobro'],
+					];
+					$exists = Cobro::where($composite)->exists();
+					if ($exists) {
+						throw new \RuntimeException('Cobro duplicado para nro_cobro: ' . $pago['nro_cobro']);
+					}
+					$payload = array_merge($composite, [
+						'monto' => $pago['monto'],
+						'fecha_cobro' => $pago['fecha_cobro'],
+						'cobro_completo' => $pago['cobro_completo'] ?? null,
+						'observaciones' => $pago['observaciones'] ?? null,
+						'id_usuario' => (int)$request->id_usuario,
+						'id_forma_cobro' => (string)$request->id_forma_cobro,
+						'pu_mensualidad' => $pago['pu_mensualidad'] ?? 0,
+						'order' => $pago['order'] ?? 0,
+						'descuento' => $pago['descuento'] ?? null,
+						'id_cuentas_bancarias' => $request->id_cuentas_bancarias ?? null,
+						'nro_factura' => $pago['nro_factura'] ?? null,
+						'nro_recibo' => $pago['nro_recibo'] ?? null,
+						'id_item' => $pago['id_item'] ?? null,
+						'id_asignacion_costo' => $pago['id_asignacion_costo'] ?? null,
+						'id_cuota' => $pago['id_cuota'] ?? null,
+						'gestion' => $request->gestion ?? null,
+					]);
+					$created[] = Cobro::create($payload)->load(['usuario', 'cuota', 'formaCobro', 'cuentaBancaria', 'itemCobro']);
+				}
+			});
+
+			return response()->json([
+				'success' => true,
+				'message' => 'Cobros creados correctamente',
+				'data' => $created,
+			], 201);
+		} catch (\Throwable $e) {
+			return response()->json([
+				'success' => false,
+				'message' => 'Error al crear cobros por lote: ' . $e->getMessage(),
 			], 500);
 		}
 	}

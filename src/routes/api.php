@@ -17,9 +17,9 @@ use App\Http\Controllers\Api\DefDescuentoBecaController;
 use App\Http\Controllers\Api\ParametroGeneralController;
 
 /*
-|--------------------------------------------------------------------------
+--------------------------------------------------------------------------
 | API Routes
-|--------------------------------------------------------------------------
+--------------------------------------------------------------------------
 |
 | Here is where you can register API routes for your application. These
 | routes are loaded by the RouteServiceProvider and all of them will
@@ -51,6 +51,9 @@ Route::patch('items-cobro/{id}/toggle-status', [ItemsCobroController::class, 'to
 // Cobros (clave compuesta)
 Route::get('cobros', [CobroController::class, 'index']);
 Route::post('cobros', [CobroController::class, 'store']);
+// Cobros: endpoints adicionales
+Route::get('cobros/resumen', [CobroController::class, 'resumen']);
+Route::post('cobros/batch', [CobroController::class, 'batchStore']);
 Route::get('cobros/{cod_ceta}/{cod_pensum}/{tipo_inscripcion}/{nro_cobro}', [CobroController::class, 'show']);
 Route::put('cobros/{cod_ceta}/{cod_pensum}/{tipo_inscripcion}/{nro_cobro}', [CobroController::class, 'update']);
 Route::delete('cobros/{cod_ceta}/{cod_pensum}/{tipo_inscripcion}/{nro_cobro}', [CobroController::class, 'destroy']);

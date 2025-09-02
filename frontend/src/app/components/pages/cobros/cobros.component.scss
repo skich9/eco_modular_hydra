@@ -1,0 +1,16 @@
+.card {
+	border-radius: .5rem;
+}
+
+.table td, .table th {
+	vertical-align: middle;
+}
+
+.details pre {
+	max-height: 240px;
+	overflow: auto;
+}
+
+.btn + .btn {
+	margin-left: .5rem;
+}

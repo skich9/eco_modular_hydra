@@ -62,6 +62,11 @@ export const routes: Routes = [
 				path: 'parametros',
 				loadComponent: () => import('./components/pages/parametros-simple/parametros-simple.component').then(m => m.ParametrosSimpleComponent)
 			},
+			// Ruta para Cobros (resumen y registro por lote)
+			{
+				path: 'cobros',
+				loadComponent: () => import('./components/pages/cobros/cobros.component').then(m => m.CobrosComponent)
+			},
 			// Ruta para Configuraciones Generales
 			{
 				path: 'configuraciones-generales',
