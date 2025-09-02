@@ -15,6 +15,7 @@ use App\Http\Controllers\Api\DescuentoController;
 use App\Http\Controllers\Api\DefDescuentoController;
 use App\Http\Controllers\Api\DefDescuentoBecaController;
 use App\Http\Controllers\Api\ParametroGeneralController;
+use App\Http\Controllers\Api\FormaCobroController;
 
 /*
 --------------------------------------------------------------------------
@@ -47,6 +48,9 @@ Route::patch('parametros-economicos/{id}/toggle-status', [ParametrosEconomicosCo
 // Recursos: Items de Cobro
 Route::apiResource('items-cobro', ItemsCobroController::class);
 Route::patch('items-cobro/{id}/toggle-status', [ItemsCobroController::class, 'toggleStatus']);
+
+// Formas de cobro (catálogo)
+Route::get('formas-cobro', [FormaCobroController::class, 'index']);
 
 // Cobros (clave compuesta)
 Route::get('cobros', [CobroController::class, 'index']);

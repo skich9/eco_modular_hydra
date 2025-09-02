@@ -19,9 +19,13 @@ export class CobrosComponent implements OnInit {
 	// Formularios
 	searchForm: FormGroup;
 	batchForm: FormGroup;
+	identidadForm: FormGroup;
 
 	// Datos
 	resumen: any = null;
+	gestiones: any[] = [];
+	formasCobro: any[] = [];
+	pensums: any[] = [];
 
 	constructor(
 		private fb: FormBuilder,
@@ -38,15 +42,50 @@ export class CobrosComponent implements OnInit {
 				cod_pensum: ['', Validators.required],
 				tipo_inscripcion: ['', Validators.required],
 				gestion: [''],
-				id_forma_cobro: [''],
+				id_forma_cobro: ['', Validators.required],
 				id_cuentas_bancarias: [''],
 				id_usuario: ['', Validators.required]
 			}),
 			pagos: this.fb.array([])
 		});
+
+		// UI: Identidad/Razón social (no se envía al backend)
+		this.identidadForm = this.fb.group({
+			nombre_completo: [''],
+			tipo_identidad: ['CI', Validators.required],
+			ci: [''],
+			complemento_habilitado: [false],
+			complemento_ci: [{ value: '', disabled: true }],
+			razon_social: [''],
+			email_habilitado: [false],
+			email: [{ value: '', disabled: true }, [Validators.email]],
+			turno: ['']
+		});
 	}
 
-	ngOnInit(): void {}
+	ngOnInit(): void {
+		// Habilitar/deshabilitar complemento CI
+		this.identidadForm.get('complemento_habilitado')?.valueChanges.subscribe((v: boolean) => {
+			const ctrl = this.identidadForm.get('complemento_ci');
+			if (v) ctrl?.enable(); else ctrl?.disable();
+		});
+
+		// Habilitar/deshabilitar edición de email
+		this.identidadForm.get('email_habilitado')?.valueChanges.subscribe((v: boolean) => {
+			const ctrl = this.identidadForm.get('email');
+			if (v) ctrl?.enable(); else ctrl?.disable();
+		});
+
+		// Cargar catálogos
+		this.cobrosService.getGestionesActivas().subscribe({
+			next: (res) => { if (res.success) this.gestiones = res.data; },
+			error: () => {}
+		});
+		this.cobrosService.getFormasCobro().subscribe({
+			next: (res) => { if (res.success) this.formasCobro = res.data; },
+			error: () => {}
+		});
+	}
 
 	// Helpers
 	get pagos(): FormArray {
@@ -78,6 +117,42 @@ export class CobrosComponent implements OnInit {
 				if (res.success) {
 					this.resumen = res.data;
 					this.showAlert('Resumen cargado', 'success');
+					// Prefill identidad/razón social
+					const est = this.resumen?.estudiante || {};
+					const fullName = [est.nombres, est.ap_paterno, est.ap_materno].filter(Boolean).join(' ');
+					this.identidadForm.patchValue({
+						nombre_completo: fullName,
+						tipo_identidad: 'CI',
+						ci: est.ci || '',
+						complemento_habilitado: false,
+						complemento_ci: '',
+						razon_social: est.ap_paterno || fullName,
+						email_habilitado: false,
+						email: est.email || ''
+					});
+
+					// Prefill cabecera del batch
+					const ins = this.resumen?.inscripcion || {};
+					(this.batchForm.get('cabecera') as FormGroup).patchValue({
+						cod_ceta: est.cod_ceta || cod_ceta,
+						cod_pensum: est.cod_pensum || ins.cod_pensum || '',
+						tipo_inscripcion: ins.tipo_inscripcion || '',
+						gestion: this.resumen?.gestion || gestion || ''
+					});
+
+					// Cargar pensums por carrera desde el pensum del estudiante
+					const pensumRel = est?.pensum || {};
+					const codigoCarrera = pensumRel?.codigo_carrera;
+					if (codigoCarrera) {
+						this.cobrosService.getPensumsByCarrera(codigoCarrera).subscribe({
+							next: (pRes) => {
+								if (pRes.success) this.pensums = pRes.data;
+							},
+							error: () => {}
+						});
+					} else {
+						this.pensums = [];
+					}
 				} else {
 					this.resumen = null;
 					this.showAlert(res.message || 'No se pudo obtener el resumen', 'warning');
@@ -99,6 +174,20 @@ export class CobrosComponent implements OnInit {
 			const modal = new (window as any).bootstrap.Modal(modalEl);
 			modal.show();
 		}
+	}
+
+	openRazonSocialModal(): void {
+		const modalEl = document.getElementById('razonSocialModal');
+		if (modalEl && (window as any).bootstrap?.Modal) {
+			const modal = new (window as any).bootstrap.Modal(modalEl);
+			modal.show();
+		}
+	}
+
+	buscarPorCI(): void {
+		// Placeholder de búsqueda por CI
+		const ci = this.identidadForm.get('ci')?.value;
+		console.log('Buscar CI:', ci);
 	}
 
 	submitBatch(): void {

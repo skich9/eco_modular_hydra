@@ -13,6 +13,7 @@ interface CobroResumenResponse {
 @Injectable({ providedIn: 'root' })
 export class CobrosService {
 	private baseUrl = `${environment.apiUrl}/cobros`;
+	private apiUrl = environment.apiUrl;
 
 	constructor(private http: HttpClient) {}
 
@@ -27,6 +28,25 @@ export class CobrosService {
 	batchStore(payload: any): Observable<any> {
 		return this.http.post<any>(`${this.baseUrl}/batch`, payload).pipe(
 			map((res: any) => ({ success: !!res?.success, data: res?.data, message: res?.message }))
+		);
+	}
+
+	// Catálogos
+	getGestionesActivas(): Observable<any> {
+		return this.http.get<any>(`${this.apiUrl}/gestiones/estado/activas`).pipe(
+			map((res: any) => ({ success: !!res?.success, data: res?.data || [], message: res?.message }))
+		);
+	}
+
+	getPensumsByCarrera(codigoCarrera: string): Observable<any> {
+		return this.http.get<any>(`${this.apiUrl}/carreras/${encodeURIComponent(codigoCarrera)}/pensums`).pipe(
+			map((res: any) => ({ success: !!res?.success, data: res?.data || [], message: res?.message }))
+		);
+	}
+
+	getFormasCobro(): Observable<any> {
+		return this.http.get<any>(`${this.apiUrl}/formas-cobro`).pipe(
+			map((res: any) => ({ success: !!res?.success, data: res?.data || [], message: res?.message }))
 		);
 	}
 }
