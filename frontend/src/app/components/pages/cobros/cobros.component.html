@@ -147,42 +147,45 @@
 					</button>
 				</div>
 				<div class="card-body">
-					<form [formGroup]="searchForm" (ngSubmit)="loadResumen()" class="row g-3">
-						<div class="col-md-4">
+					<form [formGroup]="searchForm" (ngSubmit)="loadResumen()">
+						<div class="col-mb-4">
 							<label class="form-label">Código CETA</label>
 							<input class="form-control" formControlName="cod_ceta" placeholder="Ej: 20201234" />
 						</div>
-						<div class="col-md-3">
+						<div class="col-mb-4">
 							<label class="form-label">Gestión (opcional)</label>
 							<select class="form-select" formControlName="gestion">
 								<option value="">-- Seleccione --</option>
 								<option *ngFor="let g of gestiones" [value]="g.gestion">{{ g.gestion }}</option>
 							</select>
 						</div>
-						<div class="col-md-2 d-flex align-items-end">
-							<button class="btn btn-primary w-100" [disabled]="loading" type="submit">
-								<i class="bi bi-search me-1"></i> Consultar
+						<div class="d-grid">
+							<button class="btn btn-primary py-2" [disabled]="loading" type="submit">
+								<i class="bi bi-search me-2"></i> Consultar
 							</button>
 						</div>
 					</form>
 
-					<hr />
+					<hr class="my-4"/>
 
 					<div *ngIf="resumen as r">
-						<div class="row mb-3">
-							<div class="col-md-9">
-								
+						<h6 class="mb-3 border-bottom pb-2">Totales</h6>
+        				<div class="row">
+          					<div class="col-12">
+            					<div class="d-flex justify-content-between align-items-center mb-2">
+             				 	<span class="fw-medium">Monto Semestral:</span>
+								<strong class="text-end">{{ r?.totales?.monto_semestral | number: '1.2-2' }}</strong>
 							</div>
-							<div class="col-md-3">
-								<h6>Totales</h6>
-								<ul class="list-unstyled mb-0">
-									<li>Monto Semestral: <strong>{{ r?.totales?.monto_semestral | number: '1.2-2' }}</strong></li>
-									<li>Total Pagado: <strong class="text-success">{{ r?.totales?.total_pagado | number: '1.2-2' }}</strong></li>
-									<li>Saldo Mensualidad: <strong class="text-danger">{{ r?.totales?.saldo_mensualidad | number: '1.2-2' }}</strong></li>
-								</ul>
-							</div>
-						</div>
-					</div>
+							<div class="d-flex justify-content-between align-items-center mb-2">
+             				 	<span class="fw-medium">Total Pagado:</span>
+            				  	<strong class="text-success">{{ r?.totales?.total_pagado | number: '1.2-2' }}</strong>
+           				 	</div>
+           				 	<div class="d-flex justify-content-between align-items-center">
+             				 	<span class="fw-medium">Saldo Mensualidad:</span>
+              					<strong class="text-danger">{{ r?.totales?.saldo_mensualidad | number: '1.2-2' }}</strong>
+           				 	</div>
+          				</div>
+       				 </div>
 					<div *ngIf="!resumen" class="text-muted small">Ingrese un código y consulte para ver el resumen.</div>
 				</div>
 			</div>
