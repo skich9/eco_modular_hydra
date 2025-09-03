@@ -314,6 +314,7 @@ CREATE TABLE `inscripciones` (
   `id_usuario` int NOT NULL,
   `cod_ceta` bigint NOT NULL,
   `cod_pensum` varchar(50) NOT NULL,
+  `cod_curso` text NOT NULL,
   `nro_materia` tinyint NOT NULL,
   `nro_materia_aprob` int NOT NULL,
   `gestion` varchar(20) NOT NULL,

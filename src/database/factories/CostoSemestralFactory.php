@@ -21,7 +21,7 @@ class CostoSemestralFactory extends Factory
     public function definition(): array
     {
         $usuarios = Usuario::pluck('id_usuario')->toArray();
-        $gestiones = ['2024-1', '2024-2', '2025-1', '2025-2'];
+        $gestiones = ['1/1999', '2/1999', '1/2000', '2/2000'];
         $semestres = ['1', '2', '3', '4', '5', '6', '7', '8', '9', '10'];
 
         // Obtener cod_pensum válidos desde la base de datos

@@ -16,8 +16,8 @@ class CostoSemestralSeeder extends Seeder
         // Ingeniería de Sistemas
         for ($semestre = 1; $semestre <= 10; $semestre++) {
             CostoSemestral::create([
-                'cod_pensum' => 'SIS-2025', // corregido
-                'gestion' => '2025-1',
+                'cod_pensum' => 'EEA-1998', // corregido
+                'gestion' => '1/1999',
                 'semestre' => (string)$semestre,
                 'monto_semestre' => 1000 + ($semestre * 50),
                 'id_usuario' => 1,
@@ -27,8 +27,8 @@ class CostoSemestralSeeder extends Seeder
         // Administración de Empresas
         for ($semestre = 1; $semestre <= 8; $semestre++) {
             CostoSemestral::create([
-                'cod_pensum' => 'ADM-2024', // corregido
-                'gestion' => '2025-1',
+                'cod_pensum' => 'MEA-1998', // corregido
+                'gestion' => '1/1999',
                 'semestre' => (string)$semestre,
                 'monto_semestre' => 900 + ($semestre * 40),
                 'id_usuario' => 1,

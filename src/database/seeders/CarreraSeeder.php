@@ -16,24 +16,24 @@ class CarreraSeeder extends Seeder
         // Definimos las carreras
         $carreras = [
             [
-                'codigo_carrera' => 'ING-SIS',
-                'nombre' => 'Ingeniería de Sistemas',
-                'descripcion' => 'Carrera de Ingeniería de Sistemas y Computación',
-                'prefijo_matricula' => 'SIS',
+                'codigo_carrera' => 'EEA',
+                'nombre' => 'Electricidad y Electrónica',
+                'descripcion' => 'Carrera de Electricidad, Electrónica.',
+                'prefijo_matricula' => 'EEA',
                 'estado' => 1,
             ],
             [
-                'codigo_carrera' => 'ING-IND',
-                'nombre' => 'Ingeniería Industrial',
-                'descripcion' => 'Carrera de Ingeniería Industrial y Procesos',
-                'prefijo_matricula' => 'IND',
+                'codigo_carrera' => 'MEA',
+                'nombre' => 'Mecanica Automotriz',
+                'descripcion' => 'Carrera de Mecanica Automotriz',
+                'prefijo_matricula' => 'MEA',
                 'estado' => 1,
             ],
             [
-                'codigo_carrera' => 'ADM-EMP',
-                'nombre' => 'Administración de Empresas',
-                'descripcion' => 'Carrera de Administración de Empresas',
-                'prefijo_matricula' => 'ADM',
+                'codigo_carrera' => 'SEA',
+                'nombre' => 'Secretariado Ejecutivo',
+                'descripcion' => 'Carrera de Secretariado Ejecutivo',
+                'prefijo_matricula' => 'SEA',
                 'estado' => 1,
             ],
         ];

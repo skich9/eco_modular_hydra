@@ -17,9 +17,9 @@ class GestionSeeder extends Seeder
 
 		$rows = [
 			[
-				'gestion' => '2024-1',
-				'fecha_ini' => '2024-01-01',
-				'fecha_fin' => '2024-06-30',
+				'gestion' => '1/1999',
+				'fecha_ini' => '1999-01-01',
+				'fecha_fin' => '1999-12-31',
 				'orden' => 1,
 				'fecha_graduacion' => null,
 				'estado' => true,
@@ -27,9 +27,9 @@ class GestionSeeder extends Seeder
 				'updated_at' => $now,
 			],
 			[
-				'gestion' => '2024-2',
-				'fecha_ini' => '2024-07-01',
-				'fecha_fin' => '2024-12-31',
+				'gestion' => '2/1999',
+				'fecha_ini' => '1999-01-01',
+				'fecha_fin' => '1999-12-31',
 				'orden' => 2,
 				'fecha_graduacion' => null,
 				'estado' => true,
@@ -37,9 +37,9 @@ class GestionSeeder extends Seeder
 				'updated_at' => $now,
 			],
 			[
-				'gestion' => '2025-1',
-				'fecha_ini' => '2025-01-01',
-				'fecha_fin' => '2025-06-30',
+				'gestion' => '1/2000',
+				'fecha_ini' => '2000-01-01',
+				'fecha_fin' => '2000-12-31',
 				'orden' => 3,
 				'fecha_graduacion' => null,
 				'estado' => true,
@@ -47,9 +47,9 @@ class GestionSeeder extends Seeder
 				'updated_at' => $now,
 			],
 			[
-				'gestion' => '2025-2',
-				'fecha_ini' => '2025-07-01',
-				'fecha_fin' => '2025-12-31',
+				'gestion' => '2/2000',
+				'fecha_ini' => '2000-01-01',
+				'fecha_fin' => '2000-12-31',
 				'orden' => 4,
 				'fecha_graduacion' => null,
 				'estado' => true,

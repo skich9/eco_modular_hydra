@@ -21,6 +21,7 @@ class Inscripcion extends Model
 		'id_usuario',
 		'cod_ceta',
 		'cod_pensum',
+		'cod_curso',
 		'nro_materia',
 		'nro_materia_aprob',
 		'gestion',

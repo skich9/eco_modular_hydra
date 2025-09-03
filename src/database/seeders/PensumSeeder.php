@@ -14,30 +14,30 @@ class PensumSeeder extends Seeder
     {
         // Insertar pensums básicos para pruebas
         DB::table('pensums')->insert([
-            'cod_pensum' => 'SIS-2025',
-            'nombre' => 'Pensum 2025 - Ingeniería de Sistemas',
-            'descripcion' => 'Plan de estudios Ingeniería de Sistemas 2025',
-            'codigo_carrera' => 'ING-SIS', // coincidencia exacta con CarreraSeeder
+            'cod_pensum' => 'EEA-1998',
+            'nombre' => 'Pensum-1998 - Electricidad y Electrónica',
+            'descripcion' => 'Plan de estudios Electricidad y Electrónica 1998',
+            'codigo_carrera' => 'EEA', // coincidencia exacta con CarreraSeeder
             'estado' => true,
             'created_at' => now(),
             'updated_at' => now(),
         ]);
 
         DB::table('pensums')->insert([
-            'cod_pensum' => 'ADM-2024',
-            'nombre' => 'Pensum 2024 - Administración de Empresas',
-            'descripcion' => 'Plan de estudios Administración de Empresas 2024',
-            'codigo_carrera' => 'ADM-EMP', // coincidencia exacta
+            'cod_pensum' => 'MEA-1998',
+            'nombre' => 'Pensum 1998 - Mecanica Automotriz',
+            'descripcion' => 'Plan de estudios Mecanica Automotriz 1998',
+            'codigo_carrera' => 'MEA', // coincidencia exacta
             'estado' => true,
             'created_at' => now(),
             'updated_at' => now(),
         ]);
 
         DB::table('pensums')->insert([
-            'cod_pensum' => 'IND-2025',
-            'nombre' => 'Pensum 2025 - Ingeniería Industrial',
-            'descripcion' => 'Plan de estudios Ingeniería Industrial 2025',
-            'codigo_carrera' => 'ING-IND', // coincidencia exacta
+            'cod_pensum' => 'SEA-1998',
+            'nombre' => 'Pensum 1998 - Secretariado Ejecutivo',
+            'descripcion' => 'Plan de estudios Secretariado Ejecutivo 1998',
+            'codigo_carrera' => 'SEA', // coincidencia exacta
             'estado' => true,
             'created_at' => now(),
             'updated_at' => now(),

@@ -184,6 +184,20 @@ export class CobrosComponent implements OnInit {
 		}
 	}
 
+	// Buscar por Cod. CETA desde la cabecera del lote reutilizando loadResumen()
+	buscarPorCodCetaCabecera(): void {
+		const cabecera = this.batchForm.get('cabecera') as FormGroup;
+		const cod_ceta = cabecera?.get('cod_ceta')?.value;
+		const gestion = cabecera?.get('gestion')?.value || '';
+		if (!cod_ceta) {
+			this.showAlert('Ingrese el Codigo CETA para buscar', 'warning');
+			return;
+		}
+		// Reutiliza el formulario de búsqueda y la lógica existente
+		this.searchForm.patchValue({ cod_ceta, gestion });
+		this.loadResumen();
+	}
+
 	buscarPorCI(): void {
 		// Placeholder de búsqueda por CI
 		const ci = this.identidadForm.get('ci')?.value;

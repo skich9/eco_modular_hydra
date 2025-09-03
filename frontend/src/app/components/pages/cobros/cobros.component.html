@@ -1,5 +1,5 @@
 <div class="container py-3">
-	<h2 class="mb-3">Gestión de Cobros</h2>
+	<h2 class="mb-3">Cobros</h2>
 
 	<!-- Alertas -->
 	<div *ngIf="alertMessage" class="alert" [ngClass]="{
@@ -19,71 +19,96 @@
 				</div>
 				<div class="card-body">
 					<form [formGroup]="batchForm" (ngSubmit)="submitBatch()">
-						<div class="row g-3" formGroupName="cabecera">
-							<h6>Estudiante</h6>
-							<!-- Identidad del cliente -->
-							<div [formGroup]="identidadForm" class="row g-3 mb-2">
-								<div class="col-md-4">
-									<label class="form-label">Nombre completo</label>
-									<input class="form-control" formControlName="nombre_completo" />
-								</div>
-								<div class="col-md-4">
-									<label class="form-label">Razón social</label>
-									<input class="form-control" formControlName="razon_social" />
-								</div>
-								<div class="col-md-4">
-									<label class="form-label">Nro/Tipo documento</label>
-									<input class="form-control" readonly (click)="openRazonSocialModal()"
-										[value]="(identidadForm.get('tipo_identidad')?.value || 'CI') + ' ' + (identidadForm.get('ci')?.value || '')"
-										title="Click para editar datos de documento y razón social" />
-								</div>
-								<div class="col-md-5">
-									<label class="form-label">Email</label>
-									<input type="email" class="form-control" formControlName="email" placeholder="correo@dominio.com" />
-									<div class="form-check form-switch mt-1">
-										<input class="form-check-input" type="checkbox" id="switchEmail" formControlName="email_habilitado" />
-										<label class="form-check-label" for="switchEmail">Habilitar edición de email</label>
+						<div class="row g-3 cobros-cabecera" formGroupName="cabecera">
+							<!-- Mantener en el modelo pero oculto en UI -->
+							<input type="hidden" formControlName="tipo_inscripcion" />
+
+							<!-- Columna izquierda -->
+							<div class="col-md-6">
+								<div class="mb-2">
+									<label class="form-label">Código CETA</label>
+									<div class="input-group">
+										<input class="form-control" formControlName="cod_ceta" />
+										<button type="button" class="btn btn-outline-secondary" (click)="buscarPorCodCetaCabecera()">
+											<i class="bi bi-search"></i>
+										</button>
 									</div>
 								</div>
-								<div class="col-md-3">
-									<label class="form-label">Turno</label>
-									<select class="form-select" formControlName="turno">
-										<option value="">-- Seleccione --</option>
-										<option value="Mañana">Mañana</option>
-										<option value="Tarde">Tarde</option>
-										<option value="Noche">Noche</option>
-									</select>
+
+								<div [formGroup]="identidadForm" class="row g-3">
+									<div class="col-12">
+										<label class="form-label">Estudiante</label>
+										<input class="form-control" formControlName="nombre_completo" />
+									</div>
+									<div class="col-12">
+										<label class="form-label">Razón Social</label>
+										<input class="form-control" formControlName="razon_social" />
+									</div>
+									<div class="col-12">
+										<label class="form-label">Nro Tipo Documento</label>
+										<div class="input-group">
+											<input class="form-control" formControlName="ci" />
+											<button type="button" class="btn btn-outline-secondary" (click)="openRazonSocialModal()" title="Editar documento/razón social">
+												<i class="bi bi-three-dots"></i>
+											</button>
+										</div>
+									</div>
+									<div class="col-12">
+										<label class="form-label">Documento de Identidad</label>
+										<select class="form-select" formControlName="tipo_identidad">
+											<option value="CI">CI - CEDULA DE IDENTIDAD</option>
+										</select>
+									</div>
 								</div>
 							</div>
-							<div class="col-md-3">
-								<label class="form-label">Cod. CETA</label>
-								<input class="form-control" formControlName="cod_ceta" />
+
+							<!-- Columna derecha -->
+							<div class="col-md-6">
+								<div class="row g-3">
+									<div class="col-12">
+										<label class="form-label">Pensum</label>
+										<select class="form-select" formControlName="cod_pensum">
+											<option value="">-- Seleccione --</option>
+											<option *ngFor="let p of pensums" [value]="p.cod_pensum">{{ p.nombre || p.cod_pensum }}</option>
+										</select>
+									</div>
+									<div class="col-12">
+										<label class="form-label">Gestión</label>
+										<select class="form-select" formControlName="gestion">
+											<option value="">-- Seleccione --</option>
+											<option *ngFor="let g of gestiones" [value]="g.gestion">{{ g.gestion }}</option>
+										</select>
+									</div>
+									<div class="col-12" [formGroup]="identidadForm">
+										<label class="form-label">Turno</label>
+										<select class="form-select" formControlName="turno">
+											<option value="">-- Seleccione --</option>
+											<option value="Mañana">Mañana</option>
+											<option value="Tarde">Tarde</option>
+											<option value="Noche">Noche</option>
+										</select>
+									</div>
+									<div class="col-12" [formGroup]="identidadForm">
+										<label class="form-label">Email</label>
+										<input type="email" class="form-control" formControlName="email" placeholder="correo@dominio.com" />
+										<div class="form-check form-switch mt-1">
+											<input class="form-check-input" type="checkbox" id="switchEmail" formControlName="email_habilitado" />
+											<label class="form-check-label" for="switchEmail">Habilitar edición de email</label>
+										</div>
+									</div>
+									<div class="col-12">
+										<label class="form-label">Método de Pago</label>
+										<select class="form-select" formControlName="id_forma_cobro">
+											<option value="">-- Seleccione --</option>
+											<option *ngFor="let f of formasCobro" [value]="f.id_forma_cobro">{{ f.nombre }}</option>
+										</select>
+									</div>
+								</div>
 							</div>
-							<div class="col-md-3">
-								<label class="form-label">Pensum</label>
-								<select class="form-select" formControlName="cod_pensum">
-									<option value="">-- Seleccione --</option>
-									<option *ngFor="let p of pensums" [value]="p.cod_pensum">{{ p.nombre || p.cod_pensum }}</option>
-								</select>
-							</div>
-							<div class="col-md-3">
-								<label class="form-label">Tipo Inscripción</label>
-								<input class="form-control" formControlName="tipo_inscripcion" />
-							</div>
-							<div class="col-md-3">
-								<label class="form-label">Gestión</label>
-								<select class="form-select" formControlName="gestion">
-									<option value="">-- Seleccione --</option>
-									<option *ngFor="let g of gestiones" [value]="g.gestion">{{ g.gestion }}</option>
-								</select>
-							</div>
-							<div class="col-md-3">
-								<label class="form-label">Forma cobro</label>
-								<select class="form-select" formControlName="id_forma_cobro">
-									<option value="">-- Seleccione --</option>
-									<option *ngFor="let f of formasCobro" [value]="f.id_forma_cobro">{{ f.nombre }}</option>
-								</select>
-							</div>
+
+							<!-- Fin columnas -->
+
+							<!-- Otros campos -->
 							<div class="col-md-3">
 								<label class="form-label">Cuenta bancaria</label>
 								<input class="form-control" formControlName="id_cuentas_bancarias" placeholder="ID numérico" />
