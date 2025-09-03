@@ -201,6 +201,7 @@ class CobroController extends Controller
 
 			$codCeta = (int) $request->input('cod_ceta');
 			$gestionReq = $request->input('gestion');
+			// Gestion inicial (podría ser null). La gestion final se determinará tras cargar la inscripción
 			$gestion = $gestionReq ?: optional(Gestion::gestionActual())->gestion;
 
 			$estudiante = Estudiante::with('pensum')->find($codCeta);
@@ -218,26 +219,37 @@ class CobroController extends Controller
 				->orderByDesc('fecha_inscripcion')
 				->orderByDesc('created_at');
 			$inscripcion = $inscripcionQuery->first();
+			// Fallback: si no existe inscripción para la gestión solicitada, usar la última inscripción disponible
+			if (!$inscripcion) {
+				$inscripcion = Inscripcion::where('cod_ceta', $codCeta)
+					->orderByDesc('fecha_inscripcion')
+					->orderByDesc('created_at')
+					->first();
+			}
+
+			// Determinar gestion y pensum a usar en cálculos y respuesta
+			$gestionToUse = $gestionReq ?: optional($inscripcion)->gestion ?: optional(Gestion::gestionActual())->gestion;
+			$codPensumToUse = optional($inscripcion)->cod_pensum ?: optional($estudiante)->cod_pensum;
 
 			$costoSemestral = null;
-			if ($gestion) {
-				$costoSemestral = CostoSemestral::where('cod_pensum', $estudiante->cod_pensum)
-					->where('gestion', $gestion)
+			if ($gestionToUse) {
+				$costoSemestral = CostoSemestral::where('cod_pensum', $codPensumToUse)
+					->where('gestion', $gestionToUse)
 					->first();
 			}
 
 			$asignacion = null;
 			if ($inscripcion && $costoSemestral) {
-				$asignacion = AsignacionCostos::where('cod_pensum', $estudiante->cod_pensum)
+				$asignacion = AsignacionCostos::where('cod_pensum', $codPensumToUse)
 					->where('cod_inscrip', $inscripcion->cod_inscrip)
 					->where('id_costo_semestral', $costoSemestral->id_costo_semestral)
 					->first();
 			}
 
 			$cobrosBase = Cobro::where('cod_ceta', $codCeta)
-				->where('cod_pensum', $estudiante->cod_pensum)
-				->when($gestion, function ($q) use ($gestion) {
-					$q->where('gestion', $gestion);
+				->where('cod_pensum', $codPensumToUse)
+				->when($gestionToUse, function ($q) use ($gestionToUse) {
+					$q->where('gestion', $gestionToUse);
 				});
 
 			$cobrosMensualidad = (clone $cobrosBase)->whereNotNull('id_cuota')->get();
@@ -254,7 +266,7 @@ class CobroController extends Controller
 				'data' => [
 					'estudiante' => $estudiante,
 					'inscripcion' => $inscripcion,
-					'gestion' => $gestion,
+					'gestion' => $gestionToUse,
 					'costo_semestral' => $costoSemestral,
 					'asignacion_costos' => $asignacion,
 					'cobros' => [

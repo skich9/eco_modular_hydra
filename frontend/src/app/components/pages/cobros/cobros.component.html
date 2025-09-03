@@ -38,24 +38,19 @@
 								<div [formGroup]="identidadForm" class="row g-3">
 									<div class="col-12">
 										<label class="form-label">Estudiante</label>
-										<input class="form-control" formControlName="nombre_completo" />
+										<input class="form-control" formControlName="nombre_completo" [readonly]="true" />
 									</div>
 									<div class="col-12">
 										<label class="form-label">Razón Social</label>
-										<input class="form-control" formControlName="razon_social" />
+										<input class="form-control" formControlName="razon_social" [readonly]="true" (click)="openRazonSocialModal()" style="cursor: pointer;" />
 									</div>
 									<div class="col-12">
 										<label class="form-label">Nro Tipo Documento</label>
-										<div class="input-group">
-											<input class="form-control" formControlName="ci" />
-											<button type="button" class="btn btn-outline-secondary" (click)="openRazonSocialModal()" title="Editar documento/razón social">
-												<i class="bi bi-three-dots"></i>
-											</button>
-										</div>
+										<input class="form-control" formControlName="ci" [readonly]="true" (click)="openRazonSocialModal()" style="cursor: pointer;" />
 									</div>
 									<div class="col-12">
 										<label class="form-label">Documento de Identidad</label>
-										<select class="form-select" formControlName="tipo_identidad">
+										<select class="form-select" formControlName="tipo_identidad" [disabled]="true">
 											<option value="CI">CI - CEDULA DE IDENTIDAD</option>
 										</select>
 									</div>
@@ -67,26 +62,19 @@
 								<div class="row g-3">
 									<div class="col-12">
 										<label class="form-label">Pensum</label>
-										<select class="form-select" formControlName="cod_pensum">
-											<option value="">-- Seleccione --</option>
-											<option *ngFor="let p of pensums" [value]="p.cod_pensum">{{ p.nombre || p.cod_pensum }}</option>
-										</select>
+										<input class="form-control" formControlName="cod_pensum" [readonly]="true" />
 									</div>
 									<div class="col-12">
 										<label class="form-label">Gestión</label>
-										<select class="form-select" formControlName="gestion">
-											<option value="">-- Seleccione --</option>
-											<option *ngFor="let g of gestiones" [value]="g.gestion">{{ g.gestion }}</option>
-										</select>
+										<input class="form-control" formControlName="gestion" [readonly]="true" />
 									</div>
-									<div class="col-12" [formGroup]="identidadForm">
-										<label class="form-label">Turno</label>
-										<select class="form-select" formControlName="turno">
-											<option value="">-- Seleccione --</option>
-											<option value="Mañana">Mañana</option>
-											<option value="Tarde">Tarde</option>
-											<option value="Noche">Noche</option>
-										</select>
+									<div class="col-12">
+										<label class="form-label">Curso</label>
+										<div class="form-control-plaintext border rounded px-2 py-2">{{ resumen?.inscripcion?.cod_curso || '-' }}</div>
+									</div>
+									<div class="col-12">
+										<label class="form-label">Tipo de inscripción</label>
+										<div class="form-control-plaintext border rounded px-2 py-2">{{ resumen?.inscripcion?.tipo_inscripcion || '-' }}</div>
 									</div>
 									<div class="col-12" [formGroup]="identidadForm">
 										<label class="form-label">Email</label>

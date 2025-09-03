@@ -135,9 +135,10 @@ export class CobrosComponent implements OnInit {
 					const ins = this.resumen?.inscripcion || {};
 					(this.batchForm.get('cabecera') as FormGroup).patchValue({
 						cod_ceta: est.cod_ceta || cod_ceta,
-						cod_pensum: est.cod_pensum || ins.cod_pensum || '',
+						// Priorizar datos desde inscripciones
+						cod_pensum: ins.cod_pensum ?? est.cod_pensum ?? '',
 						tipo_inscripcion: ins.tipo_inscripcion || '',
-						gestion: this.resumen?.gestion || gestion || ''
+						gestion: this.resumen?.gestion ?? ins.gestion ?? gestion ?? ''
 					});
 
 					// Cargar pensums por carrera desde el pensum del estudiante
