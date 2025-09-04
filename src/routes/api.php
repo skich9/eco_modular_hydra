@@ -16,6 +16,7 @@ use App\Http\Controllers\Api\DefDescuentoController;
 use App\Http\Controllers\Api\DefDescuentoBecaController;
 use App\Http\Controllers\Api\ParametroGeneralController;
 use App\Http\Controllers\Api\FormaCobroController;
+use App\Http\Controllers\Api\RazonSocialController;
 
 /*
 --------------------------------------------------------------------------
@@ -122,3 +123,7 @@ Route::post('usuarios/{id}/reset-password', [UsuarioController::class, 'resetPas
 Route::get('roles/active', [RolController::class, 'rolesActivos']);
 Route::apiResource('roles', RolController::class);
 Route::patch('roles/{id}/toggle-status', [RolController::class, 'cambiarEstado']);
+
+// ===================== Razón Social =====================
+Route::get('razon-social/search', [RazonSocialController::class, 'search']);
+Route::post('razon-social', [RazonSocialController::class, 'store']);

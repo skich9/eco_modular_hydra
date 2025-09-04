@@ -829,6 +829,17 @@ CREATE TABLE `qr_configuracion` (
   `estado` bool DEFAULT true
 );
 
+CREATE TABLE `razon_social` (
+  `razon_social` text DEFAULT null,
+  `nit` varchar(50) NOT NULL,
+  `tipo` varchar(255) NOT NULL,
+  `id_tipo_doc_identidad` tinyint DEFAULT null,
+  `complemento` varchar(10) DEFAULT null,
+  `created_at` timestamp DEFAULT null,
+  `updated_at` timestamp DEFAULT null,
+  PRIMARY KEY (`nit`, `tipo`)
+);
+
 CREATE INDEX `compromisos_usuario_id_foreign` ON `compromisos` (`usuario_id`) USING BTREE;
 
 CREATE INDEX `costo_aplicado_costo_id_foreign` ON `costo_detalle` (`costo_id`) USING BTREE;

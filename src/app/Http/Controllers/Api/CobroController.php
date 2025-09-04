@@ -212,24 +212,36 @@ class CobroController extends Controller
 				], 404);
 			}
 
-			$inscripcionQuery = Inscripcion::where('cod_ceta', $codCeta)
+			// Obtener todas las inscripciones por gestión para el estudiante (NORMAL y ARRASTRE)
+			$inscripciones = Inscripcion::where('cod_ceta', $codCeta)
 				->when($gestion, function ($q) use ($gestion) {
 					$q->where('gestion', $gestion);
 				})
 				->orderByDesc('fecha_inscripcion')
-				->orderByDesc('created_at');
-			$inscripcion = $inscripcionQuery->first();
-			// Fallback: si no existe inscripción para la gestión solicitada, usar la última inscripción disponible
-			if (!$inscripcion) {
-				$inscripcion = Inscripcion::where('cod_ceta', $codCeta)
+				->orderByDesc('created_at')
+				->get();
+			// Fallback: si no hay inscripciones en la gestión, usar la última gestión disponible (solo si no se solicitó gestión explícita)
+			if ($inscripciones->isEmpty() && !$gestionReq) {
+				$ultima = Inscripcion::where('cod_ceta', $codCeta)
 					->orderByDesc('fecha_inscripcion')
 					->orderByDesc('created_at')
 					->first();
+				if ($ultima) {
+					$inscripciones = Inscripcion::where('cod_ceta', $codCeta)
+						->where('gestion', $ultima->gestion)
+						->orderByDesc('fecha_inscripcion')
+						->orderByDesc('created_at')
+						->get();
+					$gestion = $ultima->gestion;
+				}
 			}
 
-			// Determinar gestion y pensum a usar en cálculos y respuesta
-			$gestionToUse = $gestionReq ?: optional($inscripcion)->gestion ?: optional(Gestion::gestionActual())->gestion;
-			$codPensumToUse = optional($inscripcion)->cod_pensum ?: optional($estudiante)->cod_pensum;
+			// Determinar gestión a usar en cálculos y respuesta
+			$gestionToUse = $gestion ?: optional(Gestion::gestionActual())->gestion;
+			// Seleccionar inscripción principal: priorizar NORMAL si existe, caso contrario la primera
+			$primaryInscripcion = $inscripciones->firstWhere('tipo_inscripcion', 'NORMAL') ?: $inscripciones->first();
+			// Determinar pensum a usar (desde la inscripción principal, si existe)
+			$codPensumToUse = optional($primaryInscripcion)->cod_pensum ?: optional($estudiante)->cod_pensum;
 
 			$costoSemestral = null;
 			if ($gestionToUse) {
@@ -239,9 +251,9 @@ class CobroController extends Controller
 			}
 
 			$asignacion = null;
-			if ($inscripcion && $costoSemestral) {
+			if ($primaryInscripcion && $costoSemestral) {
 				$asignacion = AsignacionCostos::where('cod_pensum', $codPensumToUse)
-					->where('cod_inscrip', $inscripcion->cod_inscrip)
+					->where('cod_inscrip', $primaryInscripcion->cod_inscrip)
 					->where('id_costo_semestral', $costoSemestral->id_costo_semestral)
 					->first();
 			}
@@ -265,7 +277,8 @@ class CobroController extends Controller
 				'success' => true,
 				'data' => [
 					'estudiante' => $estudiante,
-					'inscripcion' => $inscripcion,
+					'inscripcion' => $primaryInscripcion,
+					'inscripciones' => $inscripciones,
 					'gestion' => $gestionToUse,
 					'costo_semestral' => $costoSemestral,
 					'asignacion_costos' => $asignacion,

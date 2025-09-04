@@ -49,4 +49,18 @@ export class CobrosService {
 			map((res: any) => ({ success: !!res?.success, data: res?.data || [], message: res?.message }))
 		);
 	}
+
+	// Razón Social
+	buscarRazonSocial(numero: string, tipoId: number): Observable<any> {
+		let params = new HttpParams().set('numero', numero).set('tipo_id', String(tipoId));
+		return this.http.get<any>(`${this.apiUrl}/razon-social/search`, { params }).pipe(
+			map((res: any) => ({ success: !!res?.success, data: res?.data || null, message: res?.message }))
+		);
+	}
+
+	guardarRazonSocial(payload: { nit: string; tipo_id: number; razon_social?: string | null; complemento?: string | null; }): Observable<any> {
+		return this.http.post<any>(`${this.apiUrl}/razon-social`, payload).pipe(
+			map((res: any) => ({ success: !!res?.success, data: res?.data || null, message: res?.message }))
+		);
+	}
 }

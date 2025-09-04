@@ -51,7 +51,11 @@
 									<div class="col-12">
 										<label class="form-label">Documento de Identidad</label>
 										<select class="form-select" formControlName="tipo_identidad" [disabled]="true">
-											<option value="CI">CI - CEDULA DE IDENTIDAD</option>
+											<option [ngValue]="1">CI - CEDULA DE IDENTIDAD</option>
+											<option [ngValue]="2">CEX - CEDULA DE IDENTIDAD DE EXTRANJERO</option>
+											<option [ngValue]="3">PAS - PASAPORTE</option>
+											<option [ngValue]="4">OD - OTRO DOCUMENTO DE IDENTIDAD</option>
+											<option [ngValue]="5">NIT - NUMERO DE IDENTIFICACION TRIBUTARIA</option>
 										</select>
 									</div>
 								</div>
@@ -69,12 +73,20 @@
 										<input class="form-control" formControlName="gestion" [readonly]="true" />
 									</div>
 									<div class="col-12">
-										<label class="form-label">Curso</label>
-										<div class="form-control-plaintext border rounded px-2 py-2">{{ resumen?.inscripcion?.cod_curso || '-' }}</div>
-									</div>
-									<div class="col-12">
-										<label class="form-label">Tipo de inscripción</label>
-										<div class="form-control-plaintext border rounded px-2 py-2">{{ resumen?.inscripcion?.tipo_inscripcion || '-' }}</div>
+										<label class="form-label">Grupo</label>
+										<div class="form-control-plaintext border rounded px-2 py-2">
+											<ng-container *ngIf="(resumen?.inscripciones?.length || 0) > 0; else noInscripciones">
+												<div class="d-flex flex-column gap-2">
+													<div class="d-flex align-items-center gap-2" *ngFor="let ins of resumen?.inscripciones">
+														<span class="badge rounded-pill bg-primary">{{ ins?.cod_curso || '-' }}</span>
+														<span class="badge rounded-pill" [ngClass]="{'bg-warning text-dark': true}">{{ (ins?.tipo_inscripcion || '-').toUpperCase() }}</span>
+													</div>
+												</div>
+											</ng-container>
+											<ng-template #noInscripciones>
+												<span class="text-muted">{{ resumen?.inscripcion?.cod_curso ? (resumen?.inscripcion?.cod_curso + ' - ' + (resumen?.inscripcion?.tipo_inscripcion || '-')) : '-' }}</span>
+											</ng-template>
+										</div>
 									</div>
 									<div class="col-12" [formGroup]="identidadForm">
 										<label class="form-label">Email</label>
@@ -210,41 +222,72 @@
 		<div class="modal-dialog modal-lg">
 			<div class="modal-content">
 				<div class="modal-header">
-					<h5 class="modal-title" id="razonSocialModalLabel">Razón social y documento</h5>
+					<h5 class="modal-title" id="razonSocialModalLabel">Razón social</h5>
 					<button type="button" class="btn-close" data-bs-dismiss="modal" aria-label="Close"></button>
 				</div>
 				<div class="modal-body">
-					<form [formGroup]="identidadForm" class="row g-3">
-						<div class="col-md-4">
-							<label class="form-label">Tipo de identidad</label>
-							<select class="form-select" formControlName="tipo_identidad">
-								<option value="CI">CI</option>
-							</select>
-						</div>
-						<div class="col-md-5">
-							<label class="form-label">CI</label>
-							<div class="input-group">
-								<input class="form-control" formControlName="ci" />
-								<button class="btn btn-outline-secondary" type="button" (click)="buscarPorCI()">
-									<i class="bi bi-search"></i>
-								</button>
+					<!-- Alertas del modal -->
+					<div *ngIf="modalAlertMessage" class="alert mb-3" [ngClass]="{
+						'alert-success': modalAlertType === 'success',
+						'alert-danger': modalAlertType === 'error',
+						'alert-warning': modalAlertType === 'warning'
+					}">{{ modalAlertMessage }}</div>
+
+					<!-- Panel verde con cabecera azul -->
+					<div class="p-3 bg-success bg-opacity-10 rounded">
+						<div class="border rounded">
+							<div class="bg-primary text-white px-3 py-2 rounded-top">
+								<strong>Búsqueda de NIT y Razón Social:</strong>
+							</div>
+							<div class="p-3">
+								<form [formGroup]="identidadForm" class="row g-3 align-items-center">
+									<div class="col-md-6">
+										<label class="form-label fw-semibold text-success">Tipo de Identidad</label>
+										<select class="form-select" formControlName="tipo_identidad">
+											<option [ngValue]="1">CI - CEDULA DE IDENTIDAD</option>
+											<option [ngValue]="2">CEX - CEDULA DE IDENTIDAD DE EXTRANJERO</option>
+											<option [ngValue]="3">PAS - PASAPORTE</option>
+											<option [ngValue]="4">OD - OTRO DOCUMENTO DE IDENTIDAD</option>
+											<option [ngValue]="5">NIT - NUMERO DE IDENTIFICACION TRIBUTARIA</option>
+										</select>
+									</div>
+									<div class="col-md-6">
+										<label class="form-label fw-semibold text-success">{{ docLabel }}</label>
+										<div class="input-group">
+											<input class="form-control" formControlName="ci" [placeholder]="docPlaceholder" />
+											<button class="btn btn-outline-primary" type="button" (click)="buscarPorCI()">
+												<i class="bi bi-search"></i>
+											</button>
+										</div>
+									</div>
+
+									<!-- Complemento solo para CI -->
+									<div class="col-md-6" *ngIf="showComplemento">
+										<div class="form-check mb-1">
+											<input class="form-check-input" type="checkbox" id="chkComp" formControlName="complemento_habilitado" />
+											<label class="form-check-label" for="chkComp">Complemento ci</label>
+										</div>
+										<input class="form-control" formControlName="complemento_ci" placeholder="Ej: 1A" />
+									</div>
+
+									<div class="col-md-6">
+										<label class="form-label fw-semibold text-success">Razón Social</label>
+										<div class="input-group">
+											<input class="form-control" formControlName="razon_social" [readonly]="!razonSocialEditable" />
+											<button class="btn btn-outline-secondary" type="button" (click)="editRazonSocial()" [disabled]="razonSocialEditable">
+												<i class="bi bi-pencil"></i>
+											</button>
+										</div>
+									</div>
+								</form>
 							</div>
 						</div>
-						<div class="col-md-3">
-							<label class="form-label">Complemento CI</label>
-							<input class="form-control" formControlName="complemento_ci" placeholder="Ej: 1A" />
-							<div class="form-check form-switch mt-1">
-								<input class="form-check-input" type="checkbox" id="switchComp" formControlName="complemento_habilitado" />
-								<label class="form-check-label" for="switchComp">Habilitar complemento</label>
-							</div>
-						</div>
-						<div class="col-12">
-							<label class="form-label">Razón social</label>
-							<input class="form-control" formControlName="razon_social" />
-						</div>
-					</form>
+					</div>
 				</div>
 				<div class="modal-footer">
+					<button type="button" class="btn btn-primary" (click)="guardarRazonSocial()" [disabled]="loading">
+						<i class="bi bi-check2 me-1"></i> Grabar y Salir
+					</button>
 					<button type="button" class="btn btn-secondary" data-bs-dismiss="modal">Cerrar</button>
 				</div>
 			</div>
