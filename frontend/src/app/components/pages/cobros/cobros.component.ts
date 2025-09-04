@@ -28,6 +28,7 @@ export class CobrosComponent implements OnInit {
 	searchForm: FormGroup;
 	batchForm: FormGroup;
 	identidadForm: FormGroup;
+	modalIdentidadForm: FormGroup;
 
 	// Datos
 	resumen: any = null;
@@ -69,17 +70,26 @@ export class CobrosComponent implements OnInit {
 			email: [{ value: '', disabled: true }, [Validators.email]],
 			turno: ['']
 		});
+
+		// Formulario del modal (separado para no sincronizar hasta guardar)
+		this.modalIdentidadForm = this.fb.group({
+			tipo_identidad: [1, Validators.required],
+			ci: [''],
+			complemento_habilitado: [false],
+			complemento_ci: [{ value: '', disabled: true }],
+			razon_social: ['']
+		});
 	}
 
 	ngOnInit(): void {
-		// Actualizar UI del documento según tipo
-		this.identidadForm.get('tipo_identidad')?.valueChanges.subscribe((v: number) => {
-			this.updateTipoUI(Number(v || 1));
+		// Suscripciones del modal: actualizar UI del documento según tipo
+		this.modalIdentidadForm.get('tipo_identidad')?.valueChanges.subscribe((v: number) => {
+			this.updateModalTipoUI(Number(v || 1));
 		});
-		this.updateTipoUI(Number(this.identidadForm.get('tipo_identidad')?.value || 1));
-		// Habilitar/deshabilitar complemento CI
-		this.identidadForm.get('complemento_habilitado')?.valueChanges.subscribe((v: boolean) => {
-			const ctrl = this.identidadForm.get('complemento_ci');
+		this.updateModalTipoUI(Number(this.modalIdentidadForm.get('tipo_identidad')?.value || 1));
+		// Habilitar/deshabilitar complemento CI en el modal
+		this.modalIdentidadForm.get('complemento_habilitado')?.valueChanges.subscribe((v: boolean) => {
+			const ctrl = this.modalIdentidadForm.get('complemento_ci');
 			if (v) ctrl?.enable(); else ctrl?.disable();
 		});
 
@@ -195,6 +205,17 @@ export class CobrosComponent implements OnInit {
 		if (modalEl && (window as any).bootstrap?.Modal) {
 			// limpiar alertas del modal en cada apertura
 			this.modalAlertMessage = '';
+			// Inicializar formulario del modal con snapshot de la página principal
+			const tipo = Number(this.identidadForm.get('tipo_identidad')?.value || 1);
+			this.modalIdentidadForm.patchValue({
+				tipo_identidad: tipo,
+				ci: this.identidadForm.get('ci')?.value || '',
+				complemento_habilitado: !!this.identidadForm.get('complemento_habilitado')?.value,
+				complemento_ci: this.identidadForm.get('complemento_ci')?.value || '',
+				razon_social: this.identidadForm.get('razon_social')?.value || ''
+			}, { emitEvent: false });
+			this.updateModalTipoUI(tipo);
+			this.razonSocialEditable = false;
 			const modal = new (window as any).bootstrap.Modal(modalEl);
 			modal.show();
 		}
@@ -215,8 +236,8 @@ export class CobrosComponent implements OnInit {
 	}
 
 	buscarPorCI(): void {
-		const ci = (this.identidadForm.get('ci')?.value || '').toString().trim();
-		const tipoId = Number(this.identidadForm.get('tipo_identidad')?.value || 1);
+		const ci = (this.modalIdentidadForm.get('ci')?.value || '').toString().trim();
+		const tipoId = Number(this.modalIdentidadForm.get('tipo_identidad')?.value || 1);
 		if (!ci) {
 			this.showModalAlert('Ingrese el número de documento para buscar', 'warning');
 			return;
@@ -226,8 +247,15 @@ export class CobrosComponent implements OnInit {
 			next: (res) => {
 				const data = res?.data || null;
 				if (data) {
-					// Encontrado: autocompletar y bloquear edición
-					this.identidadForm.patchValue({
+					// Encontrado: si el tipo difiere, ajustar automáticamente el selector del modal
+					const tipoEncontrado = Number(data.id_tipo_doc_identidad || tipoId);
+					if (tipoEncontrado && tipoEncontrado !== tipoId) {
+						this.modalIdentidadForm.patchValue({ tipo_identidad: tipoEncontrado }, { emitEvent: true });
+						this.updateModalTipoUI(tipoEncontrado);
+						this.showModalAlert('Documento encontrado con un tipo diferente. Se ajustó automáticamente el tipo.', 'warning');
+					}
+					// Autocompletar y bloquear edición
+					this.modalIdentidadForm.patchValue({
 						razon_social: data.razon_social || '',
 						complemento_ci: data.complemento || ''
 					});
@@ -249,10 +277,10 @@ export class CobrosComponent implements OnInit {
 	}
 
 	guardarRazonSocial(): void {
-		const ci = (this.identidadForm.get('ci')?.value || '').toString().trim();
-		const tipoId = Number(this.identidadForm.get('tipo_identidad')?.value || 1);
-		const razon = (this.identidadForm.get('razon_social')?.value || '').toString().trim();
-		const complemento = (this.identidadForm.get('complemento_ci')?.value || '').toString().trim() || null;
+		const ci = (this.modalIdentidadForm.get('ci')?.value || '').toString().trim();
+		const tipoId = Number(this.modalIdentidadForm.get('tipo_identidad')?.value || 1);
+		const razon = (this.modalIdentidadForm.get('razon_social')?.value || '').toString().trim();
+		const complemento = (this.modalIdentidadForm.get('complemento_ci')?.value || '').toString().trim() || null;
 		if (!ci) {
 			this.showModalAlert('El número de documento es obligatorio', 'warning');
 			return;
@@ -267,6 +295,14 @@ export class CobrosComponent implements OnInit {
 				if (res?.success) {
 					this.showModalAlert('Razón social guardada', 'success');
 					this.razonSocialEditable = false;
+					// Reflejar cambios en la página principal SOLO al guardar exitosamente
+					this.identidadForm.patchValue({
+						tipo_identidad: tipoId,
+						ci: ci,
+						complemento_habilitado: !!this.modalIdentidadForm.get('complemento_habilitado')?.value,
+						complemento_ci: complemento || '',
+						razon_social: razon || (res?.data?.razon_social || '')
+					}, { emitEvent: false });
 					// Cerrar modal si existe instancia de Bootstrap
 					const modalEl = document.getElementById('razonSocialModal');
 					const bs = (window as any).bootstrap;
@@ -293,8 +329,8 @@ export class CobrosComponent implements OnInit {
 		this.razonSocialEditable = true;
 	}
 
-	// Ajusta labels/placeholders y complemento por tipo
-	private updateTipoUI(tipoId: number): void {
+	// Ajusta labels/placeholders y complemento por tipo en el modal
+	private updateModalTipoUI(tipoId: number): void {
 		switch (tipoId) {
 			case 1:
 				this.docLabel = 'CI';
@@ -326,10 +362,10 @@ export class CobrosComponent implements OnInit {
 				this.docPlaceholder = 'Introduzca CI';
 				this.showComplemento = true;
 		}
-		// Resetear y deshabilitar complemento cuando no aplique
+		// Resetear y deshabilitar complemento cuando no aplique (en el modal)
 		if (!this.showComplemento) {
-			this.identidadForm.patchValue({ complemento_habilitado: false, complemento_ci: '' }, { emitEvent: false });
-			this.identidadForm.get('complemento_ci')?.disable({ emitEvent: false });
+			this.modalIdentidadForm.patchValue({ complemento_habilitado: false, complemento_ci: '' }, { emitEvent: false });
+			this.modalIdentidadForm.get('complemento_ci')?.disable({ emitEvent: false });
 		}
 	}
 

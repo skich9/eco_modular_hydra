@@ -51,6 +51,16 @@ class RazonSocialController extends Controller
 		// Guardar con tipo fijo 'cliente'
 		$tipo = 'cliente';
 
+		// Si ya existe el registro para el mismo NIT, validar que no se intente cambiar el tipo de identidad
+		$existente = RazonSocial::where('nit', $data['nit'])->where('tipo', $tipo)->first();
+		if ($existente && (int) $existente->id_tipo_doc_identidad !== (int) $data['tipo_id']) {
+			$tipoExistente = self::TIPOS[(int) $existente->id_tipo_doc_identidad] ?? 'DESCONOCIDO';
+			return response()->json([
+				'success' => false,
+				'message' => "Estos dígitos ya fueron guardados en el tipo de identidad: {$tipoExistente}",
+			], 422);
+		}
+
 		$rs = RazonSocial::updateOrCreate(
 			['nit' => $data['nit'], 'tipo' => $tipo],
 			[
