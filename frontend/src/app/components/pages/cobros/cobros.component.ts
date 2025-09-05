@@ -30,11 +30,18 @@ export class CobrosComponent implements OnInit {
 	identidadForm: FormGroup;
 	modalIdentidadForm: FormGroup;
 
+	// Mensualidades
+	mensualidadModalForm: FormGroup;
+	mensualidadesPendientes = 0;
+	mensualidadPU = 0;
+
 	// Datos
 	resumen: any = null;
 	gestiones: any[] = [];
 	formasCobro: any[] = [];
 	pensums: any[] = [];
+	// Visibilidad del card de Opciones de cobro
+	showOpciones = false;
 
 	constructor(
 		private fb: FormBuilder,
@@ -79,6 +86,14 @@ export class CobrosComponent implements OnInit {
 			complemento_ci: [{ value: '', disabled: true }],
 			razon_social: ['']
 		});
+
+		// Modal de Mensualidades
+		this.mensualidadModalForm = this.fb.group({
+			metodo_pago: [''],
+			cantidad: [1, [Validators.required, Validators.min(1)]],
+			costo_total: [{ value: 0, disabled: true }],
+			observaciones: ['']
+		});
 	}
 
 	ngOnInit(): void {
@@ -107,6 +122,11 @@ export class CobrosComponent implements OnInit {
 		this.cobrosService.getFormasCobro().subscribe({
 			next: (res) => { if (res.success) this.formasCobro = res.data; },
 			error: () => {}
+		});
+
+		// Recalcular costo total de mensualidades cuando cambie la cantidad
+		this.mensualidadModalForm.get('cantidad')?.valueChanges.subscribe((v: number) => {
+			this.recalcMensualidadTotal();
 		});
 	}
 
@@ -139,6 +159,7 @@ export class CobrosComponent implements OnInit {
 			next: (res) => {
 				if (res.success) {
 					this.resumen = res.data;
+					this.showOpciones = true;
 					this.showAlert('Resumen cargado', 'success');
 					// Prefill identidad/razón social
 					const est = this.resumen?.estudiante || {};
@@ -177,8 +198,23 @@ export class CobrosComponent implements OnInit {
 					} else {
 						this.pensums = [];
 					}
+
+					// Datos para Mensualidad: pendientes y precio unitario
+					const nroCuotas = Number(this.resumen?.totales?.nro_cuotas || 0);
+					const pagadas = Number(this.resumen?.cobros?.mensualidad?.count || 0);
+					this.mensualidadesPendientes = Math.max(0, nroCuotas - pagadas);
+					this.mensualidadPU = Number(this.resumen?.totales?.pu_mensual || 0);
+					// Inicializar modal de mensualidades
+					const defaultMetodo = (this.batchForm.get('cabecera.id_forma_cobro') as any)?.value || '';
+					this.mensualidadModalForm.patchValue({
+						metodo_pago: defaultMetodo,
+						cantidad: this.mensualidadesPendientes > 0 ? 1 : 0,
+						costo_total: this.mensualidadPU
+					}, { emitEvent: false });
+					this.recalcMensualidadTotal();
 				} else {
 					this.resumen = null;
+					this.showOpciones = false;
 					this.showAlert(res.message || 'No se pudo obtener el resumen', 'warning');
 				}
 				this.loading = false;
@@ -186,10 +222,29 @@ export class CobrosComponent implements OnInit {
 			error: (err) => {
 				console.error('Resumen error:', err);
 				this.resumen = null;
+				this.showOpciones = false;
 				this.showAlert('Error al obtener resumen', 'error');
 				this.loading = false;
 			}
 		});
+	}
+
+	// Botones del card "Opciones de cobro"
+	limpiarOpcionesCobro(): void {
+		// Ocultar el card y limpiar pagos del lote
+		this.showOpciones = false;
+		(this.batchForm.get('pagos') as FormArray).clear();
+		this.showAlert('Opciones de cobro limpiadas', 'success');
+	}
+
+	recargarOpcionesCobro(): void {
+		// Reejecuta la consulta con los parámetros del formulario
+		const cod = (this.searchForm.get('cod_ceta')?.value || '').toString().trim();
+		if (!cod) {
+			this.showAlert('Ingrese el Código CETA para consultar', 'warning');
+			return;
+		}
+		this.loadResumen();
 	}
 
 	openKardexModal(): void {
@@ -373,6 +428,78 @@ export class CobrosComponent implements OnInit {
 		this.modalAlertMessage = message;
 		this.modalAlertType = type;
 		setTimeout(() => (this.modalAlertMessage = ''), 4000);
+	}
+
+	// ================= Mensualidades UI/Logic =================
+	openMensualidadModal(): void {
+		if (!this.resumen) {
+			this.showAlert('Debe consultar primero un estudiante/gestión', 'warning');
+			return;
+		}
+		const nroCuotas = Number(this.resumen?.totales?.nro_cuotas || 0);
+		const pagadas = Number(this.resumen?.cobros?.mensualidad?.count || 0);
+		this.mensualidadesPendientes = Math.max(0, nroCuotas - pagadas);
+		this.mensualidadPU = Number(this.resumen?.totales?.pu_mensual || 0);
+		const defaultMetodo = (this.batchForm.get('cabecera.id_forma_cobro') as any)?.value || '';
+		this.mensualidadModalForm.patchValue({
+			metodo_pago: defaultMetodo,
+			cantidad: this.mensualidadesPendientes > 0 ? 1 : 0,
+			costo_total: this.mensualidadPU
+		}, { emitEvent: false });
+		this.recalcMensualidadTotal();
+		const modalEl = document.getElementById('mensualidadModal');
+		if (modalEl && (window as any).bootstrap?.Modal) {
+			const modal = new (window as any).bootstrap.Modal(modalEl);
+			modal.show();
+		}
+	}
+
+	private recalcMensualidadTotal(): void {
+		const cantidad = Number(this.mensualidadModalForm.get('cantidad')?.value || 0);
+		const total = Math.max(0, cantidad) * Number(this.mensualidadPU || 0);
+		this.mensualidadModalForm.get('costo_total')?.setValue(total, { emitEvent: false });
+	}
+
+	private getNextMensualidadNro(): number {
+		let maxNro = 0;
+		const itemsExistentes = (this.resumen?.cobros?.mensualidad?.items || []) as any[];
+		for (const it of itemsExistentes) {
+			const n = Number(it?.nro_cobro || 0);
+			if (n > maxNro) maxNro = n;
+		}
+		for (const ctrl of (this.pagos.controls || [])) {
+			const n = Number(ctrl.get('nro_cobro')?.value || 0);
+			if (n > maxNro) maxNro = n;
+		}
+		return maxNro + 1;
+	}
+
+	addMensualidadesAndClose(): void {
+		const cantidad = Number(this.mensualidadModalForm.get('cantidad')?.value || 0);
+		if (cantidad <= 0) {
+			this.showAlert('La cantidad a pagar debe ser mayor a 0', 'warning');
+			return;
+		}
+		const hoy = new Date().toISOString().slice(0, 10);
+		let nro = this.getNextMensualidadNro();
+		for (let i = 0; i < cantidad; i++) {
+			this.pagos.push(this.fb.group({
+				nro_cobro: [nro, Validators.required],
+				id_cuota: [null],
+				id_item: [null],
+				monto: [this.mensualidadPU, [Validators.required, Validators.min(0)]],
+				fecha_cobro: [hoy, Validators.required],
+				observaciones: [this.mensualidadModalForm.get('observaciones')?.value || '']
+			}));
+			nro++;
+		}
+		const modalEl = document.getElementById('mensualidadModal');
+		const bs = (window as any).bootstrap;
+		if (modalEl && bs?.Modal) {
+			const instance = bs.Modal.getInstance(modalEl) || new bs.Modal(modalEl);
+			instance.hide();
+		}
+		this.showAlert('Mensualidades añadidas al lote', 'success');
 	}
 
 	submitBatch(): void {

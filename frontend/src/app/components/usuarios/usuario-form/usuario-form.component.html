@@ -23,7 +23,7 @@
         >
         <div class="invalid-feedback" *ngIf="(submitted || f['nickname'].touched) && f['nickname'].errors">
           <span *ngIf="f['nickname'].errors['required']">Usuario es requerido</span>
-          <span *ngIf="f['nickname'].errors?.['server']">{{ f['nickname'].errors?.['server'] }}</span>
+          <span *ngIf="f['nickname'].errors['server']">{{ f['nickname'].errors['server'] }}</span>
         </div>
       </div>
 
@@ -38,7 +38,7 @@
         >
         <div class="invalid-feedback" *ngIf="(submitted || f['ci'].touched) && f['ci'].errors">
           <span *ngIf="f['ci'].errors['required']">CI es requerido</span>
-          <span *ngIf="f['ci'].errors?.['server']">{{ f['ci'].errors?.['server'] }}</span>
+          <span *ngIf="f['ci'].errors['server']">{{ f['ci'].errors['server'] }}</span>
         </div>
       </div>
     </div>
@@ -55,7 +55,7 @@
         >
         <div class="invalid-feedback" *ngIf="(submitted || f['nombre'].touched) && f['nombre'].errors">
           <span *ngIf="f['nombre'].errors['required']">Nombre es requerido</span>
-          <span *ngIf="f['nombre'].errors?.['server']">{{ f['nombre'].errors?.['server'] }}</span>
+          <span *ngIf="f['nombre'].errors['server']">{{ f['nombre'].errors['server'] }}</span>
         </div>
       </div>
 
@@ -70,7 +70,7 @@
         >
         <div class="invalid-feedback" *ngIf="(submitted || f['ap_paterno'].touched) && f['ap_paterno'].errors">
           <span *ngIf="f['ap_paterno'].errors['required']">Apellido Paterno es requerido</span>
-          <span *ngIf="f['ap_paterno'].errors?.['server']">{{ f['ap_paterno'].errors?.['server'] }}</span>
+          <span *ngIf="f['ap_paterno'].errors['server']">{{ f['ap_paterno'].errors['server'] }}</span>
         </div>
       </div>
     </div>
@@ -101,7 +101,7 @@
         </select>
         <div class="invalid-feedback" *ngIf="(submitted || f['id_rol'].touched) && f['id_rol'].errors">
           <span *ngIf="f['id_rol'].errors['required']">Rol es requerido</span>
-          <span *ngIf="f['id_rol'].errors?.['server']">{{ f['id_rol'].errors?.['server'] }}</span>
+          <span *ngIf="f['id_rol'].errors['server']">{{ f['id_rol'].errors['server'] }}</span>
         </div>
       </div>
     </div>
@@ -129,7 +129,7 @@
         <div class="invalid-feedback" *ngIf="(submitted || f['contrasenia'].touched) && f['contrasenia'].errors">
           <span *ngIf="f['contrasenia'].errors['required']">Contraseña es requerida</span>
           <span *ngIf="f['contrasenia'].errors['minlength']">Contraseña debe tener al menos 6 caracteres</span>
-          <span *ngIf="f['contrasenia'].errors?.['server']">{{ f['contrasenia'].errors?.['server'] }}</span>
+          <span *ngIf="f['contrasenia'].errors['server']">{{ f['contrasenia'].errors['server'] }}</span>
         </div>
       </div>
 
@@ -154,7 +154,7 @@
         <div class="invalid-feedback" *ngIf="(submitted || f['contraseniaConfirm'].touched) && (f['contraseniaConfirm'].errors || usuarioForm.errors?.['matching'])">
           <span *ngIf="f['contraseniaConfirm'].errors?.['required']">Confirmar contraseña es requerido</span>
           <span *ngIf="usuarioForm.errors?.['matching']">Las contraseñas no coinciden</span>
-          <span *ngIf="f['contraseniaConfirm'].errors?.['server']">{{ f['contraseniaConfirm'].errors?.['server'] }}</span>
+          <span *ngIf="f['contraseniaConfirm'].errors && f['contraseniaConfirm'].errors['server']">{{ f['contraseniaConfirm'].errors['server'] }}</span>
         </div>
       </div>
     </div>
@@ -192,7 +192,7 @@
         <div class="invalid-feedback" *ngIf="(submitted || f['contrasenia'].touched) && f['contrasenia'].errors">
           <span *ngIf="f['contrasenia'].errors['required']">Contraseña es requerida</span>
           <span *ngIf="f['contrasenia'].errors['minlength']">Contraseña debe tener al menos 6 caracteres</span>
-          <span *ngIf="f['contrasenia'].errors?.['server']">{{ f['contrasenia'].errors?.['server'] }}</span>
+          <span *ngIf="f['contrasenia'].errors && f['contrasenia'].errors['server']">{{ f['contrasenia'].errors['server'] }}</span>
         </div>
       </div>
 
@@ -217,7 +217,7 @@
         <div class="invalid-feedback" *ngIf="(submitted || f['contraseniaConfirm'].touched) && (f['contraseniaConfirm'].errors || usuarioForm.errors?.['matching'])">
           <span *ngIf="f['contraseniaConfirm'].errors?.['required']">Confirmar contraseña es requerido</span>
           <span *ngIf="usuarioForm.errors?.['matching']">Las contraseñas no coinciden</span>
-          <span *ngIf="f['contraseniaConfirm'].errors?.['server']">{{ f['contraseniaConfirm'].errors?.['server'] }}</span>
+          <span *ngIf="f['contraseniaConfirm'].errors && f['contraseniaConfirm'].errors['server']">{{ f['contraseniaConfirm'].errors['server'] }}</span>
         </div>
       </div>
     </div>

@@ -9,6 +9,7 @@ use App\Models\Inscripcion;
 use App\Models\AsignacionCostos;
 use App\Models\CostoSemestral;
 use App\Models\Gestion;
+use App\Models\ParametroCosto;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\Validator;
 use Illuminate\Support\Facades\DB;
@@ -270,8 +271,26 @@ class CobroController extends Controller
 			$totalMensualidad = $cobrosMensualidad->sum('monto');
 			$totalItems = $cobrosItems->sum('monto');
 
-			$montoSemestre = optional($costoSemestral)->monto_semestre ?: optional($asignacion)->monto;
+			// Fallback: si no hay costo_semestral, usar parámetros de costo por nombre
+			$paramMonto = null;
+			$paramNroCuotas = null;
+			if (!$costoSemestral && $gestionToUse) {
+				$paramMonto = ParametroCosto::where('gestion', $gestionToUse)
+					->where('nombre', 'MONTO_SEMESTRAL_FIJO')
+					->where('estado', true)
+					->first();
+				$paramNroCuotas = ParametroCosto::where('gestion', $gestionToUse)
+					->where('nombre', 'NRO_CUOTAS')
+					->where('estado', true)
+					->first();
+			}
+
+			$montoSemestre = optional($costoSemestral)->monto_semestre
+				?: optional($asignacion)->monto
+				?: ($paramMonto ? (float)$paramMonto->valor : null);
 			$saldoMensualidad = isset($montoSemestre) ? (float)$montoSemestre - (float)$totalMensualidad : null;
+			$nroCuotas = $paramNroCuotas ? (int) round((float) $paramNroCuotas->valor) : null;
+			$puMensual = ($montoSemestre !== null && $nroCuotas) ? round(((float)$montoSemestre) / max(1, $nroCuotas), 2) : null;
 
 			return response()->json([
 				'success' => true,
@@ -281,6 +300,10 @@ class CobroController extends Controller
 					'inscripciones' => $inscripciones,
 					'gestion' => $gestionToUse,
 					'costo_semestral' => $costoSemestral,
+					'parametros_costos' => [
+						'monto_fijo' => $paramMonto,
+						'nro_cuotas' => $paramNroCuotas,
+					],
 					'asignacion_costos' => $asignacion,
 					'cobros' => [
 						'mensualidad' => [
@@ -298,6 +321,8 @@ class CobroController extends Controller
 						'monto_semestral' => isset($montoSemestre) ? (float)$montoSemestre : null,
 						'saldo_mensualidad' => $saldoMensualidad,
 						'total_pagado' => (float) ($totalMensualidad + $totalItems),
+						'nro_cuotas' => $nroCuotas,
+						'pu_mensual' => $puMensual,
 					],
 				]
 			]);
