@@ -99,10 +99,11 @@
 									</div>
 									<div class="col-12">
 										<label class="form-label">Método de Pago</label>
-										<select class="form-select" formControlName="id_forma_cobro">
+										<select class="form-select" formControlName="id_forma_cobro" [ngClass]="{'is-invalid': isFormaCobroInvalid}">
 											<option value="">-- Seleccione --</option>
 											<option *ngFor="let f of formasCobro" [value]="f.id_forma_cobro">{{ f.nombre }}</option>
 										</select>
+										<div class="invalid-feedback">Seleccione un método de pago (por ahora solo EFECTIVO).</div>
 									</div>
 								</div>
 							</div>
@@ -188,9 +189,23 @@
 							<tbody>
 								<tr>
 									<td>Mensualidad</td>
-										<td>{{ resumen?.totales?.pu_mensual | number:'1.2-2' }}</td>
+									<td>{{ resumen?.totales?.pu_mensual | number:'1.2-2' }}</td>
 									<td class="text-center">
 										<button type="button" class="btn btn-sm btn-success" (click)="openMensualidadModal()"><i class="bi bi-plus"></i></button>
+									</td>
+								</tr>
+								<tr>
+									<td>Rezagado</td>
+									<td>-</td>
+									<td class="text-center">
+										<button type="button" class="btn btn-sm btn-success" (click)="openRezagadoModal()"><i class="bi bi-plus"></i></button>
+									</td>
+								</tr>
+								<tr>
+									<td>Prueba de Recuperación</td>
+									<td>-</td>
+									<td class="text-center">
+										<button type="button" class="btn btn-sm btn-success" (click)="openRecuperacionModal()"><i class="bi bi-plus"></i></button>
 									</td>
 								</tr>
 							</tbody>
@@ -452,54 +467,14 @@
 		</div>
 	</div>
 
-	<!-- Modal: Pago de Mensualidades -->
-	<div class="modal fade" id="mensualidadModal" tabindex="-1" aria-labelledby="mensualidadModalLabel" aria-hidden="true">
-		<div class="modal-dialog modal-lg">
-			<div class="modal-content">
-				<div class="modal-header">
-					<h5 class="modal-title" id="mensualidadModalLabel">Pago de Mensualidades</h5>
-					<button type="button" class="btn-close" data-bs-dismiss="modal" aria-label="Close"></button>
-				</div>
-				<div class="modal-body">
-					<div class="p-3 bg-primary bg-opacity-10 rounded mb-3">
-						<div class="row g-3">
-							<div class="col-md-4">
-								<label class="form-label">Mensualidades Pendientes</label>
-								<input class="form-control" [value]="mensualidadesPendientes" readonly />
-							</div>
-							<div class="col-md-4">
-								<label class="form-label">Precio Unitario</label>
-								<input class="form-control" [value]="mensualidadPU | number:'1.2-2'" readonly />
-							</div>
-							<div class="col-md-4">
-								<label class="form-label">Método de Pago</label>
-								<select class="form-select" [formGroup]="mensualidadModalForm" formControlName="metodo_pago">
-									<option value="">-- Seleccione --</option>
-									<option *ngFor="let f of formasCobro" [value]="f.id_forma_cobro">{{ f.nombre }}</option>
-								</select>
-							</div>
-						</div>
-					</div>
-
-					<form [formGroup]="mensualidadModalForm" class="row g-3">
-						<div class="col-md-6">
-							<label class="form-label">Cant. mensualidades a pagar</label>
-							<input type="number" class="form-control" formControlName="cantidad" min="0" [max]="mensualidadesPendientes" />
-						</div>
-						<div class="col-md-6">
-							<label class="form-label">Costo total</label>
-							<input class="form-control" formControlName="costo_total" readonly />
-						</div>
-						<div class="col-12">
-							<label class="form-label">Observaciones</label>
-							<textarea class="form-control" rows="2" formControlName="observaciones"></textarea>
-						</div>
-					</form>
-				</div>
-				<div class="modal-footer">
-					<button type="button" class="btn btn-success" (click)="addMensualidadesAndClose()"><i class="bi bi-plus-circle me-1"></i> Adicionar y Salir</button>
-					<button type="button" class="btn btn-secondary" data-bs-dismiss="modal">Cerrar</button>
-				</div>
-			</div>
-		</div>
-	</div>
+    <!-- Modal: Mensualidades / Rezagado / Recuperación (componente) -->
+    <app-mensualidad-modal
+      [resumen]="resumen"
+      [formasCobro]="formasCobro"
+      [tipo]="modalTipo"
+      [pendientes]="mensualidadesPendientes"
+      [pu]="mensualidadPU"
+      [baseNro]="getNextMensualidadNro()"
+      [defaultMetodoPago]="selectedFormaCobroId"
+      (addPagos)="onAddPagosFromModal($event)"
+    ></app-mensualidad-modal>

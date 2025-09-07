@@ -1,0 +1,120 @@
+<div class="modal fade" id="mensualidadModal" tabindex="-1" aria-labelledby="mensualidadModalLabel" aria-hidden="true">
+  <div class="modal-dialog modal-lg">
+    <div class="modal-content">
+      <div class="modal-header">
+        <h5 class="modal-title" id="mensualidadModalLabel">{{ title }}</h5>
+        <button type="button" class="btn-close" data-bs-dismiss="modal" aria-label="Close"></button>
+      </div>
+      <div class="modal-body">
+        <div class="p-3 bg-primary bg-opacity-10 rounded mb-3">
+          <div class="row g-3 align-items-center" [formGroup]="form">
+            <div class="col-md-8">
+              <div class="small fw-semibold">Datos del Estudiante</div>
+              <div class="small text-muted">{{ resumen?.estudiante?.cod_ceta }} - {{ resumen?.estudiante?.nombre_completo || resumen?.estudiante?.nombres }}</div>
+              <div class="small">Pensum: {{ resumen?.inscripcion?.cod_pensum }} | Tipo: {{ resumen?.inscripcion?.tipo_inscripcion }}</div>
+              <div class="small">Gestión: {{ resumen?.gestion }}</div>
+            </div>
+            <div class="col-md-4">
+              <label class="form-label">Método de Pago</label>
+              <select class="form-select" formControlName="metodo_pago">
+                <option value="">-- Seleccione --</option>
+                <option *ngFor="let f of formasCobro" [value]="f.id_forma_cobro">{{ f.nombre }}</option>
+              </select>
+            </div>
+          </div>
+        </div>
+
+        <form [formGroup]="form" class="row g-3">
+          <ng-container *ngIf="tipo === 'mensualidad'; else noMensualidad">
+            <div class="col-md-4">
+              <label class="form-label">Mensualidades Pendientes</label>
+              <input class="form-control" [value]="pendientes" readonly />
+            </div>
+            <div class="col-md-4">
+              <label class="form-label">Precio Unitario</label>
+              <input class="form-control" [value]="pu | number:'1.2-2'" readonly />
+            </div>
+            <div class="col-md-4">
+              <label class="form-label">Cant. mensualidades a pagar</label>
+              <input type="number" class="form-control" formControlName="cantidad" min="1" [max]="pendientes" />
+            </div>
+          </ng-container>
+          <ng-template #noMensualidad>
+            <div class="col-md-4">
+              <label class="form-label">Monto</label>
+              <input type="number" step="0.01" class="form-control" formControlName="monto_manual" />
+            </div>
+            <div class="col-md-4">
+              <label class="form-label">Fecha de cobro</label>
+              <input type="date" class="form-control" formControlName="fecha_cobro" />
+            </div>
+            <div class="col-md-4 d-flex align-items-end gap-3">
+              <div class="form-check">
+                <input class="form-check-input" type="checkbox" id="chkRezagado" formControlName="rezagado" />
+                <label class="form-check-label" for="chkRezagado">Rezagado</label>
+              </div>
+              <div class="form-check">
+                <input class="form-check-input" type="checkbox" id="chkRecuperacion" formControlName="recuperacion" />
+                <label class="form-check-label" for="chkRecuperacion">Prueba de recuperación</label>
+              </div>
+            </div>
+          </ng-template>
+
+          <div class="col-md-4">
+            <label class="form-label">Costo total</label>
+            <input class="form-control" formControlName="costo_total" readonly />
+          </div>
+          <div class="col-md-4">
+            <label class="form-label">Comprobante</label>
+            <select class="form-select" formControlName="comprobante">
+              <option value="NINGUNO">Ninguno</option>
+              <option value="FACTURA">Factura</option>
+              <option value="RECIBO">Recibo</option>
+            </select>
+          </div>
+          <div class="col-md-2">
+            <label class="form-label">Factura</label>
+            <input type="number" class="form-control" formControlName="nro_factura" />
+          </div>
+          <div class="col-md-2">
+            <label class="form-label">Recibo</label>
+            <input type="number" class="form-control" formControlName="nro_recibo" />
+          </div>
+
+          <div class="col-md-4">
+            <label class="form-label">Descuento / Beca</label>
+            <input type="number" step="0.01" class="form-control" formControlName="descuento" />
+          </div>
+          <div class="col-md-4">
+            <label class="form-label">Tipo de registro</label>
+            <div class="d-flex align-items-center gap-3">
+              <div class="form-check">
+                <input class="form-check-input" type="radio" id="compu" value="COMPUTARIZADA" formControlName="computarizada" />
+                <label class="form-check-label" for="compu">Computarizada</label>
+              </div>
+              <div class="form-check">
+                <input class="form-check-input" type="radio" id="manual" value="MANUAL" formControlName="computarizada" />
+                <label class="form-check-label" for="manual">Manual</label>
+              </div>
+            </div>
+          </div>
+          <div class="col-md-4 d-flex align-items-end">
+            <div class="form-check">
+              <input class="form-check-input" type="checkbox" id="pagoParcial" formControlName="pago_parcial" />
+              <label class="form-check-label" for="pagoParcial">Pago Mensualidad Parcial</label>
+            </div>
+          </div>
+
+          <div class="col-12">
+            <label class="form-label">Observaciones</label>
+            <textarea class="form-control" rows="2" formControlName="observaciones"></textarea>
+          </div>
+        </form>
+      </div>
+      <div class="modal-footer">
+        <button type="button" class="btn btn-success" (click)="addAndClose()"><i class="bi bi-plus-circle me-1"></i> Adicionar y Salir</button>
+        <button type="button" class="btn btn-secondary" data-bs-dismiss="modal">Cerrar</button>
+      </div>
+    </div>
+  </div>
+</div>
