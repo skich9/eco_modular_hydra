@@ -140,18 +140,62 @@
 								</thead>
 								<tbody>
 									<tr *ngFor="let pg of pagos.controls; let i = index" [formGroupName]="i">
-										<td>{{ i + 1 }}</td>
-										<td><input class="form-control form-control-sm" formControlName="nro_cobro" /></td>
-										<td><input class="form-control form-control-sm" formControlName="id_cuota" /></td>
-										<td><input class="form-control form-control-sm" formControlName="id_item" /></td>
-										<td><input type="number" step="0.01" class="form-control form-control-sm" formControlName="monto" /></td>
-										<td><input type="date" class="form-control form-control-sm" formControlName="fecha_cobro" /></td>
-										<td><input class="form-control form-control-sm" formControlName="observaciones" /></td>
-										<td class="text-center">
+										<!-- Cantidad -->
+										<td style="width: 80px;">
+											<input type="number" min="1" class="form-control form-control-sm text-end" formControlName="cantidad" />
+										</td>
+										<!-- Detalle -->
+										<td>
+											<input class="form-control form-control-sm" formControlName="detalle" />
+										</td>
+										<!-- P/U -->
+										<td style="width: 140px;">
+											<input type="number" step="0.01" class="form-control form-control-sm text-end" formControlName="pu_mensualidad" />
+										</td>
+										<!-- Descuento -->
+										<td style="width: 140px;">
+											<input type="number" step="0.01" class="form-control form-control-sm text-end" formControlName="descuento" />
+										</td>
+										<!-- Sub total (solo lectura) -->
+										<td class="text-end" style="width: 140px;">
+											{{ calcRowSubtotal(i) | number:'1.2-2' }}
+										</td>
+										<!-- M -->
+										<td class="text-center" style="width: 50px;">
+											<input type="checkbox" class="form-check-input" formControlName="m_marca" />
+										</td>
+										<!-- D -->
+										<td class="text-center" style="width: 50px;">
+											<input type="checkbox" class="form-check-input" formControlName="d_marca" />
+										</td>
+										<!-- Obs. -->
+										<td>
+											<input class="form-control form-control-sm" formControlName="observaciones" />
+										</td>
+										<!-- Acciones -->
+										<td class="text-center" style="width: 60px;">
 											<button type="button" class="btn btn-sm btn-outline-danger" (click)="removePago(i)"><i class="bi bi-trash"></i></button>
 										</td>
 									</tr>
 								</tbody>
+								<tfoot>
+									<tr class="table-success">
+										<!-- Etiqueta sólo hasta 'Detalle' (Cant. + Detalle) -->
+										<th colspan="2" class="text-end">Subtotales:</th>
+										<!-- Columnas P/U y Descuento vacías para mantener estructura -->
+										<th></th>
+										<th></th>
+										<!-- Total bajo 'Sub total' -->
+										<th class="text-end">{{ totalSubtotal | number:'1.2-2' }}</th>
+										<!-- Resto de columnas: M, D, Obs., Acciones -->
+										<th colspan="4"></th>
+									</tr>
+									<tr class="table-success">
+										<th colspan="4" class="text-end">Total Cobro:</th>
+										<th class="text-end">{{ totalCobro | number:'1.2-2' }}</th>
+										<th colspan="4"></th>
+									</tr>
+								</tfoot>
 							</table>
 						</div>
 					</div>

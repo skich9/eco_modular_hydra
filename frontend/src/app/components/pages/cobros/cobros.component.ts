@@ -270,18 +270,23 @@ export class CobrosComponent implements OnInit {
 
   addPago(): void {
     this.pagos.push(this.fb.group({
-      nro_cobro: ['', Validators.required],
+      // Backend-required/known fields
+      nro_cobro: [''],
       id_cuota: [null],
       id_item: [null],
-      monto: [null, [Validators.required, Validators.min(0)]],
-      fecha_cobro: ['', Validators.required],
+      monto: [null], // será calculado al enviar (subtotal)
+      fecha_cobro: [''],
       observaciones: [''],
-      // opcionales
-      descuento: [null],
+      descuento: [0],
       nro_factura: [null],
       nro_recibo: [null],
-      pu_mensualidad: [0],
-      order: [0]
+      pu_mensualidad: [0, [Validators.min(0)]],
+      order: [0],
+      // Campos UI para emular la tabla clásica
+      cantidad: [1, [Validators.required, Validators.min(1)]],
+      detalle: [''],
+      m_marca: [false],
+      d_marca: [false]
     }));
   }
 
@@ -676,7 +681,17 @@ export class CobrosComponent implements OnInit {
       return;
     }
     this.loading = true;
-    const { cabecera, pagos } = this.batchForm.value;
+    const { cabecera } = this.batchForm.value as any;
+    // Mapear pagos para enviar solo con 'monto' calculado y fallbacks de nro/fecha
+    const hoy = new Date().toISOString().slice(0, 10);
+    let next = this.getNextMensualidadNro();
+    const pagos = (this.pagos.controls || []).map((ctrl, idx) => {
+      const raw = (ctrl as FormGroup).getRawValue() as any;
+      const subtotal = this.calcRowSubtotal(idx);
+      const nro = raw.nro_cobro || (next++);
+      const fecha = raw.fecha_cobro || hoy;
+      return { ...raw, nro_cobro: nro, fecha_cobro: fecha, monto: subtotal };
+    });
     const payload = { ...cabecera, pagos };
     this.cobrosService.batchStore(payload).subscribe({
       next: (res) => {
@@ -696,6 +711,28 @@ export class CobrosComponent implements OnInit {
         this.loading = false;
       }
     });
+  }
+
+  // ====== Totales estilo sistema antiguo ======
+  calcRowSubtotal(i: number): number {
+    const g = this.pagos.at(i) as FormGroup;
+    if (!g) return 0;
+    const cant = Number(g.get('cantidad')?.value || 0);
+    const pu = Number(g.get('pu_mensualidad')?.value || 0);
+    const desc = Number(g.get('descuento')?.value || 0);
+    const sub = cant * pu - (isNaN(desc) ? 0 : desc);
+    return sub > 0 ? sub : 0;
+  }
+
+  get totalSubtotal(): number {
+    let total = 0;
+    for (let i = 0; i < this.pagos.length; i++) total += this.calcRowSubtotal(i);
+    return total;
+  }
+
+  get totalCobro(): number {
+    // Por ahora, igual a la suma de subtotales
+    return this.totalSubtotal;
   }
 
 	private showAlert(message: string, type: 'success' | 'error' | 'warning'): void {
