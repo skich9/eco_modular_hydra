@@ -11,6 +11,7 @@
 	<!-- Resumen -->
 	<div class="row g-3">
 		<div class="col-12 col-lg-8">
+            <form [formGroup]="batchForm" (ngSubmit)="submitBatch()">
 			<!-- Batch -->
 			<div class="card mb-4 shadow-sm">
 				<div class="card-header d-flex justify-content-between align-items-center">
@@ -19,152 +20,151 @@
 				</div>
 				
 				<div class="card-body">
-					<form [formGroup]="batchForm" (ngSubmit)="submitBatch()">
-						<div class="row g-3 cobros-cabecera" formGroupName="cabecera">
-							<!-- Mantener en el modelo pero oculto en UI -->
-							<input type="hidden" formControlName="tipo_inscripcion" />
+					<div class="row g-3 cobros-cabecera" formGroupName="cabecera">
+						<!-- Mantener en el modelo pero oculto en UI -->
+						<input type="hidden" formControlName="tipo_inscripcion" />
 
-							<!-- Columna izquierda -->
-							<div class="col-md-6">
-								<div class="mb-2">
-									<label class="form-label">Código CETA</label>
-									<div class="input-group">
-										<input class="form-control" formControlName="cod_ceta" />
-										<button type="button" class="btn btn-outline-secondary" (click)="buscarPorCodCetaCabecera()">
-											<i class="bi bi-search"></i>
-										</button>
-									</div>
-								</div>
-
-								<div [formGroup]="identidadForm" class="row g-3">
-									<div class="col-12">
-										<label class="form-label">Estudiante</label>
-										<input class="form-control" formControlName="nombre_completo" [readonly]="true" />
-									</div>
-									<div class="col-12">
-										<label class="form-label">Razón Social</label>
-										<input class="form-control" formControlName="razon_social" [readonly]="true" (click)="openRazonSocialModal()" style="cursor: pointer;" />
-									</div>
-									<div class="col-12">
-										<label class="form-label">Nro Tipo Documento</label>
-										<input class="form-control" formControlName="ci" [readonly]="true" (click)="openRazonSocialModal()" style="cursor: pointer;" />
-									</div>
-									<div class="col-12">
-										<label class="form-label">Documento de Identidad</label>
-										<select class="form-select" formControlName="tipo_identidad" [disabled]="true">
-											<option [ngValue]="1">CI - CEDULA DE IDENTIDAD</option>
-											<option [ngValue]="2">CEX - CEDULA DE IDENTIDAD DE EXTRANJERO</option>
-											<option [ngValue]="3">PAS - PASAPORTE</option>
-											<option [ngValue]="4">OD - OTRO DOCUMENTO DE IDENTIDAD</option>
-											<option [ngValue]="5">NIT - NUMERO DE IDENTIFICACION TRIBUTARIA</option>
-										</select>
-									</div>
+						<!-- Columna izquierda -->
+						<div class="col-md-6">
+							<div class="mb-2">
+								<label class="form-label">Código CETA</label>
+								<div class="input-group">
+									<input class="form-control" formControlName="cod_ceta" />
+									<button type="button" class="btn btn-outline-secondary" (click)="buscarPorCodCetaCabecera()">
+										<i class="bi bi-search"></i>
+									</button>
 								</div>
 							</div>
 
-							<!-- Columna derecha -->
-							<div class="col-md-6">
-								<div class="row g-3">
-									<div class="col-12">
-										<label class="form-label">Pensum</label>
-										<input class="form-control" formControlName="cod_pensum" [readonly]="true" />
-									</div>
-									<div class="col-12">
-										<label class="form-label">Gestión</label>
-										<input class="form-control" formControlName="gestion" [readonly]="true" />
-									</div>
-									<div class="col-12">
-										<label class="form-label">Grupo</label>
-										<div class="form-control-plaintext border rounded px-2 py-2">
-											<ng-container *ngIf="(resumen?.inscripciones?.length || 0) > 0; else noInscripciones">
-												<div class="d-flex flex-column gap-2">
-													<div class="d-flex align-items-center gap-2" *ngFor="let ins of resumen?.inscripciones">
-														<span class="badge rounded-pill bg-primary">{{ ins?.cod_curso || '-' }}</span>
-														<span class="badge rounded-pill" [ngClass]="{'bg-warning text-dark': true}">{{ (ins?.tipo_inscripcion || '-').toUpperCase() }}</span>
-													</div>
+							<div [formGroup]="identidadForm" class="row g-3">
+								<div class="col-12">
+									<label class="form-label">Estudiante</label>
+									<input class="form-control" formControlName="nombre_completo" [readonly]="true" />
+								</div>
+								<div class="col-12">
+									<label class="form-label">Razón Social</label>
+									<input class="form-control" formControlName="razon_social" [readonly]="true" (click)="openRazonSocialModal()" style="cursor: pointer;" />
+								</div>
+								<div class="col-12">
+									<label class="form-label">Nro Tipo Documento</label>
+									<input class="form-control" formControlName="ci" [readonly]="true" (click)="openRazonSocialModal()" style="cursor: pointer;" />
+								</div>
+								<div class="col-12">
+									<label class="form-label">Documento de Identidad</label>
+									<select class="form-select" formControlName="tipo_identidad" [disabled]="true">
+										<option [ngValue]="1">CI - CEDULA DE IDENTIDAD</option>
+										<option [ngValue]="2">CEX - CEDULA DE IDENTIDAD DE EXTRANJERO</option>
+										<option [ngValue]="3">PAS - PASAPORTE</option>
+										<option [ngValue]="4">OD - OTRO DOCUMENTO DE IDENTIDAD</option>
+										<option [ngValue]="5">NIT - NUMERO DE IDENTIFICACION TRIBUTARIA</option>
+									</select>
+								</div>
+							</div>
+						</div>
+
+						<!-- Columna derecha -->
+						<div class="col-md-6">
+							<div class="row g-3">
+								<div class="col-12">
+									<label class="form-label">Pensum</label>
+									<input class="form-control" formControlName="cod_pensum" [readonly]="true" />
+								</div>
+								<div class="col-12">
+									<label class="form-label">Gestión</label>
+									<input class="form-control" formControlName="gestion" [readonly]="true" />
+								</div>
+								<div class="col-12">
+									<label class="form-label">Grupo</label>
+									<div class="form-control-plaintext border rounded px-2 py-2">
+										<ng-container *ngIf="(resumen?.inscripciones?.length || 0) > 0; else noInscripciones">
+											<div class="d-flex flex-column gap-2">
+												<div class="d-flex align-items-center gap-2" *ngFor="let ins of resumen?.inscripciones">
+													<span class="badge rounded-pill bg-primary">{{ ins?.cod_curso || '-' }}</span>
+													<span class="badge rounded-pill" [ngClass]="{'bg-warning text-dark': true}">{{ (ins?.tipo_inscripcion || '-').toUpperCase() }}</span>
 												</div>
-											</ng-container>
-											<ng-template #noInscripciones>
-												<span class="text-muted">{{ resumen?.inscripcion?.cod_curso ? (resumen?.inscripcion?.cod_curso + ' - ' + (resumen?.inscripcion?.tipo_inscripcion || '-')) : '-' }}</span>
-											</ng-template>
-										</div>
-									</div>
-									<div class="col-12" [formGroup]="identidadForm">
-										<label class="form-label">Email</label>
-										<input type="email" class="form-control" formControlName="email" placeholder="correo@dominio.com" />
-										<div class="form-check form-switch mt-1">
-											<input class="form-check-input" type="checkbox" id="switchEmail" formControlName="email_habilitado" />
-											<label class="form-check-label" for="switchEmail">Habilitar edición de email</label>
-										</div>
-									</div>
-									<div class="col-12">
-										<label class="form-label">Método de Pago</label>
-										<select class="form-select" formControlName="id_forma_cobro" [ngClass]="{'is-invalid': isFormaCobroInvalid}">
-											<option value="">-- Seleccione --</option>
-											<option *ngFor="let f of formasCobro" [value]="f.id_forma_cobro">{{ f.nombre }}</option>
-										</select>
-										<div class="invalid-feedback">Seleccione un método de pago (por ahora solo EFECTIVO).</div>
+											</div>
+										</ng-container>
+										<ng-template #noInscripciones>
+											<span class="text-muted">{{ resumen?.inscripcion?.cod_curso ? (resumen?.inscripcion?.cod_curso + ' - ' + (resumen?.inscripcion?.tipo_inscripcion || '-')) : '-' }}</span>
+										</ng-template>
 									</div>
 								</div>
-							</div>
-
-							<!-- Fin columnas -->
-
-							<!-- Otros campos -->
-							<div class="col-md-3">
-								<label class="form-label">Cuenta bancaria</label>
-								<input class="form-control" formControlName="id_cuentas_bancarias" placeholder="ID numérico" />
-							</div>
-							<div class="col-md-3">
-								<label class="form-label">ID Usuario</label>
-								<input class="form-control" formControlName="id_usuario" placeholder="ID numérico" />
-							</div>
-						</div>
-
-						<hr />
-
-						<div formArrayName="pagos">
-							<div class="table-responsive">
-								<table class="table table-sm table-bordered align-middle">
-									<thead class="table-light">
-										<tr>
-											<th>Cant.</th>
-											<th>Detalle</th>
-											<th>P/U</th>
-											<th>Descuento</th>
-											<th>Sub total</th>
-											<th>M</th>
-											<th>D</th>
-											<th>Obs.</th>
-											<th></th>
-										</tr>
-									</thead>
-									<tbody>
-										<tr *ngFor="let pg of pagos.controls; let i = index" [formGroupName]="i">
-											<td>{{ i + 1 }}</td>
-											<td><input class="form-control form-control-sm" formControlName="nro_cobro" /></td>
-											<td><input class="form-control form-control-sm" formControlName="id_cuota" /></td>
-											<td><input class="form-control form-control-sm" formControlName="id_item" /></td>
-											<td><input type="number" step="0.01" class="form-control form-control-sm" formControlName="monto" /></td>
-											<td><input type="date" class="form-control form-control-sm" formControlName="fecha_cobro" /></td>
-											<td><input class="form-control form-control-sm" formControlName="observaciones" /></td>
-											<td class="text-center">
-												<button type="button" class="btn btn-sm btn-outline-danger" (click)="removePago(i)"><i class="bi bi-trash"></i></button>
-											</td>
-										</tr>
-									</tbody>
-								</table>
+								<div class="col-12" [formGroup]="identidadForm">
+									<label class="form-label">Email</label>
+									<input type="email" class="form-control" formControlName="email" placeholder="correo@dominio.com" />
+									<div class="form-check form-switch mt-1">
+										<input class="form-check-input" type="checkbox" id="switchEmail" formControlName="email_habilitado" />
+										<label class="form-check-label" for="switchEmail">Habilitar edición de email</label>
+									</div>
+								</div>
+								<div class="col-12">
+									<label class="form-label">Método de Pago</label>
+									<select class="form-select" formControlName="id_forma_cobro" [ngClass]="{'is-invalid': isFormaCobroInvalid}">
+										<option value="">-- Seleccione --</option>
+										<option *ngFor="let f of formasCobro" [value]="f.id_forma_cobro">{{ f.nombre }}</option>
+									</select>
+									<div class="invalid-feedback">Seleccione un método de pago (por ahora solo EFECTIVO).</div>
+								</div>
 							</div>
 						</div>
 
-						<div class="d-flex justify-content-end">
-							<button class="btn btn-success" [disabled]="loading" type="submit">
-								<i class="bi bi-save me-1"></i> Guardar Lote
-							</button>
-						</div>
-					</form>
+						<!-- Fin columnas -->
+					</div>
+
+					<hr />
+
 				</div>
 			</div>
+
+			<!-- Card: Detalle factura (hermano del card principal) -->
+			<div class="card mb-4 shadow-sm mt-3">
+				<div class="card-header d-flex justify-content-between align-items-center">
+					<strong>Detalle factura</strong>
+				</div>
+				<div class="card-body">
+					<div formArrayName="pagos">
+						<div class="table-responsive">
+							<table class="table table-sm table-bordered align-middle">
+								<thead class="table-light">
+									<tr>
+										<th>Cant.</th>
+										<th>Detalle</th>
+										<th>P/U</th>
+										<th>Descuento</th>
+										<th>Sub total</th>
+										<th>M</th>
+										<th>D</th>
+										<th>Obs.</th>
+										<th></th>
+									</tr>
+								</thead>
+								<tbody>
+									<tr *ngFor="let pg of pagos.controls; let i = index" [formGroupName]="i">
+										<td>{{ i + 1 }}</td>
+										<td><input class="form-control form-control-sm" formControlName="nro_cobro" /></td>
+										<td><input class="form-control form-control-sm" formControlName="id_cuota" /></td>
+										<td><input class="form-control form-control-sm" formControlName="id_item" /></td>
+										<td><input type="number" step="0.01" class="form-control form-control-sm" formControlName="monto" /></td>
+										<td><input type="date" class="form-control form-control-sm" formControlName="fecha_cobro" /></td>
+										<td><input class="form-control form-control-sm" formControlName="observaciones" /></td>
+										<td class="text-center">
+											<button type="button" class="btn btn-sm btn-outline-danger" (click)="removePago(i)"><i class="bi bi-trash"></i></button>
+										</td>
+									</tr>
+								</tbody>
+							</table>
+						</div>
+					</div>
+				</div>
+			</div>
+
+			<div class="d-flex justify-content-end mb-4">
+				<button class="btn btn-success" [disabled]="loading" type="submit">
+					<i class="bi bi-save me-1"></i> Guardar Lote
+				</button>
+			</div>
+
+			</form>
 		</div>
 		<div class="col-12 col-lg-4">
 			<div class="card mb-4 shadow-sm">
