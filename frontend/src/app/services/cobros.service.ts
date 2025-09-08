@@ -50,6 +50,13 @@ export class CobrosService {
 		);
 	}
 
+	getCuentasBancarias(onlyEnabled: boolean = true): Observable<any> {
+		const params = new HttpParams().set('only_enabled', String(onlyEnabled));
+		return this.http.get<any>(`${this.apiUrl}/cuentas-bancarias`, { params }).pipe(
+			map((res: any) => ({ success: !!res?.success, data: res?.data || [], message: res?.message }))
+		);
+	}
+
 	// Razón Social
 	buscarRazonSocial(numero: string, tipoId: number): Observable<any> {
 		let params = new HttpParams().set('numero', numero).set('tipo_id', String(tipoId));

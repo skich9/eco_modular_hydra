@@ -43,6 +43,7 @@ export class CobrosComponent implements OnInit {
   gestiones: any[] = [];
   formasCobro: any[] = [];
   pensums: any[] = [];
+  cuentasBancarias: any[] = [];
   // Visibilidad del card de Opciones de cobro
   showOpciones = false;
 
@@ -105,6 +106,46 @@ export class CobrosComponent implements OnInit {
     return nombre === 'EFECTIVO';
   }
 
+  private esFormaTarjetaById(val: any): boolean {
+    const match = this.formasCobro.find((f: any) => `${f?.id_forma_cobro}` === `${val}`);
+    const nombre = (match?.nombre ?? match?.name ?? match?.descripcion ?? match?.label ?? '').toString().trim().toUpperCase();
+    return nombre === 'TARJETA';
+  }
+
+  private ensureMetodoPagoPermitido(permitidos: string[]): boolean {
+    const ctrl = this.batchForm.get('cabecera.id_forma_cobro');
+    const value = (ctrl as any)?.value;
+    if (value === null || value === undefined || value === '') {
+      ctrl?.markAsTouched();
+      ctrl?.updateValueAndValidity();
+      this.showAlert('Seleccione un método de pago para continuar', 'warning');
+      return false;
+    }
+    const nombreOk = (() => {
+      const match = this.formasCobro.find((f: any) => `${f?.id_forma_cobro}` === `${value}`);
+      const raw = (match?.nombre ?? match?.name ?? match?.descripcion ?? match?.label ?? '').toString().trim().toUpperCase();
+      // Normalizar acentos
+      const nombre = raw.normalize('NFD').replace(/\p{Diacritic}/gu, '');
+      const permitidosNorm = permitidos.map(p => p.toUpperCase()).map(p => p.normalize('NFD').replace(/\p{Diacritic}/gu, ''));
+      return permitidosNorm.includes(nombre);
+    })();
+    if (!nombreOk) {
+      ctrl?.markAsTouched();
+      const current = ctrl?.errors || {};
+      ctrl?.setErrors({ ...current, metodoNoPermitido: true });
+      this.showAlert(`Por ahora solo se permite: ${permitidos.join(', ')}`, 'warning');
+      return false;
+    }
+    if (ctrl?.errors) {
+      const errs = { ...ctrl.errors } as any;
+      if ('soloEfectivo' in errs) delete errs['soloEfectivo'];
+      if ('metodoNoPermitido' in errs) delete errs['metodoNoPermitido'];
+      if (value !== null && value !== undefined && value !== '' && 'required' in errs) delete errs['required'];
+      ctrl.setErrors(Object.keys(errs).length ? errs : null);
+    }
+    return true;
+  }
+
   private clearSoloEfectivoErrorIfMatches(): void {
     const ctrl = this.batchForm.get('cabecera.id_forma_cobro');
     if (!ctrl) return;
@@ -152,6 +193,11 @@ export class CobrosComponent implements OnInit {
           this.clearSoloEfectivoErrorIfMatches();
         }
       },
+      error: () => {}
+    });
+    // Cargar cuentas bancarias para métodos de pago como TARJETA/DEPÓSITO
+    this.cobrosService.getCuentasBancarias().subscribe({
+      next: (res) => { if (res.success) this.cuentasBancarias = res.data; },
       error: () => {}
     });
 
@@ -529,7 +575,7 @@ export class CobrosComponent implements OnInit {
       this.showAlert('Debe consultar primero un estudiante/gestión', 'warning');
       return;
     }
-    if (!this.ensureMetodoPagoEfectivo()) return;
+    if (!this.ensureMetodoPagoPermitido(['EFECTIVO','TARJETA','CHEQUE','DEPOSITO','TRANSFERENCIA','QR','OTRO'])) return;
     const nroCuotas = Number(this.resumen?.totales?.nro_cuotas || 0);
     const pagadas = Number(this.resumen?.cobros?.mensualidad?.count || 0);
     this.mensualidadesPendientes = Math.max(0, nroCuotas - pagadas);
@@ -554,7 +600,7 @@ export class CobrosComponent implements OnInit {
       this.showAlert('Debe consultar primero un estudiante/gestión', 'warning');
       return;
     }
-    if (!this.ensureMetodoPagoEfectivo()) return;
+    if (!this.ensureMetodoPagoPermitido(['EFECTIVO','TARJETA','CHEQUE','DEPOSITO','OTRO'])) return;
     this.modalTipo = 'rezagado';
     const modalEl = document.getElementById('mensualidadModal');
     if (modalEl && (window as any).bootstrap?.Modal) {
@@ -568,7 +614,7 @@ export class CobrosComponent implements OnInit {
       this.showAlert('Debe consultar primero un estudiante/gestión', 'warning');
       return;
     }
-    if (!this.ensureMetodoPagoEfectivo()) return;
+    if (!this.ensureMetodoPagoPermitido(['EFECTIVO','TARJETA','CHEQUE','DEPOSITO','OTRO'])) return;
     this.modalTipo = 'recuperacion';
     const modalEl = document.getElementById('mensualidadModal');
     if (modalEl && (window as any).bootstrap?.Modal) {
@@ -597,8 +643,10 @@ export class CobrosComponent implements OnInit {
     return maxNro + 1;
   }
 
-  onAddPagosFromModal(pagos: any[]): void {
+  onAddPagosFromModal(payload: any): void {
     const hoy = new Date().toISOString().slice(0, 10);
+    const pagos = Array.isArray(payload) ? payload : (payload?.pagos || []);
+    const headerPatch = Array.isArray(payload) ? null : (payload?.cabecera || null);
     for (const p of pagos || []) {
       this.pagos.push(this.fb.group({
         nro_cobro: [p.nro_cobro, Validators.required],
@@ -614,6 +662,10 @@ export class CobrosComponent implements OnInit {
         pu_mensualidad: [p.pu_mensualidad ?? 0],
         order: [p.order ?? 0]
       }));
+    }
+    // Aplicar cabecera si el modal la envió (p.e. id_cuentas_bancarias para TARJETA)
+    if (headerPatch && typeof headerPatch === 'object') {
+      (this.batchForm.get('cabecera') as FormGroup).patchValue(headerPatch, { emitEvent: false });
     }
     this.showAlert('Pago(s) añadidos al lote', 'success');
   }

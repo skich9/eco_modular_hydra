@@ -10,6 +10,7 @@ use App\Models\AsignacionCostos;
 use App\Models\CostoSemestral;
 use App\Models\Gestion;
 use App\Models\ParametroCosto;
+use App\Models\Cuota;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\Validator;
 use Illuminate\Support\Facades\DB;
@@ -267,36 +268,42 @@ class CobroController extends Controller
 
 			$cobrosMensualidad = (clone $cobrosBase)->whereNotNull('id_cuota')->get();
 			$cobrosItems = (clone $cobrosBase)->whereNotNull('id_item')->get();
-
 			$totalMensualidad = $cobrosMensualidad->sum('monto');
 			$totalItems = $cobrosItems->sum('monto');
 
-			// Fallback: si no hay costo_semestral, usar parámetros de costo por nombre
-			$paramMonto = null;
-			$paramNroCuotas = null;
+			// Parámetros y cálculo de monto/nro_cuotas/pu
+			$paramMonto = null;        // MONTO_SEMESTRAL_FIJO
+			$paramNroCuotas = null;    // NRO_CUOTAS
 			if (!$costoSemestral && $gestionToUse) {
 				$paramMonto = ParametroCosto::where('gestion', $gestionToUse)
 					->where('nombre', 'MONTO_SEMESTRAL_FIJO')
 					->where('estado', true)
 					->first();
+			}
+
+			// 1) Monto del semestre
+			$montoSemestre = optional($costoSemestral)->monto_semestre
+				?: optional($asignacion)->monto
+				?: ($paramMonto ? (float)$paramMonto->valor : null);
+
+			// 2) Número de cuotas por gestión desde tabla 'cuotas'
+			$nroCuotasFromTable = $gestionToUse ? (int) Cuota::where('gestion', $gestionToUse)->count() : 0;
+			if ($nroCuotasFromTable === 0 && $gestionToUse) {
 				$paramNroCuotas = ParametroCosto::where('gestion', $gestionToUse)
 					->where('nombre', 'NRO_CUOTAS')
 					->where('estado', true)
 					->first();
 			}
+			$nroCuotas = $nroCuotasFromTable > 0 ? $nroCuotasFromTable : ($paramNroCuotas ? (int) round((float) $paramNroCuotas->valor) : null);
 
-			$montoSemestre = optional($costoSemestral)->monto_semestre
-				?: optional($asignacion)->monto
-				?: ($paramMonto ? (float)$paramMonto->valor : null);
+			// 3) Saldo y precio unitario
 			$saldoMensualidad = isset($montoSemestre) ? (float)$montoSemestre - (float)$totalMensualidad : null;
-			$nroCuotas = $paramNroCuotas ? (int) round((float) $paramNroCuotas->valor) : null;
 			$puMensual = ($montoSemestre !== null && $nroCuotas) ? round(((float)$montoSemestre) / max(1, $nroCuotas), 2) : null;
 
 			return response()->json([
 				'success' => true,
 				'data' => [
 					'estudiante' => $estudiante,
-					'inscripcion' => $primaryInscripcion,
 					'inscripciones' => $inscripciones,
 					'gestion' => $gestionToUse,
 					'costo_semestral' => $costoSemestral,

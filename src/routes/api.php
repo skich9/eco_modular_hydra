@@ -17,6 +17,7 @@ use App\Http\Controllers\Api\DefDescuentoBecaController;
 use App\Http\Controllers\Api\ParametroGeneralController;
 use App\Http\Controllers\Api\FormaCobroController;
 use App\Http\Controllers\Api\RazonSocialController;
+use App\Http\Controllers\Api\CuentaBancariaController;
 
 /*
 --------------------------------------------------------------------------
@@ -52,6 +53,9 @@ Route::patch('items-cobro/{id}/toggle-status', [ItemsCobroController::class, 'to
 
 // Formas de cobro (catálogo)
 Route::get('formas-cobro', [FormaCobroController::class, 'index']);
+
+// Cuentas bancarias (catálogo)
+Route::get('cuentas-bancarias', [CuentaBancariaController::class, 'index']);
 
 // Cobros (clave compuesta)
 Route::get('cobros', [CobroController::class, 'index']);

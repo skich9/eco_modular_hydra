@@ -25,6 +25,68 @@
         </div>
 
         <form [formGroup]="form" class="row g-3">
+          <!-- Datos de Tarjeta -->
+          <ng-container *ngIf="isTarjeta">
+            <div class="col-12">
+              <div class="border rounded p-3 mb-2">
+                <div class="row g-3 align-items-end">
+                  <div class="col-md-4">
+                    <label class="form-label">Banco Origen</label>
+                    <input class="form-control" formControlName="banco_origen" placeholder="Banco origen" />
+                  </div>
+                  <div class="col-md-2">
+                    <label class="form-label">Nº Tarjeta (4 primeros)</label>
+                    <input class="form-control" maxlength="4" formControlName="tarjeta_first4" placeholder="4" />
+                  </div>
+                  <div class="col-md-2">
+                    <label class="form-label">Nº Tarjeta (4 últimos)</label>
+                    <input class="form-control" maxlength="4" formControlName="tarjeta_last4" placeholder="4" />
+                  </div>
+                  <div class="col-md-4">
+                    <label class="form-label">Cuenta destino</label>
+                    <select class="form-select" formControlName="id_cuentas_bancarias">
+                      <option value="">Seleccione cuenta/banco</option>
+                      <option *ngFor="let c of cuentasBancarias" [value]="c.id_cuentas_bancarias">{{ c.banco }} - {{ c.numero_cuenta }}</option>
+                    </select>
+                  </div>
+                  <div class="col-md-4">
+                    <label class="form-label">Fecha depósito</label>
+                    <input type="date" class="form-control" formControlName="fecha_deposito" />
+                  </div>
+                  <div class="col-md-4">
+                    <label class="form-label">Num. depósito</label>
+                    <input type="text" class="form-control" formControlName="nro_deposito" />
+                  </div>
+                </div>
+              </div>
+            </div>
+          </ng-container>
+
+          <!-- Datos de Cheque / Depósito / Transferencia / QR -->
+          <ng-container *ngIf="isCheque || isDeposito || isTransferencia || isQR">
+            <div class="col-12">
+              <div class="border rounded p-3 mb-2">
+                <div class="row g-3 align-items-end">
+                  <div class="col-md-4">
+                    <label class="form-label">Cuenta destino</label>
+                    <select class="form-select" formControlName="id_cuentas_bancarias">
+                      <option value="">Seleccione cuenta/banco</option>
+                      <option *ngFor="let c of cuentasBancarias" [value]="c.id_cuentas_bancarias">{{ c.banco }} - {{ c.numero_cuenta }}</option>
+                    </select>
+                  </div>
+                  <div class="col-md-4">
+                    <label class="form-label">Fecha depósito</label>
+                    <input type="date" class="form-control" formControlName="fecha_deposito" />
+                  </div>
+                  <div class="col-md-4">
+                    <label class="form-label">Num. depósito</label>
+                    <input type="text" class="form-control" formControlName="nro_deposito" />
+                  </div>
+                </div>
+              </div>
+            </div>
+          </ng-container>
+
           <ng-container *ngIf="tipo === 'mensualidad'; else noMensualidad">
             <div class="col-md-4">
               <label class="form-label">Mensualidades Pendientes</label>
