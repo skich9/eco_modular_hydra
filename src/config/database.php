@@ -97,6 +97,37 @@ return [
             'sslmode' => 'prefer',
         ],
 
+        // Conexiones SGA (PostgreSQL) - Electronica y Mecanica
+        'sga_elec' => [
+            'driver' => 'pgsql',
+            'url' => env('SGA_ELEC_DB_URL'),
+            'host' => env('SGA_ELEC_DB_HOST', '127.0.0.1'),
+            'port' => env('SGA_ELEC_DB_PORT', '5432'),
+            'database' => env('SGA_ELEC_DB_DATABASE', 'EEA20250625'),
+            'username' => env('SGA_ELEC_DB_USERNAME', 'postgres'),
+            'password' => env('SGA_ELEC_DB_PASSWORD', 'admin'),
+            'charset' => env('SGA_ELEC_DB_CHARSET', 'utf8'),
+            'prefix' => '',
+            'prefix_indexes' => true,
+            'search_path' => env('SGA_ELEC_DB_SCHEMA', 'public'),
+            'sslmode' => env('SGA_ELEC_DB_SSLMODE', 'prefer'),
+        ],
+
+        'sga_mec' => [
+            'driver' => 'pgsql',
+            'url' => env('SGA_MEC_DB_URL'),
+            'host' => env('SGA_MEC_DB_HOST', '127.0.0.1'),
+            'port' => env('SGA_MEC_DB_PORT', '5432'),
+            'database' => env('SGA_MEC_DB_DATABASE', 'molinete_MEA'),
+            'username' => env('SGA_MEC_DB_USERNAME', 'postgres'),
+            'password' => env('SGA_MEC_DB_PASSWORD', 'admin'),
+            'charset' => env('SGA_MEC_DB_CHARSET', 'utf8'),
+            'prefix' => '',
+            'prefix_indexes' => true,
+            'search_path' => env('SGA_MEC_DB_SCHEMA', 'public'),
+            'sslmode' => env('SGA_MEC_DB_SSLMODE', 'prefer'),
+        ],
+
         'sqlsrv' => [
             'driver' => 'sqlsrv',
             'url' => env('DB_URL'),

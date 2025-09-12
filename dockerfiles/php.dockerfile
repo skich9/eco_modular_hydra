@@ -2,14 +2,15 @@ FROM php:8.2-fpm-alpine
 WORKDIR /var/www/html
 COPY src .
 
-RUN apk add --no-cache mysql-client msmtp perl wget procps shadow libzip libpng libjpeg-turbo libwebp freetype icu ca-certificates
+RUN apk add --no-cache mysql-client msmtp perl wget procps shadow libzip libpng libjpeg-turbo libwebp freetype icu ca-certificates postgresql-libs
 RUN apk add --no-cache --virtual build-essentials \
     icu-dev icu-libs zlib-dev g++ make automake autoconf libzip-dev libxml2-dev \
-    libpng-dev libwebp-dev libjpeg-turbo-dev freetype-dev && \
+    libpng-dev libwebp-dev libjpeg-turbo-dev freetype-dev postgresql-dev && \
     docker-php-ext-configure gd --enable-gd --with-freetype --with-jpeg --with-webp && \
     docker-php-ext-install gd && \
     docker-php-ext-install mysqli && \
     docker-php-ext-install pdo_mysql && \
+    docker-php-ext-install pgsql pdo_pgsql && \
     docker-php-ext-install intl && \
     docker-php-ext-install bcmath && \
     docker-php-ext-install opcache && \
