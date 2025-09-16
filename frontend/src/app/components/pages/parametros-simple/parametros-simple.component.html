@@ -214,15 +214,22 @@
             <small class="error" *ngIf="itemForm.get('costo')?.touched && itemForm.get('costo')?.hasError('min')">Debe ser mayor o igual a 0.</small>
             <small class="error" *ngIf="itemForm.get('costo')?.touched && itemForm.get('costo')?.hasError('backend')">{{ itemForm.get('costo')?.errors?.['message'] }}</small>
           </label>
-          <label>
+          <label class="col-span-2">
             Actividad Económica
-            <input type="text" formControlName="actividad_economica" />
+            <div class="d-flex gap-2 align-items-center">
+              <input type="text" class="form-control" placeholder="Buscar actividad (código o descripción)" (input)="loadActividades(($event.target as HTMLInputElement).value)" />
+              <select class="form-select" formControlName="actividad_economica">
+                <option value="">Seleccione...</option>
+                <option *ngFor="let a of actividades" [value]="a.codigo_caeb">{{ a.codigo_caeb }} - {{ a.descripcion }}</option>
+              </select>
+            </div>
+            <small class="text-muted">Se guarda el código CAEB seleccionado de la lista (tabla SIN).</small>
             <small class="error" *ngIf="itemForm.get('actividad_economica')?.touched && itemForm.get('actividad_economica')?.hasError('required')">Requerido.</small>
             <small class="error" *ngIf="itemForm.get('actividad_economica')?.touched && itemForm.get('actividad_economica')?.hasError('backend')">{{ itemForm.get('actividad_economica')?.errors?.['message'] }}</small>
           </label>
           <label class="col-span-2">
-            Descripción (máx. 50)
-            <textarea rows="2" maxlength="50" formControlName="descripcion"></textarea>
+            Descripción
+            <textarea rows="2" formControlName="descripcion"></textarea>
           </label>
           <label>
             Tipo Item

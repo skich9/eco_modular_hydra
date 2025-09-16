@@ -6,6 +6,7 @@ use App\Http\Controllers\Controller;
 use App\Models\ItemsCobro;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\Validator;
+use Illuminate\Validation\Rule;
 
 class ItemsCobroController extends Controller
 {
@@ -47,10 +48,18 @@ class ItemsCobroController extends Controller
                 'costo' => 'nullable|numeric|min:0',
                 'nro_creditos' => 'required|numeric|min:0',
                 'tipo_item' => 'required|string|max:40',
-                'descripcion' => 'nullable|string|max:50',
+                // descripcion es TEXT en DB; no aplicar max fijo
+                'descripcion' => 'nullable|string',
                 'estado' => 'nullable|boolean',
                 'facturado' => 'required|boolean',
-                'actividad_economica' => 'required|string|max:255',
+                // actividad_economica es VARCHAR(25) nullable y FK a sin_actividades.codigo_caeb
+                // Permitimos NULL si aún no tienes el catálogo cargado.
+                'actividad_economica' => [
+                    'nullable',
+                    'string',
+                    'max:25',
+                    Rule::exists('sin_actividades', 'codigo_caeb')
+                ],
                 'id_parametro_economico' => 'required|integer|exists:parametros_economicos,id_parametro_economico'
             ]);
 
@@ -61,8 +70,12 @@ class ItemsCobroController extends Controller
                     'errors' => $validator->errors()
                 ], 422);
             }
-
-            $item = ItemsCobro::create($request->all());
+            $data = $validator->validated();
+            // Normalización ligera
+            if (array_key_exists('actividad_economica', $data) && $data['actividad_economica'] !== null) {
+                $data['actividad_economica'] = trim((string)$data['actividad_economica']);
+            }
+            $item = ItemsCobro::create($data);
 
             return response()->json([
                 'success' => true,
@@ -134,10 +147,15 @@ class ItemsCobroController extends Controller
                 'costo' => 'nullable|numeric|min:0',
                 'nro_creditos' => 'required|numeric|min:0',
                 'tipo_item' => 'required|string|max:40',
-                'descripcion' => 'nullable|string|max:50',
+                'descripcion' => 'nullable|string',
                 'estado' => 'nullable|boolean',
                 'facturado' => 'required|boolean',
-                'actividad_economica' => 'required|string|max:255',
+                'actividad_economica' => [
+                    'nullable',
+                    'string',
+                    'max:25',
+                    Rule::exists('sin_actividades', 'codigo_caeb')
+                ],
                 'id_parametro_economico' => 'required|integer|exists:parametros_economicos,id_parametro_economico'
             ]);
 
@@ -148,8 +166,11 @@ class ItemsCobroController extends Controller
                     'errors' => $validator->errors()
                 ], 422);
             }
-
-            $item->update($request->all());
+            $data = $validator->validated();
+            if (array_key_exists('actividad_economica', $data) && $data['actividad_economica'] !== null) {
+                $data['actividad_economica'] = trim((string)$data['actividad_economica']);
+            }
+            $item->update($data);
 
             return response()->json([
                 'success' => true,

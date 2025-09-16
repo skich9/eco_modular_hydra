@@ -3,6 +3,7 @@ import { CommonModule } from '@angular/common';
 import { FormBuilder, FormGroup, Validators, ReactiveFormsModule, FormsModule } from '@angular/forms';
 import { ParametrosEconomicosService } from '../../../services/parametros-economicos.service';
 import { ItemsCobroService } from '../../../services/items-cobro.service';
+import { SinActividadesService, SinActividad } from '../../../services/sin-actividades.service';
 import { ParametroEconomico } from '../../../models/parametro-economico.model';
 import { ItemCobro } from '../../../models/item-cobro.model';
 
@@ -17,6 +18,7 @@ export class ParametrosSimpleComponent implements OnInit {
   // Datos
   parametros: ParametroEconomico[] = [];
   items: ItemCobro[] = [];
+  actividades: SinActividad[] = [];
 
   // Búsquedas en tiempo real
   searchPE = '';
@@ -48,7 +50,8 @@ export class ParametrosSimpleComponent implements OnInit {
   constructor(
     private fb: FormBuilder,
     private peService: ParametrosEconomicosService,
-    private icService: ItemsCobroService
+    private icService: ItemsCobroService,
+    private sinActService: SinActividadesService
   ) {
     // Formulario Parámetros Económicos
     this.parametroForm = this.fb.group({
@@ -69,16 +72,30 @@ export class ParametrosSimpleComponent implements OnInit {
       nro_creditos: [0, [Validators.required, Validators.min(0)]],
       costo: [null, Validators.min(0)],
       facturado: [false],
-      actividad_economica: ['', Validators.required],
-      descripcion: ['', [Validators.maxLength(50)]],
+      actividad_economica: ['', [Validators.required, Validators.maxLength(25)]],
+      // descripcion es TEXT en backend; no limitamos aquí
+      descripcion: [''],
       tipo_item: ['', [Validators.required, Validators.maxLength(40)]],
       estado: [true],
       id_parametro_economico: [null, Validators.required]
     });
   }
 
+  // CARGA DE ACTIVIDADES (SIN)
+  loadActividades(q: string = ''): void {
+    this.sinActService.search(q, 50).subscribe({
+      next: (res) => {
+        this.actividades = res.data || [];
+      },
+      error: (err) => {
+        console.error('SIN actividades:', err);
+      }
+    });
+  }
+
   ngOnInit(): void {
     this.loadAll();
+    this.loadActividades();
   }
 
   // CARGA DE DATOS

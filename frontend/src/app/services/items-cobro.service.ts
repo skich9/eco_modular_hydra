@@ -32,13 +32,22 @@ export class ItemsCobroService {
 
 	// Prepara payload para Laravel (coerción a números/booleanos)
 	private serializePayload(item: any): any {
+		const aeRaw = (item?.actividad_economica ?? '').toString();
+		const descRaw = (item?.descripcion ?? '').toString();
+		const ae = aeRaw.trim();
+		const desc = descRaw.trim();
 		return {
 			...item,
+			// Strings opcionales: enviar null si están vacíos
+			actividad_economica: ae.length > 0 ? ae : null,
+			descripcion: desc.length > 0 ? desc : null,
+			// Numéricos
 			codigo_producto_impuesto: item?.codigo_producto_impuesto != null && item.codigo_producto_impuesto !== '' ? Number(item.codigo_producto_impuesto) : null,
 			unidad_medida: item?.unidad_medida != null && item.unidad_medida !== '' ? Number(item.unidad_medida) : null,
 			nro_creditos: item?.nro_creditos != null && item.nro_creditos !== '' ? Number(item.nro_creditos) : 0,
 			costo: item?.costo != null && item.costo !== '' ? Number(item.costo) : null,
 			id_parametro_economico: item?.id_parametro_economico != null && item.id_parametro_economico !== '' ? Number(item.id_parametro_economico) : null,
+			// Booleanos
 			estado: !!item?.estado,
 			facturado: !!item?.facturado
 		};
