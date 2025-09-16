@@ -18,9 +18,13 @@ return [
 
 	'allowed_methods' => ['*'],
 
-	'allowed_origins' => ['http://localhost:4200'],
+	// Permitir múltiples orígenes. Puede configurarse vía .env: CORS_ALLOWED_ORIGINS="http://localhost:4200,http://127.0.0.1:4200,http://192.168.0.74:4200"
+	'allowed_origins' => array_filter(array_map('trim', explode(',', env('CORS_ALLOWED_ORIGINS', 'http://localhost:4200,http://127.0.0.1:4200,http://192.168.0.74:4200')))),
 
-	'allowed_origins_patterns' => [],
+	// Patrones para facilitar acceso desde IPs de la LAN (ajusta según tu red)
+	'allowed_origins_patterns' => [
+		'#^http://192\\.168\\.\d{1,3}\\.\d{1,3}(:\d+)?$#',
+	],
 
 	'allowed_headers' => ['*'],
 
@@ -28,5 +32,6 @@ return [
 
 	'max_age' => 0,
 
-	'supports_credentials' => false,
+	// Si usas cookies/sesiones/autenticación con credenciales en CORS
+	'supports_credentials' => true,
 ];

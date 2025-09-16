@@ -14,6 +14,7 @@ use App\Models\Cuota;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\Validator;
 use Illuminate\Support\Facades\DB;
+use Illuminate\Support\Facades\Schema;
 
 class CobroController extends Controller
 {
@@ -205,6 +206,7 @@ class CobroController extends Controller
 			$gestionReq = $request->input('gestion');
 			// Gestion inicial (podría ser null). La gestion final se determinará tras cargar la inscripción
 			$gestion = $gestionReq ?: optional(Gestion::gestionActual())->gestion;
+			$warnings = [];
 
 			$estudiante = Estudiante::with('pensum')->find($codCeta);
 			if (!$estudiante) {
@@ -222,8 +224,15 @@ class CobroController extends Controller
 				->orderByDesc('fecha_inscripcion')
 				->orderByDesc('created_at')
 				->get();
-			// Fallback: si no hay inscripciones en la gestión, usar la última gestión disponible (solo si no se solicitó gestión explícita)
-			if ($inscripciones->isEmpty() && !$gestionReq) {
+			// Manejo explícito: si no hay inscripciones
+			if ($inscripciones->isEmpty()) {
+				if ($gestionReq) {
+					return response()->json([
+						'success' => false,
+						'message' => 'El estudiante no tiene inscripción en la gestión solicitada',
+					], 404);
+				}
+				// Fallback automático: usar la última inscripción disponible
 				$ultima = Inscripcion::where('cod_ceta', $codCeta)
 					->orderByDesc('fecha_inscripcion')
 					->orderByDesc('created_at')
@@ -234,7 +243,13 @@ class CobroController extends Controller
 						->orderByDesc('fecha_inscripcion')
 						->orderByDesc('created_at')
 						->get();
+					$warnings[] = 'No hay inscripción en la gestión actual; se usó la última disponible: ' . $ultima->gestion;
 					$gestion = $ultima->gestion;
+				} else {
+					return response()->json([
+						'success' => false,
+						'message' => 'El estudiante no posee inscripciones registradas',
+					], 404);
 				}
 			}
 
@@ -275,36 +290,47 @@ class CobroController extends Controller
 			$paramMonto = null;        // MONTO_SEMESTRAL_FIJO
 			$paramNroCuotas = null;    // NRO_CUOTAS
 			if (!$costoSemestral && $gestionToUse) {
-				$paramMonto = ParametroCosto::where('gestion', $gestionToUse)
-					->where('nombre', 'MONTO_SEMESTRAL_FIJO')
-					->where('estado', true)
-					->first();
+				$pcQuery = ParametroCosto::query();
+				if (Schema::hasColumn('parametros_costos', 'gestion')) {
+					$pcQuery->where('gestion', $gestionToUse);
+				}
+				$pcQuery->where('nombre', 'MONTO_SEMESTRAL_FIJO');
+				if (Schema::hasColumn('parametros_costos', 'estado')) {
+					$pcQuery->where('estado', true);
+				}
+				$paramMonto = $pcQuery->first();
 			}
-
-			// 1) Monto del semestre
-			$montoSemestre = optional($costoSemestral)->monto_semestre
-				?: optional($asignacion)->monto
-				?: ($paramMonto ? (float)$paramMonto->valor : null);
-
-			// 2) Número de cuotas por gestión desde tabla 'cuotas'
-			$nroCuotasFromTable = $gestionToUse ? (int) Cuota::where('gestion', $gestionToUse)->count() : 0;
+			// Calcular NRO_CUOTAS con fallback a parametros_costos
+			$paramNroCuotas = null;
+			$nroCuotasFromTable = 0;
+			if ($gestionToUse && Schema::hasColumn('cuotas', 'gestion')) {
+				$nroCuotasFromTable = (int) Cuota::where('gestion', $gestionToUse)->count();
+			}
 			if ($nroCuotasFromTable === 0 && $gestionToUse) {
-				$paramNroCuotas = ParametroCosto::where('gestion', $gestionToUse)
-					->where('nombre', 'NRO_CUOTAS')
-					->where('estado', true)
-					->first();
+				$pcQuery2 = ParametroCosto::query();
+				if (Schema::hasColumn('parametros_costos', 'gestion')) {
+					$pcQuery2->where('gestion', $gestionToUse);
+				}
+				$pcQuery2->where('nombre', 'NRO_CUOTAS');
+				if (Schema::hasColumn('parametros_costos', 'estado')) {
+					$pcQuery2->where('estado', true);
+				}
+				$paramNroCuotas = $pcQuery2->first();
 			}
 			$nroCuotas = $nroCuotasFromTable > 0 ? $nroCuotasFromTable : ($paramNroCuotas ? (int) round((float) $paramNroCuotas->valor) : null);
 
-			// 3) Saldo y precio unitario
-			$saldoMensualidad = isset($montoSemestre) ? (float)$montoSemestre - (float)$totalMensualidad : null;
-			$puMensual = ($montoSemestre !== null && $nroCuotas) ? round(((float)$montoSemestre) / max(1, $nroCuotas), 2) : null;
-
+			// Calcular monto del semestre, saldo y precio unitario mensual
+			$montoSemestre = optional($costoSemestral)->monto_semestre
+				?: optional($asignacion)->monto
+				?: ($paramMonto ? (float) $paramMonto->valor : null);
+			$saldoMensualidad = isset($montoSemestre) ? (float) $montoSemestre - (float) $totalMensualidad : null;
+			$puMensual = ($montoSemestre !== null && $nroCuotas) ? round(((float) $montoSemestre) / max(1, $nroCuotas), 2) : null;
 			return response()->json([
 				'success' => true,
 				'data' => [
 					'estudiante' => $estudiante,
 					'inscripciones' => $inscripciones,
+					'inscripcion' => $primaryInscripcion,
 					'gestion' => $gestionToUse,
 					'costo_semestral' => $costoSemestral,
 					'parametros_costos' => [
@@ -331,6 +357,7 @@ class CobroController extends Controller
 						'nro_cuotas' => $nroCuotas,
 						'pu_mensual' => $puMensual,
 					],
+					'warnings' => $warnings,
 				]
 			]);
 		} catch (\Exception $e) {

@@ -305,6 +305,11 @@ export class CobrosComponent implements OnInit {
           this.resumen = res.data;
           this.showOpciones = true;
           this.showAlert('Resumen cargado', 'success');
+          // Mostrar advertencias de backend si existen (fallback de gestión u otros)
+          const warnings = (this.resumen?.warnings || []) as string[];
+          if (Array.isArray(warnings) && warnings.length) {
+            this.showAlert(warnings.join(' | '), 'warning');
+          }
           // Prefill identidad/razón social
           const est = this.resumen?.estudiante || {};
           const fullName = [est.nombres, est.ap_paterno, est.ap_materno].filter(Boolean).join(' ');
@@ -367,7 +372,25 @@ export class CobrosComponent implements OnInit {
         console.error('Resumen error:', err);
         this.resumen = null;
         this.showOpciones = false;
-        this.showAlert('Error al obtener resumen', 'error');
+        const status = Number(err?.status || 0);
+        const backendMsg = (err?.error?.message || err?.message || '').toString();
+        if (status === 404) {
+          this.showAlert(backendMsg || 'Estudiante no encontrado', 'warning');
+        } else if (status === 422) {
+          // Mostrar errores de validación si existen
+          const errors = err?.error?.errors || {};
+          const parts: string[] = [];
+          for (const k of Object.keys(errors)) {
+            const msgs = Array.isArray(errors[k]) ? errors[k] : [errors[k]];
+            for (const m of msgs) parts.push(`${k}: ${m}`);
+          }
+          const detail = parts.length ? ` Detalles: ${parts.join(' | ')}` : '';
+          this.showAlert((backendMsg || 'Error de validación') + detail, 'warning');
+        } else if (status >= 500) {
+          this.showAlert(backendMsg || 'Error interno del servidor al obtener resumen', 'error');
+        } else {
+          this.showAlert(backendMsg || 'Error al obtener resumen', 'error');
+        }
         this.loading = false;
       }
     });

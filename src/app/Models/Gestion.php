@@ -4,6 +4,7 @@ namespace App\Models;
 
 use Illuminate\Database\Eloquent\Factories\HasFactory;
 use Illuminate\Database\Eloquent\Model;
+use Illuminate\Support\Facades\Schema;
 
 class Gestion extends Model
 {
@@ -94,7 +95,14 @@ class Gestion extends Model
      */
     public function getEstadoAttribute(): bool
     {
-        return (bool) ($this->attributes['activo'] ?? false);
+        // Compatibilidad: si la columna 'activo' no existe aún, usar 'estado'
+        if (array_key_exists('activo', $this->attributes)) {
+            return (bool) $this->attributes['activo'];
+        }
+        if (array_key_exists('estado', $this->attributes)) {
+            return (bool) $this->attributes['estado'];
+        }
+        return false;
     }
 
     /**
@@ -123,7 +131,13 @@ class Gestion extends Model
      */
     public function scopeActiva($query)
     {
-        return $query->where('activo', true);
+        // Si la tabla aún no fue migrada a 'activo', usar 'estado'
+        $column = Schema::hasColumn($this->getTable(), 'activo') ? 'activo' : (Schema::hasColumn($this->getTable(), 'estado') ? 'estado' : null);
+        if ($column) {
+            return $query->where($column, true);
+        }
+        // Sin columna conocida, devolver query sin filtro para evitar error
+        return $query;
     }
 
     /**
