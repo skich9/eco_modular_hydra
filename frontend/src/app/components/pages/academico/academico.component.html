@@ -166,13 +166,6 @@
                 <label class="form-label">Orden</label>
                 <input type="number" class="form-control" formControlName="orden" min="1" />
               </div>
-              <div class="col-12 col-md-8">
-                <label class="form-label">Parámetro económico</label>
-                <select class="form-select" formControlName="id_parametro_economico">
-                  <option [ngValue]="null">Seleccione...</option>
-                  <option *ngFor="let p of parametrosEconomicos" [ngValue]="p.id_parametro_economico">{{ p.nombre }}</option>
-                </select>
-              </div>
 
               <div class="col-12">
                 <label class="form-label">Descripción</label>

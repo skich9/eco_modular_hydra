@@ -2,7 +2,7 @@ import { Component, OnInit } from '@angular/core';
 import { CommonModule } from '@angular/common';
 import { FormsModule, ReactiveFormsModule, FormBuilder, FormGroup, Validators } from '@angular/forms';
 import { Router, ActivatedRoute, RouterModule } from '@angular/router';
-import { Materia, Pensum, ParametroEconomico } from '../../../models/materia.model';
+import { Materia, Pensum } from '../../../models/materia.model';
 import { MateriaService } from '../../../services/materia.service';
 
 @Component({
@@ -90,24 +90,6 @@ import { MateriaService } from '../../../services/materia.service';
 				</div>
 
 				<div class="form-row">
-					<div class="form-group">
-						<label for="id_parametro_economico">Parámetro Económico *</label>
-						<select 
-							id="id_parametro_economico" 
-							formControlName="id_parametro_economico" 
-							class="form-control"
-							[class.is-invalid]="submitted && f['id_parametro_economico'].errors"
-						>
-							<option [ngValue]="null" disabled>Seleccione un parámetro económico</option>
-							<option *ngFor="let parametro of parametrosEconomicos" [ngValue]="parametro.id_parametro_economico">
-								{{ parametro.nombre }} - {{ parametro.valor }}
-							</option>
-						</select>
-						<div class="invalid-feedback" *ngIf="submitted && f['id_parametro_economico'].errors">
-							<span *ngIf="f['id_parametro_economico'].errors['required']">Parámetro económico es requerido</span>
-						</div>
-					</div>
-
 					<div class="form-group">
 						<label for="nro_creditos">Número de Créditos *</label>
 						<input 
@@ -388,7 +370,6 @@ import { MateriaService } from '../../../services/materia.service';
 export class MateriaFormComponent implements OnInit {
 	materiaForm: FormGroup;
 	pensumsList: Pensum[] = [];
-	parametrosEconomicos: ParametroEconomico[] = [];
 	isEditMode = false;
 	submitted = false;
 	isSubmitting = false;
@@ -407,7 +388,6 @@ export class MateriaFormComponent implements OnInit {
 			nombre_materia: ['', Validators.required],
 			nombre_material_oficial: ['', Validators.required],
 			cod_pensum: [null, Validators.required],
-			id_parametro_economico: [null, Validators.required],
 			nro_creditos: [null, [Validators.required, Validators.min(1)]],
 			orden: [null, [Validators.required, Validators.min(1)]],
 			descripcion: [''],
@@ -417,7 +397,6 @@ export class MateriaFormComponent implements OnInit {
 
 	ngOnInit(): void {
 		this.loadPensums();
-		this.loadParametrosEconomicos();
 		
 		// Verificar si estamos en modo edición
 		const sigla = this.route.snapshot.paramMap.get('sigla');
@@ -430,22 +409,12 @@ export class MateriaFormComponent implements OnInit {
 		}
 	}
 
-	// En un escenario real, estos métodos cargarían datos desde servicios específicos
 	loadPensums(): void {
 		// Datos de ejemplo - En producción se usaría un servicio para pensums
 		this.pensumsList = [
 			{ cod_pensum: 'ING-SIS-2020', codigo_carrera: 'ING-SIS', nombre: 'Ingeniería de Sistemas 2020', descripcion: '' },
 			{ cod_pensum: 'CONT-2019', codigo_carrera: 'CONT', nombre: 'Contaduría 2019', descripcion: '' },
 			{ cod_pensum: 'ADM-EMP-2021', codigo_carrera: 'ADM-EMP', nombre: 'Administración de Empresas 2021', descripcion: '' }
-		];
-	}
-
-	loadParametrosEconomicos(): void {
-		// Datos de ejemplo - En producción se usaría un servicio para parámetros económicos
-		this.parametrosEconomicos = [
-			{ id_parametro_economico: 1, nombre: 'Básico', tipo: 'materia', valor: 100, estado: true },
-			{ id_parametro_economico: 2, nombre: 'Intermedio', tipo: 'materia', valor: 150, estado: true },
-			{ id_parametro_economico: 3, nombre: 'Avanzado', tipo: 'materia', valor: 200, estado: true }
 		];
 	}
 
@@ -459,7 +428,6 @@ export class MateriaFormComponent implements OnInit {
 						nombre_materia: materia.nombre_materia,
 						nombre_material_oficial: materia.nombre_material_oficial,
 						cod_pensum: materia.cod_pensum,
-						id_parametro_economico: materia.id_parametro_economico,
 						nro_creditos: materia.nro_creditos,
 						orden: materia.orden,
 						descripcion: materia.descripcion,

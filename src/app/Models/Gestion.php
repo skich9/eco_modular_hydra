@@ -48,7 +48,7 @@ class Gestion extends Model
         'fecha_fin',
         'orden',
         'fecha_graduacion',
-        'estado'
+        'activo'
     ];
 
     /**
@@ -60,10 +60,17 @@ class Gestion extends Model
         'fecha_ini' => 'date',
         'fecha_fin' => 'date',
         'fecha_graduacion' => 'date',
-        'estado' => 'boolean',
+        'activo' => 'boolean',
         'created_at' => 'datetime',
         'updated_at' => 'datetime'
     ];
+
+    /**
+     * Append virtual attributes to JSON.
+     *
+     * @var array<int, string>
+     */
+    protected $appends = ['estado'];
 
     /**
      * Get the attributes that should be cast.
@@ -76,10 +83,18 @@ class Gestion extends Model
             'fecha_ini' => 'date',
             'fecha_fin' => 'date',
             'fecha_graduacion' => 'date',
-            'estado' => 'boolean',
+            'activo' => 'boolean',
             'created_at' => 'datetime',
             'updated_at' => 'datetime',
         ];
+    }
+
+    /**
+     * Accessor: mantener compatibilidad con frontend que espera 'estado'.
+     */
+    public function getEstadoAttribute(): bool
+    {
+        return (bool) ($this->attributes['activo'] ?? false);
     }
 
     /**
@@ -108,7 +123,7 @@ class Gestion extends Model
      */
     public function scopeActiva($query)
     {
-        return $query->where('estado', true);
+        return $query->where('activo', true);
     }
 
     /**
@@ -133,7 +148,7 @@ class Gestion extends Model
      */
     public function estaActiva(): bool
     {
-        return $this->estado === true;
+        return (bool) $this->activo === true;
     }
 
     /**

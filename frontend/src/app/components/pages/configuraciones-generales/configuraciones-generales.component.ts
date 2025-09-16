@@ -1,4 +1,4 @@
-import { Component, OnInit } from '@angular/core';
+import { Component, OnInit, ElementRef, ViewChild } from '@angular/core';
 import { CommonModule } from '@angular/common';
 import { FormBuilder, FormGroup, Validators, ReactiveFormsModule, FormsModule } from '@angular/forms';
 import { ParametrosGeneralesService } from '../../../services/parametros-generales.service';
@@ -33,6 +33,13 @@ export class ConfiguracionesGeneralesComponent implements OnInit {
 	loading = false;
 	alertMessage = '';
 	alertType: 'success' | 'error' | 'warning' = 'success';
+	// Ordenamiento (Gestiones)
+	sortGestionDir: 'asc' | 'desc' = 'asc';
+	// Errores de servidor en modal Gestión
+	gFormServerErrors: string[] = [];
+
+	// Ref del cuerpo del modal de Gestiones para enfocar alertas
+	@ViewChild('gModalBody') gModalBody!: ElementRef<HTMLDivElement>;
 
 	// Modales
 	showPgModal = false;
@@ -118,12 +125,24 @@ export class ConfiguracionesGeneralesComponent implements OnInit {
 
 	get filteredGestiones(): Gestion[] {
 		const t = (this.searchG || '').toLowerCase().trim();
-		if (!t) return this.gestiones;
-		return this.gestiones.filter(g =>
-			g.gestion.toLowerCase().includes(t) ||
-			(g.fecha_ini && g.fecha_ini.toLowerCase().includes(t)) ||
-			(g.fecha_fin && g.fecha_fin.toLowerCase().includes(t))
-		);
+		let list = [...(this.gestiones || [])];
+		if (t) {
+			list = list.filter(g =>
+				g.gestion.toLowerCase().includes(t) ||
+				(g.fecha_ini && g.fecha_ini.toLowerCase().includes(t)) ||
+				(g.fecha_fin && g.fecha_fin.toLowerCase().includes(t))
+			);
+		}
+		list.sort((a, b) => {
+			const cmp = (a.gestion || '').localeCompare(b.gestion || '', undefined, { numeric: true, sensitivity: 'base' });
+			return this.sortGestionDir === 'asc' ? cmp : -cmp;
+		});
+		return list;
+	}
+
+	// Toggle de orden
+	toggleSortGestion(): void {
+		this.sortGestionDir = this.sortGestionDir === 'asc' ? 'desc' : 'asc';
 	}
 
 	// Tabs
@@ -147,6 +166,8 @@ export class ConfiguracionesGeneralesComponent implements OnInit {
 		this.editingG = null;
 		this.gForm.reset({ estado: true, orden: 1 });
 		this.gForm.get('gestion')?.enable(); // permitir ingresar clave en creación
+		this.gFormServerErrors = [];
+		this.alertMessage = '';
 		this.showGModal = true;
 	}
 
@@ -154,6 +175,11 @@ export class ConfiguracionesGeneralesComponent implements OnInit {
 		this.editingG = g;
 		this.gForm.patchValue(g);
 		this.gForm.get('gestion')?.disable(); // clave primaria inmutable en edición
+		this.gFormServerErrors = [];
+		this.alertMessage = '';
+		// Limpiar errores previos del control gestion
+		this.gForm.get('gestion')?.setErrors(null);
+		this.gForm.get('gestion')?.updateValueAndValidity({ onlySelf: true, emitEvent: false });
 		this.showGModal = true;
 	}
 
@@ -205,9 +231,63 @@ export class ConfiguracionesGeneralesComponent implements OnInit {
 	// Guardar Gestión
 	saveG(): void {
 		if (!this.gForm.valid) return;
-		const data = this.gForm.value as Gestion;
+		// limpiar mensajes previos del modal
+		this.gFormServerErrors = [];
+		const data = this.gForm.getRawValue() as Gestion; // incluye campos deshabilitados
+		// Trim de clave gestión
+		data.gestion = (data.gestion || '').trim();
+		// Normalizar payload: fechas opcionales null y orden numérico
+		const payload: Gestion = {
+			...data,
+			fecha_graduacion: data.fecha_graduacion ? data.fecha_graduacion : undefined,
+			orden: typeof data.orden === 'string' ? parseInt(data.orden as unknown as string, 10) : data.orden
+		};
+		// Pre-validaciones en cliente
+		if (!this.editingG && !payload.gestion) {
+			const c = this.gForm.get('gestion');
+			c?.setErrors({ ...(c?.errors || {}), required: true });
+			c?.markAsTouched();
+			this.gFormServerErrors = ['El campo Gestión es requerido.'];
+			this.alertMessage = '';
+			this.scrollToGFormErrors();
+			return;
+		}
+		if (!payload.fecha_ini || !payload.fecha_fin) {
+			if (!payload.fecha_ini) {
+				const ci = this.gForm.get('fecha_ini');
+				ci?.setErrors({ ...(ci?.errors || {}), required: true });
+				ci?.markAsTouched();
+			}
+			if (!payload.fecha_fin) {
+				const cf = this.gForm.get('fecha_fin');
+				cf?.setErrors({ ...(cf?.errors || {}), required: true });
+				cf?.markAsTouched();
+			}
+			this.gFormServerErrors = ['Las fechas de inicio y fin son requeridas.'];
+			this.alertMessage = '';
+			this.scrollToGFormErrors();
+			return;
+		}
+		if (new Date(payload.fecha_ini) > new Date(payload.fecha_fin)) {
+			const cf = this.gForm.get('fecha_fin');
+			cf?.setErrors({ ...(cf?.errors || {}), backend: true, message: 'La fecha fin debe ser mayor o igual a la fecha inicio.' });
+			cf?.markAsTouched();
+			this.gFormServerErrors = ['La fecha fin debe ser mayor o igual a la fecha inicio.'];
+			this.alertMessage = '';
+			this.scrollToGFormErrors();
+			return;
+		}
+		if (payload.orden == null || Number.isNaN(payload.orden) || payload.orden < 1) {
+			const co = this.gForm.get('orden');
+			co?.setErrors({ ...(co?.errors || {}), backend: true, message: 'El campo Orden debe ser un número mayor o igual a 1.' });
+			co?.markAsTouched();
+			this.gFormServerErrors = ['El campo Orden debe ser un número mayor o igual a 1.'];
+			this.alertMessage = '';
+			this.scrollToGFormErrors();
+			return;
+		}
 		if (this.editingG) {
-			this.gService.update(this.editingG.gestion, data).subscribe({
+			this.gService.update(this.editingG.gestion, payload).subscribe({
 				next: (res) => {
 					if (res.success) {
 						this.loadGestiones();
@@ -217,11 +297,29 @@ export class ConfiguracionesGeneralesComponent implements OnInit {
 				},
 				error: (err) => {
 					console.error('G update:', err);
-					this.showAlert('No se pudo actualizar la gestión', 'error');
+					if (err?.status === 422 && err?.error?.errors) {
+						this.applyBackendErrorsToGForm(err.error.errors);
+						this.gFormServerErrors = this.flattenBackendErrors(err.error.errors);
+						this.alertMessage = '';
+						this.scrollToGFormErrors();
+					} else {
+						this.showAlert('No se pudo actualizar la gestión', 'error');
+					}
 				}
 			});
 		} else {
-			this.gService.create(data).subscribe({
+			// Evitar duplicado obvio desde el cliente
+			const existe = (this.gestiones || []).some(g => (g.gestion || '').toLowerCase() === payload.gestion.toLowerCase());
+			if (existe) {
+				const cg = this.gForm.get('gestion');
+				cg?.setErrors({ ...(cg?.errors || {}), backend: true, message: 'La gestión ya existe. Ingrese un valor diferente.' });
+				cg?.markAsTouched();
+				this.gFormServerErrors = ['La gestión ya existe. Ingrese un valor diferente.'];
+				this.alertMessage = '';
+				this.scrollToGFormErrors();
+				return;
+			}
+			this.gService.create(payload).subscribe({
 				next: (res) => {
 					if (res.success) {
 						this.loadGestiones();
@@ -231,7 +329,14 @@ export class ConfiguracionesGeneralesComponent implements OnInit {
 				},
 				error: (err) => {
 					console.error('G create:', err);
-					this.showAlert('No se pudo crear la gestión', 'error');
+					if (err?.status === 422 && err?.error?.errors) {
+						this.applyBackendErrorsToGForm(err.error.errors);
+						this.gFormServerErrors = this.flattenBackendErrors(err.error.errors);
+						this.alertMessage = '';
+						this.scrollToGFormErrors();
+					} else {
+						this.showAlert('No se pudo crear la gestión', 'error');
+					}
 				}
 			});
 		}
@@ -322,5 +427,47 @@ export class ConfiguracionesGeneralesComponent implements OnInit {
 		this.alertMessage = message;
 		this.alertType = type;
 		setTimeout(() => (this.alertMessage = ''), 4000);
+	}
+
+	private formatBackendErrors(errors: any): string {
+		try {
+			return Object.keys(errors)
+				.map(k => `${k}: ${Array.isArray(errors[k]) ? errors[k].join(', ') : errors[k]}`)
+				.join(' | ');
+		} catch {
+			return 'Error de validación';
+		}
+	}
+
+	private flattenBackendErrors(errors: any): string[] {
+		try {
+			return Object.keys(errors).map(k => (Array.isArray(errors[k]) ? errors[k].join(', ') : String(errors[k])));
+		} catch {
+			return ['Error de validación'];
+		}
+	}
+
+	private applyBackendErrorsToGForm(errors: any): void {
+		if (!errors) return;
+		Object.keys(errors).forEach(key => {
+			const ctrl = this.gForm.get(key);
+			if (ctrl) {
+				const msg = Array.isArray(errors[key]) ? errors[key][0] : errors[key];
+				ctrl.setErrors({ ...(ctrl.errors || {}), backend: true, message: msg });
+				ctrl.markAsTouched();
+			}
+		});
+	}
+
+	private scrollToGFormErrors(): void {
+		try {
+			setTimeout(() => {
+				const container = this.gModalBody?.nativeElement;
+				const alertEl = container?.querySelector('.alert-warning');
+				if (alertEl && alertEl instanceof HTMLElement) {
+					alertEl.scrollIntoView({ behavior: 'smooth', block: 'start' });
+				}
+			}, 0);
+		} catch {}
 	}
 }

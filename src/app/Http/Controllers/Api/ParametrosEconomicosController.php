@@ -6,6 +6,8 @@ use App\Http\Controllers\Controller;
 use App\Models\ParametrosEconomicos;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\Validator;
+use Illuminate\Support\Facades\Schema;
+use Illuminate\Database\QueryException;
 
 class ParametrosEconomicosController extends Controller
 {
@@ -201,10 +203,13 @@ class ParametrosEconomicosController extends Controller
 
             // Verificar si hay items de cobro que usan este parámetro
             $itemsCount = \App\Models\ItemsCobro::where('id_parametro_economico', $id)->count();
-            
-            // Verificar si hay materias que usan este parámetro
-            $materiasCount = \App\Models\Materia::where('id_parametro_economico', $id)->count();
-            
+
+            // Verificar si hay materias que usan este parámetro (solo si existe la columna)
+            $materiasCount = 0;
+            if (Schema::hasTable('materia') && Schema::hasColumn('materia', 'id_parametro_economico')) {
+                $materiasCount = \App\Models\Materia::where('id_parametro_economico', $id)->count();
+            }
+
             if ($itemsCount > 0 || $materiasCount > 0) {
                 $dependencias = [];
                 if ($itemsCount > 0) {
@@ -225,12 +230,23 @@ class ParametrosEconomicosController extends Controller
                 ], 409); // 409 Conflict
             }
 
-            if ($nombre !== null) {
-                ParametrosEconomicos::where('id_parametro_economico', $id)
-                    ->where('nombre', $nombre)
-                    ->delete();
-            } else {
-                $parametro->delete();
+            try {
+                if ($nombre !== null) {
+                    ParametrosEconomicos::where('id_parametro_economico', $id)
+                        ->where('nombre', $nombre)
+                        ->delete();
+                } else {
+                    $parametro->delete();
+                }
+            } catch (QueryException $qe) {
+                // Manejo defensivo: si la BD lanza violación de FK, responder 409 con mensaje claro
+                $sqlState = $qe->getCode(); // MySQL 23000; driverCode 1451
+                return response()->json([
+                    'success' => false,
+                    'message' => 'No se puede eliminar este parámetro económico porque tiene registros relacionados.',
+                    'error_type' => 'foreign_key_constraint',
+                    'sql_state' => $sqlState,
+                ], 409);
             }
 
             return response()->json([

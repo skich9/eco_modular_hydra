@@ -8,6 +8,7 @@ use Illuminate\Http\Request;
 use Illuminate\Support\Facades\Validator;
 use Illuminate\Validation\Rule;
 use Illuminate\Support\Facades\Log;
+use Illuminate\Support\Facades\Schema;
 
 class MateriaController extends Controller
 {
@@ -19,7 +20,7 @@ class MateriaController extends Controller
     public function index()
     {
         try {
-            $materias = Materia::with(['parametroEconomico', 'pensum'])->get();
+            $materias = Materia::with(['pensum'])->get();
             return response()->json([
                 'success' => true,
                 'data' => $materias
@@ -41,17 +42,33 @@ class MateriaController extends Controller
     public function store(Request $request)
     {
         try {
-            $validator = Validator::make($request->all(), [
+            $input = $request->all();
+            $hasActivo = Schema::hasColumn('materia', 'activo');
+            // Mapear estado -> activo si aplica
+            if ($hasActivo) {
+                if (array_key_exists('estado', $input) && !array_key_exists('activo', $input)) {
+                    $input['activo'] = filter_var($input['estado'], FILTER_VALIDATE_BOOLEAN, FILTER_NULL_ON_FAILURE);
+                    unset($input['estado']);
+                }
+            }
+
+            $rules = [
                 'sigla_materia' => 'required|string|max:10',
                 'cod_pensum' => 'required|string|max:10',
                 'nombre_materia' => 'required|string|max:100',
                 'nombre_material_oficial' => 'required|string|max:100',
-                'nro_creditos' => 'required|integer|min:1',
+                'nro_creditos' => 'required|numeric|min:1',
                 'orden' => 'required|integer|min:1',
-                'id_parametro_economico' => 'required|integer|exists:parametros_economicos,id_parametro_economico',
                 'descripcion' => 'nullable|string|max:255',
-                'estado' => 'required|boolean'
-            ]);
+            ];
+            // Requerir el campo de estado acorde a la columna existente
+            if ($hasActivo) {
+                $rules['activo'] = 'required|boolean';
+            } else {
+                $rules['estado'] = 'required|boolean';
+            }
+
+            $validator = Validator::make($input, $rules);
 
             if ($validator->fails()) {
                 return response()->json([
@@ -62,8 +79,9 @@ class MateriaController extends Controller
             }
 
             // Verificar si ya existe la materia con esa sigla y pensum
-            $exists = Materia::where('sigla_materia', $request->sigla_materia)
-                ->where('cod_pensum', $request->cod_pensum)
+            $data = $validator->validated();
+            $exists = Materia::where('sigla_materia', $data['sigla_materia'])
+                ->where('cod_pensum', $data['cod_pensum'])
                 ->exists();
 
             if ($exists) {
@@ -73,7 +91,7 @@ class MateriaController extends Controller
                 ], 422);
             }
 
-            $materia = Materia::create($request->all());
+            $materia = Materia::create($data);
 
             return response()->json([
                 'success' => true,
@@ -98,7 +116,7 @@ class MateriaController extends Controller
     public function show($sigla, $pensum)
     {
         try {
-            $materia = Materia::with(['parametroEconomico', 'pensum'])
+            $materia = Materia::with(['pensum'])
                 ->where('sigla_materia', $sigla)
                 ->where('cod_pensum', $pensum)
                 ->first();
@@ -144,15 +162,29 @@ class MateriaController extends Controller
                 ], 404);
             }
 
-            $validator = Validator::make($request->all(), [
+            $input = $request->all();
+            $hasActivo = Schema::hasColumn('materia', 'activo');
+            if ($hasActivo) {
+                if (array_key_exists('estado', $input) && !array_key_exists('activo', $input)) {
+                    $input['activo'] = filter_var($input['estado'], FILTER_VALIDATE_BOOLEAN, FILTER_NULL_ON_FAILURE);
+                    unset($input['estado']);
+                }
+            }
+
+            $rules = [
                 'nombre_materia' => 'required|string|max:100',
                 'nombre_material_oficial' => 'required|string|max:100',
-                'nro_creditos' => 'required|integer|min:1',
+                'nro_creditos' => 'required|numeric|min:1',
                 'orden' => 'required|integer|min:1',
-                'id_parametro_economico' => 'required|integer|exists:parametros_economicos,id_parametro_economico',
                 'descripcion' => 'nullable|string|max:255',
-                'estado' => 'required|boolean'
-            ]);
+            ];
+            if ($hasActivo) {
+                $rules['activo'] = 'required|boolean';
+            } else {
+                $rules['estado'] = 'required|boolean';
+            }
+
+            $validator = Validator::make($input, $rules);
 
             if ($validator->fails()) {
                 return response()->json([
@@ -162,7 +194,7 @@ class MateriaController extends Controller
                 ], 422);
             }
 
-            $materia->update($request->all());
+            $materia->update($validator->validated());
 
             return response()->json([
                 'success' => true,
@@ -233,7 +265,12 @@ class MateriaController extends Controller
                 ], 404);
             }
 
-            $materia->estado = !$materia->estado;
+            $hasActivo = Schema::hasColumn('materia', 'activo');
+            if ($hasActivo) {
+                $materia->activo = !$materia->estado; // usa accessor estado
+            } else {
+                $materia->estado = !$materia->estado;
+            }
             $materia->save();
 
             return response()->json([
@@ -255,7 +292,7 @@ class MateriaController extends Controller
     public function getByPensum(string $codPensum)
     {
         try {
-            $materias = Materia::with(['parametroEconomico', 'pensum'])
+            $materias = Materia::with(['pensum'])
                 ->where('cod_pensum', $codPensum)
                 ->get();
             return response()->json([
@@ -278,7 +315,7 @@ class MateriaController extends Controller
     {
         try {
             $term = trim((string) $request->query('term', ''));
-            $query = Materia::with(['parametroEconomico', 'pensum']);
+            $query = Materia::with(['pensum']);
 
             if ($term !== '') {
                 $query->where(function ($q) use ($term) {

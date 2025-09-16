@@ -40,10 +40,10 @@ class Materia extends Model
 		'cod_pensum',
 		'nombre_materia',
 		'nombre_material_oficial',
+		'activo',
 		'estado',
 		'orden',
 		'descripcion',
-		'id_parametro_economico',
 		'nro_creditos',
 	];
 	
@@ -53,16 +53,24 @@ class Materia extends Model
 	 * @var array<string, string>
 	 */
 	protected $casts = [
+		'activo' => 'boolean',
 		'estado' => 'boolean',
 		'nro_creditos' => 'decimal:2',
 	];
-	
+
 	/**
-	 * Obtiene el parámetro económico asociado con esta materia.
+	 * Atributos agregados al array/json del modelo.
+	 *
+	 * @var array<int, string>
 	 */
-	public function parametroEconomico()
+	protected $appends = ['estado'];
+
+	/**
+	 * Accessor de compatibilidad: expone 'estado' basado en 'activo'.
+	 */
+	public function getEstadoAttribute(): bool
 	{
-		return $this->belongsTo(ParametrosEconomicos::class, 'id_parametro_economico', 'id_parametro_economico');
+		return (bool) ($this->attributes['activo'] ?? $this->attributes['estado'] ?? false);
 	}
 	
 	/**

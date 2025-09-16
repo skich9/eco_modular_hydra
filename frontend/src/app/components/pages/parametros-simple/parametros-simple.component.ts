@@ -306,7 +306,18 @@ export class ParametrosSimpleComponent implements OnInit {
         },
         error: (err: any) => {
           console.error('Delete PE:', err);
-          this.showAlert('No se pudo eliminar el parámetro', 'error');
+          if (err?.status === 409 && err?.error?.error_type === 'foreign_key_constraint') {
+            const msg: string = err?.error?.message || 'No se puede eliminar este parámetro económico porque tiene dependencias.';
+            this.cancelDelete();
+            this.showAlert(msg, 'warning');
+          } else if (err?.status === 422 && err?.error?.errors) {
+            const msg = this.formatBackendErrors(err.error.errors);
+            this.cancelDelete();
+            this.showAlert(`Errores de validación: ${msg}`, 'error');
+          } else {
+            this.cancelDelete();
+            this.showAlert('No se pudo eliminar el parámetro', 'error');
+          }
         }
       });
     }
@@ -363,6 +374,18 @@ export class ParametrosSimpleComponent implements OnInit {
   private showAlert(message: string, type: 'success' | 'error' | 'warning'): void {
     this.alertMessage = message;
     this.alertType = type;
+    // Asegurar visibilidad: llevar la vista hacia el contenedor de alertas
+    try {
+      // Ejecutar tras el ciclo de render
+      setTimeout(() => {
+        const el = document.querySelector('.alerts');
+        if (el && 'scrollIntoView' in el) {
+          (el as any).scrollIntoView({ behavior: 'smooth', block: 'start' });
+        } else {
+          window.scrollTo({ top: 0, behavior: 'smooth' });
+        }
+      }, 0);
+    } catch {}
     setTimeout(() => (this.alertMessage = ''), 4000);
   }
 

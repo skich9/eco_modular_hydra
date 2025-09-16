@@ -9,8 +9,7 @@ import { FormBuilder, FormGroup, Validators } from '@angular/forms';
 import { Gestion } from '../../../models/gestion.model';
 import { GestionService } from '../../../services/gestion.service';
 import { CostoMateriaService } from '../../../services/costo-materia.service';
-import { ParametrosEconomicosService } from '../../../services/parametros-economicos.service';
-import { ParametroEconomico } from '../../../models/parametro-economico.model';
+// Eliminado: parámetros económicos ya no se asocian directamente a materia
 
 @Component({
   selector: 'app-academico',
@@ -34,7 +33,6 @@ export class AcademicoComponent implements OnInit, OnDestroy {
   modalMode: 'create' | 'edit' = 'create';
   form!: FormGroup;
   editingKeys: { sigla: string; pensum: string } | null = null;
-  parametrosEconomicos: ParametroEconomico[] = [];
 
   loadingPensums = false;
   loadingMaterias = false;
@@ -52,7 +50,6 @@ export class AcademicoComponent implements OnInit, OnDestroy {
     private fb: FormBuilder,
     private gestionService: GestionService,
     private costoMateriaService: CostoMateriaService,
-    private parametrosEconomicosService: ParametrosEconomicosService,
   ) {}
 
   ngOnInit(): void {
@@ -64,7 +61,7 @@ export class AcademicoComponent implements OnInit, OnDestroy {
       }
       this.loadPensums();
       this.loadGestionYCostos();
-      this.loadParametrosEconomicos();
+      // Ya no es necesario cargar parámetros económicos para el formulario de materia
     });
   }
 
@@ -176,15 +173,7 @@ export class AcademicoComponent implements OnInit, OnDestroy {
     });
   }
 
-  // Parámetros económicos para el formulario
-  private loadParametrosEconomicos(): void {
-    this.parametrosEconomicosService.getAll().subscribe({
-      next: (res) => {
-        this.parametrosEconomicos = res.data || [];
-      },
-      error: (err) => console.error('Error al cargar parámetros económicos:', err)
-    });
-  }
+  // Eliminado: carga de parámetros económicos
 
   // Modal form helpers
   private buildForm(m?: Materia): void {
@@ -195,7 +184,6 @@ export class AcademicoComponent implements OnInit, OnDestroy {
       nombre_material_oficial: [m?.nombre_material_oficial || '', [Validators.required, Validators.maxLength(100)]],
       nro_creditos: [m?.nro_creditos ?? 1, [Validators.required, Validators.min(1)]],
       orden: [m?.orden ?? 1, [Validators.required, Validators.min(1)]],
-      id_parametro_economico: [m?.id_parametro_economico ?? null, [Validators.required]],
       descripcion: [m?.descripcion || ''],
       estado: [m?.estado ?? true]
     });

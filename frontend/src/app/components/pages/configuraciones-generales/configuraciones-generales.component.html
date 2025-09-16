@@ -14,11 +14,15 @@
 			<button class="btn btn-primary" *ngIf="activeTab==='gestion'" (click)="openNewG()">
 				<i class="fas fa-plus me-1"></i> Nueva Gestión
 			</button>
+			<button class="btn btn-outline-secondary" *ngIf="activeTab==='gestion'" (click)="toggleSortGestion()" title="Alternar orden por gestión">
+				<i class="fas" [ngClass]="sortGestionDir==='asc' ? 'fa-sort-alpha-down' : 'fa-sort-alpha-up'"></i>
+				Orden: {{ sortGestionDir==='asc' ? 'Asc' : 'Desc' }}
+			</button>
 		</div>
 	</div>
 
-	<!-- Alertas -->
-	<div *ngIf="alertMessage" class="alert" [ngClass]="{
+	<!-- Alertas (ocultas cuando el modal de Gestiones está abierto) -->
+	<div *ngIf="alertMessage && !showGModal" class="alert" [ngClass]="{
 		'alert-success': alertType==='success',
 		'alert-danger': alertType==='error',
 		'alert-warning': alertType==='warning'
@@ -158,28 +162,43 @@
 				<h2 class="modal-title">{{ editingG ? 'Editar Gestión' : 'Nueva Gestión' }}</h2>
 				<button class="modal-close" (click)="closeModals()">×</button>
 			</div>
-			<div class="modal-body">
+			<div class="modal-body" #gModalBody>
+				<!-- Errores de servidor (422) -->
+				<div class="alert alert-warning" *ngIf="gFormServerErrors.length">
+					<div *ngFor="let e of gFormServerErrors">{{ e }}</div>
+				</div>
 				<form [formGroup]="gForm">
 					<div class="form-grid">
 						<div class="form-group">
 							<label>Gestión</label>
 							<input class="form-control" type="text" formControlName="gestion" />
+							<small class="error" *ngIf="gForm.get('gestion')?.touched && gForm.get('gestion')?.hasError('required')">Requerido.</small>
+							<small class="error" *ngIf="gForm.get('gestion')?.touched && gForm.get('gestion')?.hasError('maxlength')">Máximo 30 caracteres.</small>
+							<small class="error" *ngIf="gForm.get('gestion')?.touched && gForm.get('gestion')?.hasError('backend')">{{ gForm.get('gestion')?.errors?.['message'] }}</small>
 						</div>
 						<div class="form-group">
 							<label>Fecha Inicio</label>
 							<input class="form-control" type="date" formControlName="fecha_ini" />
+							<small class="error" *ngIf="gForm.get('fecha_ini')?.touched && gForm.get('fecha_ini')?.hasError('required')">Requerido.</small>
+							<small class="error" *ngIf="gForm.get('fecha_ini')?.touched && gForm.get('fecha_ini')?.hasError('backend')">{{ gForm.get('fecha_ini')?.errors?.['message'] }}</small>
 						</div>
 						<div class="form-group">
 							<label>Fecha Fin</label>
 							<input class="form-control" type="date" formControlName="fecha_fin" />
+							<small class="error" *ngIf="gForm.get('fecha_fin')?.touched && gForm.get('fecha_fin')?.hasError('required')">Requerido.</small>
+							<small class="error" *ngIf="gForm.get('fecha_fin')?.touched && gForm.get('fecha_fin')?.hasError('backend')">{{ gForm.get('fecha_fin')?.errors?.['message'] }}</small>
 						</div>
 						<div class="form-group">
 							<label>Orden</label>
 							<input class="form-control" type="number" formControlName="orden" />
+							<small class="error" *ngIf="gForm.get('orden')?.touched && gForm.get('orden')?.hasError('required')">Requerido.</small>
+							<small class="error" *ngIf="gForm.get('orden')?.touched && gForm.get('orden')?.hasError('min')">Debe ser mayor o igual a 1.</small>
+							<small class="error" *ngIf="gForm.get('orden')?.touched && gForm.get('orden')?.hasError('backend')">{{ gForm.get('orden')?.errors?.['message'] }}</small>
 						</div>
 						<div class="form-group">
 							<label>Fecha Graduación</label>
 							<input class="form-control" type="date" formControlName="fecha_graduacion" />
+							<small class="error" *ngIf="gForm.get('fecha_graduacion')?.touched && gForm.get('fecha_graduacion')?.hasError('backend')">{{ gForm.get('fecha_graduacion')?.errors?.['message'] }}</small>
 						</div>
 						<div class="form-group checkbox-group">
 							<label>Activo</label>

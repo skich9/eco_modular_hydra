@@ -37,13 +37,28 @@ class GestionController extends Controller
     public function store(Request $request): JsonResponse
     {
         try {
-            $validator = Validator::make($request->all(), [
+            // Mapear estado -> activo si viene desde el frontend
+            $input = $request->all();
+            // Recortar 'gestion' y normalizar fechas opcionales
+            if (isset($input['gestion']) && is_string($input['gestion'])) {
+                $input['gestion'] = trim($input['gestion']);
+            }
+            if (array_key_exists('estado', $input) && !array_key_exists('activo', $input)) {
+                $input['activo'] = filter_var($input['estado'], FILTER_VALIDATE_BOOLEAN, FILTER_NULL_ON_FAILURE);
+                unset($input['estado']);
+            }
+            foreach (['fecha_graduacion'] as $f) {
+                if (array_key_exists($f, $input) && $input[$f] === '') {
+                    $input[$f] = null;
+                }
+            }
+            $validator = Validator::make($input, [
                 'gestion' => 'required|string|max:30|unique:gestion,gestion',
                 'fecha_ini' => 'required|date',
                 'fecha_fin' => 'required|date|after_or_equal:fecha_ini',
                 'orden' => 'required|integer|min:1',
                 'fecha_graduacion' => 'nullable|date|after_or_equal:fecha_ini',
-                'estado' => 'nullable|boolean'
+                'activo' => 'nullable|boolean'
             ]);
 
             if ($validator->fails()) {
@@ -106,12 +121,17 @@ class GestionController extends Controller
         try {
             $gestionModel = Gestion::findOrFail($gestion);
 
-            $validator = Validator::make($request->all(), [
+            $input = $request->all();
+            if (array_key_exists('estado', $input) && !array_key_exists('activo', $input)) {
+                $input['activo'] = filter_var($input['estado'], FILTER_VALIDATE_BOOLEAN, FILTER_NULL_ON_FAILURE);
+                unset($input['estado']);
+            }
+            $validator = Validator::make($input, [
                 'fecha_ini' => 'sometimes|required|date',
                 'fecha_fin' => 'sometimes|required|date|after_or_equal:fecha_ini',
                 'orden' => 'sometimes|required|integer|min:1',
                 'fecha_graduacion' => 'nullable|date|after_or_equal:fecha_ini',
-                'estado' => 'nullable|boolean'
+                'activo' => 'nullable|boolean'
             ]);
 
             if ($validator->fails()) {
@@ -156,7 +176,7 @@ class GestionController extends Controller
             return response()->json([
                 'success' => true,
                 'message' => 'Gestión eliminada exitosamente'
-            ], Response::HTTP_NO_CONTENT);
+            ], Response::HTTP_OK);
 
         } catch (\Illuminate\Database\Eloquent\ModelNotFoundException $e) {
             return response()->json([
@@ -253,19 +273,19 @@ class GestionController extends Controller
         try {
             $gestionModel = Gestion::findOrFail($gestion);
 
-            $validator = Validator::make($request->all(), [
-                'estado' => 'required|boolean'
-            ]);
-
-            if ($validator->fails()) {
+            // Aceptar tanto 'estado' como 'activo' desde el frontend
+            $hasEstado = $request->has('estado');
+            $hasActivo = $request->has('activo');
+            if (!$hasEstado && !$hasActivo) {
                 return response()->json([
                     'success' => false,
-                    'errors' => $validator->errors(),
+                    'errors' => ['estado' => ['El campo estado/activo es requerido']],
                     'message' => 'Error de validación'
                 ], Response::HTTP_UNPROCESSABLE_ENTITY);
             }
+            $nuevoEstado = $hasEstado ? $request->boolean('estado') : $request->boolean('activo');
 
-            $gestionModel->update(['estado' => $request->estado]);
+            $gestionModel->update(['activo' => $nuevoEstado]);
 
             return response()->json([
                 'success' => true,

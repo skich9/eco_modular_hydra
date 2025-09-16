@@ -217,7 +217,7 @@
           <label class="col-span-2">
             Actividad Económica
             <div class="d-flex gap-2 align-items-center">
-              <input type="text" class="form-control" placeholder="Buscar actividad (código o descripción)" (input)="loadActividades(($event.target as HTMLInputElement).value)" />
+              <input type="text" class="form-control" placeholder="Buscar actividad (código o descripción)" (input)="loadActividades($any($event.target).value)" />
               <select class="form-select" formControlName="actividad_economica">
                 <option value="">Seleccione...</option>
                 <option *ngFor="let a of actividades" [value]="a.codigo_caeb">{{ a.codigo_caeb }} - {{ a.descripcion }}</option>

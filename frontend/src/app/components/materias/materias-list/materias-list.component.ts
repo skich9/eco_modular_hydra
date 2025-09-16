@@ -49,7 +49,6 @@ import { MateriaService } from '../../../services/materia.service';
 							<th>Nombre</th>
 							<th>Pensum</th>
 							<th>Créditos</th>
-							<th>Parámetro Económico</th>
 							<th>Estado</th>
 							<th>Acciones</th>
 						</tr>
@@ -60,7 +59,6 @@ import { MateriaService } from '../../../services/materia.service';
 							<td>{{ materia.nombre_materia }}</td>
 							<td>{{ materia.pensum?.nombre || 'Sin pensum' }}</td>
 							<td>{{ materia.nro_creditos }}</td>
-							<td>{{ materia.parametroEconomico?.nombre || 'No asignado' }}</td>
 							<td>
 								<span class="badge" [ngClass]="materia.estado ? 'badge-active' : 'badge-inactive'">
 									{{ materia.estado ? 'Activa' : 'Inactiva' }}
@@ -79,7 +77,7 @@ import { MateriaService } from '../../../services/materia.service';
 							</td>
 						</tr>
 						<tr *ngIf="materias.length === 0">
-							<td colspan="7" class="no-data">
+							<td colspan="6" class="no-data">
 								<div *ngIf="isLoading">Cargando materias...</div>
 								<div *ngIf="!isLoading">No se encontraron materias</div>
 							</td>

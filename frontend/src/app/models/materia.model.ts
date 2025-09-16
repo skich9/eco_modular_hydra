@@ -6,11 +6,9 @@ export interface Materia {
 	estado: boolean;
 	orden: number;
 	descripcion?: string;
-	id_parametro_economico: number;
 	nro_creditos: number;
 	// Costo de la materia para la gestión actual (merge desde endpoint costo-materia)
 	monto_materia?: number;
-	parametroEconomico?: ParametroEconomico;
 	pensum?: Pensum;
 	created_at?: string;
 	updated_at?: string;
@@ -27,12 +25,4 @@ export interface Pensum {
 	estado?: boolean;
 }
 
-export interface ParametroEconomico {
-	id_parametro_economico: number;
-	nombre: string;
-	tipo: string;
-	valor: number;
-	descripcion?: string;
-	modulo?: string; // Módulo al que pertenece el parámetro
-	estado: boolean;
-}
+// ParametroEconomico eliminado de Materia: ya no se usa asociación directa
