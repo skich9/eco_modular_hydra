@@ -195,6 +195,103 @@ class SgaSyncRepository
 	}
 
 	/**
+	 * Sincroniza catálogo de documentos (doc_estudiante) desde SGA hacia tabla local 'doc_estudiante'.
+	 * La tabla local solo contiene la PK 'nombre_doc'. Se usa insertOrIgnore.
+	 */
+	public function syncDocEstudiante(string $source, int $chunk = 1000, bool $dryRun = false): array
+	{
+		$source = in_array($source, ['sga_elec','sga_mec']) ? $source : 'sga_elec';
+		$total = 0; $inserted = 0;
+
+		if (!Schema::hasTable('doc_estudiante')) {
+			return compact('source','total','inserted');
+		}
+
+		DB::connection($source)
+			->table('doc_estudiante')
+			->orderBy('nombre_doc')
+			->chunk($chunk, function ($rows) use (&$total, &$inserted, $dryRun) {
+				$total += count($rows);
+				$payload = [];
+				foreach ($rows as $r) {
+					$nombre = trim((string) ($r->nombre_doc ?? ''));
+					if ($nombre === '') { continue; }
+					$payload[] = ['nombre_doc' => mb_substr($nombre, 0, 100)];
+				}
+				if ($dryRun || empty($payload)) { return; }
+				$before = (int) DB::table('doc_estudiante')->count();
+				DB::table('doc_estudiante')->insertOrIgnore($payload);
+				$after = (int) DB::table('doc_estudiante')->count();
+				$inserted += max(0, $after - $before);
+			});
+
+		return compact('source','total','inserted');
+	}
+
+	/**
+	 * Sincroniza documentos presentados por estudiante desde SGA hacia tabla local 'doc_presentados'.
+	 * Mapeo: cod_documento (SGA) -> id_doc_presentados (local). Upsert por (id_doc_presentados, cod_ceta).
+	 */
+	public function syncDocPresentados(string $source, int $chunk = 1000, bool $dryRun = false): array
+	{
+		$source = in_array($source, ['sga_elec','sga_mec']) ? $source : 'sga_elec';
+		$total = 0; $inserted = 0; $updated = 0; $skipped = 0;
+
+		if (!Schema::hasTable('doc_presentados')) {
+			return compact('source','total','inserted','updated','skipped');
+		}
+
+		DB::connection($source)
+			->table('doc_presentados')
+			->orderBy('cod_ceta')
+			->chunk($chunk, function ($rows) use (&$total, &$inserted, &$updated, &$skipped, $dryRun) {
+				$total += count($rows);
+				if (empty($rows)) { return; }
+				$payload = [];
+				foreach ($rows as $r) {
+					$codCeta = (int) ($r->cod_ceta ?? 0);
+					$idDoc = (int) ($r->cod_documento ?? ($r->id_doc_presentados ?? 0));
+					if ($codCeta === 0 || $idDoc === 0) { $skipped++; continue; }
+					$payload[] = [
+						'id_doc_presentados' => $idDoc,
+						'cod_ceta'          => $codCeta,
+						'numero_doc'        => isset($r->numero_doc) ? mb_substr((string)$r->numero_doc, 0, 150) : null,
+						'nombre_doc'        => isset($r->nombre_doc) ? mb_substr((string)$r->nombre_doc, 0, 100) : '',
+						'procedencia'       => isset($r->procedencia) ? mb_substr((string)$r->procedencia, 0, 150) : null,
+						'entregado'         => isset($r->entregado) ? (bool)$r->entregado : null,
+					];
+				}
+				if ($dryRun || empty($payload)) { return; }
+
+				DB::table('doc_presentados')->upsert(
+					$payload,
+					['id_doc_presentados','cod_ceta'],
+					['numero_doc','nombre_doc','procedencia','entregado']
+				);
+
+				// Estimar inserted/updated
+				$pairs = array_map(function($p){ return $p['id_doc_presentados'].'-'.$p['cod_ceta']; }, $payload);
+				$uniqIds = array_values(array_unique(array_column($payload, 'id_doc_presentados')));
+				$uniqCetas = array_values(array_unique(array_column($payload, 'cod_ceta')));
+				$existingPairs = [];
+				if (!empty($uniqIds) && !empty($uniqCetas)) {
+					$existRows = DB::table('doc_presentados')
+						->whereIn('id_doc_presentados', $uniqIds)
+						->whereIn('cod_ceta', $uniqCetas)
+						->select('id_doc_presentados','cod_ceta')
+						->get();
+					foreach ($existRows as $er) { $existingPairs[$er->id_doc_presentados.'-'.$er->cod_ceta] = true; }
+				}
+				$existingCount = 0;
+				foreach ($pairs as $k) { if (isset($existingPairs[$k])) { $existingCount++; } }
+				$updated += $existingCount;
+				$inserted += (count($payload) - $existingCount);
+			});
+
+		return compact('source','total','inserted','updated','skipped');
+	}
+
+	/**
 	 * Sincroniza deudas desde SGA hacia la tabla local 'deudas'.
 	 * - Origen: public.deudas (SGA)
 	 * - Destino: deudas (MySQL) con PK compuesta (cod_ceta, cod_inscrip)

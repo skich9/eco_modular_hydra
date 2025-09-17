@@ -23,7 +23,13 @@ return [
 
 	// Patrones para facilitar acceso desde IPs de la LAN (ajusta según tu red)
 	'allowed_origins_patterns' => [
-		'#^http://192\\.168\\.\d{1,3}\\.\d{1,3}(:\d+)?$#',
+		// Browser Preview del IDE y localhost con puertos variables
+		'#^https?://localhost(:\d+)?$#',
+		'#^https?://127\\.0\\.0\\.1(:\d+)?$#',
+		// Cualquier IP de la subred 192.168.x.x con puerto variable
+		'#^https?://192\\.168\\.\d{1,3}\\.\d{1,3}(:\d+)?$#',
+		// IP del host principal con puerto variable
+		'#^https?://192\\.168\\.0\\.74(:\d+)?$#',
 	],
 
 	'allowed_headers' => ['*'],

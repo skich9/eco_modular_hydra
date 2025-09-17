@@ -324,6 +324,20 @@ export class CobrosComponent implements OnInit {
             email: est.email || ''
           });
 
+          // Autocompletar desde documentos presentados si el backend envió documento_identidad
+          const docId = this.resumen?.documento_identidad || null;
+          if (docId) {
+            const tipo = Number(docId?.tipo_identidad || 0) || 1;
+            const numero = (docId?.numero || '').toString();
+            this.identidadForm.patchValue({
+              tipo_identidad: tipo,
+              ci: numero
+            }, { emitEvent: false });
+          } else {
+            // Sin coincidencia: marcar sin información
+            this.identidadForm.patchValue({ ci: 'SIN INFORMACIÓN' }, { emitEvent: false });
+          }
+
           // Prefill cabecera del batch
           const ins = this.resumen?.inscripcion || {};
           (this.batchForm.get('cabecera') as FormGroup).patchValue({

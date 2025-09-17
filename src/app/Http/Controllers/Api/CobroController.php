@@ -325,6 +325,46 @@ class CobroController extends Controller
 				?: ($paramMonto ? (float) $paramMonto->valor : null);
 			$saldoMensualidad = isset($montoSemestre) ? (float) $montoSemestre - (float) $totalMensualidad : null;
 			$puMensual = ($montoSemestre !== null && $nroCuotas) ? round(((float) $montoSemestre) / max(1, $nroCuotas), 2) : null;
+
+			// Documentos presentados del estudiante y deducción de documento de identidad
+			$documentosPresentados = collect();
+			$documentoIdentidad = null;
+			try {
+				if (Schema::hasTable('doc_presentados')) {
+					$documentosPresentados = DB::table('doc_presentados')
+						->where('cod_ceta', $codCeta)
+						->select('id_doc_presentados','cod_ceta','numero_doc','nombre_doc','procedencia','entregado')
+						->get();
+					// Mapeo a tipo_identidad del frontend
+					$mapOrder = [
+						['key' => 'CI -',  'tipo' => 1],
+						['key' => 'CEX -', 'tipo' => 2],
+						['key' => 'PAS -', 'tipo' => 3],
+						['key' => 'OD -',  'tipo' => 4],
+						['key' => 'NIT -', 'tipo' => 5],
+					];
+					$upperDocs = $documentosPresentados->map(function($d){
+						$d->nombre_doc_upper = mb_strtoupper((string)($d->nombre_doc ?? ''));
+						return $d;
+					});
+					foreach ($mapOrder as $m) {
+						$match = $upperDocs->first(function($d) use ($m){
+							return str_starts_with($d->nombre_doc_upper, $m['key']);
+						});
+						if ($match) {
+							$documentoIdentidad = [
+								'tipo_identidad' => $m['tipo'],
+								'numero' => (string)($match->numero_doc ?? ''),
+								'nombre_doc' => (string)($match->nombre_doc ?? ''),
+							];
+							break;
+						}
+					}
+				}
+			} catch (\Throwable $e) {
+				// No bloquear el resumen si falla esta parte; solo agregar warning
+				$warnings[] = 'No se pudo leer documentos presentados: ' . $e->getMessage();
+			}
 			return response()->json([
 				'success' => true,
 				'data' => [
@@ -357,6 +397,8 @@ class CobroController extends Controller
 						'nro_cuotas' => $nroCuotas,
 						'pu_mensual' => $puMensual,
 					],
+					'documentos_presentados' => $documentosPresentados,
+					'documento_identidad' => $documentoIdentidad,
 					'warnings' => $warnings,
 				]
 			]);
