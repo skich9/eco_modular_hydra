@@ -44,6 +44,12 @@ export class CobrosService {
 		);
 	}
 
+	getSinDocumentosIdentidad(): Observable<any> {
+		return this.http.get<any>(`${this.apiUrl}/sin/documentos-identidad`).pipe(
+			map((res: any) => ({ success: !!res?.success, data: res?.data || [], message: res?.message }))
+		);
+	}
+
 	getFormasCobro(): Observable<any> {
 		return this.http.get<any>(`${this.apiUrl}/formas-cobro`).pipe(
 			map((res: any) => ({ success: !!res?.success, data: res?.data || [], message: res?.message }))

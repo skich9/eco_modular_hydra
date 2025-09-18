@@ -19,6 +19,7 @@ use App\Http\Controllers\Api\FormaCobroController;
 use App\Http\Controllers\Api\RazonSocialController;
 use App\Http\Controllers\Api\CuentaBancariaController;
 use App\Http\Controllers\Api\SinActividadController;
+use App\Http\Controllers\Api\SinCatalogoController;
 
 /*
 --------------------------------------------------------------------------
@@ -60,6 +61,8 @@ Route::get('cuentas-bancarias', [CuentaBancariaController::class, 'index']);
 
 // Actividades económicas (SIN)
 Route::get('sin-actividades', [SinActividadController::class, 'index']);
+// Documentos de identidad (SIN)
+Route::get('sin/documentos-identidad', [SinCatalogoController::class, 'documentosIdentidad']);
 
 // Cobros (clave compuesta)
 Route::get('cobros', [CobroController::class, 'index']);

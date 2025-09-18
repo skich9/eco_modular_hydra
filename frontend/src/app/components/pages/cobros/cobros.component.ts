@@ -42,6 +42,7 @@ export class CobrosComponent implements OnInit {
   resumen: any = null;
   gestiones: any[] = [];
   formasCobro: any[] = [];
+  sinDocsIdentidad: Array<{ codigo: number; descripcion: string }> = [];
   pensums: any[] = [];
   cuentasBancarias: any[] = [];
   // Visibilidad del card de Opciones de cobro
@@ -184,6 +185,23 @@ export class CobrosComponent implements OnInit {
     this.cobrosService.getGestionesActivas().subscribe({
       next: (res) => { if (res.success) this.gestiones = res.data; },
       error: () => {}
+    });
+    // Documentos de identidad desde SIN
+    this.cobrosService.getSinDocumentosIdentidad().subscribe({
+      next: (res) => {
+        if (res.success) {
+          const arr = Array.isArray(res.data) ? res.data : [];
+          this.sinDocsIdentidad = arr
+            .map((d: any) => ({
+              codigo: Number(d?.codigo_clasificador ?? d?.codigo ?? 0),
+              descripcion: String(d?.descripcion ?? '')
+            }))
+            .filter((x: { codigo: number; descripcion: string }) => x.codigo > 0 && !!x.descripcion);
+        } else {
+          this.sinDocsIdentidad = [];
+        }
+      },
+      error: () => { this.sinDocsIdentidad = []; }
     });
     this.cobrosService.getFormasCobro().subscribe({
       next: (res) => {

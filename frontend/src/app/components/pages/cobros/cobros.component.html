@@ -51,11 +51,7 @@
 								<div class="col-12">
 									<label class="form-label">Documento de Identidad</label>
 									<select class="form-select" formControlName="tipo_identidad" [disabled]="true">
-										<option [ngValue]="1">CI - CEDULA DE IDENTIDAD</option>
-										<option [ngValue]="2">CEX - CEDULA DE IDENTIDAD DE EXTRANJERO</option>
-										<option [ngValue]="3">PAS - PASAPORTE</option>
-										<option [ngValue]="4">OD - OTRO DOCUMENTO DE IDENTIDAD</option>
-										<option [ngValue]="5">NIT - NUMERO DE IDENTIFICACION TRIBUTARIA</option>
+										<option *ngFor="let d of sinDocsIdentidad" [ngValue]="d.codigo">{{ d.descripcion }}</option>
 									</select>
 								</div>
 							</div>
@@ -360,11 +356,7 @@
 									<div class="col-md-6">
 										<label class="form-label fw-semibold text-success">Tipo de Identidad</label>
 										<select class="form-select" formControlName="tipo_identidad">
-											<option [ngValue]="1">CI - CEDULA DE IDENTIDAD</option>
-											<option [ngValue]="2">CEX - CEDULA DE IDENTIDAD DE EXTRANJERO</option>
-											<option [ngValue]="3">PAS - PASAPORTE</option>
-											<option [ngValue]="4">OD - OTRO DOCUMENTO DE IDENTIDAD</option>
-											<option [ngValue]="5">NIT - NUMERO DE IDENTIFICACION TRIBUTARIA</option>
+											<option *ngFor="let d of sinDocsIdentidad" [ngValue]="d.codigo">{{ d.descripcion }}</option>
 										</select>
 									</div>
 									<div class="col-md-6">
