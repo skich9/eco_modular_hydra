@@ -454,6 +454,22 @@ export class CobrosComponent implements OnInit {
     }
   }
 
+  openMaterialAcademicoModal(): void {
+    if (!this.resumen) {
+      this.showAlert('Debe consultar primero un estudiante/gestión', 'warning');
+      return;
+    }
+    // Mismos métodos de pago permitidos que Rezagado
+    if (!this.ensureMetodoPagoPermitido(['EFECTIVO','TARJETA','CHEQUE','DEPOSITO','OTRO'])) return;
+    // Usamos la configuración de monto manual (tipo rezagado)
+    this.modalTipo = 'rezagado';
+    const modalEl = document.getElementById('mensualidadModal');
+    if (modalEl && (window as any).bootstrap?.Modal) {
+      const modal = new (window as any).bootstrap.Modal(modalEl);
+      modal.show();
+    }
+  }
+
   openRazonSocialModal(): void {
     const modalEl = document.getElementById('razonSocialModal');
     if (modalEl && (window as any).bootstrap?.Modal) {
@@ -668,6 +684,7 @@ export class CobrosComponent implements OnInit {
       modal.show();
     }
   }
+
 
   openRecuperacionModal(): void {
     if (!this.resumen) {
