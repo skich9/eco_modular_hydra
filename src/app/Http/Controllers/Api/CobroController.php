@@ -335,13 +335,32 @@ class CobroController extends Controller
 						->where('cod_ceta', $codCeta)
 						->select('id_doc_presentados','cod_ceta','numero_doc','nombre_doc','procedencia','entregado')
 						->get();
-					// Mapeo a tipo_identidad del frontend
+					// Mapeo a tipo_identidad del frontend (prioridad: CI, CEX, PAS, NIT)
 					$mapOrder = [
-						['key' => 'CI -',  'tipo' => 1],
-						['key' => 'CEX -', 'tipo' => 2],
-						['key' => 'PAS -', 'tipo' => 3],
-						['key' => 'OD -',  'tipo' => 4],
-						['key' => 'NIT -', 'tipo' => 5],
+						[
+							'tipo' => 1, // CI
+							'aliases' => [
+								'CI -', ' CI ', 'CI', 'CARNET DE IDENTIDAD', 'CÉDULA DE IDENTIDAD', 'CEDULA DE IDENTIDAD'
+							]
+						],
+						[
+							'tipo' => 2, // CEX
+							'aliases' => [
+								'CEX -', ' CEX ', 'CEX', 'CÉDULA DE IDENTIDAD DE EXTRANJERO', 'CEDULA DE IDENTIDAD DE EXTRANJERO'
+							]
+						],
+						[
+							'tipo' => 3, // PAS
+							'aliases' => [
+								'PAS -', ' PAS ', 'PAS', 'PASAPORTE'
+							]
+						],
+						[
+							'tipo' => 5, // NIT
+							'aliases' => [
+								'NIT -', ' NIT ', 'NIT', 'NUMERO DE IDENTIFICACION TRIBUTARIA', 'NÚMERO DE IDENTIFICACIÓN TRIBUTARIA'
+							]
+						],
 					];
 					$upperDocs = $documentosPresentados->map(function($d){
 						$d->nombre_doc_upper = mb_strtoupper((string)($d->nombre_doc ?? ''));
@@ -349,7 +368,14 @@ class CobroController extends Controller
 					});
 					foreach ($mapOrder as $m) {
 						$match = $upperDocs->first(function($d) use ($m){
-							return str_starts_with($d->nombre_doc_upper, $m['key']);
+							$hay = false;
+							foreach ($m['aliases'] as $alias) {
+								$aliasU = mb_strtoupper($alias);
+								if (str_starts_with($d->nombre_doc_upper, $aliasU) || str_contains($d->nombre_doc_upper, $aliasU)) {
+									$hay = true; break;
+								}
+							}
+							return $hay;
 						});
 						if ($match) {
 							$documentoIdentidad = [

@@ -16,7 +16,6 @@
 			<div class="card mb-4 shadow-sm">
 				<div class="card-header d-flex justify-content-between align-items-center">
 					<strong>Datos del estudiante</strong>
-					<button class="btn btn-sm btn-outline-secondary" (click)="addPago()"><i class="bi bi-plus"></i> Agregar Pago</button>
 				</div>
 				
 				<div class="card-body">
@@ -101,9 +100,9 @@
 									<label class="form-label">Método de Pago</label>
 									<select class="form-select" formControlName="id_forma_cobro" [ngClass]="{'is-invalid': isFormaCobroInvalid}">
 										<option value="">-- Seleccione --</option>
-										<option *ngFor="let f of formasCobro" [value]="f.id_forma_cobro">{{ f.nombre }}</option>
+										<option *ngFor="let f of formasCobro" [value]="f.id_forma_cobro">{{ f.descripcion_sin || f.nombre }}</option>
 									</select>
-									<div class="invalid-feedback">Seleccione un método de pago (por ahora solo EFECTIVO).</div>
+									<div class="invalid-feedback">Seleccione un método de pago.</div>
 								</div>
 							</div>
 						</div>
@@ -214,10 +213,6 @@
 			<div class="card mb-4 shadow-sm">
 				<div class="card-header d-flex justify-content-between align-items-center">
 					<strong>Opciones de cobro</strong>
-					<div class="d-flex gap-2">
-						<button type="button" class="btn btn-sm btn-outline-secondary" (click)="limpiarOpcionesCobro()" [disabled]="!resumen"><i class="bi bi-eraser me-1"></i> Limpiar</button>
-						<button type="button" class="btn btn-sm btn-outline-primary" (click)="recargarOpcionesCobro()" [disabled]="!resumen"><i class="bi bi-arrow-repeat me-1"></i> Actualizar</button>
-					</div>
 				</div>
 				<div class="card-body">
 					<ng-container *ngIf="showOpciones; else opcionesVacias">
