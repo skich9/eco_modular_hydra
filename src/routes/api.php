@@ -20,6 +20,7 @@ use App\Http\Controllers\Api\RazonSocialController;
 use App\Http\Controllers\Api\CuentaBancariaController;
 use App\Http\Controllers\Api\SinActividadController;
 use App\Http\Controllers\Api\SinCatalogoController;
+use App\Http\Controllers\Api\ParametroCostoController;
 
 /*
 --------------------------------------------------------------------------
@@ -73,6 +74,9 @@ Route::post('cobros/batch', [CobroController::class, 'batchStore']);
 Route::get('cobros/{cod_ceta}/{cod_pensum}/{tipo_inscripcion}/{nro_cobro}', [CobroController::class, 'show']);
 Route::put('cobros/{cod_ceta}/{cod_pensum}/{tipo_inscripcion}/{nro_cobro}', [CobroController::class, 'update']);
 Route::delete('cobros/{cod_ceta}/{cod_pensum}/{tipo_inscripcion}/{nro_cobro}', [CobroController::class, 'destroy']);
+
+// Parámetros de costos (activos)
+Route::get('parametros-costos/activos', [ParametroCostoController::class, 'activos']);
 
 // Descuentos
 Route::get('descuentos/active', [DescuentoController::class, 'active']);

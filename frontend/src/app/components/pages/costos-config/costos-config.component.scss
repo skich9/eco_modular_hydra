@@ -1,0 +1,19 @@
+.card-header {
+	background-color: #0d6efd;
+	color: #fff;
+}
+
+.card .form-select,
+.card .form-control {
+	min-height: 38px;
+}
+
+.table td,
+.table th {
+	vertical-align: middle;
+}
+
+/* Ajustes responsive */
+@media (max-width: 768px) {
+	.card .w-50 { width: 100% !important; }
+}

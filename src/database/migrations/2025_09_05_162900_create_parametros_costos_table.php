@@ -13,16 +13,17 @@ return new class extends Migration
 	{
 		if (!Schema::hasTable('parametros_costos')) {
 			Schema::create('parametros_costos', function (Blueprint $table) {
-				$table->increments('id_parametro_costo');
-				$table->string('nombre', 20);
-				$table->decimal('valor', 10, 2);
-				$table->string('descripcion', 150);
-				$table->string('gestion', 30);
-				$table->boolean('estado');
+				// id autoincremental
+				$table->integer('id_parametro_costo')->autoIncrement();
+				// columnas según SQL de referencia
+				$table->string('nombre_costo', 50);
+				$table->string('nombre_oficial', 50)->nullable();
+				$table->string('descripcion', 150)->nullable();
+				$table->boolean('activo');
+				// timestamps null por defecto
 				$table->timestamps();
-
-				// Evitar duplicados por parámetro y gestión
-				$table->unique(['nombre', 'gestion'], 'uk_param_costos_nombre_gestion');
+				// clave primaria compuesta
+				$table->primary(['id_parametro_costo', 'nombre_costo'], 'pk_parametros_costos');
 			});
 		}
 	}

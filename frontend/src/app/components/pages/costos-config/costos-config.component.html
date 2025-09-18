@@ -1,0 +1,115 @@
+<div class="container py-3">
+	<h2 class="mb-3">Configuración de Costos</h2>
+
+	<form [formGroup]="form" (ngSubmit)="asignarCostos()">
+		<div class="row g-3">
+	
+            <!-- Gestión -->
+			<div class="col-12 col-lg-3">
+				<div class="card shadow-sm h-100">
+					<div class="card-header"><strong>Seleccione una Gestión</strong></div>
+					<div class="card-body">
+						<select class="form-select" formControlName="gestion">
+							<option value="">-- Seleccione --</option>
+							<option *ngFor="let g of gestiones" [value]="g.gestion">{{ g.gestion }}</option>
+						</select>
+					</div>
+				</div>
+			</div>
+
+            <!-- Selección de Carrera --> 
+			<div class="col-12 col-lg-5">
+				<div class="card shadow-sm h-100">
+					<div class="card-header"><strong>Seleccione una Carrera</strong></div>
+					<div class="card-body">
+						<select class="form-select" formControlName="carrera" (change)="onCarreraChange()">
+							<option value="">-- Seleccione --</option>
+							<option *ngFor="let c of carreras" [value]="c.codigo_carrera">{{ c.nombre || c.descripcion || c.codigo_carrera }}</option>
+						</select>
+					</div>
+				</div>
+			</div>
+
+			<!-- Selección de Pensum -->
+			<div class="col-12 col-lg-4">
+				<div class="card shadow-sm h-100">
+					<div class="card-header"><strong>Pensum</strong></div>
+					<div class="card-body">
+						<select class="form-select" formControlName="pensum">
+							<option value="">-- Seleccione --</option>
+							<option *ngFor="let p of pensums" [value]="p.cod_pensum">{{ p.nombre || p.descripcion || p.cod_pensum }}</option>
+						</select>
+					</div>
+				</div>
+			</div>
+            			
+			<!-- Costos fijos / por crédito -->
+			<div class="col-12 col-lg-8">
+				<div class="card shadow-sm h-100">
+					<div class="card-header"><strong>Costos</strong></div>
+					<div class="card-body">
+						<div class="table-responsive">
+							<table class="table table-sm align-middle">
+								<thead class="table-light">
+									<tr>
+										<th style="width: 60px;">Sel.</th>
+										<th>Nombre Costo</th>
+										<th style="width: 220px;">Valor</th>
+                                        <th style="width: 220px;">Turno</th>
+									</tr>
+								</thead>
+								<tbody [formGroup]="costosGroup">
+									<tr *ngFor="let c of costosCatalogo">
+										<td>
+											<input class="form-check-input" type="checkbox" [formControlName]="c.key+'_enabled'" />
+										</td>
+										<td>{{ c.label }}</td>
+										<td>
+											<input type="number" class="form-control" step="0.01" [formControlName]="c.key+'_monto'" placeholder="Costo" />
+										</td>
+                                        <td>
+											<select class="form-select" [formControlName]="c.key+'_turno'">
+												<option value="MANANA">Mañana</option>
+												<option value="TARDE">Tarde</option>
+												<option value="NOCHE">Noche</option>
+												<option value="TODOS">Todos los turnos</option>
+											</select>
+										</td>
+									</tr>
+								</tbody>
+							</table>
+						</div>
+					</div>
+				</div>
+			</div>
+
+            <!-- Semestres -->
+			<div class="col-12 col-lg-4">
+				<div class="card shadow-sm h-100">
+					<div class="card-header"><strong>Semestres</strong></div>
+					<div class="card-body">
+						<div class="form-check mb-2">
+							<input class="form-check-input" type="checkbox" id="chkAllSem" formControlName="marcarTodosSemestres" />
+							<label class="form-check-label" for="chkAllSem"><strong>Marcar Todos</strong></label>
+						</div>
+						<div class="d-flex flex-column gap-1">
+							<div class="form-check"><input class="form-check-input" type="checkbox" id="sem1" formControlName="sem1" /><label class="form-check-label" for="sem1">1er Semestre</label></div>
+							<div class="form-check"><input class="form-check-input" type="checkbox" id="sem2" formControlName="sem2" /><label class="form-check-label" for="sem2">2do Semestre</label></div>
+							<div class="form-check"><input class="form-check-input" type="checkbox" id="sem3" formControlName="sem3" /><label class="form-check-label" for="sem3">3er Semestre</label></div>
+							<div class="form-check"><input class="form-check-input" type="checkbox" id="sem4" formControlName="sem4" /><label class="form-check-label" for="sem4">4to Semestre</label></div>
+							<div class="form-check"><input class="form-check-input" type="checkbox" id="sem5" formControlName="sem5" /><label class="form-check-label" for="sem5">5to Semestre</label></div>
+							<div class="form-check"><input class="form-check-input" type="checkbox" id="sem6" formControlName="sem6" /><label class="form-check-label" for="sem6">6to Semestre</label></div>
+						</div>
+					</div>
+					<div class="card-footer bg-white border-0">
+						<div class="d-grid">
+							<button type="submit" class="btn btn-primary">
+								<i class="bi bi-chevron-left me-2"></i> Asignar Costos <i class="bi bi-chevron-right ms-2"></i>
+							</button>
+						</div>
+					</div>
+				</div>
+			</div>
+		</div>
+	</form>
+</div>

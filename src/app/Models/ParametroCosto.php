@@ -14,15 +14,13 @@ class ParametroCosto extends Model
 	public $incrementing = true;
 
 	protected $fillable = [
-		'nombre',
-		'valor',
+		'nombre_costo',
+		'nombre_oficial',
 		'descripcion',
-		'gestion',
-		'estado'
+		'activo',
 	];
 
 	protected $casts = [
-		'valor' => 'decimal:2',
-		'estado' => 'boolean'
+		'activo' => 'boolean',
 	];
 }

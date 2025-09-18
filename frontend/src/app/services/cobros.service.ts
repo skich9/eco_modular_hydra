@@ -63,6 +63,13 @@ export class CobrosService {
 		);
 	}
 
+	// Parámetros de costos activos
+	getParametrosCostosActivos(): Observable<any> {
+		return this.http.get<any>(`${this.apiUrl}/parametros-costos/activos`).pipe(
+			map((res: any) => ({ success: !!res?.success, data: res?.data || [], message: res?.message }))
+		);
+	}
+
 	// Razón Social
 	buscarRazonSocial(numero: string, tipoId: number): Observable<any> {
 		let params = new HttpParams().set('numero', numero).set('tipo_id', String(tipoId));

@@ -290,15 +290,17 @@ class CobroController extends Controller
 			$paramMonto = null;        // MONTO_SEMESTRAL_FIJO
 			$paramNroCuotas = null;    // NRO_CUOTAS
 			if (!$costoSemestral && $gestionToUse) {
-				$pcQuery = ParametroCosto::query();
-				if (Schema::hasColumn('parametros_costos', 'gestion')) {
-					$pcQuery->where('gestion', $gestionToUse);
+				if (Schema::hasColumn('parametros_costos', 'nombre') && Schema::hasColumn('parametros_costos', 'valor')) {
+					$pcQuery = ParametroCosto::query();
+					if (Schema::hasColumn('parametros_costos', 'gestion')) {
+						$pcQuery->where('gestion', $gestionToUse);
+					}
+					$pcQuery->where('nombre', 'MONTO_SEMESTRAL_FIJO');
+					if (Schema::hasColumn('parametros_costos', 'estado')) {
+						$pcQuery->where('estado', true);
+					}
+					$paramMonto = $pcQuery->first();
 				}
-				$pcQuery->where('nombre', 'MONTO_SEMESTRAL_FIJO');
-				if (Schema::hasColumn('parametros_costos', 'estado')) {
-					$pcQuery->where('estado', true);
-				}
-				$paramMonto = $pcQuery->first();
 			}
 			// Calcular NRO_CUOTAS con fallback a parametros_costos
 			$paramNroCuotas = null;
@@ -307,15 +309,17 @@ class CobroController extends Controller
 				$nroCuotasFromTable = (int) Cuota::where('gestion', $gestionToUse)->count();
 			}
 			if ($nroCuotasFromTable === 0 && $gestionToUse) {
-				$pcQuery2 = ParametroCosto::query();
-				if (Schema::hasColumn('parametros_costos', 'gestion')) {
-					$pcQuery2->where('gestion', $gestionToUse);
+				if (Schema::hasColumn('parametros_costos', 'nombre') && Schema::hasColumn('parametros_costos', 'valor')) {
+					$pcQuery2 = ParametroCosto::query();
+					if (Schema::hasColumn('parametros_costos', 'gestion')) {
+						$pcQuery2->where('gestion', $gestionToUse);
+					}
+					$pcQuery2->where('nombre', 'NRO_CUOTAS');
+					if (Schema::hasColumn('parametros_costos', 'estado')) {
+						$pcQuery2->where('estado', true);
+					}
+					$paramNroCuotas = $pcQuery2->first();
 				}
-				$pcQuery2->where('nombre', 'NRO_CUOTAS');
-				if (Schema::hasColumn('parametros_costos', 'estado')) {
-					$pcQuery2->where('estado', true);
-				}
-				$paramNroCuotas = $pcQuery2->first();
 			}
 			$nroCuotas = $nroCuotasFromTable > 0 ? $nroCuotasFromTable : ($paramNroCuotas ? (int) round((float) $paramNroCuotas->valor) : null);
 
