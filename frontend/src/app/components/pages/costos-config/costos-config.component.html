@@ -115,64 +115,83 @@
 	<!-- Pestañas por Pensum y tabla dinámica de costo_semestral -->
 	<div class="mt-4">
 		<h5 class="mb-3">Costos Semestrales</h5>
-		<!-- Estado vacío: sin pensums -->
-		<div *ngIf="(pensums || []).length === 0" class="text-muted">
-			Seleccione una carrera para cargar los pensums y visualizar la tabla.
-		</div>
 
-		<!-- Pestañas solo si hay pensums -->
-		<ul class="nav nav-tabs" *ngIf="(pensums || []).length > 0">
-			<li class="nav-item" *ngFor="let p of pensums">
-				<button type="button" class="nav-link" [class.active]="activePensumTab===p.cod_pensum" (click)="selectPensumTab(p.cod_pensum)">
-					{{ p.nombre || p.descripcion || p.cod_pensum }}
+		<!-- Tabs por Carrera -->
+		<ul class="nav nav-tabs">
+			<li class="nav-item" *ngFor="let c of carreras">
+				<button type="button" class="nav-link" [class.active]="activeCarreraTab===c.codigo_carrera" (click)="selectCarreraTab(c.codigo_carrera)">
+					{{ c.nombre || c.descripcion || c.codigo_carrera }}
 				</button>
 			</li>
 		</ul>
 
-		<!-- Estado vacío: hay pensums pero no pestaña activa -->
-		<div *ngIf="(pensums || []).length > 0 && !activePensumTab" class="border border-top-0 p-3 text-muted">
-			Seleccione un pensum para visualizar los costos semestrales.
-		</div>
+		<div class="border border-top-0 p-3">
+			<div *ngIf="!activeCarreraTab" class="text-muted">Seleccione una carrera para ver sus pensums.</div>
 
-		<!-- Contenido de tabla cuando hay pestaña activa -->
-		<div class="tab-content border border-top-0 p-3" *ngIf="(pensums || []).length > 0 && activePensumTab as ap">
-			<div class="tab-pane fade show active">
-				<div class="table-responsive">
-					<table class="table table-sm align-middle">
-						<thead class="table-light">
-							<tr>
-								<th style="width:60px;">N°</th>
-								<th>Semestre</th>
-								<th>Costo</th>
-								<th>Valor</th>
-								<th>Costo variable</th>
-								<th>Turno</th>
-								<th style="width:140px;">Acciones</th>
-							</tr>
-						</thead>
-						<tbody>
-							<tr *ngFor="let row of (costoSemestralMap[ap] || []); let i = index">
-								<td>{{ i + 1 }}</td>
-								<td>{{ row.semestre }}</td>
-								<td>{{ row.tipo_costo }}</td>
-								<td>{{ row.monto_semestre }}</td>
-								<td>
-									<div class="btn-group btn-group-sm" role="group" aria-label="Costo variable">
-										<button type="button" class="btn btn-outline-secondary">Fijo</button>
-										<button type="button" class="btn btn-outline-secondary">Variable</button>
-									</div>
-								</td>
-								<td>{{ row.turno }}</td>
-								<td>
-									<button type="button" class="btn btn-sm btn-primary me-2" (click)="openEdit(row)">Editar</button>
-									<button type="button" class="btn btn-sm btn-outline-danger" (click)="deleteRow(row)">Eliminar</button>
-								</td>
-							</tr>
-							<tr *ngIf="(costoSemestralMap[ap] || []).length === 0">
-								<td colspan="7" class="text-center text-muted">No hay registros para este pensum {{ form.get('gestion')?.value ? 'en la gestión ' + form.get('gestion')?.value : '' }}.</td>
-							</tr>
-						</tbody>
-					</table>
+			<!-- Botones por Pensum dentro de la Carrera activa -->
+			<div *ngIf="activeCarreraTab as ac">
+				<div class="mb-3 d-flex flex-wrap gap-2">
+					<button type="button"
+						class="btn btn-sm"
+						[ngClass]="{ 'btn-primary': activePensumForTable===p.cod_pensum, 'btn-outline-primary': activePensumForTable!==p.cod_pensum }"
+						*ngFor="let p of (pensumsByCarreraMap[ac] || [])"
+						(click)="selectPensumForTable(p.cod_pensum)">
+						{{ p.nombre || p.descripcion || p.cod_pensum }}
+					</button>
+				</div>
+
+				<div *ngIf="(pensumsByCarreraMap[ac] || []).length === 0" class="text-muted">No hay pensums para esta carrera.</div>
+				<div *ngIf="(pensumsByCarreraMap[ac] || []).length > 0 && !activePensumForTable" class="text-muted">Seleccione un pensum para visualizar los costos.</div>
+
+				<!-- Tabla por pensum seleccionado -->
+				<div *ngIf="activePensumForTable as ap">
+					<!-- Barra de búsqueda y controles -->
+					<div class="d-flex justify-content-between align-items-center mb-2 flex-wrap gap-2">
+						<div class="input-group input-group-sm" style="max-width: 360px;">
+							<span class="input-group-text"><i class="bi bi-search"></i></span>
+							<input type="text" class="form-control" placeholder="Buscar por costo, turno o semestre" [(ngModel)]="searchQuery">
+							<button class="btn btn-outline-secondary" type="button" (click)="searchQuery=''">Limpiar</button>
+						</div>
+						<div class="text-muted small" *ngIf="getBaseCount(ap) > 0">Orden: Semestre <button class="btn btn-sm btn-link p-0 align-baseline" (click)="toggleSemSort()">{{ semSortAsc ? 'Asc' : 'Desc' }} <i class="bi" [ngClass]="semSortAsc ? 'bi-sort-up' : 'bi-sort-down'"></i></button></div>
+					</div>
+
+					<div class="table-responsive">
+						<table class="table table-sm align-middle table-bordered table-costos">
+							<thead class="table-light">
+								<tr>
+									<th style="width:60px;">N°</th>
+									<th (click)="toggleSemSort()" style="cursor:pointer;">Semestre <i class="bi" [ngClass]="semSortAsc ? 'bi-sort-up' : 'bi-sort-down'"></i></th>
+									<th>Costo</th>
+									<th>Valor</th>
+									<th>Costo variable</th>
+									<th>Turno</th>
+									<th style="width:140px;">Acciones</th>
+								</tr>
+							</thead>
+							<tbody>
+								<tr *ngFor="let row of getRows(ap); let i = index">
+									<td>{{ i + 1 }}</td>
+									<td>{{ semLabel(row.semestre) }}</td>
+									<td>{{ row.tipo_costo }}</td>
+									<td>{{ row.monto_semestre }}</td>
+									<td>
+										<div class="btn-group btn-group-sm" role="group" aria-label="Costo variable">
+											<button type="button" class="btn btn-outline-secondary">Fijo</button>
+											<button type="button" class="btn btn-outline-secondary">Variable</button>
+										</div>
+									</td>
+									<td>{{ displayTurno(row.turno) }}</td>
+									<td>
+										<button type="button" title="Editar" class="btn btn-sm btn-outline-primary me-1" (click)="openEdit(row)"><i class="fas fa-edit"></i></button>
+										<button type="button" title="Eliminar" class="btn btn-sm btn-outline-danger ms-1" (click)="deleteRow(row)"><i class="fas fa-trash"></i></button>
+									</td>
+								</tr>
+								<tr *ngIf="getBaseCount(ap) === 0">
+									<td colspan="7" class="text-center text-muted">No existen datos para este pensum {{ form.get('gestion')?.value ? 'en la gestión ' + form.get('gestion')?.value : '' }}.</td>
+								</tr>
+							</tbody>
+						</table>
+					</div>
 				</div>
 			</div>
 		</div>

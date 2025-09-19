@@ -21,8 +21,17 @@ export class CostosConfigComponent implements OnInit {
 	private wiredKeys = new Set<string>();
 
 	// Tabs y datos de costo_semestral
-	activePensumTab: string | null = null;
+	activePensumTab: string | null = null; // legado (no usado en nueva UI)
 	costoSemestralMap: Record<string, any[]> = {};
+
+	// Nueva UI: tabs por carrera y botones por pensum
+	activeCarreraTab: string | null = null;
+	pensumsByCarreraMap: Record<string, any[]> = {};
+	activePensumForTable: string | null = null;
+
+	// Busqueda y orden para la tabla
+	searchQuery: string = '';
+	semSortAsc: boolean = true;
 
 	// Modal de edición (UI-only)
 	editOpen = false;
@@ -87,17 +96,18 @@ export class CostosConfigComponent implements OnInit {
 
 		// Suscripciones por costo se conectan dinámicamente cuando se cargan los costos
 
-		// Al cambiar gestión, recargar la tabla del pensum activo
+
+		// Al cambiar gestión, recargar la tabla del pensum activo (nueva UI)
 		this.form.get('gestion')?.valueChanges.subscribe(() => {
-			if (this.activePensumTab) {
-				this.loadCostoSemestral(this.activePensumTab);
+			if (this.activePensumForTable) {
+				this.loadCostoSemestral(this.activePensumForTable);
 			}
 		});
 
-		// Al cambiar pensum desde el selector, activar la pestaña correspondiente
+		// Si cambian el pensum desde el selector superior, usarlo también para la tabla
 		this.form.get('pensum')?.valueChanges.subscribe((cod: string) => {
 			if (cod) {
-				this.selectPensumTab(cod);
+				this.selectPensumForTable(cod);
 			}
 		});
 
@@ -110,7 +120,14 @@ export class CostosConfigComponent implements OnInit {
 	loadCarreras(): void {
 		this.loading = true;
 		this.carreraService.getAll().subscribe({
-			next: (res: any) => { this.carreras = res?.data || []; },
+			next: (res: any) => {
+				this.carreras = res?.data || [];
+				// Inicializar pestaña de carrera por defecto
+				const firstCarrera = this.carreras[0]?.codigo_carrera;
+				if (!this.activeCarreraTab && firstCarrera) {
+					this.selectCarreraTab(firstCarrera);
+				}
+			},
 			error: () => {},
 			complete: () => { this.loading = false; }
 		});
@@ -121,19 +138,8 @@ export class CostosConfigComponent implements OnInit {
 		this.form.patchValue({ pensum: '' });
 		this.pensums = [];
 		if (!codigo) return;
-		this.cobrosService.getPensumsByCarrera(codigo).subscribe({
-			next: (res) => {
-				const raw = (res?.data || []) as any[];
-				this.pensums = raw.map(p => this.normalizePensum(p)).filter(p => !!p?.cod_pensum);
-				// Inicializar pestaña activa al primer pensum disponible
-				const first = this.pensums[0]?.cod_pensum;
-				if (first) {
-					this.form.patchValue({ pensum: first }, { emitEvent: false });
-					this.selectPensumTab(first);
-				}
-			},
-			error: () => { this.pensums = []; }
-		});
+		// Nueva UI: delegar carga de pensums/tab a selectCarreraTab
+		this.selectCarreraTab(codigo);
 	}
 
 	private normalizePensum(p: any): { cod_pensum: string; nombre?: string; descripcion?: string } {
@@ -153,10 +159,34 @@ export class CostosConfigComponent implements OnInit {
 	}
 
 	selectPensumTab(codPensum: string): void {
+		// legado (usado por UI previa)
 		this.activePensumTab = codPensum;
-		if (!this.costoSemestralMap[codPensum]) {
-			this.loadCostoSemestral(codPensum);
+		if (!this.costoSemestralMap[codPensum]) this.loadCostoSemestral(codPensum);
+	}
+
+	// Nueva UI: seleccionar pestaña de carrera
+	selectCarreraTab(codigoCarrera: string): void {
+		this.activeCarreraTab = codigoCarrera;
+		if (!this.pensumsByCarreraMap[codigoCarrera]) {
+			this.cobrosService.getPensumsByCarrera(codigoCarrera).subscribe({
+				next: (res) => {
+					const raw = (res?.data || []) as any[];
+					this.pensumsByCarreraMap[codigoCarrera] = raw.map(p => this.normalizePensum(p)).filter(p => !!p?.cod_pensum);
+					const first = this.pensumsByCarreraMap[codigoCarrera][0]?.cod_pensum;
+					if (first) this.selectPensumForTable(first);
+				},
+				error: () => { this.pensumsByCarreraMap[codigoCarrera] = []; }
+			});
+		} else {
+			const first = this.pensumsByCarreraMap[codigoCarrera][0]?.cod_pensum;
+			if (first) this.selectPensumForTable(first);
 		}
+	}
+
+	// Nueva UI: seleccionar pensum (botón) para la tabla
+	selectPensumForTable(codPensum: string): void {
+		this.activePensumForTable = codPensum;
+		this.loadCostoSemestral(codPensum);
 	}
 
 	private loadCostoSemestral(codPensum: string): void {
@@ -165,6 +195,53 @@ export class CostosConfigComponent implements OnInit {
 			next: (res) => { this.costoSemestralMap[codPensum] = res?.data || []; },
 			error: () => { this.costoSemestralMap[codPensum] = []; }
 		});
+	}
+
+	// Etiquetas amigables para la tabla
+	semLabel(val: number | string): string {
+		const n = Number(val);
+		switch (n) {
+			case 1: return '1er Semestre';
+			case 2: return '2do Semestre';
+			case 3: return '3er Semestre';
+			case 4: return '4to Semestre';
+			case 5: return '5to Semestre';
+			case 6: return '6to Semestre';
+			default: return String(val ?? '');
+		}
+	}
+
+	displayTurno(t: string): string {
+		const map: Record<string, string> = { MANANA: 'Mañana', TARDE: 'Tarde', NOCHE: 'Noche' };
+		return map[t] || t;
+	}
+
+	// Datos derivados para la tabla (filtrado + orden)
+	getRows(ap: string): any[] {
+		const base = this.costoSemestralMap[ap] || [];
+		let rows = base as any[];
+		const q = (this.searchQuery || '').toString().trim().toLowerCase();
+		if (q) {
+			rows = rows.filter(r => {
+				const costo = (r?.tipo_costo || '').toString().toLowerCase();
+				const turno = this.displayTurno(r?.turno || '').toLowerCase();
+				const sem = this.semLabel(r?.semestre || '').toLowerCase();
+				return costo.includes(q) || turno.includes(q) || sem.includes(q);
+			});
+		}
+		return [...rows].sort((a, b) => {
+			const sa = Number(a?.semestre) || 0;
+			const sb = Number(b?.semestre) || 0;
+			return this.semSortAsc ? sa - sb : sb - sa;
+		});
+	}
+
+	getBaseCount(ap: string): number {
+		return (this.costoSemestralMap[ap] || []).length;
+	}
+
+	toggleSemSort(): void {
+		this.semSortAsc = !this.semSortAsc;
 	}
 
 	openEdit(row: any): void {
@@ -227,7 +304,7 @@ export class CostosConfigComponent implements OnInit {
 	}
 
 	asignarCostos(): void {
-		const cod_pensum: string = this.form.get('pensum')?.value;
+		const cod_pensum: string = this.form.get('pensum')?.value || this.activePensumForTable as string;
 		const gestion: string = this.form.get('gestion')?.value;
 		if (!cod_pensum || !gestion) {
 			alert('Seleccione Gestión y Pensum antes de guardar.');
@@ -279,8 +356,9 @@ export class CostosConfigComponent implements OnInit {
 			next: (res) => {
 				console.log('Guardado costo_semestral:', res?.data);
 				alert('Costos semestrales guardados correctamente.');
-				// Opcional: refrescar pestaña activa si aplica
-				if (this.activePensumTab) this.loadCostoSemestral(this.activePensumTab);
+				// Refrescar tabla del pensum activo (nueva UI) o fallback legado
+				const ap = this.activePensumForTable || this.activePensumTab;
+				if (ap) this.loadCostoSemestral(ap);
 				// Limpiar selecciones de Semestres y Costos
 				(['sem1','sem2','sem3','sem4','sem5','sem6','marcarTodosSemestres'] as const).forEach(k => this.form.get(k)?.setValue(false, { emitEvent: false }));
 				for (const c of this.costosCatalogo) {

@@ -13,6 +13,18 @@
 	vertical-align: middle;
 }
 
+/* Grosor definido para las columnas de la tabla de costos */
+.table-costos {
+	border: 2px solid #dee2e6;
+}
+.table-costos th,
+.table-costos td {
+	border: 2px solid #dee2e6 !important;
+}
+.table-costos thead th {
+	border-bottom-width: 2px !important;
+}
+
 /* Ajustes responsive */
 @media (max-width: 768px) {
 	.card .w-50 { width: 100% !important; }
