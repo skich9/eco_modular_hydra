@@ -167,19 +167,21 @@ export class CostosConfigComponent implements OnInit {
 	// Nueva UI: seleccionar pestaña de carrera
 	selectCarreraTab(codigoCarrera: string): void {
 		this.activeCarreraTab = codigoCarrera;
+		// Limpiar pensum activo de la tabla para evitar mostrar datos previos
+		this.activePensumForTable = null;
 		if (!this.pensumsByCarreraMap[codigoCarrera]) {
 			this.cobrosService.getPensumsByCarrera(codigoCarrera).subscribe({
 				next: (res) => {
 					const raw = (res?.data || []) as any[];
 					this.pensumsByCarreraMap[codigoCarrera] = raw.map(p => this.normalizePensum(p)).filter(p => !!p?.cod_pensum);
 					const first = this.pensumsByCarreraMap[codigoCarrera][0]?.cod_pensum;
-					if (first) this.selectPensumForTable(first);
+					if (first) this.selectPensumForTable(first); else this.activePensumForTable = null;
 				},
-				error: () => { this.pensumsByCarreraMap[codigoCarrera] = []; }
+				error: () => { this.pensumsByCarreraMap[codigoCarrera] = []; this.activePensumForTable = null; }
 			});
 		} else {
 			const first = this.pensumsByCarreraMap[codigoCarrera][0]?.cod_pensum;
-			if (first) this.selectPensumForTable(first);
+			if (first) this.selectPensumForTable(first); else this.activePensumForTable = null;
 		}
 	}
 

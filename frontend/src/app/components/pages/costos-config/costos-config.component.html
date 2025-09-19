@@ -114,7 +114,18 @@
 
 	<!-- Pestañas por Pensum y tabla dinámica de costo_semestral -->
 	<div class="mt-4">
-		<h5 class="mb-3">Costos Semestrales</h5>
+		<div class="d-flex justify-content-between align-items-center mb-3 flex-wrap gap-2">
+			<h5 class="mb-0">Costos Semestrales</h5>
+			<!-- Barra de búsqueda y controles en encabezado -->
+			<div class="d-flex align-items-center gap-2" *ngIf="activePensumForTable">
+				<div class="input-group input-group-sm" style="max-width: 360px;">
+					<span class="input-group-text"><i class="bi bi-search"></i></span>
+					<input type="text" class="form-control" placeholder="Buscar por costo, turno o semestre" [(ngModel)]="searchQuery">
+					<button class="btn btn-outline-secondary" type="button" (click)="searchQuery=''">Limpiar</button>
+				</div>
+				<div class="text-muted small" *ngIf="getBaseCount(activePensumForTable || '') > 0">Orden: Semestre <button class="btn btn-sm btn-link p-0 align-baseline" (click)="toggleSemSort()">{{ semSortAsc ? 'Asc' : 'Desc' }} <i class="bi" [ngClass]="semSortAsc ? 'bi-sort-up' : 'bi-sort-down'"></i></button></div>
+			</div>
+		</div>
 
 		<!-- Tabs por Carrera -->
 		<ul class="nav nav-tabs">
@@ -144,17 +155,7 @@
 				<div *ngIf="(pensumsByCarreraMap[ac] || []).length > 0 && !activePensumForTable" class="text-muted">Seleccione un pensum para visualizar los costos.</div>
 
 				<!-- Tabla por pensum seleccionado -->
-				<div *ngIf="activePensumForTable as ap">
-					<!-- Barra de búsqueda y controles -->
-					<div class="d-flex justify-content-between align-items-center mb-2 flex-wrap gap-2">
-						<div class="input-group input-group-sm" style="max-width: 360px;">
-							<span class="input-group-text"><i class="bi bi-search"></i></span>
-							<input type="text" class="form-control" placeholder="Buscar por costo, turno o semestre" [(ngModel)]="searchQuery">
-							<button class="btn btn-outline-secondary" type="button" (click)="searchQuery=''">Limpiar</button>
-						</div>
-						<div class="text-muted small" *ngIf="getBaseCount(ap) > 0">Orden: Semestre <button class="btn btn-sm btn-link p-0 align-baseline" (click)="toggleSemSort()">{{ semSortAsc ? 'Asc' : 'Desc' }} <i class="bi" [ngClass]="semSortAsc ? 'bi-sort-up' : 'bi-sort-down'"></i></button></div>
-					</div>
-
+				<div *ngIf="(pensumsByCarreraMap[ac] || []).length > 0 && activePensumForTable as ap">
 					<div class="table-responsive">
 						<table class="table table-sm align-middle table-bordered table-costos">
 							<thead class="table-light">
