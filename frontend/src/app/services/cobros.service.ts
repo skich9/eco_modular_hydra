@@ -70,6 +70,29 @@ export class CobrosService {
 		);
 	}
 
+	// Costo semestral por pensum (gestion opcional)
+	getCostoSemestralByPensum(codPensum: string, gestion?: string): Observable<any> {
+		let params = new HttpParams();
+		if (gestion) params = params.set('gestion', gestion);
+		return this.http.get<any>(`${this.apiUrl}/costo-semestral/pensum/${encodeURIComponent(codPensum)}`, { params }).pipe(
+			map((res: any) => ({ success: !!res?.success, data: res?.data || [], message: res?.message }))
+		);
+	}
+
+	// Guardar costo_semestral en lote
+	saveCostoSemestralBatch(payload: {
+		cod_pensum: string;
+		gestion: string;
+		costo_fijo?: number;
+		valor_credito?: number;
+		id_usuario?: number;
+		rows: Array<{ semestre: number; tipo_costo: string; monto_semestre: number; turno: string }>;
+	}): Observable<any> {
+		return this.http.post<any>(`${this.apiUrl}/costo-semestral/batch`, payload).pipe(
+			map((res: any) => ({ success: !!res?.success, data: res?.data || null, message: res?.message }))
+		);
+	}
+
 	// Razón Social
 	buscarRazonSocial(numero: string, tipoId: number): Observable<any> {
 		let params = new HttpParams().set('numero', numero).set('tipo_id', String(tipoId));

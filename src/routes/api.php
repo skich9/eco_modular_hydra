@@ -21,6 +21,7 @@ use App\Http\Controllers\Api\CuentaBancariaController;
 use App\Http\Controllers\Api\SinActividadController;
 use App\Http\Controllers\Api\SinCatalogoController;
 use App\Http\Controllers\Api\ParametroCostoController;
+use App\Http\Controllers\Api\CostoSemestralController;
 
 /*
 --------------------------------------------------------------------------
@@ -77,6 +78,10 @@ Route::delete('cobros/{cod_ceta}/{cod_pensum}/{tipo_inscripcion}/{nro_cobro}', [
 
 // Parámetros de costos (activos)
 Route::get('parametros-costos/activos', [ParametroCostoController::class, 'activos']);
+
+// Costo semestral por pensum (gestion opcional)
+Route::get('costo-semestral/pensum/{codPensum}', [CostoSemestralController::class, 'byPensum']);
+Route::post('costo-semestral/batch', [CostoSemestralController::class, 'batchStore']);
 
 // Descuentos
 Route::get('descuentos/active', [DescuentoController::class, 'active']);

@@ -2,6 +2,7 @@ import { Component, OnInit } from '@angular/core';
 import { CommonModule } from '@angular/common';
 import { FormBuilder, FormControl, FormGroup, FormsModule, ReactiveFormsModule, Validators } from '@angular/forms';
 import { CobrosService } from '../../../services/cobros.service';
+import { AuthService } from '../../../services/auth.service';
 import { CarreraService } from '../../../services/carrera.service';
 
 @Component({
@@ -19,6 +20,14 @@ export class CostosConfigComponent implements OnInit {
 	loading = false;
 	private wiredKeys = new Set<string>();
 
+	// Tabs y datos de costo_semestral
+	activePensumTab: string | null = null;
+	costoSemestralMap: Record<string, any[]> = {};
+
+	// Modal de edición (UI-only)
+	editOpen = false;
+	editForm: FormGroup;
+
 	turnos = [
 		{ key: 'MANANA', label: 'Mañana' },
 		{ key: 'TARDE', label: 'Tarde' },
@@ -30,7 +39,8 @@ export class CostosConfigComponent implements OnInit {
 	constructor(
 		private fb: FormBuilder,
 		private cobrosService: CobrosService,
-		private carreraService: CarreraService
+		private carreraService: CarreraService,
+		private auth: AuthService
 	) {
 		this.form = this.fb.group({
 			carrera: ['', Validators.required],
@@ -51,6 +61,14 @@ export class CostosConfigComponent implements OnInit {
 		});
 
 		// Los controles por costo se agregarán dinámicamente al cargar desde backend
+
+		// Formulario del modal de edición (solo UI)
+		this.editForm = this.fb.group({
+			tipo_costo: [''],
+			monto_semestre: [''],
+			semestre: [''],
+			turno: ['MANANA'],
+		});
 	}
 
 	ngOnInit(): void {
@@ -68,6 +86,20 @@ export class CostosConfigComponent implements OnInit {
 		}
 
 		// Suscripciones por costo se conectan dinámicamente cuando se cargan los costos
+
+		// Al cambiar gestión, recargar la tabla del pensum activo
+		this.form.get('gestion')?.valueChanges.subscribe(() => {
+			if (this.activePensumTab) {
+				this.loadCostoSemestral(this.activePensumTab);
+			}
+		});
+
+		// Al cambiar pensum desde el selector, activar la pestaña correspondiente
+		this.form.get('pensum')?.valueChanges.subscribe((cod: string) => {
+			if (cod) {
+				this.selectPensumTab(cod);
+			}
+		});
 
 		// Marcar todos los semestres
 		this.form.get('marcarTodosSemestres')?.valueChanges.subscribe((v: boolean) => {
@@ -90,9 +122,27 @@ export class CostosConfigComponent implements OnInit {
 		this.pensums = [];
 		if (!codigo) return;
 		this.cobrosService.getPensumsByCarrera(codigo).subscribe({
-			next: (res) => { this.pensums = res?.data || []; },
+			next: (res) => {
+				const raw = (res?.data || []) as any[];
+				this.pensums = raw.map(p => this.normalizePensum(p)).filter(p => !!p?.cod_pensum);
+				// Inicializar pestaña activa al primer pensum disponible
+				const first = this.pensums[0]?.cod_pensum;
+				if (first) {
+					this.form.patchValue({ pensum: first }, { emitEvent: false });
+					this.selectPensumTab(first);
+				}
+			},
 			error: () => { this.pensums = []; }
 		});
+	}
+
+	private normalizePensum(p: any): { cod_pensum: string; nombre?: string; descripcion?: string } {
+		const cod = p?.cod_pensum || p?.codigo_pensum || p?.codigo || p?.cod || p?.id || p?.pensum;
+		return {
+			cod_pensum: cod,
+			nombre: p?.nombre || p?.nombre_pensum || p?.titulo || p?.descripcion,
+			descripcion: p?.descripcion || p?.detalle || p?.observacion
+		};
 	}
 
 	loadGestiones(): void {
@@ -100,6 +150,42 @@ export class CostosConfigComponent implements OnInit {
 			next: (res) => { this.gestiones = res?.data || []; },
 			error: () => { this.gestiones = []; }
 		});
+	}
+
+	selectPensumTab(codPensum: string): void {
+		this.activePensumTab = codPensum;
+		if (!this.costoSemestralMap[codPensum]) {
+			this.loadCostoSemestral(codPensum);
+		}
+	}
+
+	private loadCostoSemestral(codPensum: string): void {
+		const gestion = this.form.get('gestion')?.value || undefined;
+		this.cobrosService.getCostoSemestralByPensum(codPensum, gestion).subscribe({
+			next: (res) => { this.costoSemestralMap[codPensum] = res?.data || []; },
+			error: () => { this.costoSemestralMap[codPensum] = []; }
+		});
+	}
+
+	openEdit(row: any): void {
+		this.editForm.setValue({
+			tipo_costo: row?.tipo_costo || '',
+			monto_semestre: row?.monto_semestre ?? '',
+			semestre: row?.semestre || '',
+			turno: row?.turno || 'MANANA',
+		});
+		this.editOpen = true;
+	}
+
+	closeEdit(): void { this.editOpen = false; }
+
+	saveEdit(): void {
+		console.log('Guardar cambios (UI-only):', this.editForm.value);
+		this.editOpen = false;
+	}
+
+	deleteRow(row: any): void {
+		console.log('Eliminar (UI-only):', row);
 	}
 
 	private loadParametrosCostosActivos(): void {
@@ -141,8 +227,76 @@ export class CostosConfigComponent implements OnInit {
 	}
 
 	asignarCostos(): void {
-		// Solo UI - sin lógica de persistencia aún
-		console.log('Payload visual de costos:', this.form.getRawValue());
+		const cod_pensum: string = this.form.get('pensum')?.value;
+		const gestion: string = this.form.get('gestion')?.value;
+		if (!cod_pensum || !gestion) {
+			alert('Seleccione Gestión y Pensum antes de guardar.');
+			return;
+		}
+
+		// Semestres marcados
+		const semestres: number[] = [];
+		(['sem1','sem2','sem3','sem4','sem5','sem6'] as const).forEach((k, idx) => {
+			if (this.form.get(k)?.value) semestres.push(idx + 1);
+		});
+		if (semestres.length === 0) {
+			alert('Marque al menos un semestre.');
+			return;
+		}
+
+		// Construir filas por cada costo habilitado y semestre marcado
+		const costosGroup = this.form.get('costos') as FormGroup;
+		const rows: Array<{ semestre: number; tipo_costo: string; monto_semestre: number; turno: string }> = [];
+		for (const c of this.costosCatalogo) {
+			const enabled = costosGroup.get(`${c.key}_enabled`)?.value === true;
+			if (!enabled) continue;
+			const monto = parseFloat(String(costosGroup.get(`${c.key}_monto`)?.value || 0));
+			const turnoSel = String(costosGroup.get(`${c.key}_turno`)?.value || 'TODOS');
+			const turnosToUse = (turnoSel === 'TODOS') ? this.turnos.map(t => t.key) : [turnoSel];
+			for (const s of semestres) {
+				for (const tKey of turnosToUse) {
+					rows.push({ semestre: s, tipo_costo: c.label, monto_semestre: isNaN(monto) ? 0 : monto, turno: tKey });
+				}
+			}
+		}
+		if (rows.length === 0) {
+			alert('Active al menos un costo y establezca su valor.');
+			return;
+		}
+
+		const currentUser = this.auth.getCurrentUser();
+		const id_usuario = currentUser?.id_usuario;
+		const payload = {
+			cod_pensum,
+			gestion,
+			costo_fijo: 1,
+			valor_credito: 0,
+			id_usuario,
+			rows
+		};
+
+		this.cobrosService.saveCostoSemestralBatch(payload).subscribe({
+			next: (res) => {
+				console.log('Guardado costo_semestral:', res?.data);
+				alert('Costos semestrales guardados correctamente.');
+				// Opcional: refrescar pestaña activa si aplica
+				if (this.activePensumTab) this.loadCostoSemestral(this.activePensumTab);
+				// Limpiar selecciones de Semestres y Costos
+				(['sem1','sem2','sem3','sem4','sem5','sem6','marcarTodosSemestres'] as const).forEach(k => this.form.get(k)?.setValue(false, { emitEvent: false }));
+				for (const c of this.costosCatalogo) {
+					const enCtrl = this.form.get(['costos', `${c.key}_enabled`]);
+					const moCtrl = this.form.get(['costos', `${c.key}_monto`]);
+					const tuCtrl = this.form.get(['costos', `${c.key}_turno`]);
+					enCtrl?.setValue(false, { emitEvent: true }); // disparará disable de monto/turno por suscripción
+					moCtrl?.setValue('', { emitEvent: false });
+					tuCtrl?.setValue('TODOS', { emitEvent: false });
+				}
+			},
+			error: (err) => {
+				console.error('Error al guardar costo_semestral', err);
+				alert('Error al guardar costo semestral. Revise consola.');
+			}
+		});
 	}
 
 	// Getter tipado para evitar AbstractControl | null en la plantilla

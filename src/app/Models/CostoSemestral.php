@@ -42,6 +42,10 @@ class CostoSemestral extends Model
 		'cod_inscrip',
 		'semestre',
 		'monto_semestre',
+		'tipo_costo',
+		'turno',
+		'costo_fijo',
+		'valor_credito',
 		'id_usuario',
 	];
 	
