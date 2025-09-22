@@ -104,11 +104,11 @@ export class CostosConfigComponent implements OnInit {
 			}
 		});
 
-		// Si cambian el pensum desde el selector superior, usarlo también para la tabla
+
+		// Si cambia el pensum desde el selector superior, actualizar SOLO la tabla
 		this.form.get('pensum')?.valueChanges.subscribe((cod: string) => {
-			if (cod) {
-				this.selectPensumForTable(cod);
-			}
+			// Desacoplado: el select de pensum no afecta la tabla
+			// Este select se usa solo para el formulario de asignación de costos
 		});
 
 		// Marcar todos los semestres
@@ -138,8 +138,8 @@ export class CostosConfigComponent implements OnInit {
 		this.form.patchValue({ pensum: '' });
 		this.pensums = [];
 		if (!codigo) return;
-		// Nueva UI: delegar carga de pensums/tab a selectCarreraTab
-		this.selectCarreraTab(codigo);
+		// Cargar pensums SOLO para el selector (sin afectar la tabla)
+		this.loadPensumsForSelect(codigo);
 	}
 
 	private normalizePensum(p: any): { cod_pensum: string; nombre?: string; descripcion?: string } {
@@ -164,31 +164,15 @@ export class CostosConfigComponent implements OnInit {
 		if (!this.costoSemestralMap[codPensum]) this.loadCostoSemestral(codPensum);
 	}
 
-	// Nueva UI: seleccionar pestaña de carrera
+	// Nueva UI: seleccionar pestaña de carrera (solo tabla)
 	selectCarreraTab(codigoCarrera: string): void {
-		this.activeCarreraTab = codigoCarrera;
-		// Limpiar pensum activo de la tabla para evitar mostrar datos previos
-		this.activePensumForTable = null;
-		if (!this.pensumsByCarreraMap[codigoCarrera]) {
-			this.cobrosService.getPensumsByCarrera(codigoCarrera).subscribe({
-				next: (res) => {
-					const raw = (res?.data || []) as any[];
-					this.pensumsByCarreraMap[codigoCarrera] = raw.map(p => this.normalizePensum(p)).filter(p => !!p?.cod_pensum);
-					const first = this.pensumsByCarreraMap[codigoCarrera][0]?.cod_pensum;
-					if (first) this.selectPensumForTable(first); else this.activePensumForTable = null;
-				},
-				error: () => { this.pensumsByCarreraMap[codigoCarrera] = []; this.activePensumForTable = null; }
-			});
-		} else {
-			const first = this.pensumsByCarreraMap[codigoCarrera][0]?.cod_pensum;
-			if (first) this.selectPensumForTable(first); else this.activePensumForTable = null;
-		}
+		this.loadPensumsForTable(codigoCarrera, true);
 	}
 
-	// Nueva UI: seleccionar pensum (botón) para la tabla
+	// Nueva UI: seleccionar pensum (botón) y actualizar tabla
 	selectPensumForTable(codPensum: string): void {
-		this.activePensumForTable = codPensum;
-		this.loadCostoSemestral(codPensum);
+		// No sincronizar con el select superior: sólo actualizar la tabla
+		this.updateTableForPensum(codPensum);
 	}
 
 	private loadCostoSemestral(codPensum: string): void {
@@ -197,6 +181,55 @@ export class CostosConfigComponent implements OnInit {
 			next: (res) => { this.costoSemestralMap[codPensum] = res?.data || []; },
 			error: () => { this.costoSemestralMap[codPensum] = []; }
 		});
+	}
+
+	// --- Selección (solo para el select superior) ---
+	private loadPensumsForSelect(codigoCarrera: string): void {
+		this.cobrosService.getPensumsByCarrera(codigoCarrera).subscribe({
+			next: (res) => {
+				const raw = (res?.data || []) as any[];
+				this.pensums = raw.map(p => this.normalizePensum(p)).filter(p => !!p?.cod_pensum);
+				// No tocar tabla ni estado de pestañas
+			},
+			error: () => { this.pensums = []; }
+		});
+	}
+
+	// --- Tabla (independiente del select superior) ---
+	private loadPensumsForTable(codigoCarrera: string, autoSelectFirst: boolean = true): void {
+		this.activeCarreraTab = codigoCarrera;
+		this.activePensumForTable = null;
+		const assignAndMaybeSelect = () => {
+			const list = this.pensumsByCarreraMap[codigoCarrera] || [];
+			const first = list[0]?.cod_pensum;
+			if (autoSelectFirst && first) {
+				this.activePensumForTable = first;
+				this.loadCostoSemestral(first);
+			}
+		};
+
+		if (!this.pensumsByCarreraMap[codigoCarrera]) {
+			this.cobrosService.getPensumsByCarrera(codigoCarrera).subscribe({
+				next: (res) => {
+					const raw = (res?.data || []) as any[];
+					this.pensumsByCarreraMap[codigoCarrera] = raw.map(p => this.normalizePensum(p)).filter(p => !!p?.cod_pensum);
+					assignAndMaybeSelect();
+				},
+				error: () => {
+					this.pensumsByCarreraMap[codigoCarrera] = [];
+					this.activePensumForTable = null;
+				}
+			});
+		} else {
+			assignAndMaybeSelect();
+		}
+	}
+
+	private updateTableForPensum(codPensum: string): void {
+		this.activePensumForTable = codPensum;
+		// Reset de búsqueda al cambiar de pensum para claridad
+		this.searchQuery = '';
+		this.loadCostoSemestral(codPensum);
 	}
 
 	// Etiquetas amigables para la tabla
