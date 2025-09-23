@@ -77,13 +77,17 @@ Route::get('cobros/{cod_ceta}/{cod_pensum}/{tipo_inscripcion}/{nro_cobro}', [Cob
 Route::put('cobros/{cod_ceta}/{cod_pensum}/{tipo_inscripcion}/{nro_cobro}', [CobroController::class, 'update']);
 Route::delete('cobros/{cod_ceta}/{cod_pensum}/{tipo_inscripcion}/{nro_cobro}', [CobroController::class, 'destroy']);
 
-// Parámetros de costos (activos)
+// Parámetros de costos
+Route::get('parametros-costos', [ParametroCostoController::class, 'index']);
 Route::get('parametros-costos/activos', [ParametroCostoController::class, 'activos']);
 Route::post('parametros-costos', [ParametroCostoController::class, 'store']);
+Route::put('parametros-costos/{id}', [ParametroCostoController::class, 'update']);
 
 // Costo semestral por pensum (gestion opcional)
 Route::get('costo-semestral/pensum/{codPensum}', [CostoSemestralController::class, 'byPensum']);
 Route::post('costo-semestral/batch', [CostoSemestralController::class, 'batchStore']);
+Route::put('costo-semestral/{id}', [CostoSemestralController::class, 'update']);
+Route::delete('costo-semestral/{id}', [CostoSemestralController::class, 'destroy']);
 
 // Webhooks desde SGA (inscripciones creadas)
 Route::post('webhooks/inscripciones/created', [InscripcionesWebhookController::class, 'created']);

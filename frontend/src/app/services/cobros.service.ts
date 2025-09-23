@@ -70,6 +70,20 @@ export class CobrosService {
 		);
 	}
 
+	// Parámetros de costos (todos)
+	getParametrosCostosAll(): Observable<any> {
+		return this.http.get<any>(`${this.apiUrl}/parametros-costos`).pipe(
+			map((res: any) => ({ success: !!res?.success, data: res?.data || [], message: res?.message }))
+		);
+	}
+
+	// Actualizar un parámetro de costo
+	updateParametroCosto(id: number, payload: { nombre_costo?: string; nombre_oficial?: string; descripcion?: string; activo?: boolean; }): Observable<any> {
+		return this.http.put<any>(`${this.apiUrl}/parametros-costos/${id}`, payload).pipe(
+			map((res: any) => ({ success: !!res?.success, data: res?.data || null, message: res?.message }))
+		);
+	}
+
 	// Crear parámetro de costo
 	createParametroCosto(payload: {
 		nombre_costo: string;
@@ -101,6 +115,20 @@ export class CobrosService {
 		rows: Array<{ semestre: number; tipo_costo: string; monto_semestre: number; turno: string }>;
 	}): Observable<any> {
 		return this.http.post<any>(`${this.apiUrl}/costo-semestral/batch`, payload).pipe(
+			map((res: any) => ({ success: !!res?.success, data: res?.data || null, message: res?.message }))
+		);
+	}
+
+	// Actualizar costo_semestral por ID
+	updateCostoSemestral(id: number, payload: { monto_semestre: number; tipo_costo?: string; turno?: string }): Observable<any> {
+		return this.http.put<any>(`${this.apiUrl}/costo-semestral/${id}`, payload).pipe(
+			map((res: any) => ({ success: !!res?.success, data: res?.data || null, message: res?.message }))
+		);
+	}
+
+	// Eliminar costo_semestral por ID
+	deleteCostoSemestral(id: number): Observable<any> {
+		return this.http.delete<any>(`${this.apiUrl}/costo-semestral/${id}`).pipe(
 			map((res: any) => ({ success: !!res?.success, data: res?.data || null, message: res?.message }))
 		);
 	}

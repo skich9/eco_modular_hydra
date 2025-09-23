@@ -36,10 +36,22 @@ export class CostosConfigComponent implements OnInit {
 	// Modal de edición (UI-only)
 	editOpen = false;
 	editForm: FormGroup;
+	editingRow: any = null;
 
 	// Modal de creación de nuevo costo (UI-only)
 	createOpen = false;
 	createForm: FormGroup;
+
+	// Modal de confirmación de eliminación
+	deleteOpen = false;
+	deleting = false;
+	deletingRow: any = null;
+
+	// Modal de gestión/edición de parámetros de costos (lista completa)
+	manageOpen = false;
+	manageLoading = false;
+	manageList: Array<{ id_parametro_costo: number; nombre_costo: string; nombre_oficial: string; descripcion?: string | null; activo: boolean }>= [];
+	private manageOriginal: Record<number, { nombre_costo: string; nombre_oficial: string; descripcion?: string | null; activo: boolean }> = {};
 
 	turnos = [
 		{ key: 'MANANA', label: 'Mañana' },
@@ -77,10 +89,10 @@ export class CostosConfigComponent implements OnInit {
 
 		// Formulario del modal de edición (solo UI)
 		this.editForm = this.fb.group({
-			tipo_costo: [''],
+			tipo_costo: [{ value: '', disabled: true }],
 			monto_semestre: [''],
-			semestre: [''],
-			turno: ['MANANA'],
+			semestre: [{ value: '', disabled: true }],
+			turno: [{ value: 'MANANA', disabled: true }],
 		});
 
 		// Formulario del modal de creación (solo UI)
@@ -292,6 +304,7 @@ export class CostosConfigComponent implements OnInit {
 	}
 
 	openEdit(row: any): void {
+		this.editingRow = row;
 		this.editForm.setValue({
 			tipo_costo: row?.tipo_costo || '',
 			monto_semestre: row?.monto_semestre ?? '',
@@ -301,7 +314,7 @@ export class CostosConfigComponent implements OnInit {
 		this.editOpen = true;
 	}
 
-	closeEdit(): void { this.editOpen = false; }
+	closeEdit(): void { this.editOpen = false; this.editingRow = null; }
 
 	// --- Creación de nuevo costo (UI-only) ---
 	openCreate(): void {
@@ -337,22 +350,42 @@ export class CostosConfigComponent implements OnInit {
 				if (item && item.activo) {
 					const mapped = { id: item.id_parametro_costo, key: `pc_${item.id_parametro_costo}`, label: item.nombre_oficial || item.nombre_costo, nombre_costo: item.nombre_costo };
 					this.costosCatalogo = [...this.costosCatalogo, mapped];
-					this.ensureCostControls();
-				} else {
-					console.info('Parámetro de costo creado inactivo. No se añade al catálogo de activos.');
 				}
+				// Asegurar controles
+				this.ensureCostControls();
 				this.createOpen = false;
-				alert('Parámetro de costo creado correctamente.');
 			},
-			error: (err) => {
-				console.error('Error al crear parámetro de costo', err);
-				alert('Error al crear parámetro de costo.');
-			}
+			error: () => { alert('No se pudo crear el costo.'); }
 		});
 	}
 
 	deleteRow(row: any): void {
-		console.log('Eliminar (UI-only):', row);
+		this.deletingRow = row;
+		this.deleteOpen = true;
+	}
+
+	closeDelete(): void { this.deleteOpen = false; this.deletingRow = null; this.deleting = false; }
+
+	confirmDelete(): void {
+		if (!this.deletingRow) { return; }
+		const id = this.deletingRow?.id_costo_semestral;
+		if (!id) { alert('No se encontró el identificador del registro.'); return; }
+		this.deleting = true;
+		this.cobrosService.deleteCostoSemestral(Number(id)).subscribe({
+			next: () => {
+				const cp = this.deletingRow?.cod_pensum as string | undefined;
+				if (cp && this.costoSemestralMap[cp]) {
+					this.costoSemestralMap[cp] = (this.costoSemestralMap[cp] || []).filter(r => r.id_costo_semestral !== id);
+				}
+				this.closeDelete();
+				alert('Registro eliminado correctamente.');
+			},
+			error: (err) => {
+				console.error('Error al eliminar costo semestral', err);
+				this.deleting = false;
+				alert('No se pudo eliminar el registro.');
+			}
+		});
 	}
 
 	private loadParametrosCostosActivos(): void {
@@ -373,32 +406,101 @@ export class CostosConfigComponent implements OnInit {
 		});
 	}
 
+	// --- Gestión masiva de parámetros de costos ---
+	openManage(): void {
+		this.manageLoading = true;
+		this.cobrosService.getParametrosCostosAll().subscribe({
+			next: (res) => {
+				this.manageList = (res?.data || []).map((r: any) => ({
+					id_parametro_costo: r.id_parametro_costo,
+					nombre_costo: r.nombre_costo || '',
+					nombre_oficial: r.nombre_oficial || '',
+					descripcion: r.descripcion ?? '',
+					activo: !!r.activo,
+				}));
+				this.manageOriginal = {};
+				for (const it of this.manageList) {
+					this.manageOriginal[it.id_parametro_costo] = {
+						nombre_costo: it.nombre_costo,
+						nombre_oficial: it.nombre_oficial,
+						descripcion: it.descripcion ?? '',
+						activo: !!it.activo,
+					};
+				}
+				this.manageOpen = true;
+			},
+			error: () => { this.manageList = []; },
+			complete: () => { this.manageLoading = false; }
+		});
+	}
+
+	closeManage(): void { this.manageOpen = false; }
+
+	private isRowChanged(row: { id_parametro_costo: number; nombre_costo: string; nombre_oficial: string; descripcion?: string | null; activo: boolean }): boolean {
+		const o = this.manageOriginal[row.id_parametro_costo];
+		if (!o) return true;
+		return (
+			(o.nombre_costo || '') !== (row.nombre_costo || '') ||
+			(o.nombre_oficial || '') !== (row.nombre_oficial || '') ||
+			(o.descripcion || '') !== (row.descripcion || '') ||
+			Boolean(o.activo) !== Boolean(row.activo)
+		);
+	}
+
+	saveManage(): void {
+		if (!this.manageList || this.manageList.length === 0) { this.manageOpen = false; return; }
+		const changed = this.manageList.filter(r => this.isRowChanged(r));
+		if (changed.length === 0) { this.manageOpen = false; return; }
+		this.manageLoading = true;
+		let pending = changed.length;
+		let failed = 0;
+		for (const r of changed) {
+			const payload = {
+				nombre_costo: r.nombre_costo,
+				nombre_oficial: r.nombre_oficial,
+				descripcion: r.descripcion ?? '',
+				activo: !!r.activo,
+			};
+			this.cobrosService.updateParametroCosto(r.id_parametro_costo, payload).subscribe({
+				next: () => {},
+				error: () => { failed++; },
+				complete: () => {
+					pending--;
+					if (pending === 0) {
+						this.manageLoading = false;
+						if (failed > 0) alert(`Algunos registros no se pudieron guardar (${failed}).`);
+						else alert('Parámetros de costos actualizados.');
+						this.manageOpen = false;
+						this.loadParametrosCostosActivos();
+					}
+				}
+			});
+		}
+	}
+
 	saveEdit(): void {
 		if (this.editForm.invalid) {
 			this.editForm.markAllAsTouched();
 			return;
 		}
-		const ap = this.activePensumForTable as string;
-		const gestion = this.form.get('gestion')?.value as string;
-		if (!ap || !gestion) {
-			alert('Seleccione Gestión y un Pensum activo para editar.');
-			return;
-		}
+		const row = this.editingRow;
+		const id = row?.id_costo_semestral;
+		if (!id) { alert('No se encontró el identificador del registro.'); return; }
 		const v = this.editForm.getRawValue();
-		const payload = {
-			cod_pensum: ap,
-			gestion,
-			costo_fijo: 1,
-			valor_credito: 0,
-			id_usuario: this.auth.getCurrentUser()?.id_usuario,
-			rows: [
-				{ semestre: Number(v.semestre), tipo_costo: String(v.tipo_costo), monto_semestre: Number(v.monto_semestre), turno: String(v.turno) }
-			]
-		};
-		this.cobrosService.saveCostoSemestralBatch(payload).subscribe({
+		const payload = { monto_semestre: Number(v.monto_semestre) };
+		this.cobrosService.updateCostoSemestral(Number(id), payload).subscribe({
 			next: () => {
 				this.editOpen = false;
-				this.loadCostoSemestral(ap);
+				// Refrescar sólo el pensum afectado, usando la gestión original del row
+				const cp = row?.cod_pensum as string | undefined;
+				const gs = row?.gestion as string | undefined;
+				if (cp) {
+					this.cobrosService.getCostoSemestralByPensum(cp, gs).subscribe({
+						next: (res) => { this.costoSemestralMap[cp] = res?.data || []; },
+						error: () => { /* mantener datos previos si falla */ },
+					});
+				}
+				this.editingRow = null;
 				alert('Registro actualizado correctamente.');
 			},
 			error: (err) => {

@@ -73,4 +73,39 @@ class CostoSemestralController extends Controller
 			'data' => [ 'created' => $created, 'updated' => $updated ],
 		]);
 	}
+
+	public function update(Request $request, int $id)
+	{
+		$validated = $request->validate([
+			'monto_semestre' => 'required|numeric',
+			'tipo_costo' => 'nullable|string',
+			'turno' => 'nullable|string',
+		]);
+
+		$model = CostoSemestral::query()->findOrFail($id);
+		$model->monto_semestre = $validated['monto_semestre'];
+		if (array_key_exists('tipo_costo', $validated) && $validated['tipo_costo'] !== null) {
+			$model->tipo_costo = $validated['tipo_costo'];
+		}
+		if (array_key_exists('turno', $validated) && $validated['turno'] !== null) {
+			$model->turno = $validated['turno'];
+		}
+		$model->save();
+
+		return response()->json([
+			'success' => true,
+			'data' => $model->only(['id_costo_semestral','cod_pensum','gestion','semestre','monto_semestre','tipo_costo','turno'])
+		]);
+	}
+
+	public function destroy(int $id)
+	{
+		$model = CostoSemestral::query()->findOrFail($id);
+		$model->delete();
+
+		return response()->json([
+			'success' => true,
+			'data' => ['id' => $id]
+		]);
+	}
 }
