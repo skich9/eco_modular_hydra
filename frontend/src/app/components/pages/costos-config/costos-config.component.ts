@@ -47,7 +47,7 @@ export class CostosConfigComponent implements OnInit {
 		{ key: 'NOCHE', label: 'Noche' }
 	];
 
-	costosCatalogo: Array<{ key: string; label: string; id: number }>= [];
+	costosCatalogo: Array<{ key: string; label: string; id: number; nombre_costo?: string }>= [];
 
 	constructor(
 		private fb: FormBuilder,
@@ -303,11 +303,6 @@ export class CostosConfigComponent implements OnInit {
 
 	closeEdit(): void { this.editOpen = false; }
 
-	saveEdit(): void {
-		console.log('Guardar cambios (UI-only):', this.editForm.value);
-		this.editOpen = false;
-	}
-
 	// --- Creación de nuevo costo (UI-only) ---
 	openCreate(): void {
 		this.createForm.reset({ nombre_costo: '', nombre_oficial: '', descripcion: '', activo: true });
@@ -316,27 +311,44 @@ export class CostosConfigComponent implements OnInit {
 
 	closeCreate(): void { this.createOpen = false; }
 
+
 	saveCreate(): void {
 		if (this.createForm.invalid) {
 			this.createForm.markAllAsTouched();
 			return;
 		}
 		const val = this.createForm.value as any;
-		const label = String(val.nombre_oficial || val.nombre_costo || '').trim();
-		if (!label) return;
-		// Evitar duplicado por etiqueta (case-insensitive)
-		if (this.costosCatalogo.some(c => (c.label || '').toLowerCase() === label.toLowerCase())) {
+		const nombre_costo = String(val.nombre_costo || '').trim();
+		const nombre_oficial = String(val.nombre_oficial || '').trim();
+		const descripcion = (val.descripcion ?? '').toString();
+		const activo = !!val.activo;
+		if (!nombre_costo || !nombre_oficial) return;
+
+		// Evitar duplicado por nombre_costo (case-insensitive) en el catálogo actual
+		if (this.costosCatalogo.some(c => (c.nombre_costo || '').toLowerCase() === nombre_costo.toLowerCase())) {
 			alert('Ya existe un costo con ese nombre.');
 			return;
 		}
-		const uniqueKey = `pc_custom_${Date.now()}`;
-		this.costosCatalogo = [
-			...this.costosCatalogo,
-			{ id: 0, key: uniqueKey, label }
-		];
-		// Asegurar controles dinámicos para el nuevo costo
-		this.ensureCostControls();
-		this.createOpen = false;
+
+		// Guardar en backend
+		this.cobrosService.createParametroCosto({ nombre_costo, nombre_oficial, descripcion, activo }).subscribe({
+			next: (res) => {
+				const item = res?.data || null;
+				if (item && item.activo) {
+					const mapped = { id: item.id_parametro_costo, key: `pc_${item.id_parametro_costo}`, label: item.nombre_oficial || item.nombre_costo, nombre_costo: item.nombre_costo };
+					this.costosCatalogo = [...this.costosCatalogo, mapped];
+					this.ensureCostControls();
+				} else {
+					console.info('Parámetro de costo creado inactivo. No se añade al catálogo de activos.');
+				}
+				this.createOpen = false;
+				alert('Parámetro de costo creado correctamente.');
+			},
+			error: (err) => {
+				console.error('Error al crear parámetro de costo', err);
+				alert('Error al crear parámetro de costo.');
+			}
+		});
 	}
 
 	deleteRow(row: any): void {
@@ -347,16 +359,52 @@ export class CostosConfigComponent implements OnInit {
 		this.cobrosService.getParametrosCostosActivos().subscribe({
 			next: (res) => {
 				const data = res?.data || [];
-				// Mapear a la estructura usada por el template (key, label)
+				// Mapear a la estructura usada por el template (key, label, nombre_costo)
 				this.costosCatalogo = data.map((d: any) => ({
 					id: d.id_parametro_costo,
 					key: `pc_${d.id_parametro_costo}`,
 					label: d.nombre_oficial || d.nombre_costo || `Costo ${d.id_parametro_costo}`,
+					nombre_costo: d.nombre_costo,
 				}));
 				// Asegurar que existan controles y suscripciones para cada costo
 				this.ensureCostControls();
 			},
 			error: () => { this.costosCatalogo = []; }
+		});
+	}
+
+	saveEdit(): void {
+		if (this.editForm.invalid) {
+			this.editForm.markAllAsTouched();
+			return;
+		}
+		const ap = this.activePensumForTable as string;
+		const gestion = this.form.get('gestion')?.value as string;
+		if (!ap || !gestion) {
+			alert('Seleccione Gestión y un Pensum activo para editar.');
+			return;
+		}
+		const v = this.editForm.getRawValue();
+		const payload = {
+			cod_pensum: ap,
+			gestion,
+			costo_fijo: 1,
+			valor_credito: 0,
+			id_usuario: this.auth.getCurrentUser()?.id_usuario,
+			rows: [
+				{ semestre: Number(v.semestre), tipo_costo: String(v.tipo_costo), monto_semestre: Number(v.monto_semestre), turno: String(v.turno) }
+			]
+		};
+		this.cobrosService.saveCostoSemestralBatch(payload).subscribe({
+			next: () => {
+				this.editOpen = false;
+				this.loadCostoSemestral(ap);
+				alert('Registro actualizado correctamente.');
+			},
+			error: (err) => {
+				console.error('Error al actualizar costo semestral', err);
+				alert('Error al actualizar costo semestral.');
+			}
 		});
 	}
 

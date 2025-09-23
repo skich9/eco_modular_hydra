@@ -70,6 +70,18 @@ export class CobrosService {
 		);
 	}
 
+	// Crear parámetro de costo
+	createParametroCosto(payload: {
+		nombre_costo: string;
+		nombre_oficial: string;
+		descripcion?: string | null;
+		activo: boolean;
+	}): Observable<any> {
+		return this.http.post<any>(`${this.apiUrl}/parametros-costos`, payload).pipe(
+			map((res: any) => ({ success: !!res?.success, data: res?.data || null, message: res?.message }))
+		);
+	}
+
 	// Costo semestral por pensum (gestion opcional)
 	getCostoSemestralByPensum(codPensum: string, gestion?: string): Observable<any> {
 		let params = new HttpParams();

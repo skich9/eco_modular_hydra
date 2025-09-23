@@ -79,6 +79,7 @@ Route::delete('cobros/{cod_ceta}/{cod_pensum}/{tipo_inscripcion}/{nro_cobro}', [
 
 // Parámetros de costos (activos)
 Route::get('parametros-costos/activos', [ParametroCostoController::class, 'activos']);
+Route::post('parametros-costos', [ParametroCostoController::class, 'store']);
 
 // Costo semestral por pensum (gestion opcional)
 Route::get('costo-semestral/pensum/{codPensum}', [CostoSemestralController::class, 'byPensum']);
