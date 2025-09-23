@@ -4,6 +4,7 @@ networks:
 
 volumes:
   angular_laravel_node_modules:
+  redis-data:
 
 services:
   # Base de datos primero
@@ -116,3 +117,29 @@ services:
     command: sh -c "npm install && npm run build -- --output-path=./dist --output-hashing=all"
     networks:
       - angular_laravel_network
+
+  # Redis
+  redis:
+    image: redis:7-alpine
+    ports:
+      - "6379:6379"
+    command: ["redis-server", "--appendonly", "yes"]
+    volumes:
+      - redis-data:/data
+    networks:
+      - angular_laravel_network
+  angular_laravel_queue:
+    build:
+      context: .
+      dockerfile: dockerfiles/php.dockerfile
+    container_name: angular_laravel_queue
+    working_dir: /var/www/html
+    depends_on:
+      - angular_laravel_php
+      - redis
+    volumes:
+      - ./src:/var/www/html
+    command: php artisan queue:work redis --queue=inscripciones --sleep=3 --max-time=3600 --tries=3
+    networks:
+      - angular_laravel_network
+    restart: unless-stopped

@@ -76,6 +76,12 @@
 										</td>
 									</tr>
 								</tbody>
+								<!-- Botón para abrir modal de creación de nuevo costo -->
+								<div class="mt-8 d-flex justify-content-end">
+									<button type="button" class="btn btn-outline-primary px-5" (click)="openCreate()">
+										<i class="bi bi-plus-lg me-1"></i> Nuevo costo
+									</button>
+								</div>
 							</table>
 						</div>
 					</div>
@@ -235,6 +241,43 @@
 				<div class="modal-footer">
 					<button type="button" class="btn btn-secondary" (click)="closeEdit()">Cerrar</button>
 					<button type="button" class="btn btn-primary" (click)="saveEdit()">Guardar</button>
+				</div>
+			</div>
+		</div>
+	</div>
+
+	<!-- Modal de creación de nuevo costo (UI-only) -->
+	<div class="modal-backdrop show" *ngIf="createOpen" style="display:block;"></div>
+	<div class="modal fade show" tabindex="-1" role="dialog" *ngIf="createOpen" style="display:block;">
+		<div class="modal-dialog">
+			<div class="modal-content">
+				<div class="modal-header">
+					<h5 class="modal-title">Nuevo costo</h5>
+					<button type="button" class="btn-close" (click)="closeCreate()"></button>
+				</div>
+				<div class="modal-body">
+					<div [formGroup]="createForm">
+						<div class="mb-3">
+							<label class="form-label">Nombre</label>
+							<input type="text" class="form-control" formControlName="nombre_costo" placeholder="Ej. Costo Semestral" />
+						</div>
+						<div class="mb-3">
+							<label class="form-label">Nombre oficial</label>
+							<input type="text" class="form-control" formControlName="nombre_oficial" placeholder="Ej. Costo Semestral" />
+						</div>
+						<div class="mb-3">
+							<label class="form-label">Descripción</label>
+							<textarea class="form-control" rows="3" formControlName="descripcion" placeholder="Descripción opcional"></textarea>
+						</div>
+						<div class="form-check mb-2">
+							<input class="form-check-input" type="checkbox" id="chkActivo" formControlName="activo" />
+							<label class="form-check-label" for="chkActivo">Activo</label>
+						</div>
+					</div>
+				</div>
+				<div class="modal-footer">
+					<button type="button" class="btn btn-secondary" (click)="closeCreate()">Cerrar</button>
+					<button type="button" class="btn btn-primary" (click)="saveCreate()">Guardar</button>
 				</div>
 			</div>
 		</div>

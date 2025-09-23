@@ -37,6 +37,10 @@ export class CostosConfigComponent implements OnInit {
 	editOpen = false;
 	editForm: FormGroup;
 
+	// Modal de creación de nuevo costo (UI-only)
+	createOpen = false;
+	createForm: FormGroup;
+
 	turnos = [
 		{ key: 'MANANA', label: 'Mañana' },
 		{ key: 'TARDE', label: 'Tarde' },
@@ -77,6 +81,14 @@ export class CostosConfigComponent implements OnInit {
 			monto_semestre: [''],
 			semestre: [''],
 			turno: ['MANANA'],
+		});
+
+		// Formulario del modal de creación (solo UI)
+		this.createForm = this.fb.group({
+			nombre_costo: ['', Validators.required],
+			nombre_oficial: ['', Validators.required],
+			descripcion: [''],
+			activo: [true],
 		});
 	}
 
@@ -294,6 +306,37 @@ export class CostosConfigComponent implements OnInit {
 	saveEdit(): void {
 		console.log('Guardar cambios (UI-only):', this.editForm.value);
 		this.editOpen = false;
+	}
+
+	// --- Creación de nuevo costo (UI-only) ---
+	openCreate(): void {
+		this.createForm.reset({ nombre_costo: '', nombre_oficial: '', descripcion: '', activo: true });
+		this.createOpen = true;
+	}
+
+	closeCreate(): void { this.createOpen = false; }
+
+	saveCreate(): void {
+		if (this.createForm.invalid) {
+			this.createForm.markAllAsTouched();
+			return;
+		}
+		const val = this.createForm.value as any;
+		const label = String(val.nombre_oficial || val.nombre_costo || '').trim();
+		if (!label) return;
+		// Evitar duplicado por etiqueta (case-insensitive)
+		if (this.costosCatalogo.some(c => (c.label || '').toLowerCase() === label.toLowerCase())) {
+			alert('Ya existe un costo con ese nombre.');
+			return;
+		}
+		const uniqueKey = `pc_custom_${Date.now()}`;
+		this.costosCatalogo = [
+			...this.costosCatalogo,
+			{ id: 0, key: uniqueKey, label }
+		];
+		// Asegurar controles dinámicos para el nuevo costo
+		this.ensureCostControls();
+		this.createOpen = false;
 	}
 
 	deleteRow(row: any): void {

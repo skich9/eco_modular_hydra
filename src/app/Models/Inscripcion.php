@@ -6,6 +6,7 @@ use Illuminate\Database\Eloquent\Factories\HasFactory;
 use Illuminate\Database\Eloquent\Model;
 use Illuminate\Database\Eloquent\Builder;
 use Illuminate\Support\Facades\Schema;
+ 
 
 class Inscripcion extends Model
 {
@@ -22,6 +23,8 @@ class Inscripcion extends Model
 				$builder->whereNull('deleted_at');
 			});
 		}
+
+
 	}
 
 	protected $table = 'inscripciones';
