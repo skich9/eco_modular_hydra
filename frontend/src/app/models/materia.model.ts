@@ -3,6 +3,7 @@ export interface Materia {
 	cod_pensum: string;
 	nombre_materia: string;
 	nombre_material_oficial: string;
+	nivel_materia: string;
 	estado: boolean;
 	orden: number;
 	descripcion?: string;

@@ -3,6 +3,8 @@ import { CommonModule } from '@angular/common';
 import { FormBuilder, FormGroup, ReactiveFormsModule, Validators, FormsModule } from '@angular/forms';
 import { CarreraService } from '../../../services/carrera.service';
 import { CobrosService } from '../../../services/cobros.service';
+import { AuthService } from '../../../services/auth.service';
+import { CostoMateriaService } from '../../../services/costo-materia.service';
 
 @Component({
   selector: 'app-costos-creditos-config',
@@ -28,11 +30,14 @@ export class CostosCreditosConfigComponent implements OnInit {
     private fb: FormBuilder,
     private carreraService: CarreraService,
     private cobrosService: CobrosService,
+    private auth: AuthService,
+    private costoMateriaService: CostoMateriaService,
   ) {
     this.form = this.fb.group({
       gestion: ['', Validators.required],
       carrera: ['', Validators.required],
       pensum: ['', Validators.required],
+      valor_credito: ['', [Validators.required, Validators.min(0.01)]],
     });
   }
 
@@ -98,6 +103,38 @@ export class CostosCreditosConfigComponent implements OnInit {
         this.pensums = raw.map(p => this.normalizePensum(p)).filter(p => !!p?.cod_pensum);
       },
       error: () => { this.pensums = []; }
+    });
+  }
+
+  // Generar costos por crédito para todos los semestres del pensum seleccionado
+  generarTodosSemestres(): void {
+    const cod_pensum: string = this.form.get('pensum')?.value;
+    const gestion: string = this.form.get('gestion')?.value;
+    const valor = Number(this.form.get('valor_credito')?.value || 0);
+    if (!cod_pensum || !gestion) { alert('Seleccione Gestión, Carrera y Pensum.'); return; }
+    if (!(valor > 0)) { alert('Ingrese un valor por crédito válido (> 0).'); return; }
+    const currentUser = this.auth.getCurrentUser();
+    const id_usuario = currentUser?.id_usuario;
+    if (!id_usuario) { alert('No se pudo identificar el usuario.'); return; }
+    this.costoMateriaService.generateByPensumGestion({ cod_pensum, gestion, valor_credito: valor, id_usuario }).subscribe({
+      next: () => alert('Costos por crédito generados/actualizados para todos los semestres.'),
+      error: () => alert('No se pudieron generar los costos por crédito.')
+    });
+  }
+
+  // Generar costos por crédito solo para el semestre activo (usa nivel_materia)
+  generarSoloSemestreActivo(): void {
+    const cod_pensum: string = this.form.get('pensum')?.value;
+    const gestion: string = this.form.get('gestion')?.value;
+    const valor = Number(this.form.get('valor_credito')?.value || 0);
+    if (!cod_pensum || !gestion) { alert('Seleccione Gestión, Carrera y Pensum.'); return; }
+    if (!(valor > 0)) { alert('Ingrese un valor por crédito válido (> 0).'); return; }
+    const currentUser = this.auth.getCurrentUser();
+    const id_usuario = currentUser?.id_usuario;
+    if (!id_usuario) { alert('No se pudo identificar el usuario.'); return; }
+    this.costoMateriaService.generateByPensumGestion({ cod_pensum, gestion, valor_credito: valor, id_usuario, semestre: String(this.activeSem) }).subscribe({
+      next: () => alert(`Costos por crédito generados/actualizados para ${this.semLabel(this.activeSem)}.`),
+      error: () => alert('No se pudieron generar los costos por crédito para el semestre activo.')
     });
   }
 }

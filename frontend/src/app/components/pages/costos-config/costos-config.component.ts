@@ -131,6 +131,8 @@ export class CostosConfigComponent implements OnInit {
 		this.editCuotasForm = this.fb.group({});
 	}
 
+
+
 	// Exclusión mutua: si hay algún costo NO restrictivo activo, se bloquean los 3 costos restrictivos
 	private applyCostosMutualExclusion(): void {
 		const costosGroup = this.form.get('costos') as FormGroup;
@@ -847,7 +849,7 @@ export class CostosConfigComponent implements OnInit {
 			const turnosToUse = (turnoSel === 'TODOS') ? this.turnos.map(t => t.key) : [turnoSel];
 			for (const s of semestres) {
 				for (const tKey of turnosToUse) {
-					rows.push({ semestre: s, tipo_costo: c.label, monto_semestre: isNaN(monto) ? 0 : monto, turno: tKey });
+					rows.push({ semestre: s, tipo_costo: (c.nombre_costo || '').toString(), monto_semestre: isNaN(monto) ? 0 : monto, turno: tKey });
 				}
 			}
 		}

@@ -3,8 +3,10 @@
 namespace App\Http\Controllers;
 
 use App\Models\CostoMateria;
+use App\Models\Materia;
 use Illuminate\Http\Request;
 use Illuminate\Http\Response;
+use Illuminate\Support\Facades\DB;
 
 class CostoMateriaController extends Controller
 {
@@ -23,10 +25,10 @@ class CostoMateriaController extends Controller
     public function store(Request $request)
     {
         $validated = $request->validate([
+            'cod_pensum' => 'required|string|max:50',
             'sigla_materia' => 'required|string|max:255',
             'gestion' => 'required|string|max:30',
             'nro_creditos' => 'required|numeric|min:0',
-            'nombre_materia' => 'required|string|max:30',
             'monto_materia' => 'nullable|numeric|min:0',
             'id_usuario' => 'required|exists:usuarios,id_usuario'
         ]);
@@ -61,8 +63,8 @@ class CostoMateriaController extends Controller
             ->firstOrFail();
 
         $validated = $request->validate([
+            'cod_pensum' => 'sometimes|string|max:50',
             'nro_creditos' => 'sometimes|numeric|min:0',
-            'nombre_materia' => 'sometimes|string|max:30',
             'monto_materia' => 'nullable|numeric|min:0',
             'id_usuario' => 'sometimes|exists:usuarios,id_usuario'
         ]);
@@ -110,5 +112,59 @@ class CostoMateriaController extends Controller
             ->get();
 
         return response()->json($costos);
+    }
+
+    /**
+     * Genera costos por crédito para todas las materias de un pensum en una gestión dada.
+     * Si existe costo previo para (sigla_materia, cod_pensum, gestion) se actualiza el monto.
+     */
+    public function generateByPensumGestion(Request $request)
+    {
+        $validated = $request->validate([
+            'cod_pensum' => 'required|string|max:50',
+            'gestion' => 'required|string|max:30',
+            'valor_credito' => 'required|numeric|min:0',
+            'id_usuario' => 'required|exists:usuarios,id_usuario',
+            'semestre' => 'nullable',
+        ]);
+
+        $created = 0; $updated = 0; $rows = [];
+        DB::transaction(function () use ($validated, & $created, & $updated, & $rows) {
+            $materiasQ = Materia::query()
+                ->where('cod_pensum', $validated['cod_pensum']);
+            if (!empty($validated['semestre'] ?? null)) {
+                $materiasQ->where('nivel_materia', (string)$validated['semestre']);
+            }
+            $materias = $materiasQ->get(['sigla_materia','cod_pensum','nro_creditos']);
+            foreach ($materias as $m) {
+                $monto = (float)$m->nro_creditos * (float)$validated['valor_credito'];
+                $attrs = [
+                    'cod_pensum' => $validated['cod_pensum'],
+                    'sigla_materia' => $m->sigla_materia,
+                    'gestion' => $validated['gestion'],
+                ];
+                $vals = [
+                    'nro_creditos' => $m->nro_creditos,
+                    'monto_materia' => $monto,
+                    'id_usuario' => $validated['id_usuario'],
+                ];
+                $existing = CostoMateria::where($attrs)->first();
+                if ($existing) {
+                    $existing->fill($vals)->save();
+                    $updated++;
+                    $rows[] = $existing;
+                } else {
+                    $model = new CostoMateria(array_merge($attrs, $vals));
+                    $model->save();
+                    $created++;
+                    $rows[] = $model;
+                }
+            }
+        });
+
+        return response()->json([
+            'success' => true,
+            'data' => [ 'created' => $created, 'updated' => $updated, 'rows' => $rows ],
+        ]);
     }
 }

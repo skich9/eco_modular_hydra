@@ -40,6 +40,7 @@ class Materia extends Model
 		'cod_pensum',
 		'nombre_materia',
 		'nombre_material_oficial',
+		'nivel_materia',
 		'activo',
 		'estado',
 		'orden',

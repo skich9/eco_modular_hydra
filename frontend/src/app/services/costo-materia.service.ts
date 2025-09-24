@@ -30,4 +30,10 @@ export class CostoMateriaService {
 			})
 		);
 	}
+
+	generateByPensumGestion(payload: { cod_pensum: string; gestion: string; valor_credito: number; id_usuario: number; semestre?: string | number }): Observable<{ success: boolean; data: any }> {
+		return this.http.post<any>(`${this.apiUrl}/generate`, payload).pipe(
+			map((res: any) => ({ success: !!res?.success, data: res?.data }))
+		);
+	}
 }

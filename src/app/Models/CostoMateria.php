@@ -10,15 +10,15 @@ class CostoMateria extends Model
     use HasFactory;
 
     protected $table = 'costo_materia';
-    protected $primaryKey = ['id_costo_materia', 'sigla_materia', 'gestion'];
-    public $incrementing = false;
+    protected $primaryKey = 'id_costo_materia';
+    public $incrementing = true;
     public $timestamps = true;
 
     protected $fillable = [
+        'cod_pensum',
         'sigla_materia',
         'gestion',
         'nro_creditos',
-        'nombre_materia',
         'monto_materia',
         'id_usuario'
     ];
@@ -33,6 +33,7 @@ class CostoMateria extends Model
     // Relación con la tabla materia
     public function materia()
     {
+        // Relación por sigla; si se requiere cod_pensum simultáneo, se deberá ajustar manualmente en consultas
         return $this->belongsTo(Materia::class, 'sigla_materia', 'sigla_materia');
     }
 

@@ -141,6 +141,7 @@ Route::put('materias/{sigla}/{pensum}/toggle-status', [ApiMateriaController::cla
 Route::apiResource('costo-materia', CostoMateriaController::class);
 Route::get('costo-materia/gestion/{gestion}/materia/{siglaMateria}', [CostoMateriaController::class, 'getByGestionAndMateria'])->where('gestion', '.*');
 Route::get('costo-materia/gestion/{gestion}', [CostoMateriaController::class, 'getByGestion'])->where('gestion', '.*');
+Route::post('costo-materia/generate', [CostoMateriaController::class, 'generateByPensumGestion']);
 
 //Gestión
 // Rutas para gestión

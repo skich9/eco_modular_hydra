@@ -57,6 +57,7 @@ class MateriaController extends Controller
                 'cod_pensum' => 'required|string|max:10',
                 'nombre_materia' => 'required|string|max:100',
                 'nombre_material_oficial' => 'required|string|max:100',
+                'nivel_materia' => 'required|string|max:50',
                 'nro_creditos' => 'required|numeric|min:1',
                 'orden' => 'required|integer|min:1',
                 'descripcion' => 'nullable|string|max:255',
@@ -174,6 +175,7 @@ class MateriaController extends Controller
             $rules = [
                 'nombre_materia' => 'required|string|max:100',
                 'nombre_material_oficial' => 'required|string|max:100',
+                'nivel_materia' => 'required|string|max:50',
                 'nro_creditos' => 'required|numeric|min:1',
                 'orden' => 'required|integer|min:1',
                 'descripcion' => 'nullable|string|max:255',
