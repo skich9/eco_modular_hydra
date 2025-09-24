@@ -1,4 +1,4 @@
-		import { Component, OnInit } from '@angular/core';
+import { Component, OnInit } from '@angular/core';
 import { CommonModule } from '@angular/common';
 import { FormBuilder, FormControl, FormGroup, FormsModule, ReactiveFormsModule, Validators } from '@angular/forms';
 import { CobrosService } from '../../../services/cobros.service';
@@ -70,6 +70,9 @@ export class CostosConfigComponent implements OnInit {
 		{ key: 'NOCHE', label: 'Noche' }
 	];
 
+	// Lógica de restricción de cuotas se deriva de costos activos (no se usa selector visible)
+	cuotasDisabled: boolean = false;
+	private restrictiveKeys = new Set<string>(['instancia','reincorporacion','rezagado']);
 	costosCatalogo: Array<{ key: string; label: string; id: number; nombre_costo?: string }>= [];
 
 	constructor(
@@ -126,6 +129,32 @@ export class CostosConfigComponent implements OnInit {
 			activo: [true]
 		});
 		this.editCuotasForm = this.fb.group({});
+	}
+
+	// Exclusión mutua: si hay algún costo NO restrictivo activo, se bloquean los 3 costos restrictivos
+	private applyCostosMutualExclusion(): void {
+		const costosGroup = this.form.get('costos') as FormGroup;
+		const hasNonRestrictiveActive = this.costosCatalogo.some(c => {
+			const nameKey = String(c.nombre_costo || '').trim().toLowerCase();
+			if (this.restrictiveKeys.has(nameKey)) return false;
+			return costosGroup.get(`${c.key}_enabled`)?.value === true;
+		});
+		for (const c of this.costosCatalogo) {
+			const nameKey = String(c.nombre_costo || '').trim().toLowerCase();
+			if (!this.restrictiveKeys.has(nameKey)) continue;
+			const enCtrl = costosGroup.get(`${c.key}_enabled`);
+			const moCtrl = costosGroup.get(`${c.key}_monto`);
+			const tuCtrl = costosGroup.get(`${c.key}_turno`);
+			if (hasNonRestrictiveActive) {
+				if (enCtrl?.value === true) enCtrl.setValue(false, { emitEvent: false });
+				enCtrl?.disable({ emitEvent: false });
+				moCtrl?.disable({ emitEvent: false });
+				tuCtrl?.disable({ emitEvent: false });
+			} else {
+				enCtrl?.enable({ emitEvent: false });
+				// monto/turno quedan habilitados solo si el enabled está activo; el handler de enabled ya los controla
+			}
+		}
 	}
 
 	// --- Cuotas: Modales y flujos ---
@@ -232,6 +261,14 @@ export class CostosConfigComponent implements OnInit {
 		return s;
 	}
 
+	// Normaliza tipo de costo visible (label) a la clave usada en cuotas
+	private normalizeTipoKeyFromLabel(label: string): string | undefined {
+		const s = (label || '').trim().toLowerCase();
+		if (s.includes('mensual')) return 'costo_mensual';
+		if (s.includes('arrastre') || s === 'materia') return 'materia';
+		return undefined;
+	}
+
 	ngOnInit(): void {
 		// Cargar parámetros de costos activos primero
 		this.loadParametrosCostosActivos();
@@ -248,6 +285,11 @@ export class CostosConfigComponent implements OnInit {
 		}
 
 		// Suscripciones por costo se conectan dinámicamente cuando se cargan los costos
+		// Además, escuchar cualquier cambio del grupo 'costos' para aplicar restricción siempre
+		this.form.get('costos')?.valueChanges.subscribe(() => {
+			this.applyCuotasRestrictionIfNeeded();
+			this.applyCostosMutualExclusion();
+		});
 
 
 		// Al cambiar gestión, recargar la tabla del pensum activo (nueva UI)
@@ -276,6 +318,8 @@ export class CostosConfigComponent implements OnInit {
 				this.cuotasGroup.get(key)?.setValue(!!v, { emitEvent: false });
 			}
 		});
+
+		// No hay selector de lógica; la restricción se aplica dinámicamente al activar costos (ver ensureCostControls)
 	}
 
 	loadCarreras(): void {
@@ -405,6 +449,8 @@ export class CostosConfigComponent implements OnInit {
 			next: (res) => {
 				this.cuotas = res?.data || [];
 				for (const c of this.cuotas) this.ensureCuotaControl(Number(c.id_parametro_cuota));
+				// Aplicar restricción inmediatamente si hay costos restrictivos activos
+				this.applyCuotasRestrictionIfNeeded();
 			},
 			error: () => { this.cuotas = []; }
 		});
@@ -528,11 +574,27 @@ export class CostosConfigComponent implements OnInit {
 		this.cobrosService.deleteCostoSemestral(Number(id)).subscribe({
 			next: () => {
 				const cp = this.deletingRow?.cod_pensum as string | undefined;
+				const gs = this.deletingRow?.gestion as string | undefined;
+				const sem = this.deletingRow?.semestre;
+				const turnoKey = String(this.deletingRow?.turno || '').trim();
+				const tipoKey = this.normalizeTipoKeyFromLabel(String(this.deletingRow?.tipo_costo || ''));
 				if (cp && this.costoSemestralMap[cp]) {
 					this.costoSemestralMap[cp] = (this.costoSemestralMap[cp] || []).filter(r => r.id_costo_semestral !== id);
 				}
 				this.closeDelete();
 				alert('Registro eliminado correctamente.');
+				// Encadenar eliminación de cuotas por contexto
+				try {
+					if (cp && gs && sem && (tipoKey === 'costo_mensual' || tipoKey === 'materia')) {
+						this.cobrosService.deleteCuotasByContext({
+							cod_pensum: cp,
+							gestion: gs,
+							semestre: sem,
+							tipo: tipoKey,
+							turno: turnoKey || undefined,
+						}).subscribe({ next: () => {}, error: () => {} });
+					}
+				} catch {}
 			},
 			error: (err) => {
 				console.error('Error al eliminar costo semestral', err);
@@ -654,6 +716,25 @@ export class CostosConfigComponent implements OnInit {
 						error: () => { /* mantener datos previos si falla */ },
 					});
 				}
+				// Encadenar actualización de cuotas por contexto
+				try {
+					const tipoKey = this.normalizeTipoKeyFromLabel(String(row?.tipo_costo || ''));
+					const turnoKey = String(row?.turno || '').trim();
+					if (tipoKey && cp && gs && row?.semestre) {
+						this.cobrosService.updateCuotasByContext({
+							cod_pensum: cp,
+							gestion: gs,
+							semestre: row.semestre,
+							monto: Number(v.monto_semestre),
+							tipo: (tipoKey === 'costo_mensual' || tipoKey === 'materia') ? tipoKey : undefined,
+							turno: turnoKey || undefined,
+						}).subscribe({
+							next: () => {},
+							error: (e) => { console.warn('Actualización de cuotas por contexto falló', e); },
+							complete: () => { /* sin alert extra */ }
+						});
+					}
+				} catch {}
 				this.editingRow = null;
 				alert('Registro actualizado correctamente.');
 			},
@@ -679,8 +760,60 @@ export class CostosConfigComponent implements OnInit {
 					const turnoCtrl = this.form.get(['costos', `${c.key}_turno`]);
 					if (v) { montoCtrl?.enable({ emitEvent: false }); turnoCtrl?.enable({ emitEvent: false }); }
 					else { montoCtrl?.disable({ emitEvent: false }); turnoCtrl?.disable({ emitEvent: false }); }
+					// Aplicar restricciones dinámicas
+					this.applyCuotasRestrictionIfNeeded();
+					this.applyCostosMutualExclusion();
 				});
 				this.wiredKeys.add(c.key);
+			}
+		}
+
+		// Aplicar estado inicial de restricciones
+		this.applyCuotasRestrictionIfNeeded();
+		this.applyCostosMutualExclusion();
+	}
+
+	private isRestrictiveLogicActive(): boolean {
+		const costosGroup = this.form.get('costos') as FormGroup;
+		for (const c of this.costosCatalogo) {
+			const enabled = costosGroup.get(`${c.key}_enabled`)?.value === true;
+			if (!enabled) continue;
+			const key = String(c.nombre_costo || '').trim().toLowerCase();
+			// Chequeo por clave exacta del catálogo
+			if (key === 'instancia' || key === 'reincorporacion' || key === 'rezagado') {
+				return true;
+			}
+			// Fallback por texto visible por si cambian claves pero el label mantiene semántica
+			const name = String(c.label || '').trim().toLowerCase();
+			if (name.includes('recupera') || name.includes('reincorp') || name.includes('rezagad')) {
+				return true;
+			}
+		}
+		return false;
+	}
+
+	private applyCuotasRestrictionIfNeeded(): void {
+		const restricted = this.isRestrictiveLogicActive();
+		this.cuotasDisabled = restricted;
+		// Marcar/desmarcar y deshabilitar/rehabilitar controles según restricción
+		const allCtrl = this.form.get('marcarTodasCuotas');
+		if (restricted) {
+			this.cuotasGroup.disable({ emitEvent: false });
+			allCtrl?.setValue(false, { emitEvent: false });
+			allCtrl?.disable({ emitEvent: false });
+			for (const c of this.cuotas) {
+				const key = `cuota_${c.id_parametro_cuota}`;
+				const ctrl = this.cuotasGroup.get(key);
+				ctrl?.setValue(false, { emitEvent: false });
+				ctrl?.disable({ emitEvent: false });
+			}
+		} else {
+			this.cuotasGroup.enable({ emitEvent: false });
+			allCtrl?.enable({ emitEvent: false });
+			for (const c of this.cuotas) {
+				const key = `cuota_${c.id_parametro_cuota}`;
+				const ctrl = this.cuotasGroup.get(key);
+				ctrl?.enable({ emitEvent: false });
 			}
 		}
 	}
@@ -737,6 +870,69 @@ export class CostosConfigComponent implements OnInit {
 		this.cobrosService.saveCostoSemestralBatch(payload).subscribe({
 			next: (res) => {
 				console.log('Guardado costo_semestral:', res?.data);
+				// Si corresponde, crear cuotas automáticamente
+				try {
+					// Detectar costos habilitados relevantes (mensual y/o arrastre) y construir lista
+					const costosGroup = this.form.get('costos') as FormGroup;
+					const selectedCosts: Array<{ tipo: string; monto: number; turno: string; }>= [];
+					for (const c of this.costosCatalogo) {
+						const enabled = costosGroup.get(`${c.key}_enabled`)?.value === true;
+						if (!enabled) continue;
+						// Normalizar tipo a claves del catálogo
+						const nameKey = (c.nombre_costo || '').toString().toLowerCase();
+						if (nameKey !== 'costo_mensual' && nameKey !== 'materia') continue;
+						const monto = parseFloat(String(costosGroup.get(`${c.key}_monto`)?.value || 0));
+						if (isNaN(monto)) continue;
+						const turnoSel = String(costosGroup.get(`${c.key}_turno`)?.value || 'TODOS');
+						selectedCosts.push({ tipo: nameKey, monto, turno: turnoSel });
+					}
+
+					const cuotasDisabled = this.cuotasDisabled;
+					if (selectedCosts.length > 0 && !cuotasDisabled) {
+						// recoger cuotas seleccionadas
+						const seleccionadas = this.cuotas.filter(c => this.cuotasGroup.get(`cuota_${c.id_parametro_cuota}`)?.value === true);
+						if (seleccionadas.length > 0) {
+							const cuotasPayload: Array<{ nombre: string; descripcion?: string | null; semestre: string; monto: number; fecha_vencimiento: string; tipo?: string; turno?: string; }> = [];
+							for (const cost of selectedCosts) {
+								const turnosToUse = (cost.turno === 'TODOS') ? this.turnos.map(t => t.key) : [cost.turno];
+								for (const s of semestres) {
+									for (const q of seleccionadas) {
+										const fv = this.toDateInput(q.fecha_vencimiento || '');
+										if (!fv) continue;
+										for (const tu of turnosToUse) {
+											cuotasPayload.push({
+												nombre: q.nombre_cuota,
+												descripcion: '',
+												semestre: String(s),
+												monto: cost.monto,
+												fecha_vencimiento: fv,
+												tipo: cost.tipo,
+												turno: tu,
+											});
+										}
+									}
+								}
+							}
+							if (cuotasPayload.length > 0) {
+								this.cobrosService.createCuotasBatch({ cod_pensum, gestion, cuotas: cuotasPayload }).subscribe({
+									next: (r) => { console.log('Cuotas batch creado/actualizado:', r?.data); },
+									error: (e) => { console.error('Error al crear cuotas en lote', e); },
+									complete: () => {
+										// Limpiar selecciones de cuotas
+										this.form.get('marcarTodasCuotas')?.setValue(false, { emitEvent: false });
+										for (const c of this.cuotas) {
+											const key = `cuota_${c.id_parametro_cuota}`;
+											this.cuotasGroup.get(key)?.setValue(false, { emitEvent: false });
+										}
+									}
+								});
+							}
+						}
+					}
+				} catch (e) {
+					console.warn('No se pudo procesar creación de cuotas automáticas:', e);
+				}
+
 				alert('Costos semestrales guardados correctamente.');
 				// Refrescar tabla del pensum activo (nueva UI) o fallback legado
 				const ap = this.activePensumForTable || this.activePensumTab;
@@ -750,6 +946,12 @@ export class CostosConfigComponent implements OnInit {
 					enCtrl?.setValue(false, { emitEvent: true }); // disparará disable de monto/turno por suscripción
 					moCtrl?.setValue('', { emitEvent: false });
 					tuCtrl?.setValue('TODOS', { emitEvent: false });
+				}
+				// Limpiar selecciones de cuotas independientemente
+				this.form.get('marcarTodasCuotas')?.setValue(false, { emitEvent: false });
+				for (const c of this.cuotas) {
+					const key = `cuota_${c.id_parametro_cuota}`;
+					this.cuotasGroup.get(key)?.setValue(false, { emitEvent: false });
 				}
 			},
 			error: (err) => {

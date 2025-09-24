@@ -23,6 +23,7 @@ use App\Http\Controllers\Api\SinCatalogoController;
 use App\Http\Controllers\Api\ParametroCostoController;
 use App\Http\Controllers\Api\ParametroCuotaController;
 use App\Http\Controllers\Api\CostoSemestralController;
+use App\Http\Controllers\Api\CuotaController;
 use App\Http\Controllers\Api\InscripcionesWebhookController;
 
 /*
@@ -95,6 +96,12 @@ Route::get('costo-semestral/pensum/{codPensum}', [CostoSemestralController::clas
 Route::post('costo-semestral/batch', [CostoSemestralController::class, 'batchStore']);
 Route::put('costo-semestral/{id}', [CostoSemestralController::class, 'update']);
 Route::delete('costo-semestral/{id}', [CostoSemestralController::class, 'destroy']);
+
+// Cuotas (creación en lote desde asignación de costos)
+Route::get('cuotas', [CuotaController::class, 'index']);
+Route::post('cuotas/batch', [CuotaController::class, 'batchStore']);
+Route::put('cuotas/context', [CuotaController::class, 'updateByContext']);
+Route::post('cuotas/context/delete', [CuotaController::class, 'deleteByContext']);
 
 // Webhooks desde SGA (inscripciones creadas)
 Route::post('webhooks/inscripciones/created', [InscripcionesWebhookController::class, 'created']);

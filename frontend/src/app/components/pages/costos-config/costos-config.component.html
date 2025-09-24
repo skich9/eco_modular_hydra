@@ -42,6 +42,7 @@
 					</div>
 				</div>
 			</div>
+
             			
 			<!-- Costos fijos / por crédito -->
 			<div class="col-12 col-lg-8">
@@ -122,12 +123,12 @@
 					<div class="card-header"><strong>Cuotas</strong></div>
 					<div class="card-body flex-grow-1 overflow-auto">
 						<div class="form-check mb-2">
-							<input class="form-check-input" type="checkbox" id="chkAllCuotas" formControlName="marcarTodasCuotas" />
+							<input class="form-check-input" type="checkbox" id="chkAllCuotas" formControlName="marcarTodasCuotas" [disabled]="cuotasDisabled" />
 							<label class="form-check-label" for="chkAllCuotas"><strong>Todas las cuotas</strong></label>
 						</div>
 						<div [formGroup]="cuotasForm" class="d-flex flex-column gap-1">
 							<div class="form-check" *ngFor="let c of cuotas">
-								<input class="form-check-input" type="checkbox" [id]="'cuota_'+c.id_parametro_cuota" [formControlName]="'cuota_'+c.id_parametro_cuota" />
+								<input class="form-check-input" type="checkbox" [id]="'cuota_'+c.id_parametro_cuota" [formControlName]="'cuota_'+c.id_parametro_cuota" [disabled]="cuotasDisabled" />
 								<label class="form-check-label" [for]="'cuota_'+c.id_parametro_cuota">
 									{{ c.nombre_cuota }}
 									<small class="text-muted ms-2" *ngIf="c.fecha_vencimiento">{{ c.fecha_vencimiento | date:'dd/MM/yyyy' }}</small>
@@ -204,9 +205,9 @@
 								<tr>
 									<th style="width:60px;">N°</th>
 									<th (click)="toggleSemSort()" style="cursor:pointer;">Semestre <i class="bi" [ngClass]="semSortAsc ? 'bi-sort-up' : 'bi-sort-down'"></i></th>
+									<th>Gestion</th>
 									<th>Costo</th>
 									<th>Valor</th>
-									<!-- <th>Costo variable</th> -->
 									<th>Turno</th>
 									<th style="width:140px;">Acciones</th>
 								</tr>
@@ -215,14 +216,9 @@
 								<tr *ngFor="let row of getRows(ap); let i = index">
 									<td>{{ i + 1 }}</td>
 									<td>{{ semLabel(row.semestre) }}</td>
+									<td>{{ row.gestion }}</td>
 									<td>{{ row.tipo_costo }}</td>
 									<td>{{ row.monto_semestre }}</td>
-									<!-- <td>
-										<div class="btn-group btn-group-sm" role="group" aria-label="Costo variable">
-											<button type="button" class="btn btn-outline-secondary">Fijo</button>
-											<button type="button" class="btn btn-outline-secondary">Variable</button>
-										</div>
-									</td> -->
 									<td>{{ displayTurno(row.turno) }}</td>
 									<td>
 										<button type="button" title="Editar" class="btn btn-sm btn-outline-primary me-1" (click)="openEdit(row)"><i class="fas fa-edit"></i></button>

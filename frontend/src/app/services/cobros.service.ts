@@ -144,6 +144,54 @@ export class CobrosService {
 		);
 	}
 
+	// Crear Cuotas en lote
+	createCuotasBatch(payload: {
+		cod_pensum: string;
+		gestion: string;
+		cuotas: Array<{
+			nombre: string;
+			descripcion?: string | null;
+			semestre: string;
+			monto: number;
+			fecha_vencimiento: string;
+			tipo?: string;
+			turno?: string;
+			activo?: boolean;
+		}>;
+	}): Observable<any> {
+		return this.http.post<any>(`${this.apiUrl}/cuotas/batch`, payload).pipe(
+			map((res: any) => ({ success: !!res?.success, data: res?.data || null, message: res?.message }))
+		);
+	}
+
+	// Actualizar cuotas por contexto
+	updateCuotasByContext(payload: {
+		cod_pensum: string;
+		gestion: string;
+		semestre: number | string;
+		monto: number;
+		tipo?: string;
+		turno?: string;
+		activo?: boolean;
+	}): Observable<any> {
+		return this.http.put<any>(`${this.apiUrl}/cuotas/context`, payload).pipe(
+			map((res: any) => ({ success: !!res?.success, data: res?.data || null, message: res?.message }))
+		);
+	}
+
+	// Eliminar cuotas por contexto
+	deleteCuotasByContext(payload: {
+		cod_pensum: string;
+		gestion: string;
+		semestre: number | string;
+		tipo?: string;
+		turno?: string;
+	}): Observable<any> {
+		return this.http.post<any>(`${this.apiUrl}/cuotas/context/delete`, payload).pipe(
+			map((res: any) => ({ success: !!res?.success, data: res?.data || null, message: res?.message }))
+		);
+	}
+
 	// Actualizar costo_semestral por ID
 	updateCostoSemestral(id: number, payload: { monto_semestre: number; tipo_costo?: string; turno?: string }): Observable<any> {
 		return this.http.put<any>(`${this.apiUrl}/costo-semestral/${id}`, payload).pipe(
