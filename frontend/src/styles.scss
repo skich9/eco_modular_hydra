@@ -1,2 +1,23 @@
+/* Global resets to avoid white stripes around viewport */
+html, body {
+	height: 100%;
+}
+body {
+	margin: 0; /* eliminate default browser margin causing top white stripe */
+	padding: 0;
+}
+
+/* Ensure custom in-template modals/backdrops cover the whole screen */
+.modal-backdrop {
+	position: fixed !important;
+	inset: 0 !important; /* top/right/bottom/left: 0 */
+	z-index: 2000 !important;
+}
+.modal-backdrop.show {
+	opacity: .5 !important;
+}
+.modal.fade.show {
+	z-index: 2001 !important;
+}
 /* You can add global styles to this file, and also import other style files */
 @import './assets/css/styles.css';

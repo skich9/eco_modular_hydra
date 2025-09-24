@@ -25,6 +25,31 @@ export class CobrosService {
 		);
 	}
 
+	// ===================== Parámetros de Cuotas =====================
+	getParametrosCuotasActivas(): Observable<any> {
+		return this.http.get<any>(`${this.apiUrl}/parametros-cuota/activos`).pipe(
+			map((res: any) => ({ success: !!res?.success, data: res?.data || [], message: res?.message }))
+		);
+	}
+
+	getParametrosCuotasAll(): Observable<any> {
+		return this.http.get<any>(`${this.apiUrl}/parametros-cuota`).pipe(
+			map((res: any) => ({ success: !!res?.success, data: res?.data || [], message: res?.message }))
+		);
+	}
+
+	createParametroCuota(payload: { nombre_cuota: string; fecha_vencimiento: string; activo: boolean }): Observable<any> {
+		return this.http.post<any>(`${this.apiUrl}/parametros-cuota`, payload).pipe(
+			map((res: any) => ({ success: !!res?.success, data: res?.data || null, message: res?.message }))
+		);
+	}
+
+	updateParametroCuota(id: number, payload: { fecha_vencimiento: string }): Observable<any> {
+		return this.http.put<any>(`${this.apiUrl}/parametros-cuota/${id}`, payload).pipe(
+			map((res: any) => ({ success: !!res?.success, data: res?.data || null, message: res?.message }))
+		);
+	}
+
 	batchStore(payload: any): Observable<any> {
 		return this.http.post<any>(`${this.baseUrl}/batch`, payload).pipe(
 			map((res: any) => ({ success: !!res?.success, data: res?.data, message: res?.message }))

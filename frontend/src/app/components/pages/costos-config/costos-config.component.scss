@@ -29,3 +29,34 @@
 @media (max-width: 768px) {
 	.card .w-50 { width: 100% !important; }
 }
+
+/* ===== Layout sincronizado entre Costos y (Semestres + Cuotas) ===== */
+/* Permitir que los card-body con overflow-auto puedan reducirse y hacer scroll */
+.card-body.overflow-auto {
+	min-height: 0; /* necesario en algunos navegadores para que el flexbox permita el scroll interno */
+}
+
+/* Columna derecha como contenedor flexible (semestres arriba, cuotas llenando el resto) */
+.right-col {
+	min-height: 0; /* permite que el hijo overflow-auto funcione correctamente */
+}
+
+/* Asegurar que las columnas del row se estiren a la misma altura */
+.row.align-items-stretch > [class*='col-'] {
+	display: flex;
+	flex-direction: column;
+}
+
+/* ===== Fix modal overlay (cubrir toda la pantalla y sobre navbars) ===== */
+:host ::ng-deep .modal-backdrop.show {
+	position: fixed;
+	top: 0;
+	left: 0;
+	width: 100vw;
+	height: 100vh;
+	z-index: 2000 !important; /* por encima de headers/navbars */
+}
+
+:host ::ng-deep .modal.fade.show {
+	z-index: 2001 !important; /* por encima del backdrop */
+}

@@ -1,4 +1,4 @@
-import { Component, OnInit } from '@angular/core';
+		import { Component, OnInit } from '@angular/core';
 import { CommonModule } from '@angular/common';
 import { FormBuilder, FormControl, FormGroup, FormsModule, ReactiveFormsModule, Validators } from '@angular/forms';
 import { CobrosService } from '../../../services/cobros.service';
@@ -19,6 +19,17 @@ export class CostosConfigComponent implements OnInit {
 	gestiones: any[] = [];
 	loading = false;
 	private wiredKeys = new Set<string>();
+
+	// Cuotas
+	cuotas: Array<{ id_parametro_cuota: number; nombre_cuota: string; fecha_vencimiento?: string; activo: boolean }> = [];
+	cuotasGroup: FormGroup;
+	// Modales de cuotas
+	addCuotaOpen = false;
+	addCuotaForm: FormGroup;
+	editCuotasOpen = false;
+	editCuotasLoading = false;
+	editCuotasList: Array<{ id_parametro_cuota: number; nombre_cuota: string; fecha_vencimiento?: string; activo: boolean }> = [];
+	editCuotasForm: FormGroup;
 
 	// Tabs y datos de costo_semestral
 	activePensumTab: string | null = null; // legado (no usado en nueva UI)
@@ -82,7 +93,9 @@ export class CostosConfigComponent implements OnInit {
 			costos: this.fb.group({}),
 			// Semestres
 			marcarTodosSemestres: [false],
-			sem1: [false], sem2: [false], sem3: [false], sem4: [false], sem5: [false], sem6: [false]
+			sem1: [false], sem2: [false], sem3: [false], sem4: [false], sem5: [false], sem6: [false],
+			// Cuotas
+			marcarTodasCuotas: [false],
 		});
 
 		// Los controles por costo se agregarán dinámicamente al cargar desde backend
@@ -102,6 +115,121 @@ export class CostosConfigComponent implements OnInit {
 			descripcion: [''],
 			activo: [true],
 		});
+
+		// Grupo de cuotas (se llena dinámicamente)
+		this.cuotasGroup = this.fb.group({});
+
+		// Formularios de cuotas
+		this.addCuotaForm = this.fb.group({
+			nombre_cuota: ['', Validators.required],
+			fecha_vencimiento: ['', Validators.required],
+			activo: [true]
+		});
+		this.editCuotasForm = this.fb.group({});
+	}
+
+	// --- Cuotas: Modales y flujos ---
+	addCuota(): void {
+		this.addCuotaForm.reset({ nombre_cuota: '', fecha_vencimiento: '', activo: true });
+		this.addCuotaOpen = true;
+	}
+
+	closeAddCuota(): void { this.addCuotaOpen = false; }
+
+	saveAddCuota(): void {
+		if (this.addCuotaForm.invalid) {
+			this.addCuotaForm.markAllAsTouched();
+			return;
+		}
+		const v = this.addCuotaForm.value as any;
+		const payload = {
+			nombre_cuota: String(v.nombre_cuota || '').trim(),
+			fecha_vencimiento: String(v.fecha_vencimiento || ''),
+			activo: !!v.activo
+		};
+		if (!payload.nombre_cuota || !payload.fecha_vencimiento) return;
+		this.cobrosService.createParametroCuota(payload).subscribe({
+			next: (res) => {
+				const item = res?.data;
+				if (item) {
+					// Si está activo, agregar a la lista visible
+					if (item.activo) {
+						this.cuotas = [...this.cuotas, item];
+						this.ensureCuotaControl(Number(item.id_parametro_cuota));
+					}
+				}
+				this.addCuotaOpen = false;
+			},
+			error: () => { alert('No se pudo crear la cuota.'); }
+		});
+	}
+
+	editCuota(): void {
+		this.editCuotasLoading = true;
+		this.cobrosService.getParametrosCuotasAll().subscribe({
+			next: (res) => {
+				this.editCuotasList = (res?.data || []) as any[];
+				// Construir controles para fechas
+				const controls: Record<string, FormControl> = {};
+				for (const c of this.editCuotasList) {
+					controls[`fecha_${c.id_parametro_cuota}`] = new FormControl(this.toDateInput(c.fecha_vencimiento || ''));
+					controls[`activo_${c.id_parametro_cuota}`] = new FormControl(!!c.activo);
+				}
+				this.editCuotasForm = this.fb.group(controls);
+				this.editCuotasOpen = true;
+			},
+			error: () => { this.editCuotasList = []; },
+			complete: () => { this.editCuotasLoading = false; }
+		});
+	}
+
+	closeEditCuotas(): void { this.editCuotasOpen = false; this.editCuotasList = []; this.editCuotasForm.reset({}); }
+
+	saveEditCuotas(): void {
+		if (!this.editCuotasList || this.editCuotasList.length === 0) { this.editCuotasOpen = false; return; }
+		this.editCuotasLoading = true;
+		let pending = this.editCuotasList.length;
+		let failed = 0;
+		for (const c of this.editCuotasList) {
+			const ctrlKey = `fecha_${c.id_parametro_cuota}`;
+			const newDate = String(this.editCuotasForm.get(ctrlKey)?.value || '').trim();
+			const oldDate = this.toDateInput(c.fecha_vencimiento || '');
+			const activoKey = `activo_${c.id_parametro_cuota}`;
+			const newActivo = this.editCuotasForm.get(activoKey)?.value === true;
+			const oldActivo = !!c.activo;
+
+			const payload: any = {};
+			if (newDate && newDate !== oldDate) payload.fecha_vencimiento = newDate;
+			if (newActivo !== oldActivo) payload.activo = newActivo;
+			if (Object.keys(payload).length === 0) { pending--; if (pending===0) this.finishEditBatch(failed); continue; }
+
+			this.cobrosService.updateParametroCuota(Number(c.id_parametro_cuota), payload).subscribe({
+				next: () => {},
+				error: () => { failed++; },
+				complete: () => {
+					pending--;
+					if (pending === 0) this.finishEditBatch(failed);
+				}
+			});
+		}
+	}
+
+	private finishEditBatch(failed: number): void {
+		this.editCuotasLoading = false;
+		this.editCuotasOpen = false;
+		if (failed > 0) alert(`Algunas cuotas no se pudieron actualizar (${failed}).`);
+		else alert('Cuotas actualizadas correctamente.');
+		// Refrescar lista visible de cuotas activas (fechas)
+		this.loadCuotasActivas();
+	}
+
+	private toDateInput(val: string): string {
+		if (!val) return '';
+		// Normalizar formatos 'YYYY-MM-DD', 'YYYY-MM-DD HH:mm:ss', ISO
+		const s = String(val);
+		if (s.includes('T')) return s.substring(0, 10);
+		if (s.includes(' ')) return s.substring(0, 10);
+		return s;
 	}
 
 	ngOnInit(): void {
@@ -109,6 +237,7 @@ export class CostosConfigComponent implements OnInit {
 		this.loadParametrosCostosActivos();
 		this.loadCarreras();
 		this.loadGestiones();
+		this.loadCuotasActivas();
 
 		// Habilitar/deshabilitar monto por turno
 		for (const t of this.turnos) {
@@ -138,6 +267,14 @@ export class CostosConfigComponent implements OnInit {
 		// Marcar todos los semestres
 		this.form.get('marcarTodosSemestres')?.valueChanges.subscribe((v: boolean) => {
 			['sem1','sem2','sem3','sem4','sem5','sem6'].forEach(k => this.form.get(k)?.setValue(!!v, { emitEvent: false }));
+		});
+
+		// Marcar todas las cuotas
+		this.form.get('marcarTodasCuotas')?.valueChanges.subscribe((v: boolean) => {
+			for (const c of this.cuotas) {
+				const key = `cuota_${c.id_parametro_cuota}`;
+				this.cuotasGroup.get(key)?.setValue(!!v, { emitEvent: false });
+			}
 		});
 	}
 
@@ -254,6 +391,23 @@ export class CostosConfigComponent implements OnInit {
 		// Reset de búsqueda al cambiar de pensum para claridad
 		this.searchQuery = '';
 		this.loadCostoSemestral(codPensum);
+	}
+
+	private ensureCuotaControl(id: number): void {
+		const key = `cuota_${id}`;
+		if (!this.cuotasGroup.contains(key)) {
+			this.cuotasGroup.addControl(key, new FormControl(false));
+		}
+	}
+
+	private loadCuotasActivas(): void {
+		this.cobrosService.getParametrosCuotasActivas().subscribe({
+			next: (res) => {
+				this.cuotas = res?.data || [];
+				for (const c of this.cuotas) this.ensureCuotaControl(Number(c.id_parametro_cuota));
+			},
+			error: () => { this.cuotas = []; }
+		});
 	}
 
 	// Etiquetas amigables para la tabla
@@ -608,5 +762,10 @@ export class CostosConfigComponent implements OnInit {
 	// Getter tipado para evitar AbstractControl | null en la plantilla
 	get costosGroup(): FormGroup {
 		return this.form.get('costos') as FormGroup;
+	}
+
+	// Getter para el form group de cuotas en la plantilla
+	get cuotasForm(): FormGroup {
+		return this.cuotasGroup;
 	}
 }

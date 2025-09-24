@@ -21,6 +21,7 @@ use App\Http\Controllers\Api\CuentaBancariaController;
 use App\Http\Controllers\Api\SinActividadController;
 use App\Http\Controllers\Api\SinCatalogoController;
 use App\Http\Controllers\Api\ParametroCostoController;
+use App\Http\Controllers\Api\ParametroCuotaController;
 use App\Http\Controllers\Api\CostoSemestralController;
 use App\Http\Controllers\Api\InscripcionesWebhookController;
 
@@ -82,6 +83,12 @@ Route::get('parametros-costos', [ParametroCostoController::class, 'index']);
 Route::get('parametros-costos/activos', [ParametroCostoController::class, 'activos']);
 Route::post('parametros-costos', [ParametroCostoController::class, 'store']);
 Route::put('parametros-costos/{id}', [ParametroCostoController::class, 'update']);
+
+// Parámetros de cuotas
+Route::get('parametros-cuota', [ParametroCuotaController::class, 'index']);
+Route::get('parametros-cuota/activos', [ParametroCuotaController::class, 'activos']);
+Route::post('parametros-cuota', [ParametroCuotaController::class, 'store']);
+Route::put('parametros-cuota/{id}', [ParametroCuotaController::class, 'update']);
 
 // Costo semestral por pensum (gestion opcional)
 Route::get('costo-semestral/pensum/{codPensum}', [CostoSemestralController::class, 'byPensum']);
