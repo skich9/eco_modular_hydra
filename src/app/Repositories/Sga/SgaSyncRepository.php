@@ -195,6 +195,112 @@ class SgaSyncRepository
 	}
 
 	/**
+	 * Sincroniza materias desde SGA hacia la tabla local 'materia'.
+	 * - Origen: materia (SGA) con columnas: sigla_materia, cod_pensum, nombre_materia, nombre_materia_oficial,
+	 *   nivel_materia, activa, orden, descripcion, ... (otros campos se ignoran)
+	 * - Destino: materia (MySQL) con columnas: sigla_materia, cod_pensum, nombre_materia, nombre_material_oficial,
+	 *   nivel_materia, activo, orden, descripcion, nro_creditos
+	 * - Requiere mapeo cod_pensum (SGA -> local) por carrera, usando pensum_map cuando el código no existe igual en local.
+	 */
+	public function syncMaterias(string $source, int $chunk = 1000, bool $dryRun = false): array
+	{
+		$source = in_array($source, ['sga_elec','sga_mec']) ? $source : 'sga_elec';
+		$carreraLabel = $source === 'sga_elec' ? 'Electricidad y Electrónica Automotriz' : 'Mecánica Automotriz';
+		$total = 0; $inserted = 0; $updated = 0; $skipped = 0;
+
+		if (!Schema::hasTable('materia')) {
+			return compact('source','total','inserted','updated','skipped');
+		}
+
+		DB::connection($source)
+			->table('materia')
+			->orderBy('cod_pensum')
+			->chunk($chunk, function ($rows) use (&$total, &$inserted, &$updated, &$skipped, $dryRun, $carreraLabel) {
+				$total += count($rows);
+				if (empty($rows)) { return; }
+
+				// 1) Preparar mapeo de pensum (SGA -> local) para esta carrera
+				$sgaCodes = [];
+				foreach ($rows as $r) {
+					$cp = trim((string) ($r->cod_pensum ?? ''));
+					if ($cp !== '') { $sgaCodes[] = mb_substr($cp, 0, 50); }
+				}
+				$sgaCodes = array_values(array_unique($sgaCodes));
+				$map = [];
+				// a) códigos que ya existen localmente
+				if (!empty($sgaCodes)) {
+					$existingLocal = DB::table('pensums')->whereIn('cod_pensum', $sgaCodes)->pluck('cod_pensum')->all();
+					foreach ($existingLocal as $cp) { $map[$cp] = $cp; }
+				}
+				// b) mapeo en pensum_map por carrera
+				if (!empty($sgaCodes)) {
+					$pairs = DB::table('pensum_map')
+						->where('carrera', $carreraLabel)
+						->whereIn('cod_pensum_sga', $sgaCodes)
+						->pluck('cod_pensum_local', 'cod_pensum_sga')
+						->all();
+					$map = array_replace($map, $pairs); // [sga => local]
+				}
+
+				$now = now();
+				$payload = [];
+				foreach ($rows as $r) {
+					$sigla = trim((string) ($r->sigla_materia ?? ''));
+					$codSga = trim((string) ($r->cod_pensum ?? ''));
+					if ($sigla === '' || $codSga === '') { continue; }
+					$codSga = mb_substr($codSga, 0, 50);
+					if (!isset($map[$codSga])) { $skipped++; continue; }
+					$codLocal = $map[$codSga];
+					$level = trim((string) ($r->nivel_materia ?? ''));
+					$level = $level === '' ? '1' : mb_substr($level, 0, 50);
+
+					$payload[] = [
+						'sigla_materia'           => mb_substr($sigla, 0, 255),
+						'cod_pensum'              => mb_substr((string) $codLocal, 0, 50),
+						'nombre_materia'          => mb_substr((string) ($r->nombre_materia ?? ''), 0, 50),
+						'nombre_material_oficial' => mb_substr((string) ($r->nombre_materia_oficial ?? ''), 0, 50),
+						'nivel_materia'           => $level,
+						'activo'                  => isset($r->activa) ? (bool) $r->activa : true,
+						'orden'                   => isset($r->orden) ? (int) $r->orden : 0,
+						'descripcion'             => $this->substrNull($r->descripcion ?? null, 255),
+						'nro_creditos'            => isset($r->nro_creditos) ? (float) $r->nro_creditos : 0,
+						'created_at'              => $now,
+						'updated_at'              => $now,
+					];
+				}
+
+				if ($dryRun || empty($payload)) { return; }
+
+				// Upsert por PK compuesta (sigla_materia, cod_pensum)
+				DB::table('materia')->upsert(
+					$payload,
+					['sigla_materia','cod_pensum'],
+					['nombre_materia','nombre_material_oficial','nivel_materia','activo','orden','descripcion','nro_creditos','updated_at']
+				);
+
+				// Estimar inserted/updated
+				$pairs = array_map(function($p){ return $p['sigla_materia'].'-'.$p['cod_pensum']; }, $payload);
+				$uniqSiglas = array_values(array_unique(array_column($payload, 'sigla_materia')));
+				$uniqPensums = array_values(array_unique(array_column($payload, 'cod_pensum')));
+				$existingPairs = [];
+				if (!empty($uniqSiglas) && !empty($uniqPensums)) {
+					$existRows = DB::table('materia')
+						->whereIn('sigla_materia', $uniqSiglas)
+						->whereIn('cod_pensum', $uniqPensums)
+						->select('sigla_materia','cod_pensum')
+						->get();
+					foreach ($existRows as $er) { $existingPairs[$er->sigla_materia.'-'.$er->cod_pensum] = true; }
+				}
+				$existingCount = 0;
+				foreach ($pairs as $k) { if (isset($existingPairs[$k])) { $existingCount++; } }
+				$updated += $existingCount;
+				$inserted += (count($payload) - $existingCount);
+			});
+
+		return compact('source','total','inserted','updated','skipped');
+	}
+
+	/**
 	 * Sincroniza catálogo de documentos (doc_estudiante) desde SGA hacia tabla local 'doc_estudiante'.
 	 * La tabla local solo contiene la PK 'nombre_doc'. Se usa insertOrIgnore.
 	 */
