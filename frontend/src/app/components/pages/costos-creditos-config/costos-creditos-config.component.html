@@ -1,0 +1,90 @@
+<div class="container py-3">
+  <h2 class="mb-3">Configuración de Costos por Créditos</h2>
+
+  <form [formGroup]="form">
+    <div class="row g-3">
+      <!-- Gestión -->
+      <div class="col-12 col-lg-3">
+        <div class="card shadow-sm h-100">
+          <div class="card-header"><strong>Seleccione una Gestión</strong></div>
+          <div class="card-body">
+            <select class="form-select" formControlName="gestion">
+              <option value="">-- Seleccione --</option>
+              <option *ngFor="let g of gestiones" [value]="g.gestion">{{ g.gestion }}</option>
+            </select>
+          </div>
+        </div>
+      </div>
+
+      <!-- Carrera -->
+      <div class="col-12 col-lg-5">
+        <div class="card shadow-sm h-100">
+          <div class="card-header"><strong>Seleccione una Carrera</strong></div>
+          <div class="card-body">
+            <select class="form-select" formControlName="carrera">
+              <option value="">-- Seleccione --</option>
+              <option *ngFor="let c of carreras" [value]="c.codigo_carrera">{{ c.nombre || c.descripcion || c.codigo_carrera }}</option>
+            </select>
+          </div>
+        </div>
+      </div>
+
+      <!-- Pensum -->
+      <div class="col-12 col-lg-4">
+        <div class="card shadow-sm h-100">
+          <div class="card-header"><strong>Pensum</strong></div>
+          <div class="card-body">
+            <select class="form-select" formControlName="pensum">
+              <option value="">-- Seleccione --</option>
+              <option *ngFor="let p of pensums" [value]="p.cod_pensum">{{ p.nombre || p.descripcion || p.cod_pensum }}</option>
+            </select>
+          </div>
+        </div>
+      </div>
+    </div>
+  </form>
+  
+  <!-- Tabs por Semestre -->
+  <div class="mt-4" *ngIf="form.get('pensum')?.value; else msgSeleccione">
+    <ul class="nav nav-tabs">
+      <li class="nav-item" *ngFor="let s of semTabs">
+        <button type="button" class="nav-link" [class.active]="activeSem===s" (click)="selectSem(s)">
+          {{ semLabel(s) }}
+        </button>
+      </li>
+    </ul>
+    <div class="border border-top-0 p-3">
+      <div class="table-responsive">
+        <table class="table table-sm align-middle table-bordered">
+          <thead class="table-light">
+            <tr>
+              <th style="width:60px;">N°</th>
+              <th>Tipo</th>
+              <th>Valor por crédito</th>
+              <th>Turno</th>
+              <th style="width:140px;">Acciones</th>
+            </tr>
+          </thead>
+          <tbody>
+            <tr *ngFor="let row of getRowsForActive(); let i = index">
+              <td>{{ i + 1 }}</td>
+              <td>{{ row.tipo }}</td>
+              <td>{{ row.valor_credito }}</td>
+              <td>{{ row.turno }}</td>
+              <td>
+                <button type="button" class="btn btn-sm btn-outline-primary me-1" title="Editar" disabled><i class="fas fa-edit"></i></button>
+                <button type="button" class="btn btn-sm btn-outline-danger ms-1" title="Eliminar" disabled><i class="fas fa-trash"></i></button>
+              </td>
+            </tr>
+            <tr *ngIf="getRowsForActive().length === 0">
+              <td colspan="5" class="text-center text-muted">No hay registros para {{ semLabel(activeSem) }}.</td>
+            </tr>
+          </tbody>
+        </table>
+      </div>
+    </div>
+  </div>
+  <ng-template #msgSeleccione>
+    <div class="mt-4 text-muted">Seleccione gestión, carrera y pensum para ver los semestres.</div>
+  </ng-template>
+</div>

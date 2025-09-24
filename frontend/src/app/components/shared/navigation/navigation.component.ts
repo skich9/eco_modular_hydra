@@ -64,6 +64,7 @@ export class NavigationComponent implements OnInit {
 				{ name: 'Parámetros de Sistema', icon: 'fa-sliders-h', route: '/parametros' },
 				{ name: 'Configuración de Descuentos', icon: 'fa-percent', route: '/descuentos' },
 				{ name: 'Configuración de Costos', icon: 'fa-coins', route: '/costos' },
+				{ name: 'Configuración de Costos por Créditos', icon: 'fa-calculator', route: '/costos-creditos' },
 				{ name: 'Configuraciones Generales', icon: 'fa-cogs', route: '/configuraciones-generales' }
 			]
 		}

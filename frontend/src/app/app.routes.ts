@@ -67,6 +67,11 @@ export const routes: Routes = [
 				path: 'costos',
 				loadComponent: () => import('./components/pages/costos-config/costos-config.component').then(m => m.CostosConfigComponent)
 			},
+			// Ruta para Configuración de Costos por Créditos
+			{
+				path: 'costos-creditos',
+				loadComponent: () => import('./components/pages/costos-creditos-config/costos-creditos-config.component').then(m => m.CostosCreditosConfigComponent)
+			},
 			// Ruta para Cobros (resumen y registro por lote)
 			{
 				path: 'cobros',
