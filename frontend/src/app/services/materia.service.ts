@@ -53,4 +53,9 @@ export class MateriaService {
 	toggleStatus(sigla: string, pensum: string): Observable<{ success: boolean; data: Materia; message: string }> {
 		return this.http.put<{ success: boolean; data: Materia; message: string }>(`${this.apiUrl}/${sigla}/${pensum}/toggle-status`, {});
 	}
+
+	// Actualizar créditos en lote
+	batchUpdateCredits(items: Array<{ sigla_materia: string; cod_pensum: string; nro_creditos: number }>): Observable<{ success: boolean; data: { updated: number; not_found: number } }> {
+		return this.http.post<{ success: boolean; data: { updated: number; not_found: number } }>(`${this.apiUrl}/credits/batch`, { items });
+	}
 }

@@ -15,7 +15,7 @@ export class CostoMateriaService {
 		return {
 			...item,
 			id_costo_materia: item?.id_costo_materia != null ? Number(item.id_costo_materia) : item?.id_costo_materia,
-			nro_creditos: item?.nro_creditos != null && item.nro_creditos !== '' ? Number(item.nro_creditos) : undefined,
+			valor_credito: item?.valor_credito != null && item.valor_credito !== '' ? Number(item.valor_credito) : 0,
 			monto_materia: item?.monto_materia != null && item.monto_materia !== '' ? Number(item.monto_materia) : 0
 		} as CostoMateria;
 	}
@@ -28,6 +28,12 @@ export class CostoMateriaService {
 				if (res && Array.isArray(res.data)) return { success: !!res.success, data: normalize(res.data) };
 				return { success: false, data: [] as CostoMateria[] };
 			})
+		);
+	}
+
+	batchUpsert(gestion: string, items: Array<{ cod_pensum: string; sigla_materia: string; valor_credito: number; monto_materia: number; id_usuario: number }>): Observable<{ success: boolean; data: any }> {
+		return this.http.post<any>(`${this.apiUrl}/batch`, { gestion, items }).pipe(
+			map((res: any) => ({ success: !!res?.success, data: res?.data }))
 		);
 	}
 

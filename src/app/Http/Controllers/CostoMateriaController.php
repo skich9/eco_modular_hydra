@@ -28,7 +28,7 @@ class CostoMateriaController extends Controller
             'cod_pensum' => 'required|string|max:50',
             'sigla_materia' => 'required|string|max:255',
             'gestion' => 'required|string|max:30',
-            'nro_creditos' => 'required|numeric|min:0',
+            'valor_credito' => 'required|numeric|min:0',
             'monto_materia' => 'nullable|numeric|min:0',
             'id_usuario' => 'required|exists:usuarios,id_usuario'
         ]);
@@ -64,7 +64,7 @@ class CostoMateriaController extends Controller
 
         $validated = $request->validate([
             'cod_pensum' => 'sometimes|string|max:50',
-            'nro_creditos' => 'sometimes|numeric|min:0',
+            'valor_credito' => 'sometimes|numeric|min:0',
             'monto_materia' => 'nullable|numeric|min:0',
             'id_usuario' => 'sometimes|exists:usuarios,id_usuario'
         ]);
@@ -115,6 +115,61 @@ class CostoMateriaController extends Controller
     }
 
     /**
+     * Inserta/actualiza en lote registros de costo_materia.
+     * Body esperado:
+     * {
+     *   "gestion": "2/2025",
+     *   "items": [
+     *     { "cod_pensum": "MEA", "sigla_materia": "M-AUT100", "valor_credito": 222.22, "monto_materia": 666.66, "id_usuario": 1 }
+     *   ]
+     * }
+     */
+    public function batchUpsert(Request $request)
+    {
+        $data = $request->validate([
+            'gestion' => 'required|string|max:30',
+            'items' => 'required|array|min:1',
+            'items.*.cod_pensum' => 'required|string|max:50',
+            'items.*.sigla_materia' => 'required|string|max:255',
+            'items.*.valor_credito' => 'required|numeric|min:0',
+            'items.*.monto_materia' => 'required|numeric|min:0',
+            'items.*.id_usuario' => 'required|exists:usuarios,id_usuario',
+        ]);
+
+        $created = 0; $updated = 0; $rows = [];
+        DB::transaction(function () use ($data, & $created, & $updated, & $rows) {
+            foreach ($data['items'] as $it) {
+                $attrs = [
+                    'cod_pensum' => $it['cod_pensum'],
+                    'sigla_materia' => $it['sigla_materia'],
+                    'gestion' => $data['gestion'],
+                ];
+                $vals = [
+                    'valor_credito' => $it['valor_credito'],
+                    'monto_materia' => $it['monto_materia'],
+                    'id_usuario' => $it['id_usuario'],
+                ];
+                $existing = CostoMateria::where($attrs)->first();
+                if ($existing) {
+                    $existing->fill($vals)->save();
+                    $updated++;
+                    $rows[] = $existing;
+                } else {
+                    $model = new CostoMateria(array_merge($attrs, $vals));
+                    $model->save();
+                    $created++;
+                    $rows[] = $model;
+                }
+            }
+        });
+
+        return response()->json([
+            'success' => true,
+            'data' => [ 'created' => $created, 'updated' => $updated, 'rows' => $rows ],
+        ]);
+    }
+
+    /**
      * Genera costos por crédito para todas las materias de un pensum en una gestión dada.
      * Si existe costo previo para (sigla_materia, cod_pensum, gestion) se actualiza el monto.
      */
@@ -144,7 +199,7 @@ class CostoMateriaController extends Controller
                     'gestion' => $validated['gestion'],
                 ];
                 $vals = [
-                    'nro_creditos' => $m->nro_creditos,
+                    'valor_credito' => $validated['valor_credito'],
                     'monto_materia' => $monto,
                     'id_usuario' => $validated['id_usuario'],
                 ];

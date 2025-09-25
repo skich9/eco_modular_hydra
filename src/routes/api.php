@@ -129,6 +129,7 @@ Route::get('carreras/{codigo}/pensums', [ApiCarreraController::class, 'pensums']
 Route::get('materias', [ApiMateriaController::class, 'index']);
 Route::post('materias', [ApiMateriaController::class, 'store']);
 // Materias: endpoints adicionales (más específicos primero)
+Route::post('materias/credits/batch', [ApiMateriaController::class, 'batchUpdateCredits']);
 Route::get('materias/pensum/{codPensum}', [ApiMateriaController::class, 'getByPensum']);
 Route::get('materias/search', [ApiMateriaController::class, 'search']);
 // Materias: endpoints por clave compuesta (colocadas después para evitar colisiones)
@@ -141,6 +142,7 @@ Route::put('materias/{sigla}/{pensum}/toggle-status', [ApiMateriaController::cla
 Route::apiResource('costo-materia', CostoMateriaController::class);
 Route::get('costo-materia/gestion/{gestion}/materia/{siglaMateria}', [CostoMateriaController::class, 'getByGestionAndMateria'])->where('gestion', '.*');
 Route::get('costo-materia/gestion/{gestion}', [CostoMateriaController::class, 'getByGestion'])->where('gestion', '.*');
+Route::post('costo-materia/batch', [CostoMateriaController::class, 'batchUpsert']);
 Route::post('costo-materia/generate', [CostoMateriaController::class, 'generateByPensumGestion']);
 
 //Gestión

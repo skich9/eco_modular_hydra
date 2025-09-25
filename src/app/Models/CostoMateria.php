@@ -18,13 +18,13 @@ class CostoMateria extends Model
         'cod_pensum',
         'sigla_materia',
         'gestion',
-        'nro_creditos',
+        'valor_credito',
         'monto_materia',
         'id_usuario'
     ];
 
     protected $casts = [
-        'nro_creditos' => 'decimal:2',
+        'valor_credito' => 'decimal:2',
         'monto_materia' => 'decimal:2',
         'created_at' => 'datetime',
         'updated_at' => 'datetime'

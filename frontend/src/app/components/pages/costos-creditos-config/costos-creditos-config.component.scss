@@ -7,3 +7,22 @@
 .card .form-control {
 	min-height: 38px;
 }
+
+/* Input de créditos: ancho fijo y alineación a la derecha */
+.credit-input {
+	width: 120px;
+}
+
+/* Barra de guardar, centrada con padding y botón prominente */
+.save-bar {
+	button.btn {
+		box-shadow: 0 6px 16px rgba(13, 110, 253, 0.3);
+	}
+}
+
+/* Ajustes de tabla para mejor legibilidad */
+table.table {
+	th, td {
+		vertical-align: middle;
+	}
+}

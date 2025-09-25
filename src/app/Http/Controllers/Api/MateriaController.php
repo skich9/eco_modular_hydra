@@ -9,6 +9,7 @@ use Illuminate\Support\Facades\Validator;
 use Illuminate\Validation\Rule;
 use Illuminate\Support\Facades\Log;
 use Illuminate\Support\Facades\Schema;
+use Illuminate\Support\Facades\DB;
 
 class MateriaController extends Controller
 {
@@ -31,6 +32,35 @@ class MateriaController extends Controller
                 'message' => 'Error al obtener materias: ' . $e->getMessage()
             ], 500);
         }
+    }
+
+    /**
+     * Actualizar créditos en lote.
+     * Body esperado: { items: [ { sigla_materia, cod_pensum, nro_creditos } ] }
+     */
+    public function batchUpdateCredits(Request $request)
+    {
+        $payload = $request->validate([
+            'items' => 'required|array|min:1',
+            'items.*.sigla_materia' => 'required|string',
+            'items.*.cod_pensum' => 'required|string',
+            'items.*.nro_creditos' => 'required|numeric|min:0',
+        ]);
+
+        $updated = 0; $notFound = 0;
+        DB::transaction(function () use ($payload, & $updated, & $notFound) {
+            foreach ($payload['items'] as $it) {
+                $count = Materia::where('sigla_materia', $it['sigla_materia'])
+                    ->where('cod_pensum', $it['cod_pensum'])
+                    ->update(['nro_creditos' => $it['nro_creditos']]);
+                if ($count > 0) { $updated += $count; } else { $notFound++; }
+            }
+        });
+
+        return response()->json([
+            'success' => true,
+            'data' => [ 'updated' => $updated, 'not_found' => $notFound ],
+        ]);
     }
 
     /**
@@ -294,18 +324,55 @@ class MateriaController extends Controller
     public function getByPensum(string $codPensum)
     {
         try {
-            $materias = Materia::with(['pensum'])
+            if (!Schema::hasTable('materia')) {
+                return response()->json(['success' => true, 'data' => []]);
+            }
+
+            // Consulta simple con columnas reales del esquema proporcionado
+            $rows = DB::table('materia')
                 ->where('cod_pensum', $codPensum)
-                ->get();
+                ->orderBy('orden')
+                ->orderBy('sigla_materia')
+                ->get([
+                    'sigla_materia',
+                    'cod_pensum',
+                    'nombre_materia',
+                    'nombre_material_oficial',
+                    'nivel_materia',
+                    'activo',
+                    'orden',
+                    'descripcion',
+                    'nro_creditos',
+                    'created_at',
+                    'updated_at',
+                ]);
+
+            // Normalización para el frontend
+            $data = $rows->map(function ($r) {
+                $arr = (array) $r;
+                $arr['estado'] = isset($arr['activo']) ? (bool)$arr['activo'] : true;
+                if (!array_key_exists('nivel_materia', $arr) || $arr['nivel_materia'] === null || $arr['nivel_materia'] === '') {
+                    $arr['nivel_materia'] = '1';
+                }
+                if (!array_key_exists('nro_creditos', $arr) || $arr['nro_creditos'] === null || $arr['nro_creditos'] === '') {
+                    $arr['nro_creditos'] = 0;
+                }
+                if (!array_key_exists('orden', $arr) || $arr['orden'] === null || $arr['orden'] === '') {
+                    $arr['orden'] = 0;
+                }
+                return $arr;
+            })->values()->all();
+
             return response()->json([
                 'success' => true,
-                'data' => $materias,
+                'data' => $data,
             ]);
         } catch (\Exception $e) {
             Log::error('Error al obtener materias por pensum: ' . $e->getMessage());
             return response()->json([
                 'success' => false,
                 'message' => 'Error al obtener materias por pensum',
+                'error' => $e->getMessage(),
             ], 500);
         }
     }

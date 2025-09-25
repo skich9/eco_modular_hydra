@@ -59,32 +59,141 @@
           <thead class="table-light">
             <tr>
               <th style="width:60px;">N°</th>
-              <th>Tipo</th>
-              <th>Valor por crédito</th>
-              <th>Turno</th>
+              <th>Sigla</th>
+              <th>Nombre</th>
+              <th style="width:140px;">Créditos</th>
+              <th style="width:140px;">Monto</th>
+              <th style="width:90px;">Editar</th>
+            </tr>
+          </thead>
+          <tbody>
+            <tr *ngFor="let m of getMateriasForActive(); let i = index">
+              <td>{{ i + 1 }}</td>
+              <td>{{ m.sigla_materia }}</td>
+              <td>{{ m.nombre_materia }}</td>
+              <td>
+                <input type="number" step="0.01" class="form-control form-control-sm credit-input text-end" [value]="getCreditosValue(m)" [disabled]="!isEditEnabled(m)" (input)="onCreditosInput(m, $event)" />
+              </td>
+              <td class="text-end">{{ getMontoFor(m) | number:'1.2-2' }}</td>
+              <td class="text-center">
+                <input class="form-check-input" type="checkbox" [checked]="isEditEnabled(m)" (change)="onToggleEdit(m, $event.target.checked)" />
+              </td>
+            </tr>
+            <tr *ngIf="getMateriasForActive().length === 0">
+              <td colspan="6" class="text-center text-muted">No hay materias para {{ semLabel(activeSem) }}.</td>
+            </tr>
+          </tbody>
+        </table>
+      </div>
+    </div>
+    <!-- Total del semestre activo -->
+    <div class="mt-2 d-flex justify-content-end align-items-center gap-3">
+      <div class="fs-6"><strong>Total {{ semLabel(activeSem) }}:</strong></div>
+      <div class="fs-5 fw-bold">{{ getTotalForActive() | number:'1.2-2' }}</div>
+    </div>
+  </div>
+  <ng-template #msgSeleccione>
+    <div class="mt-4 text-muted">Seleccione gestión, carrera y pensum para ver los semestres.</div>
+  </ng-template>
+  <!-- Botón Guardar (fuera del card) -->
+  <div class="py-3 save-bar d-flex justify-content-center">
+    <button type="button" class="btn btn-primary btn-lg rounded-pill px-5" (click)="onSave()">
+      <i class="fas fa-save me-1"></i> Guardar
+    </button>
+  </div>
+
+  <!-- ===================== Resumen inferior ===================== -->
+  <div class="mt-4">
+    <div class="d-flex justify-content-between align-items-center mb-3 flex-wrap gap-2">
+      <h5 class="mb-0">Resumen de Materias</h5>
+    </div>
+
+    <!-- Tabs por Carrera -->
+    <ul class="nav nav-tabs">
+      <li class="nav-item" *ngFor="let c of carreras">
+        <button type="button" class="nav-link" [class.active]="activeCarreraTab===c.codigo_carrera" (click)="selectCarreraTab(c.codigo_carrera)">
+          {{ c.nombre || c.descripcion || c.codigo_carrera }}
+        </button>
+      </li>
+    </ul>
+
+    <div class="border border-top-0 p-3">
+      <div *ngIf="!activeCarreraTab" class="text-muted">Seleccione una carrera para ver su resumen.</div>
+
+      <!-- Botones por Semestre -->
+      <div class="mb-3 d-flex flex-wrap gap-2">
+        <button type="button" class="btn btn-sm" *ngFor="let s of semTabs"
+          [ngClass]="{ 'btn-primary': activeSem===s, 'btn-outline-primary': activeSem!==s }"
+          (click)="selectSem(s)">
+          {{ semLabel(s) }}
+        </button>
+      </div>
+
+      <!-- Tabla de resumen -->
+      <div class="table-responsive">
+        <table class="table table-sm align-middle table-bordered">
+          <thead class="table-light">
+            <tr>
+              <th style="width:60px;">N°</th>
+              <th>Gestión</th>
+              <th>Pensum</th>
+              <th>Sigla</th>
+              <th>Nombre</th>
+              <th style="width:140px;">Créditos</th>
+              <th style="width:140px;">Monto</th>
               <th style="width:140px;">Acciones</th>
             </tr>
           </thead>
           <tbody>
-            <tr *ngFor="let row of getRowsForActive(); let i = index">
+            <tr *ngFor="let r of getSummaryRowsForActiveCarrera(); let i = index">
               <td>{{ i + 1 }}</td>
-              <td>{{ row.tipo }}</td>
-              <td>{{ row.valor_credito }}</td>
-              <td>{{ row.turno }}</td>
+              <td>{{ r.gestion }}</td>
+              <td>{{ r.pensum }}</td>
+              <td>{{ r.sigla }}</td>
+              <td>{{ r.nombre }}</td>
+              <td class="text-end">{{ r.creditos | number:'1.2-2' }}</td>
+              <td class="text-end">{{ r.monto | number:'1.2-2' }}</td>
               <td>
-                <button type="button" class="btn btn-sm btn-outline-primary me-1" title="Editar" disabled><i class="fas fa-edit"></i></button>
-                <button type="button" class="btn btn-sm btn-outline-danger ms-1" title="Eliminar" disabled><i class="fas fa-trash"></i></button>
+                <button type="button" class="btn btn-sm btn-outline-secondary" title="Editar créditos"
+                  (click)="openEditCredit(r.sigla)"><i class="fas fa-edit"></i></button>
               </td>
             </tr>
-            <tr *ngIf="getRowsForActive().length === 0">
-              <td colspan="5" class="text-center text-muted">No hay registros para {{ semLabel(activeSem) }}.</td>
+            <tr *ngIf="getSummaryRowsForActiveCarrera().length === 0">
+              <td colspan="8" class="text-center text-muted">No hay datos para {{ semLabel(activeSem) }}.</td>
             </tr>
           </tbody>
         </table>
       </div>
     </div>
   </div>
-  <ng-template #msgSeleccione>
-    <div class="mt-4 text-muted">Seleccione gestión, carrera y pensum para ver los semestres.</div>
-  </ng-template>
+
+  <!-- Modal: Editar créditos -->
+  <div class="modal-backdrop show" *ngIf="editCreditOpen" style="display:block;"></div>
+  <div class="modal fade show" tabindex="-1" role="dialog" *ngIf="editCreditOpen" style="display:block;">
+    <div class="modal-dialog">
+      <div class="modal-content">
+        <div class="modal-header">
+          <h5 class="modal-title">Editar créditos</h5>
+          <button type="button" class="btn-close" (click)="closeEditCredit()"></button>
+        </div>
+        <div class="modal-body">
+          <div [formGroup]="editCreditForm">
+            <div class="mb-3">
+              <label class="form-label">Créditos</label>
+              <input type="number" step="0.01" class="form-control" formControlName="creditos" />
+            </div>
+            <div class="text-muted" *ngIf="selectedMateriaForEdit as m">
+              <div><strong>Sigla:</strong> {{ m.sigla_materia }}</div>
+              <div><strong>Nombre:</strong> {{ m.nombre_materia }}</div>
+              <div><strong>Pensum:</strong> {{ m.cod_pensum }}</div>
+            </div>
+          </div>
+        </div>
+        <div class="modal-footer">
+          <button type="button" class="btn btn-secondary" (click)="closeEditCredit()">Cancelar</button>
+          <button type="button" class="btn btn-primary" (click)="saveEditCredit()" [disabled]="!editCreditForm.valid">Guardar</button>
+        </div>
+      </div>
+    </div>
+  </div>
 </div>
