@@ -57,6 +57,8 @@ Route::patch('parametros-economicos/{id}/toggle-status', [ParametrosEconomicosCo
 // Recursos: Items de Cobro
 Route::apiResource('items-cobro', ItemsCobroController::class);
 Route::patch('items-cobro/{id}/toggle-status', [ItemsCobroController::class, 'toggleStatus']);
+// Sincronización desde SGA/SIN
+Route::post('items-cobro/sync-sin', [ItemsCobroController::class, 'syncFromSin']);
 
 // Formas de cobro (catálogo)
 Route::get('formas-cobro', [FormaCobroController::class, 'index']);

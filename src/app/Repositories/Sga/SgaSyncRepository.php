@@ -25,6 +25,7 @@ class SgaSyncRepository
 			return compact('source','total','inserted','updated');
 		}
 
+
 		DB::connection($source)
 			->table('estudiante')
 			->orderBy('cod_ceta')
@@ -190,6 +191,148 @@ class SgaSyncRepository
 				$updated += $existing;
 				$inserted += (count($payload) - $existing);
 			});
+
+		return compact('source','total','inserted','updated','skipped');
+	}
+
+	/**
+	 * Sincroniza Items de Cobro desde SGA (sin_item_service) hacia la tabla local 'items_cobro'.
+	 * - Clave: codigo_producto_interno
+	 * - En updates NO se sobreescriben: nro_creditos, costo, created_at
+	 * - Usa parámetro económico con nombre 'credito' para setear id_parametro_economico
+	 */
+	public function syncItemsCobro(string $source, int $chunk = 1000, bool $dryRun = false): array
+	{
+		$source = strtolower($source);
+		$total = 0; $inserted = 0; $updated = 0; $skipped = 0;
+
+		if (!Schema::hasTable('items_cobro')) {
+			return compact('source','total','inserted','updated','skipped');
+		}
+
+		$peId = DB::table('parametros_economicos')
+			->whereRaw('LOWER(TRIM(nombre)) = ?', ['credito'])
+			->value('id_parametro_economico');
+		if (!$peId) {
+			return [
+				'source' => $source,
+				'total' => 0,
+				'inserted' => 0,
+				'updated' => 0,
+				'skipped' => 0,
+				'error' => 'No existe parámetro económico con nombre "credito"',
+			];
+		}
+
+		// Solo sincronizamos desde conexiones SGA
+		$allCandidates = ['sga_elec', 'sga_mec'];
+		$connections = [];
+		switch ($source) {
+			case 'sga_elec': $connections = ['sga_elec']; break;
+			case 'sga_mec': $connections = ['sga_mec']; break;
+			case 'all':
+			default: $connections = $allCandidates; break;
+		}
+
+		// Filtrar conexiones que realmente tengan la tabla sin_item_service
+		$connections = array_values(array_filter($connections, function($conn){
+			try { return \Illuminate\Support\Facades\Schema::connection($conn)->hasTable('sin_item_service'); }
+			catch (\Throwable $e) { return false; }
+		}));
+
+		foreach ($connections as $conn) {
+			DB::connection($conn)
+				->table('sin_item_service')
+				->orderBy('id_item')
+				->chunk($chunk, function ($rows) use (&$total, &$inserted, &$updated, &$skipped, $dryRun, $peId, $conn) {
+					$total += count($rows);
+					if (empty($rows)) { return; }
+
+					$now = now();
+					$payload = [];
+					$seenCodes = [];
+					foreach ($rows as $r) {
+						$codigo = trim((string) ($r->codigo_producto_interno ?? ''));
+						$idItem = isset($r->id_item) ? (int)$r->id_item : 0;
+						$imp = isset($r->codigo_producto_impuestos) ? (int)$r->codigo_producto_impuestos : 0;
+						// Fallback robusto: generar clave única conservando longitud <= 15
+						$prefix = ($conn === 'sga_elec') ? 'E' : (($conn === 'sga_mec') ? 'M' : 'S');
+						if ($codigo === '' || $codigo === '0') {
+							if ($idItem > 0) {
+								// Ej: E1234567890123 (<=15)
+								$codigo = $prefix . substr((string)$idItem, -14);
+							} elseif ($imp > 0) {
+								// Ej: EI99100 (prefijo + I + impuesto)
+								$codigo = $prefix . 'I' . substr((string)$imp, -13);
+							}
+						}
+						$codigo = mb_substr($codigo, 0, 15);
+						if ($codigo === '' || $codigo === '0') { $skipped++; continue; }
+						// Deduplicar dentro del mismo lote para evitar inserciones repetidas de la misma clave
+						if (isset($seenCodes[$codigo])) { $skipped++; continue; }
+						$seenCodes[$codigo] = true;
+						$payload[] = [
+							'codigo_producto_interno'  => mb_substr($codigo, 0, 15),
+							'nombre_servicio'          => mb_substr((string) ($r->nombre_servicio ?? ''), 0, 100),
+							'codigo_producto_impuesto'  => isset($r->codigo_producto_impuestos) ? (int)$r->codigo_producto_impuestos : null,
+							'unidad_medida'            => isset($r->unidad_medida) ? (int)$r->unidad_medida : 0,
+							'actividad_economica'      => $this->substrNull($r->codigo_actividad_economica ?? null, 255) ?? '',
+							'facturado'                 => isset($r->facturado) ? (bool)$r->facturado : false,
+							'tipo_item'                 => 'SERVICIO',
+							'estado'                    => true,
+							'id_parametro_economico'    => (int)$peId,
+							'nro_creditos'              => 0,
+							'costo'                     => 0,
+							'created_at'                => $now,
+							'updated_at'                => $now,
+						];
+					}
+
+					if ($dryRun || empty($payload)) { return; }
+
+					// Detectar existentes por codigo_producto_interno para separar inserts/updates
+					$codes = array_column($payload, 'codigo_producto_interno');
+					$existing = DB::table('items_cobro')->whereIn('codigo_producto_interno', $codes)->pluck('codigo_producto_interno')->all();
+					$existingMap = array_fill_keys(array_map('strval', $existing), true);
+
+					$toInsert = [];
+					$toUpdate = [];
+					foreach ($payload as $row) {
+						$code = (string)$row['codigo_producto_interno'];
+						if (isset($existingMap[$code])) {
+							$toUpdate[] = [
+								'codigo_producto_interno' => $row['codigo_producto_interno'],
+								'nombre_servicio'         => $row['nombre_servicio'],
+								'codigo_producto_impuesto' => $row['codigo_producto_impuesto'],
+								'unidad_medida'           => $row['unidad_medida'],
+								'actividad_economica'     => $row['actividad_economica'],
+								'facturado'                => $row['facturado'],
+								'tipo_item'                => $row['tipo_item'],
+								'estado'                   => $row['estado'],
+								'id_parametro_economico'   => $row['id_parametro_economico'],
+								'updated_at'               => $row['updated_at'],
+							];
+						} else {
+							$toInsert[] = $row;
+						}
+					}
+
+					if (!empty($toInsert)) {
+						DB::table('items_cobro')->insert($toInsert);
+						$inserted += count($toInsert);
+					}
+					if (!empty($toUpdate)) {
+						foreach (array_chunk($toUpdate, 1000) as $chunkRows) {
+							foreach ($chunkRows as $u) {
+								DB::table('items_cobro')
+									->where('codigo_producto_interno', $u['codigo_producto_interno'])
+									->update($u);
+								$updated++;
+							}
+						}
+					}
+				});
+		}
 
 		return compact('source','total','inserted','updated','skipped');
 	}

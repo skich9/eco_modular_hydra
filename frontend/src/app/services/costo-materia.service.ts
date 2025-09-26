@@ -31,13 +31,13 @@ export class CostoMateriaService {
 		);
 	}
 
-	batchUpsert(gestion: string, items: Array<{ cod_pensum: string; sigla_materia: string; valor_credito: number; monto_materia: number; id_usuario: number }>): Observable<{ success: boolean; data: any }> {
+	batchUpsert(gestion: string, items: Array<{ cod_pensum: string; sigla_materia: string; valor_credito: number; monto_materia: number; turno?: string; id_usuario: number }>): Observable<{ success: boolean; data: any }> {
 		return this.http.post<any>(`${this.apiUrl}/batch`, { gestion, items }).pipe(
 			map((res: any) => ({ success: !!res?.success, data: res?.data }))
 		);
 	}
 
-	generateByPensumGestion(payload: { cod_pensum: string; gestion: string; valor_credito: number; id_usuario: number; semestre?: string | number }): Observable<{ success: boolean; data: any }> {
+	generateByPensumGestion(payload: { cod_pensum: string; gestion: string; valor_credito: number; id_usuario: number; semestre?: string | number; turno?: string }): Observable<{ success: boolean; data: any }> {
 		return this.http.post<any>(`${this.apiUrl}/generate`, payload).pipe(
 			map((res: any) => ({ success: !!res?.success, data: res?.data }))
 		);

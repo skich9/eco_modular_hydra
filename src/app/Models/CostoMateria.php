@@ -20,12 +20,14 @@ class CostoMateria extends Model
         'gestion',
         'valor_credito',
         'monto_materia',
+        'turno',
         'id_usuario'
     ];
 
     protected $casts = [
         'valor_credito' => 'decimal:2',
         'monto_materia' => 'decimal:2',
+        'turno' => 'string',
         'created_at' => 'datetime',
         'updated_at' => 'datetime'
     ];

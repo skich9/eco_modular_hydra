@@ -36,6 +36,8 @@ export class CostosCreditosConfigComponent implements OnInit {
   // Habilitación de edición por materia (checkbox) y mapa de créditos editables
   materiaEditEnabled: Record<string, boolean> = {};
   materiaCreditosMap: Record<string, number> = {};
+  // Turno seleccionado por materia
+  materiaTurnoMap: Record<string, 'TODOS'|'MANANA'|'TARDE'|'NOCHE'> = {};
   // Mapa de montos por materia según costo_materia (gestion actual)
   costoMateriaMontoMap: Record<string, number> = {};
   private costoMateriaAllByGestion: any[] = [];
@@ -139,6 +141,7 @@ export class CostosCreditosConfigComponent implements OnInit {
     // Limpia los checkboxes y los valores editados
     this.materiaEditEnabled = {};
     this.materiaCreditosMap = {};
+    this.materiaTurnoMap = {};
   }
 
   // Resumen por semestre bajo el botón Guardar (BASE: costo_materia)
@@ -203,6 +206,7 @@ export class CostosCreditosConfigComponent implements OnInit {
       sigla_materia: m.sigla_materia,
       valor_credito: Number(this.creditUnit || 0),
       monto_materia: this.getMontoFor(m),
+      turno: this.getTurnoValue(m),
       id_usuario
     }));
 
@@ -266,12 +270,31 @@ export class CostosCreditosConfigComponent implements OnInit {
     if (checked && this.materiaCreditosMap[k] == null) {
       this.materiaCreditosMap[k] = Number(m.nro_creditos || 0);
     }
+    if (checked && this.materiaTurnoMap[k] == null) {
+      this.materiaTurnoMap[k] = 'TODOS';
+    }
   }
 
   onCreditosInput(m: Materia, ev: Event): void {
     const input = ev.target as HTMLInputElement;
     const val = Number(input.value || 0);
     this.materiaCreditosMap[this.makeKey(m)] = val;
+  }
+
+  // Turno: helpers
+  getTurnoValue(m: Materia): 'TODOS'|'MANANA'|'TARDE'|'NOCHE' {
+    const k = this.makeKey(m);
+    return this.materiaTurnoMap[k] ?? 'TODOS';
+  }
+
+  onTurnoChange(m: Materia, value: string): void {
+    const k = this.makeKey(m);
+    const v = (value || 'TODOS').toUpperCase();
+    if (v === 'MANANA' || v === 'TARDE' || v === 'NOCHE' || v === 'TODOS') {
+      this.materiaTurnoMap[k] = v as any;
+    } else {
+      this.materiaTurnoMap[k] = 'TODOS';
+    }
   }
 
   getMontoFor(m: Materia): number {

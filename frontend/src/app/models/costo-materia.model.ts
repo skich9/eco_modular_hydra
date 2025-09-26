@@ -5,6 +5,7 @@ export interface CostoMateria {
 	gestion: string;
 	valor_credito: number;
 	monto_materia: number;
+	turno?: string;
 	id_usuario?: number;
 	created_at?: string;
 	updated_at?: string;

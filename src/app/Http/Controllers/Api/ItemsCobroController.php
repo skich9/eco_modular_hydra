@@ -7,6 +7,10 @@ use App\Models\ItemsCobro;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\Validator;
 use Illuminate\Validation\Rule;
+use Illuminate\Support\Facades\DB;
+use Illuminate\Support\Facades\Schema;
+use Illuminate\Support\Facades\Log;
+use Carbon\Carbon;
 
 class ItemsCobroController extends Controller
 {
@@ -32,6 +36,56 @@ class ItemsCobroController extends Controller
     }
 
     /**
+     * Sincronizar items de cobro desde SGA
+     *
+     * - No sobreescribe 'nro_creditos' ni 'costo' si ya existen en items_cobro
+     *
+     * Request opcional:
+     * - id_parametro_economico: int (si no se envía, se intentará buscar el parámetro con nombre 'credito')
+     */
+    public function syncFromSin(Request $request)
+    {
+        try {
+            // Parámetros como en sync de materias
+            $sourceArg = strtolower((string) $request->input('source', 'all')); // sga_elec|sga_mec|all
+            $chunk = (int) $request->input('chunk', 1000);
+            $dry = (bool) $request->boolean('dry_run', false);
+
+            $sources = [];
+            switch ($sourceArg) {
+                case 'sga_elec': $sources = ['sga_elec']; break;
+                case 'sga_mec': $sources = ['sga_mec']; break;
+                case 'all':
+                default: $sources = ['sga_elec','sga_mec']; break;
+            }
+
+            // Delegar al repositorio para mantener el patrón usado con materias
+            $repo = app(\App\Repositories\Sga\SgaSyncRepository::class);
+            $summary = [];
+            foreach ($sources as $src) {
+                try {
+                    $res = $repo->syncItemsCobro($src, $chunk, $dry);
+                    $summary[$src] = $res;
+                } catch (\Throwable $e) {
+                    $summary[$src] = ['error' => $e->getMessage()];
+                }
+            }
+
+            return response()->json([
+                'success' => true,
+                'data' => $summary,
+                'message' => 'Sincronización de Items de Cobro ejecutada'
+            ]);
+        } catch (\Throwable $e) {
+            Log::error('Error en syncFromSin: '.$e->getMessage());
+            return response()->json([
+                'success' => false,
+                'message' => 'Error al sincronizar items: '.$e->getMessage()
+            ], 500);
+        }
+    }
+
+    /**
      * Almacenar un nuevo item de cobro
      *
      * @param  \Illuminate\Http\Request  $request
@@ -52,12 +106,12 @@ class ItemsCobroController extends Controller
                 'descripcion' => 'nullable|string',
                 'estado' => 'nullable|boolean',
                 'facturado' => 'required|boolean',
-                // actividad_economica es VARCHAR(25) nullable y FK a sin_actividades.codigo_caeb
+                // actividad_economica es VARCHAR(255) nullable y FK a sin_actividades.codigo_caeb
                 // Permitimos NULL si aún no tienes el catálogo cargado.
                 'actividad_economica' => [
                     'nullable',
                     'string',
-                    'max:25',
+                    'max:255',
                     Rule::exists('sin_actividades', 'codigo_caeb')
                 ],
                 'id_parametro_economico' => 'required|integer|exists:parametros_economicos,id_parametro_economico'
@@ -153,7 +207,7 @@ class ItemsCobroController extends Controller
                 'actividad_economica' => [
                     'nullable',
                     'string',
-                    'max:25',
+                    'max:255',
                     Rule::exists('sin_actividades', 'codigo_caeb')
                 ],
                 'id_parametro_economico' => 'required|integer|exists:parametros_economicos,id_parametro_economico'
