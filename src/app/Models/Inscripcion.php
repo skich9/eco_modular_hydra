@@ -37,13 +37,16 @@ class Inscripcion extends Model
 		'id_usuario',
 		'cod_ceta',
 		'cod_pensum',
+		'cod_pensum_sga',
 		'cod_curso',
+		'carrera',
 		'nro_materia',
 		'nro_materia_aprob',
 		'gestion',
 		'tipo_estudiante',
 		'fecha_inscripcion',
 		'tipo_inscripcion',
+		'source_cod_inscrip',
 	];
 
 	public function estudiante()
