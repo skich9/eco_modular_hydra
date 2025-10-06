@@ -260,6 +260,9 @@ class CobroController extends Controller
 			// Determinar pensum a usar (desde la inscripción principal, si existe)
 			$codPensumToUse = optional($primaryInscripcion)->cod_pensum ?: optional($estudiante)->cod_pensum;
 
+			// Identificar (si existe) la inscripción ARRASTRE en la gestión seleccionada
+			$arrastreInscripcion = $inscripciones->firstWhere('tipo_inscripcion', 'ARRASTRE');
+
 			$costoSemestral = null;
 			if ($gestionToUse) {
 				$costoSemestral = CostoSemestral::where('cod_pensum', $codPensumToUse)
@@ -275,16 +278,89 @@ class CobroController extends Controller
 					->first();
 			}
 
+			// Colección de asignaciones de costos (todas las cuotas) para la inscripción principal
+			$asignacionesPrimarias = collect();
+			if ($primaryInscripcion) {
+				$queryAsign = AsignacionCostos::where('cod_pensum', $codPensumToUse)
+					->where('cod_inscrip', $primaryInscripcion->cod_inscrip);
+				$asignacionesPrimarias = $queryAsign->orderBy('numero_cuota')->get();
+			}
+
 			$cobrosBase = Cobro::where('cod_ceta', $codCeta)
 				->where('cod_pensum', $codPensumToUse)
 				->when($gestionToUse, function ($q) use ($gestionToUse) {
 					$q->where('gestion', $gestionToUse);
+				})
+				->when($primaryInscripcion, function ($q) use ($primaryInscripcion) {
+					$q->where('tipo_inscripcion', $primaryInscripcion->tipo_inscripcion);
 				});
 
-			$cobrosMensualidad = (clone $cobrosBase)->whereNotNull('id_cuota')->get();
+			$cobrosMensualidad = (clone $cobrosBase)
+				->where(function($q){
+					$q->whereNotNull('id_cuota')
+						->orWhereNotNull('id_asignacion_costo');
+				})
+				->get();
 			$cobrosItems = (clone $cobrosBase)->whereNotNull('id_item')->get();
 			$totalMensualidad = $cobrosMensualidad->sum('monto');
 			$totalItems = $cobrosItems->sum('monto');
+
+			// Próxima mensualidad pendiente (regla simple: siguiente asignación según cantidad de mensualidades pagadas)
+			$mensualidadNext = null; $mensualidadPendingCount = 0; $mensualidadTotalCuotas = $asignacionesPrimarias->count();
+			if ($mensualidadTotalCuotas > 0) {
+				$paidCount = $cobrosMensualidad->count();
+				$orderedAsign = $asignacionesPrimarias->values(); // ya está ordenado por numero_cuota asc
+				$nextAsig = $orderedAsign->slice($paidCount, 1)->first();
+				if ($nextAsig) {
+					$mensualidadNext = [
+						'numero_cuota' => (int) $nextAsig->numero_cuota,
+						'monto' => (float) $nextAsig->monto,
+						'id_asignacion_costo' => (int) ($nextAsig->id_asignacion_costo ?? 0) ?: null,
+						'id_cuota_template' => isset($nextAsig->id_cuota_template) ? ((int)$nextAsig->id_cuota_template ?: null) : null,
+						'fecha_vencimiento' => $nextAsig->fecha_vencimiento,
+					];
+				}
+				$mensualidadPendingCount = max(0, $mensualidadTotalCuotas - $paidCount);
+			}
+
+			// Construir resumen para ARRASTRE: próxima cuota pendiente desde asignacion_costos
+			$arrastreSummary = null;
+			if ($arrastreInscripcion) {
+				try {
+					$asignaciones = AsignacionCostos::query()
+						->where('cod_pensum', (string) $arrastreInscripcion->cod_pensum)
+						->where('cod_inscrip', (int) $arrastreInscripcion->cod_inscrip)
+						->orderBy('numero_cuota')
+						->get();
+					$paidCuotaIds = $cobrosMensualidad->pluck('id_cuota')->filter()->map(fn($v) => (int)$v)->unique()->values();
+					$next = null; $pendingCount = 0; $totalCuotas = $asignaciones->count();
+					foreach ($asignaciones as $asig) {
+						$tplId = (int) ($asig->id_cuota_template ?? 0);
+						$pagada = $tplId ? $paidCuotaIds->contains($tplId) : false;
+						if (!$pagada) {
+							$pendingCount++;
+							if (!$next) {
+								$next = [
+									'numero_cuota' => (int) $asig->numero_cuota,
+									'monto' => (float) $asig->monto,
+									'id_asignacion_costo' => (int) $asig->id_asignacion_costo,
+									'id_cuota_template' => $tplId ?: null,
+									'fecha_vencimiento' => $asig->fecha_vencimiento,
+								];
+							}
+						}
+					}
+					$arrastreSummary = [
+						'has' => true,
+						'inscripcion' => $arrastreInscripcion,
+						'next_cuota' => $next,
+						'pending_count' => $pendingCount,
+						'total_cuotas' => $totalCuotas,
+					];
+				} catch (\Throwable $e) {
+					$arrastreSummary = [ 'has' => false, 'error' => $e->getMessage() ];
+				}
+			}
 
 			// Parámetros y cálculo de monto/nro_cuotas/pu
 			$paramMonto = null;        // MONTO_SEMESTRAL_FIJO
@@ -302,9 +378,10 @@ class CobroController extends Controller
 					$paramMonto = $pcQuery->first();
 				}
 			}
-			// Calcular NRO_CUOTAS con fallback a parametros_costos
+			// Calcular NRO_CUOTAS con prioridad desde asignacion_costos y fallback a parametros_costos/cuotas
 			$paramNroCuotas = null;
 			$nroCuotasFromTable = 0;
+			$nroCuotasFromAsignacion = $asignacionesPrimarias->count();
 			if ($gestionToUse && Schema::hasColumn('cuotas', 'gestion')) {
 				$nroCuotasFromTable = (int) Cuota::where('gestion', $gestionToUse)->count();
 			}
@@ -321,14 +398,31 @@ class CobroController extends Controller
 					$paramNroCuotas = $pcQuery2->first();
 				}
 			}
-			$nroCuotas = $nroCuotasFromTable > 0 ? $nroCuotasFromTable : ($paramNroCuotas ? (int) round((float) $paramNroCuotas->valor) : null);
+			// Selección final de número de cuotas:
+			// 1) usar asignaciones del estudiante si existen
+			// 2) si no, usar ParametroCosto NRO_CUOTAS
+			// 3) en última instancia, usar cantidad de filas en 'cuotas' para la gestión solo si es razonable (<= 12)
+			$nroCuotas = null;
+			if ($nroCuotasFromAsignacion > 0) {
+				$nroCuotas = $nroCuotasFromAsignacion;
+			} elseif ($paramNroCuotas) {
+				$nroCuotas = (int) round((float) $paramNroCuotas->valor);
+			} elseif ($nroCuotasFromTable > 0 && $nroCuotasFromTable <= 12) {
+				$nroCuotas = $nroCuotasFromTable;
+			}
 
 			// Calcular monto del semestre, saldo y precio unitario mensual
 			$montoSemestre = optional($costoSemestral)->monto_semestre
-				?: optional($asignacion)->monto
+				?: ($asignacionesPrimarias->count() > 0 ? (float) $asignacionesPrimarias->sum('monto') : null)
 				?: ($paramMonto ? (float) $paramMonto->valor : null);
 			$saldoMensualidad = isset($montoSemestre) ? (float) $montoSemestre - (float) $totalMensualidad : null;
-			$puMensual = ($montoSemestre !== null && $nroCuotas) ? round(((float) $montoSemestre) / max(1, $nroCuotas), 2) : null;
+			$puMensualFromNext = $mensualidadNext ? round((float) ($mensualidadNext['monto'] ?? 0), 2) : null;
+			$puMensualFromAsignacion = $asignacionesPrimarias->count() > 0 ? round((float) $asignacionesPrimarias->avg('monto'), 2) : null;
+			$puMensual = $puMensualFromNext !== null
+				? $puMensualFromNext
+				: ($puMensualFromAsignacion !== null
+					? $puMensualFromAsignacion
+					: (($montoSemestre !== null && $nroCuotas) ? round(((float) $montoSemestre) / max(1, $nroCuotas), 2) : null));
 
 			// Documentos presentados del estudiante y deducción de documento de identidad
 			$documentosPresentados = collect();
@@ -408,6 +502,7 @@ class CobroController extends Controller
 						'nro_cuotas' => $paramNroCuotas,
 					],
 					'asignacion_costos' => $asignacion,
+					'arrastre' => $arrastreSummary,
 					'cobros' => [
 						'mensualidad' => [
 							'total' => (float) $totalMensualidad,
@@ -420,6 +515,11 @@ class CobroController extends Controller
 							'items' => $cobrosItems,
 						],
 					],
+					'mensualidad_next' => $mensualidadNext ? [
+						'next_cuota' => $mensualidadNext,
+						'pending_count' => $mensualidadPendingCount,
+						'total_cuotas' => $mensualidadTotalCuotas,
+					] : null,
 					'totales' => [
 						'monto_semestral' => isset($montoSemestre) ? (float)$montoSemestre : null,
 						'saldo_mensualidad' => $saldoMensualidad,

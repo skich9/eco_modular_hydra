@@ -224,7 +224,7 @@
 								<tbody>
 									<tr>
 										<td>Mensualidad</td>
-										<td>{{ resumen?.totales?.pu_mensual | number:'1.2-2' }}</td>
+										<td>{{ (resumen?.mensualidad_next?.next_cuota?.monto ?? resumen?.totales?.pu_mensual) | number:'1.2-2' }}</td>
 										<td class="text-center">
 											<button type="button" class="btn btn-sm btn-success" (click)="openMensualidadModal()"><i class="bi bi-plus"></i></button>
 										</td>
@@ -243,9 +243,22 @@
 											<button type="button" class="btn btn-sm btn-success" (click)="openRecuperacionModal()"><i class="bi bi-plus"></i></button>
 										</td>
 									</tr>
+									<tr *ngIf="resumen?.arrastre?.has">
+										<td>Arrastre</td>
+										<td>{{ resumen?.arrastre?.next_cuota?.monto | number:'1.2-2' }}</td>
+										<td class="text-center">
+										  <button
+											type="button"
+											class="btn btn-sm btn-success"
+											(click)="addArrastrePago()"
+											[disabled]="(resumen?.arrastre?.pending_count || 0) === 0 || !resumen?.arrastre?.next_cuota">
+											<i class="bi bi-plus"></i>
+										  </button>
+										</td>
+									</tr>
 									<tr>
 										<td colspan="3" class="p-0 border-0"></td>
-								</tr>
+								    </tr>
 							</tbody>
 						</table>
 					</div>

@@ -380,11 +380,13 @@ export class CobrosComponent implements OnInit {
             this.pensums = [];
           }
 
-          // Datos para Mensualidad: pendientes y precio unitario
+          // Datos para Mensualidad: usar próxima cuota pendiente si existe
           const nroCuotas = Number(this.resumen?.totales?.nro_cuotas || 0);
           const pagadas = Number(this.resumen?.cobros?.mensualidad?.count || 0);
-          this.mensualidadesPendientes = Math.max(0, nroCuotas - pagadas);
-          this.mensualidadPU = Number(this.resumen?.totales?.pu_mensual || 0);
+          const pendFromNext = Number(this.resumen?.mensualidad_next?.pending_count ?? 0);
+          this.mensualidadesPendientes = pendFromNext > 0 ? pendFromNext : Math.max(0, nroCuotas - pagadas);
+          const puNext = Number(this.resumen?.mensualidad_next?.next_cuota?.monto ?? 0);
+          this.mensualidadPU = puNext > 0 ? puNext : Number(this.resumen?.totales?.pu_mensual || 0);
           // Inicializar modal de mensualidades
           const defaultMetodo = (this.batchForm.get('cabecera.id_forma_cobro') as any)?.value || '';
           this.mensualidadModalForm.patchValue({
@@ -806,10 +808,48 @@ export class CobrosComponent implements OnInit {
     // Por ahora, igual a la suma de subtotales
     return this.totalSubtotal;
   }
+  
+  // Añadir la próxima cuota de ARRASTRE al detalle (tabla de pagos)
+  addArrastrePago(): void {
+    if (!this.resumen || !this.resumen.arrastre || !this.resumen.arrastre.has) {
+      this.showAlert('No hay inscripción de arrastre en la gestión seleccionada', 'warning');
+      return;
+    }
+    const next = this.resumen.arrastre.next_cuota;
+    const pendientes = Number(this.resumen.arrastre.pending_count || 0);
+    if (!next || pendientes <= 0) {
+      this.showAlert('No hay cuotas de arrastre pendientes', 'warning');
+      return;
+    }
+    if (!this.ensureMetodoPagoPermitido(['EFECTIVO','TARJETA','CHEQUE','DEPOSITO','TRANSFERENCIA','QR','OTRO'])) return;
+    const hoy = new Date().toISOString().slice(0, 10);
+    const nro = this.getNextMensualidadNro();
+    const monto = Number(next.monto || 0);
+    this.pagos.push(this.fb.group({
+      nro_cobro: [nro, Validators.required],
+      id_cuota: [next.id_cuota_template ?? null],
+      id_item: [null],
+      monto: [monto, [Validators.required, Validators.min(0)]],
+      fecha_cobro: [hoy, Validators.required],
+      observaciones: [`Arrastre - Cuota ${next.numero_cuota}`],
+      descuento: [0],
+      nro_factura: [null],
+      nro_recibo: [null],
+      pu_mensualidad: [monto],
+      order: [0],
+      id_asignacion_costo: [next.id_asignacion_costo ?? null],
+      // Campos UI (tabla detalle factura)
+      cantidad: [1, [Validators.required, Validators.min(1)]],
+      detalle: [`Arrastre - Cuota ${next.numero_cuota}`],
+      m_marca: [false],
+      d_marca: [false]
+    }));
+    this.showAlert('Cuota de arrastre añadida al lote', 'success');
+  }
 
-	private showAlert(message: string, type: 'success' | 'error' | 'warning'): void {
-		this.alertMessage = message;
-		this.alertType = type;
-		setTimeout(() => (this.alertMessage = ''), 4000);
-	}
+  private showAlert(message: string, type: 'success' | 'error' | 'warning'): void {
+    this.alertMessage = message;
+    this.alertType = type;
+    setTimeout(() => (this.alertMessage = ''), 4000);
+  }
 }
