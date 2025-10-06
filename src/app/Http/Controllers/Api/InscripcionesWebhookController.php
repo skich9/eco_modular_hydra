@@ -51,6 +51,13 @@ class InscripcionesWebhookController extends Controller
 			'carrera' => 'sometimes|string|nullable',
 			'nro_materia' => 'sometimes|integer|nullable',
 			'nro_materia_aprob' => 'sometimes|integer|nullable',
+			// Materias por tipo
+			'nro_materia_normal' => 'sometimes|integer|nullable',
+			'materias_normal' => 'sometimes|array',
+			'materias_normal.*' => 'string',
+			'nro_materia_arrastre' => 'sometimes|integer|nullable',
+			'materias_arrastre' => 'sometimes|array',
+			'materias_arrastre.*' => 'string',
 
 			// Datos opcionales del estudiante
 			'ci' => 'sometimes|string|nullable',
@@ -68,8 +75,7 @@ class InscripcionesWebhookController extends Controller
 			return response()->json(['success' => false, 'message' => 'Validation failed', 'errors' => $ex->errors()], 422);
 		}
 
-		// Persistencia atómica y logging
-		DB::beginTransaction();
+		// Persistencia y logging (sin transacción global para evitar errores de commit/rollback)
 		try {
 			// 1) Upsert Estudiante (respetando columnas existentes)
 			$est = Estudiante::firstOrNew(['cod_ceta' => (int) $validated['cod_ceta']]);
@@ -255,7 +261,84 @@ class InscripcionesWebhookController extends Controller
 			]);
 			$ins->save();
 
-			DB::commit();
+			// 2.a) Persistir materias en kardex_notas (NORMAL y ARRASTRE)
+			try {
+				if (Schema::hasTable('kardex_notas')) {
+					// Seleccionar nombre de columna correcto para tipo_inscripcion (evitar problema de migración con typo)
+					$colTipo = null;
+					if (Schema::hasColumn('kardex_notas', 'tipo_inscripcion')) { $colTipo = 'tipo_inscripcion'; }
+					elseif (Schema::hasColumn('kardex_notas', 'tipo_incripcion')) { $colTipo = 'tipo_incripcion'; }
+					if ($colTipo) {
+						$tipos = [
+							['key' => 'materias_normal', 'tipo' => 'NORMAL'],
+							['key' => 'materias_arrastre', 'tipo' => 'ARRASTRE'],
+						];
+						foreach ($tipos as $cfg) {
+							$key = $cfg['key']; $tipo = $cfg['tipo'];
+							if ($request->has($key) && is_array($validated[$key] ?? null)) {
+								$materias = array_values(array_filter(array_map('strval', $validated[$key])));
+								// borrar previamente las materias de ese tipo para esta inscripción
+								\DB::table('kardex_notas')
+									->where('cod_inscrip', (int) $ins->cod_inscrip)
+									->where($colTipo, $tipo)
+									->delete();
+								$idx = 0; $inserted = 0; $failed = 0; $skipped = 0;
+								foreach ($materias as $sigla) {
+									$idx++;
+									// Verificar existencia en tabla 'materia' para evitar violar FK (pensum+sigla)
+									try {
+										$existsMateria = true;
+										if (Schema::hasTable('materia')) {
+											$existsMateria = DB::table('materia')
+												->where('cod_pensum', (string) $ins->cod_pensum)
+												->where('sigla_materia', (string) $sigla)
+												->exists();
+										}
+										if (!$existsMateria) {
+											$skipped++;
+											Log::warning('HYDRA kardex_notas skip: materia no existe para pensum', [
+												'cod_inscrip' => $ins->cod_inscrip,
+												'pensum' => $ins->cod_pensum,
+												'sigla' => $sigla,
+											]);
+											continue; // Saltar inserción
+										}
+									} catch (\Throwable $e) { /* verificación opcional */ }
+									$data = [
+										'cod_ceta' => (int) $ins->cod_ceta,
+										'cod_pensum' => (string) $ins->cod_pensum,
+										'cod_inscrip' => (int) $ins->cod_inscrip,
+										$colTipo => $tipo,
+										'cod_kardex' => $idx,
+										'sigla_materia' => $sigla,
+										'observacion' => '',
+										'id_usuario' => (int) (env('HYDRA_DEFAULT_USER_ID', 1)),
+										'created_at' => now(),
+										'updated_at' => now(),
+									];
+									try {
+										\DB::table('kardex_notas')->insert($data);
+										$inserted++;
+									} catch (\Throwable $e) {
+										$failed++;
+									}
+								}
+								Log::info('HYDRA kardex_notas upsert', [
+									'cod_inscrip' => $ins->cod_inscrip,
+									'tipo' => $tipo,
+									'inserted' => $inserted,
+									'failed' => $failed,
+									'skipped_missing_materia' => $skipped,
+								]);
+							}
+						}
+					}
+				}
+			} catch (\Throwable $e) {
+				Log::error('HYDRA kardex_notas persist failed', [
+					'error' => $e->getMessage(),
+				]);
+			}
 
 			// Log de confirmación de persistencia
 			Log::info('HYDRA webhook persisted', [
@@ -268,7 +351,6 @@ class InscripcionesWebhookController extends Controller
 				'tipo_inscripcion' => $ins->tipo_inscripcion,
 			]);
 		} catch (\Throwable $e) {
-			DB::rollBack();
 			Log::error('HYDRA webhook DB persist failed', [
 				'message' => $e->getMessage(),
 				'trace' => $e->getTraceAsString(),
@@ -278,16 +360,34 @@ class InscripcionesWebhookController extends Controller
 
 		// 3) Despachar Job para asignación de costo (no crítico)
 		try {
-			AssignCostoSemestralFromInscripcion::dispatch([
+			// Calcular arrastre_count desde payload como fallback si kardex_notas falla por FK
+			$payloadArrastreCount = 0;
+			if ($request->has('materias_arrastre') && is_array($validated['materias_arrastre'] ?? null)) {
+				$payloadArrastreCount = count(array_values(array_filter(array_map('strval', $validated['materias_arrastre']))));
+			} elseif ($request->has('nro_materia_arrastre')) {
+				$payloadArrastreCount = (int) ($validated['nro_materia_arrastre'] ?? 0);
+			}
+
+			$payload = [
 				// Usar el ID local para relaciones internas
 				'cod_inscrip' => (string) ($ins->cod_inscrip ?? ''),
 				'cod_pensum' => $ins->cod_pensum ?? $validated['cod_pensum'],
 				'cod_curso' => $ins->cod_curso ?? $validated['cod_curso'],
 				'gestion' => $ins->gestion ?? $validated['gestion'],
 				'tipo_inscripcion' => $ins->tipo_inscripcion ?? $validated['tipo_inscripcion'],
+				'arrastre_count' => $payloadArrastreCount,
 				// Opcional: enviar también el source para trazabilidad
 				'source_cod_inscrip' => (string) $sgacode,
-			])->onQueue('inscripciones');
+			];
+			$queueName = env('HYDRA_QUEUE_INSCRIPCIONES', 'default');
+			$runSync = filter_var(env('HYDRA_ASSIGN_SYNC', false), FILTER_VALIDATE_BOOL);
+			if ($runSync) {
+				\Log::info('Dispatching AssignCostoSemestralFromInscripcion SYNC');
+				AssignCostoSemestralFromInscripcion::dispatchSync($payload);
+			} else {
+				\Log::info('Dispatching AssignCostoSemestralFromInscripcion ASYNC', ['queue' => $queueName]);
+				AssignCostoSemestralFromInscripcion::dispatch($payload)->onQueue($queueName)->afterCommit();
+			}
 		} catch (\Throwable $e) {
 			Log::error('Queue dispatch failed (inscripciones)', [
 				'message' => $e->getMessage(),

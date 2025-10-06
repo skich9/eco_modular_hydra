@@ -37,9 +37,10 @@ return [
 		'use_calendar_month' => (bool) env('HYDRA_CUOTAS_USE_CALENDAR_MONTH', true),
 	],
 
-	// Mapeo de tipo_costo (costo_semestral) -> tipo de plantilla en 'cuotas'
+	// Mapeo de tipo_costo (costo_semestral) -> lista de tipos de plantilla válidos en 'cuotas'
+	// Permite múltiples alias separados por coma desde .env
 	'cuotas_tipo_map' => [
-		'costo_mensual' => env('HYDRA_CUOTAS_TIPO_MAP_COSTO_MENSUAL', 'costo_mensual'),
-		'materia' => env('HYDRA_CUOTAS_TIPO_MAP_MATERIA', 'arrastre'),
+		'costo_mensual' => array_filter(array_map('trim', explode(',', env('HYDRA_CUOTAS_TIPO_MAP_COSTO_MENSUAL', 'costo_mensual')))),
+		'materia' => array_filter(array_map('trim', explode(',', env('HYDRA_CUOTAS_TIPO_MAP_MATERIA', 'arrastre,materia,1 materia')))),
 	],
 ];
