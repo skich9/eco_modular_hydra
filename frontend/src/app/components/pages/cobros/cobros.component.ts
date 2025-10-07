@@ -309,6 +309,11 @@ export class CobrosComponent implements OnInit {
   }
 
   removePago(i: number): void {
+    const last = this.pagos.length - 1;
+    if (i !== last) {
+      this.showAlert('Solo puede eliminar la última fila del detalle', 'warning');
+      return;
+    }
     this.pagos.removeAt(i);
   }
 
@@ -656,7 +661,8 @@ export class CobrosComponent implements OnInit {
     if (!this.ensureMetodoPagoPermitido(['EFECTIVO','TARJETA','CHEQUE','DEPOSITO','TRANSFERENCIA','QR','OTRO'])) return;
     const nroCuotas = Number(this.resumen?.totales?.nro_cuotas || 0);
     const pagadas = Number(this.resumen?.cobros?.mensualidad?.count || 0);
-    this.mensualidadesPendientes = Math.max(0, nroCuotas - pagadas);
+    const inForm = this.countMensualidadCuotasInForm();
+    this.mensualidadesPendientes = Math.max(0, (nroCuotas - pagadas) - inForm);
     this.mensualidadPU = Number(this.resumen?.totales?.pu_mensual || 0);
     const defaultMetodo = (this.batchForm.get('cabecera.id_forma_cobro') as any)?.value || '';
     this.mensualidadModalForm.patchValue({
@@ -722,26 +728,83 @@ export class CobrosComponent implements OnInit {
     return maxNro + 1;
   }
 
+  // Devuelve cuántas cuotas de mensualidad ya están agregadas en el FormArray (no enviadas aún)
+  private countMensualidadCuotasInForm(): number {
+    let count = 0;
+    for (const ctrl of (this.pagos.controls || [])) {
+      const det = (ctrl.get('detalle')?.value || '').toString();
+      const detUpper = det.toUpperCase();
+      // Contar solo cuotas completas (ignorar filas con '(Parcial)')
+      if (/^\s*Mensualidad\s*-\s*Cuota\s+\d+\s*$/i.test(det) && !detUpper.includes('(PARCIAL)')) count++;
+    }
+    return count;
+  }
+
+  // Obtiene el mayor número de cuota ya agregado en el FormArray de pagos
+  private getMaxMensualidadCuotaInForm(): number {
+    let max = 0;
+    for (const ctrl of (this.pagos.controls || [])) {
+      const det = (ctrl.get('detalle')?.value || '').toString();
+      const m = det.match(/Cuota\s+(\d+)/i);
+      const n = m ? Number(m[1]) : 0;
+      if (n > max) max = n;
+    }
+    return max;
+  }
+
+  // Calcula desde qué número de cuota debe comenzar el siguiente agregado de mensualidades
+  private getNextMensualidadStartCuota(): number {
+    const backendNext = Number(this.resumen?.mensualidad_next?.next_cuota?.numero_cuota || 1);
+    const inFormMax = this.getMaxMensualidadCuotaInForm();
+    // Empezar desde el mayor observado (backend o en-form) + 1
+    return Math.max(backendNext, inFormMax + 1);
+  }
+
   onAddPagosFromModal(payload: any): void {
     const hoy = new Date().toISOString().slice(0, 10);
     const pagos = Array.isArray(payload) ? payload : (payload?.pagos || []);
     const headerPatch = Array.isArray(payload) ? null : (payload?.cabecera || null);
-    for (const p of pagos || []) {
+    const isMensualidad = this.modalTipo === 'mensualidad';
+    const startCuota = this.getNextMensualidadStartCuota();
+    pagos.forEach((p: any, idx: number) => {
+      const numeroCuota = isMensualidad ? (startCuota + idx) : null;
+      const esParcial = !!p.pago_parcial;
+      const baseDetalle = isMensualidad ? `Mensualidad - Cuota ${numeroCuota}` : (p.detalle || '');
+      const detalle = esParcial ? `${baseDetalle} (Parcial)` : baseDetalle;
+      const pu = Number(p.pu_mensualidad ?? this.mensualidadPU ?? 0);
+      const cant = 1;
+      const desc = p.descuento ?? 0;
+      // Si es parcial y viene un monto explícito, usarlo respetando un tope máximo de PU
+      const montoBase = esParcial ? Number(p.monto || 0) : (cant * pu);
+      const monto = Math.max(0, montoBase - (isNaN(desc) ? 0 : Number(desc)));
+      const obsStr = ((p.observaciones || '') + '').trim();
+      // Mapear medio/doc para UI y envío
+      const medioDoc: 'C' | 'M' | '' = (p.medio_doc === 'M' || p.computarizada === 'MANUAL') ? 'M' : (p.medio_doc === 'C' || p.computarizada === 'COMPUTARIZADA') ? 'C' : '' as any;
+      const tipoDoc: 'F' | 'R' | '' = (p.tipo_documento === 'F' || p.comprobante === 'FACTURA') ? 'F' : (p.tipo_documento === 'R' || p.comprobante === 'RECIBO') ? 'R' : '' as any;
       this.pagos.push(this.fb.group({
+        // Backend-required/known fields
         nro_cobro: [p.nro_cobro, Validators.required],
         id_cuota: [p.id_cuota ?? null],
         id_item: [p.id_item ?? null],
-        monto: [p.monto, [Validators.required, Validators.min(0)]],
+        monto: [monto, [Validators.required, Validators.min(0)]],
         fecha_cobro: [p.fecha_cobro || hoy, Validators.required],
-        observaciones: [p.observaciones || ''],
+        observaciones: [obsStr],
         // opcionales que acepta el backend
-        descuento: [p.descuento ?? null],
+        descuento: [desc ?? null],
         nro_factura: [p.nro_factura ?? null],
         nro_recibo: [p.nro_recibo ?? null],
-        pu_mensualidad: [p.pu_mensualidad ?? 0],
-        order: [p.order ?? 0]
+        tipo_documento: [tipoDoc],
+        medio_doc: [medioDoc],
+        pu_mensualidad: [pu],
+        order: [p.order ?? 0],
+        // Campos UI para mostrar en la tabla como labels
+        cantidad: [cant, [Validators.required, Validators.min(1)]],
+        detalle: [detalle],
+        m_marca: [false],
+        d_marca: [false],
+        es_parcial: [esParcial]
       }));
-    }
+    });
     // Aplicar cabecera si el modal la envió (p.e. id_cuentas_bancarias para TARJETA)
     if (headerPatch && typeof headerPatch === 'object') {
       (this.batchForm.get('cabecera') as FormGroup).patchValue(headerPatch, { emitEvent: false });
@@ -778,7 +841,7 @@ export class CobrosComponent implements OnInit {
         }
         this.loading = false;
       },
-      error: (err) => {
+      error: (err: any) => {
         console.error('Batch error:', err);
         const msg = err?.error?.message || 'Error al registrar cobros';
         this.showAlert(msg, 'error');
@@ -788,9 +851,15 @@ export class CobrosComponent implements OnInit {
   }
 
   // ====== Totales estilo sistema antiguo ======
+
   calcRowSubtotal(i: number): number {
     const g = this.pagos.at(i) as FormGroup;
     if (!g) return 0;
+    const esParcial = !!g.get('es_parcial')?.value;
+    if (esParcial) {
+      const m = Number(g.get('monto')?.value || 0);
+      return m > 0 ? m : 0;
+    }
     const cant = Number(g.get('cantidad')?.value || 0);
     const pu = Number(g.get('pu_mensualidad')?.value || 0);
     const desc = Number(g.get('descuento')?.value || 0);
@@ -808,7 +877,30 @@ export class CobrosComponent implements OnInit {
     // Por ahora, igual a la suma de subtotales
     return this.totalSubtotal;
   }
-  
+
+  // Opciones válidas para el selector de cantidad por fila
+  getCantidadOptions(i: number): number[] {
+    try {
+      const g = this.pagos.at(i) as FormGroup;
+      if (!g) return [1];
+      const detalle = (g.get('detalle')?.value || '').toString().toUpperCase();
+      // Arrastre: siempre 1
+      if (detalle.includes('ARRASTRE')) return [1];
+      // Mensualidad: entre 1 y pendientes
+      let pendientes = Number(this.resumen?.mensualidad_next?.pending_count ?? 0);
+      if (!pendientes || pendientes <= 0) {
+        const nroCuotas = Number(this.resumen?.totales?.nro_cuotas || 0);
+        const pagadas = Number(this.resumen?.cobros?.mensualidad?.count || 0);
+        pendientes = Math.max(0, nroCuotas - pagadas);
+      }
+      const max = Math.max(1, pendientes);
+      const opts: number[] = [];
+      for (let n = 1; n <= max; n++) opts.push(n);
+      return opts;
+    } catch {
+      return [1];
+    }
+  }
   // Añadir la próxima cuota de ARRASTRE al detalle (tabla de pagos)
   addArrastrePago(): void {
     if (!this.resumen || !this.resumen.arrastre || !this.resumen.arrastre.has) {

@@ -9,7 +9,10 @@
         <div class="p-3 bg-primary bg-opacity-10 rounded mb-3">
           <div class="row g-3 align-items-center" [formGroup]="form">
             <div class="col-md-8">
-              <div class="small fw-semibold">Datos del Estudiante</div>
+              <div class="d-flex justify-content-between align-items-center">
+                <div class="small fw-semibold">Datos del Estudiante</div>
+                <div class="small fw-semibold text-primary">Mensualidades pendientes : {{ pendientes }}</div>
+              </div>
               <div class="small text-muted">{{ resumen?.estudiante?.cod_ceta }} - {{ resumen?.estudiante?.nombre_completo || resumen?.estudiante?.nombres }}</div>
               <div class="small">Pensum: {{ resumen?.inscripcion?.cod_pensum }} | Tipo: {{ resumen?.inscripcion?.tipo_inscripcion }}</div>
               <div class="small">Gestión: {{ resumen?.gestion }}</div>
@@ -62,6 +65,31 @@
             </div>
           </ng-container>
 
+          <!-- Tipo de registro y switches -->
+          <div class="col-md-4 ">
+            <label class="form-label">Tipo de registro</label>
+            <div class="d-flex align-items-center gap-3">
+              <div class="form-check">
+                <input class="form-check-input" type="radio" id="compu_top" value="COMPUTARIZADA" formControlName="computarizada" />
+                <label class="form-check-label" for="compu_top">Computarizada</label>
+              </div>
+              <div class="form-check">
+                <input class="form-check-input" type="radio" id="manual_top" value="MANUAL" formControlName="computarizada" />
+                <label class="form-check-label" for="manual_top">Manual</label>
+              </div>
+            </div>
+          </div>
+          <div class="col-md-8 d-flex align-items-center gap-4">
+            <div class="form-check">
+              <input class="form-check-input" type="checkbox" id="chkTotalSem" formControlName="cobro_total_semestre" />
+              <label class="form-check-label" for="chkTotalSem">Cobro total del semestre</label>
+            </div>
+            <div class="form-check">
+              <input class="form-check-input" type="checkbox" id="pagoParcial_top" formControlName="pago_parcial" />
+              <label class="form-check-label" for="pagoParcial_top">Pago Mensualidad Parcial</label>
+            </div>
+          </div>
+
           <!-- Datos de Cheque / Depósito / Transferencia / QR -->
           <ng-container *ngIf="isCheque || isDeposito || isTransferencia || isQR">
             <div class="col-12">
@@ -89,16 +117,18 @@
 
           <ng-container *ngIf="tipo === 'mensualidad'; else noMensualidad">
             <div class="col-md-4">
-              <label class="form-label">Mensualidades Pendientes</label>
-              <input class="form-control" [value]="pendientes" readonly />
-            </div>
-            <div class="col-md-4">
               <label class="form-label">Precio Unitario</label>
               <input class="form-control" [value]="pu | number:'1.2-2'" readonly />
             </div>
             <div class="col-md-4">
               <label class="form-label">Cant. mensualidades a pagar</label>
-              <input type="number" class="form-control" formControlName="cantidad" min="1" [max]="pendientes" />
+              <select class="form-select" formControlName="cantidad">
+                <option *ngFor="let n of getCantidadOptions()" [ngValue]="n">{{ n }}</option>
+              </select>
+            </div>
+            <div class="col-md-4">
+              <label class="form-label">Descuento / Beca</label>
+              <input type="number" step="0.01" class="form-control" formControlName="descuento" />
             </div>
           </ng-container>
           <ng-template #noMensualidad>
@@ -122,6 +152,13 @@
             </div>
           </ng-template>
 
+          
+          <!-- Monto parcial visible solo cuando pago_parcial está activo -->
+          <div class="col-md-4" *ngIf="form.get('pago_parcial')?.value">
+            <label class="form-label">Monto parcial</label>
+            <input type="number" step="0.01" class="form-control" formControlName="monto_parcial" />
+            <div class="form-text">Máximo: {{ pu | number:'1.2-2' }}</div>
+          </div>
           <div class="col-md-4">
             <label class="form-label">Costo total</label>
             <input class="form-control" formControlName="costo_total" readonly />
@@ -133,30 +170,6 @@
               <option value="FACTURA">Factura</option>
             </select>
           </div>
-          <div class="col-md-4">
-            <label class="form-label">Descuento / Beca</label>
-            <input type="number" step="0.01" class="form-control" formControlName="descuento" />
-          </div>
-          <div class="col-md-4">
-            <label class="form-label">Tipo de registro</label>
-            <div class="d-flex align-items-center gap-3">
-              <div class="form-check">
-                <input class="form-check-input" type="radio" id="compu" value="COMPUTARIZADA" formControlName="computarizada" />
-                <label class="form-check-label" for="compu">Computarizada</label>
-              </div>
-              <div class="form-check">
-                <input class="form-check-input" type="radio" id="manual" value="MANUAL" formControlName="computarizada" />
-                <label class="form-check-label" for="manual">Manual</label>
-              </div>
-            </div>
-          </div>
-          <div class="col-md-4 d-flex align-items-end">
-            <div class="form-check">
-              <input class="form-check-input" type="checkbox" id="pagoParcial" formControlName="pago_parcial" />
-              <label class="form-check-label" for="pagoParcial">Pago Mensualidad Parcial</label>
-            </div>
-          </div>
-
           <div class="col-12">
             <label class="form-label">Observaciones</label>
             <textarea class="form-control" rows="2" formControlName="observaciones"></textarea>

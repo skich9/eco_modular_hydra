@@ -136,40 +136,65 @@
 								<tbody>
 									<tr *ngFor="let pg of pagos.controls; let i = index" [formGroupName]="i">
 										<!-- Cantidad -->
-										<td style="width: 80px;">
-											<input type="number" min="1" class="form-control form-control-sm text-end" formControlName="cantidad" />
+										<td class="text-end">
+											<span class="d-block">{{ pg.get('cantidad')?.value }}</span>
 										</td>
+								
 										<!-- Detalle -->
 										<td>
-											<input class="form-control form-control-sm" formControlName="detalle" />
+											<span class="d-block">{{ pg.get('detalle')?.value }}</span>
 										</td>
+								
 										<!-- P/U -->
-										<td style="width: 140px;">
-											<input type="number" step="0.01" class="form-control form-control-sm text-end" formControlName="pu_mensualidad" />
+										<td class="text-end">
+											<span class="d-block">{{ pg.get('pu_mensualidad')?.value | number:'1.2-2' }}</span>
 										</td>
+								
 										<!-- Descuento -->
-										<td style="width: 140px;">
-											<input type="number" step="0.01" class="form-control form-control-sm text-end" formControlName="descuento" />
+										<td class="text-end">
+											<span class="d-block">{{ (pg.get('descuento')?.value || 0) | number:'1.2-2' }}</span>
 										</td>
+								
 										<!-- Sub total (solo lectura) -->
-										<td class="text-end" style="width: 140px;">
-											{{ calcRowSubtotal(i) | number:'1.2-2' }}
+										<td class="text-end">
+											<strong>{{ calcRowSubtotal(i) | number:'1.2-2' }}</strong>
 										</td>
-										<!-- M -->
-										<td class="text-center" style="width: 50px;">
-											<input type="checkbox" class="form-check-input" formControlName="m_marca" />
+								
+										<!-- M (Computarizada/Manual) -->
+										<td class="text-center">
+											<span>{{ pg.get('medio_doc')?.value || '' }}</span>
 										</td>
-										<!-- D -->
-										<td class="text-center" style="width: 50px;">
-											<input type="checkbox" class="form-check-input" formControlName="d_marca" />
+								
+										<!-- D (Factura/Recibo) -->
+										<td class="text-center">
+											<span>{{ pg.get('tipo_documento')?.value || '' }}</span>
 										</td>
+								
 										<!-- Obs. -->
 										<td>
-											<input class="form-control form-control-sm" formControlName="observaciones" />
+											<ng-container *ngIf="pg.get('observaciones')?.value as obs; else noObsTpl">
+												<div class="obs-cell">
+													<span class="obs-icon" aria-label="Observaciones"><i class="bi bi-eye"></i></span>
+													<div class="obs-popover">
+														<div class="obs-title">Observaciones</div>
+														<div class="obs-content">{{ obs }}</div>
+													</div>
+												</div>
+											</ng-container>
+											<ng-template #noObsTpl>
+												<span class="text-muted">—</span>
+											</ng-template>
 										</td>
+								
 										<!-- Acciones -->
-										<td class="text-center" style="width: 60px;">
-											<button type="button" class="btn btn-sm btn-outline-danger" (click)="removePago(i)"><i class="bi bi-trash"></i></button>
+										<td class="text-center">
+											<button
+												type="button"
+												class="btn btn-sm btn-outline-danger"
+												(click)="removePago(i)"
+												[disabled]="i !== (pagos.length - 1)">
+												<i class="bi bi-trash"></i>
+											</button>
 										</td>
 									</tr>
 								</tbody>

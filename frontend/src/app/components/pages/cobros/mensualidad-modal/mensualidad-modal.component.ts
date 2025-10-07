@@ -35,6 +35,8 @@ export class MensualidadModalComponent implements OnInit, OnChanges {
       nro_recibo: [''],
       computarizada: ['COMPUTARIZADA'], // COMPUTARIZADA | MANUAL
       pago_parcial: [false],
+      monto_parcial: [{ value: 0, disabled: true }],
+      cobro_total_semestre: [false],
       // Para rezagado / recuperación
       rezagado: [false],
       recuperacion: [false],
@@ -75,9 +77,32 @@ export class MensualidadModalComponent implements OnInit, OnChanges {
     // Recalcular total al cambiar cantidad, descuento o monto_manual
     this.form.get('cantidad')?.valueChanges.subscribe(() => this.recalcTotal());
     this.form.get('monto_manual')?.valueChanges.subscribe(() => this.recalcTotal());
+    this.form.get('monto_parcial')?.valueChanges.subscribe(() => this.recalcTotal());
     // Cambios de método de pago para activar validadores de TARJETA
     this.form.get('metodo_pago')?.valueChanges.subscribe(() => this.updateTarjetaValidators());
     this.updateTarjetaValidators();
+
+    // Alternar validadores/estado para pago parcial
+    this.form.get('pago_parcial')?.valueChanges.subscribe((on: boolean) => {
+      if (this.tipo === 'mensualidad') {
+        if (on) {
+          // bloquear cantidad a 1 y habilitar monto_parcial
+          this.form.get('cantidad')?.setValue(1, { emitEvent: false });
+          this.form.get('cantidad')?.disable({ emitEvent: false });
+          this.form.get('monto_parcial')?.enable({ emitEvent: false });
+          this.form.get('monto_parcial')?.setValidators([Validators.required, Validators.min(0.01), Validators.max(this.pu || Number.MAX_SAFE_INTEGER)]);
+        } else {
+          // restaurar cantidad y deshabilitar monto_parcial
+          this.form.get('cantidad')?.enable({ emitEvent: false });
+          this.form.get('monto_parcial')?.setValue(0, { emitEvent: false });
+          this.form.get('monto_parcial')?.clearValidators();
+          this.form.get('monto_parcial')?.disable({ emitEvent: false });
+        }
+        this.form.get('cantidad')?.updateValueAndValidity({ emitEvent: false });
+        this.form.get('monto_parcial')?.updateValueAndValidity({ emitEvent: false });
+        this.recalcTotal();
+      }
+    });
   }
 
   ngOnChanges(changes: SimpleChanges): void {
@@ -97,16 +122,34 @@ export class MensualidadModalComponent implements OnInit, OnChanges {
 
   private configureByTipo(): void {
     if (this.tipo === 'mensualidad') {
-      this.form.get('cantidad')?.setValidators([Validators.required, Validators.min(1)]);
+      this.form.get('cantidad')?.setValidators([Validators.required, Validators.min(1), Validators.max(this.pendientes || 1)]);
       this.form.get('monto_manual')?.clearValidators();
       this.form.get('monto_manual')?.setValue(0, { emitEvent: false });
+      // Si ya está activo pago parcial, aplicar estado/validadores correspondientes
+      if (this.form.get('pago_parcial')?.value) {
+        this.form.get('cantidad')?.setValue(1, { emitEvent: false });
+        this.form.get('cantidad')?.disable({ emitEvent: false });
+        this.form.get('monto_parcial')?.enable({ emitEvent: false });
+        this.form.get('monto_parcial')?.setValidators([Validators.required, Validators.min(0.01), Validators.max(this.pu || Number.MAX_SAFE_INTEGER)]);
+      } else {
+        this.form.get('cantidad')?.enable({ emitEvent: false });
+        this.form.get('monto_parcial')?.setValue(0, { emitEvent: false });
+        this.form.get('monto_parcial')?.clearValidators();
+        this.form.get('monto_parcial')?.disable({ emitEvent: false });
+      }
     } else {
       this.form.get('cantidad')?.clearValidators();
       this.form.get('cantidad')?.setValue(1, { emitEvent: false });
       this.form.get('monto_manual')?.setValidators([Validators.required, Validators.min(0)]);
+      // Asegurar que el parcial esté apagado en otros tipos
+      this.form.get('pago_parcial')?.setValue(false, { emitEvent: false });
+      this.form.get('monto_parcial')?.setValue(0, { emitEvent: false });
+      this.form.get('monto_parcial')?.clearValidators();
+      this.form.get('monto_parcial')?.disable({ emitEvent: false });
     }
     this.form.get('cantidad')?.updateValueAndValidity({ emitEvent: false });
     this.form.get('monto_manual')?.updateValueAndValidity({ emitEvent: false });
+    this.form.get('monto_parcial')?.updateValueAndValidity({ emitEvent: false });
   }
 
   get title(): string {
@@ -120,12 +163,22 @@ export class MensualidadModalComponent implements OnInit, OnChanges {
   recalcTotal(): void {
     let total = 0;
     if (this.tipo === 'mensualidad') {
-      const cant = Number(this.form.get('cantidad')?.value || 0);
-      total = Math.max(0, cant) * Number(this.pu || 0);
+      if (this.form.get('pago_parcial')?.value) {
+        total = Number(this.form.get('monto_parcial')?.value || 0);
+      } else {
+        const cant = Number(this.form.get('cantidad')?.value || 0);
+        total = Math.max(0, cant) * Number(this.pu || 0);
+      }
     } else {
       total = Number(this.form.get('monto_manual')?.value || 0);
     }
     this.form.get('costo_total')?.setValue(total, { emitEvent: false });
+  }
+
+  // Opciones para el selector de cantidad (1..pendientes)
+  getCantidadOptions(): number[] {
+    const p = Math.max(0, Number(this.pendientes || 0));
+    return Array.from({ length: p }, (_, i) => i + 1);
   }
 
   // Indica si el método seleccionado corresponde a TARJETA según el catálogo recibido
@@ -217,22 +270,51 @@ export class MensualidadModalComponent implements OnInit, OnChanges {
 
     const hoy = this.form.get('fecha_cobro')?.value || new Date().toISOString().slice(0, 10);
     const pagos: any[] = [];
+    const compSel = (this.form.get('comprobante')?.value || '').toString().toUpperCase();
+    const tipo_documento = compSel === 'FACTURA' ? 'F' : (compSel === 'RECIBO' ? 'R' : '');
+    const medio_doc = (this.form.get('computarizada')?.value === 'MANUAL') ? 'M' : 'C';
 
     if (this.tipo === 'mensualidad') {
-      const cant = Number(this.form.get('cantidad')?.value || 0);
-      let nro = this.baseNro || 1;
-      for (let i = 0; i < cant; i++) {
+      const esParcial = !!this.form.get('pago_parcial')?.value;
+      if (esParcial) {
         pagos.push({
-          nro_cobro: nro++,
-          monto: Number(this.pu || 0),
+          nro_cobro: this.baseNro || 1,
+          monto: Number(this.form.get('monto_parcial')?.value || 0),
           fecha_cobro: hoy,
           observaciones: this.composeObservaciones(),
           pu_mensualidad: Number(this.pu || 0),
-          // campos opcionales útiles
+          pago_parcial: true,
+          // doc/medio
+          tipo_documento,
+          medio_doc,
+          comprobante: compSel || 'NINGUNO',
+          computarizada: this.form.get('computarizada')?.value,
+          // opcionales
           descuento: this.form.get('descuento')?.value || null,
           nro_factura: this.form.get('comprobante')?.value === 'FACTURA' ? (this.form.get('nro_factura')?.value || null) : null,
           nro_recibo: this.form.get('comprobante')?.value === 'RECIBO' ? (this.form.get('nro_recibo')?.value || null) : null,
         });
+      } else {
+        const cant = Number(this.form.get('cantidad')?.value || 0);
+        let nro = this.baseNro || 1;
+        for (let i = 0; i < cant; i++) {
+          pagos.push({
+            nro_cobro: nro++,
+            monto: Number(this.pu || 0),
+            fecha_cobro: hoy,
+            observaciones: this.composeObservaciones(),
+            pu_mensualidad: Number(this.pu || 0),
+            // doc/medio
+            tipo_documento,
+            medio_doc,
+            comprobante: compSel || 'NINGUNO',
+            computarizada: this.form.get('computarizada')?.value,
+            // opcionales
+            descuento: this.form.get('descuento')?.value || null,
+            nro_factura: this.form.get('comprobante')?.value === 'FACTURA' ? (this.form.get('nro_factura')?.value || null) : null,
+            nro_recibo: this.form.get('comprobante')?.value === 'RECIBO' ? (this.form.get('nro_recibo')?.value || null) : null,
+          });
+        }
       }
     } else {
       // Rezagado o Recuperación: generamos un único registro
@@ -243,6 +325,11 @@ export class MensualidadModalComponent implements OnInit, OnChanges {
         fecha_cobro: hoy,
         observaciones: this.composeObservaciones(),
         pu_mensualidad: 0,
+        // doc/medio
+        tipo_documento,
+        medio_doc,
+        comprobante: compSel || 'NINGUNO',
+        computarizada: this.form.get('computarizada')?.value,
         descuento: this.form.get('descuento')?.value || null,
         nro_factura: this.form.get('comprobante')?.value === 'FACTURA' ? (this.form.get('nro_factura')?.value || null) : null,
         nro_recibo: this.form.get('comprobante')?.value === 'RECIBO' ? (this.form.get('nro_recibo')?.value || null) : null,
