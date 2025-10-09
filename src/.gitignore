@@ -22,3 +22,21 @@
 Homestead.json
 Homestead.yaml
 Thumbs.db
+
+/app/third_party/mycertificado.pem
+/app/third_party/mycertificado.pem.pruba_actual
+/app/third_party/mycertificado.pem.ant
+/app/third_party/mycertificado.pem.prueba
+/app/third_party/mycertificado.pem.real
+/app/third_party/mycertificado.off.pem
+
+/app/third_party/private.off.pem
+
+/app/third_party/private no corresponde.pem
+/app/third_party/private.pem
+/app/third_party/private.pem.ant
+/app/third_party/private.pem.prueba
+/app/third_party/private.pem.prueba_actual
+/app/third_party/private.pem.real
+/app/third_party/*.pem
+/app/third_party/**
