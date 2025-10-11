@@ -18,6 +18,7 @@ use App\Http\Controllers\Api\ParametroGeneralController;
 use App\Http\Controllers\Api\FormaCobroController;
 use App\Http\Controllers\Api\RazonSocialController;
 use App\Http\Controllers\Api\CuentaBancariaController;
+use App\Http\Controllers\Api\ReciboController;
 use App\Http\Controllers\Api\SinActividadController;
 use App\Http\Controllers\Api\SinCatalogoController;
 use App\Http\Controllers\Api\ParametroCostoController;
@@ -71,15 +72,26 @@ Route::get('sin-actividades', [SinActividadController::class, 'index']);
 // Documentos de identidad (SIN)
 Route::get('sin/documentos-identidad', [SinCatalogoController::class, 'documentosIdentidad']);
 
+// SIN Admin (S1, S2)
+Route::post('sin/sync/all', [\App\Http\Controllers\Api\SinAdminController::class, 'syncAll']);
+Route::post('sin/sync/leyendas', [\App\Http\Controllers\Api\SinAdminController::class, 'syncLeyendas']);
+Route::post('sin/sync/metodo-pago', [\App\Http\Controllers\Api\SinAdminController::class, 'syncMetodoPago']);
+Route::get('sin/status', [\App\Http\Controllers\Api\SinAdminController::class, 'status']);
+
 // Cobros (clave compuesta)
 Route::get('cobros', [CobroController::class, 'index']);
 Route::post('cobros', [CobroController::class, 'store']);
 // Cobros: endpoints adicionales
 Route::get('cobros/resumen', [CobroController::class, 'resumen']);
 Route::post('cobros/batch', [CobroController::class, 'batchStore']);
+Route::post('cobros/validar-impuestos', [CobroController::class, 'validarImpuestos']);
 Route::get('cobros/{cod_ceta}/{cod_pensum}/{tipo_inscripcion}/{nro_cobro}', [CobroController::class, 'show']);
 Route::put('cobros/{cod_ceta}/{cod_pensum}/{tipo_inscripcion}/{nro_cobro}', [CobroController::class, 'update']);
 Route::delete('cobros/{cod_ceta}/{cod_pensum}/{tipo_inscripcion}/{nro_cobro}', [CobroController::class, 'destroy']);
+
+// Recibos: PDF
+Route::get('recibos/{anio}/{nro_recibo}/pdf', [ReciboController::class, 'pdf'])
+    ->where(['anio' => '\\d{4}', 'nro_recibo' => '\\d+']);
 
 // Parámetros de costos
 Route::get('parametros-costos', [ParametroCostoController::class, 'index']);

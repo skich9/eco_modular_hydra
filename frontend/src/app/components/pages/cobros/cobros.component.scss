@@ -47,7 +47,7 @@ div[formArrayName="pagos"] > .table-responsive > table.table {
 	th:nth-child(8), td:nth-child(8) { width: 6% !important; text-align: center; }
 	th:nth-child(9), td:nth-child(9) { width: 6% !important; }
 
-	/* Asegurar spans de una línea por celda */
+	/* Asegurar spans de una línea por celda */ 
 	span.d-block { display: block; }
 
 	/* Detalle más aireado y multilínea */
@@ -73,8 +73,16 @@ div[formArrayName="pagos"] .obs-cell {
 	display: inline-block;
 }
 div[formArrayName="pagos"] .obs-icon {
-	cursor: pointer;
+	display: inline-flex;
+	align-items: center;
+	justify-content: center;
+	width: 22px;
+	height: 22px;
+	border: 1px solid #0d6efd;
+	border-radius: 50%;
+	background: #eef5ff;
 	color: #0d6efd; /* primary */
+	cursor: pointer;
 }
 div[formArrayName="pagos"] .obs-popover {
 	position: absolute;
@@ -91,7 +99,7 @@ div[formArrayName="pagos"] .obs-popover {
 	visibility: hidden;
 	transform: translateY(4px);
 	transition: all .15s ease-in-out;
-	z-index: 1060; /* por encima de tabla y wrappers */
+	z-index: 2000; /* por encima de tabla y wrappers y modals */
 	pointer-events: none; /* no capture hover */
 }
 div[formArrayName="pagos"] .obs-popover::after {
@@ -120,4 +128,24 @@ div[formArrayName="pagos"] .obs-cell:hover .obs-popover {
 
 /* Ocultar el guion en celdas de Observaciones cuando no hay texto */
 div[formArrayName="pagos"] td:nth-child(8) .text-muted { display: none; }
+
+/* Fallback de observaciones como texto envuelto (si se usa .obs-text en el template) */
+.obs-text {
+	white-space: pre-line;
+	word-break: break-word;
+	line-height: 1.3;
+}
+
+/* Estilos del modal de éxito */
+.success-modal .panel-header {
+	background: var(--bs-primary);
+	color: #fff;
+	padding: .5rem .75rem;
+	font-weight: 600;
+}
+.success-modal .panel-body {
+	padding: .75rem;
+	background: rgba(25,135,84,.05);
+	border-top: 1px solid rgba(0,0,0,.125);
+}
 

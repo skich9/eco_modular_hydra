@@ -15,6 +15,14 @@ use Illuminate\Http\Request;
 use Illuminate\Support\Facades\Validator;
 use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Schema;
+use Illuminate\Support\Facades\Log;
+use App\Repositories\Sin\CuisRepository;
+use App\Repositories\Sin\CufdRepository;
+use App\Services\ReciboService;
+use App\Services\FacturaService;
+use App\Services\Siat\OperationsService;
+use App\Services\Siat\CufGenerator;
+use App\Services\Siat\FacturaPayloadBuilder;
 
 class CobroController extends Controller
 {
@@ -305,22 +313,47 @@ class CobroController extends Controller
 			$totalMensualidad = $cobrosMensualidad->sum('monto');
 			$totalItems = $cobrosItems->sum('monto');
 
-			// Próxima mensualidad pendiente (regla simple: siguiente asignación según cantidad de mensualidades pagadas)
+			// Próxima mensualidad a pagar con prioridad a PARCIAL; exponer 'parcial_count'
 			$mensualidadNext = null; $mensualidadPendingCount = 0; $mensualidadTotalCuotas = $asignacionesPrimarias->count();
+			$parciales = $asignacionesPrimarias->filter(function($a){ return (string)($a->estado_pago ?? '') === 'PARCIAL'; })->sortBy('numero_cuota')->values();
+			$parcialCount = $parciales->count();
 			if ($mensualidadTotalCuotas > 0) {
-				$paidCount = $cobrosMensualidad->count();
 				$orderedAsign = $asignacionesPrimarias->values(); // ya está ordenado por numero_cuota asc
-				$nextAsig = $orderedAsign->slice($paidCount, 1)->first();
-				if ($nextAsig) {
+				$nextParcial = $parciales->first();
+				if ($nextParcial) {
+					$restante = max(0, (float)$nextParcial->monto - (float)($nextParcial->monto_pagado ?? 0));
 					$mensualidadNext = [
-						'numero_cuota' => (int) $nextAsig->numero_cuota,
-						'monto' => (float) $nextAsig->monto,
-						'id_asignacion_costo' => (int) ($nextAsig->id_asignacion_costo ?? 0) ?: null,
-						'id_cuota_template' => isset($nextAsig->id_cuota_template) ? ((int)$nextAsig->id_cuota_template ?: null) : null,
-						'fecha_vencimiento' => $nextAsig->fecha_vencimiento,
+						'numero_cuota' => (int) $nextParcial->numero_cuota,
+						'monto' => (float) $restante, // para UI usamos directamente el restante
+						'original_monto' => (float) $nextParcial->monto,
+						'monto_pagado' => (float) ($nextParcial->monto_pagado ?? 0),
+						'id_asignacion_costo' => (int) ($nextParcial->id_asignacion_costo ?? 0) ?: null,
+						'id_cuota_template' => isset($nextParcial->id_cuota_template) ? ((int)$nextParcial->id_cuota_template ?: null) : null,
+						'fecha_vencimiento' => $nextParcial->fecha_vencimiento,
+						'estado_pago' => 'PARCIAL',
 					];
+				} else {
+					// No hay PARCIAL: elegir la primera no cobrada (pendiente)
+					$nextPend = $orderedAsign->first(function($a){ return (string)($a->estado_pago ?? '') !== 'COBRADO'; });
+					if ($nextPend) {
+						$restante = max(0, (float)$nextPend->monto - (float)($nextPend->monto_pagado ?? 0));
+						$mensualidadNext = [
+							'numero_cuota' => (int) $nextPend->numero_cuota,
+							'monto' => (float) ($restante > 0 ? $restante : (float)$nextPend->monto),
+							'original_monto' => (float) $nextPend->monto,
+							'monto_pagado' => (float) ($nextPend->monto_pagado ?? 0),
+							'id_asignacion_costo' => (int) ($nextPend->id_asignacion_costo ?? 0) ?: null,
+							'id_cuota_template' => isset($nextPend->id_cuota_template) ? ((int)$nextPend->id_cuota_template ?: null) : null,
+							'fecha_vencimiento' => $nextPend->fecha_vencimiento,
+							'estado_pago' => (string)($nextPend->estado_pago ?? 'PENDIENTE'),
+						];
+					}
 				}
-				$mensualidadPendingCount = max(0, $mensualidadTotalCuotas - $paidCount);
+				// Pending count: solo cuotas en estado pendiente (excluye PARCIAL y COBRADO)
+				$mensualidadPendingCount = $asignacionesPrimarias->filter(function($a){
+					$st = (string)($a->estado_pago ?? '');
+					return $st !== 'COBRADO' && $st !== 'PARCIAL';
+				})->count();
 			}
 
 			// Construir resumen para ARRASTRE: próxima cuota pendiente desde asignacion_costos
@@ -518,6 +551,7 @@ class CobroController extends Controller
 					'mensualidad_next' => $mensualidadNext ? [
 						'next_cuota' => $mensualidadNext,
 						'pending_count' => $mensualidadPendingCount,
+						'parcial_count' => $parcialCount,
 						'total_cuotas' => $mensualidadTotalCuotas,
 					] : null,
 					'totales' => [
@@ -543,29 +577,52 @@ class CobroController extends Controller
 	/**
 	 * Registro por lote de cobros
 	 */
-	public function batchStore(Request $request)
+	public function batchStore(Request $request, ReciboService $reciboService, FacturaService $facturaService, CufdRepository $cufdRepo, OperationsService $ops, CufGenerator $cufGen, FacturaPayloadBuilder $payloadBuilder, CuisRepository $cuisRepo)
 	{
 		$rules = [
 			'cod_ceta' => 'required|integer',
 			'cod_pensum' => 'required|string|max:50',
 			'tipo_inscripcion' => 'required|string|max:255',
 			'gestion' => 'nullable|string|max:255',
+			'codigo_sucursal' => 'nullable|integer|min:0',
+			'codigo_punto_venta' => 'nullable|integer|min:0',
 			'id_usuario' => 'required|integer|exists:usuarios,id_usuario',
 			'id_forma_cobro' => 'required|string|exists:formas_cobro,id_forma_cobro',
 			'id_cuentas_bancarias' => 'nullable|integer|exists:cuentas_bancarias,id_cuentas_bancarias',
-			'pagos' => 'required|array|min:1',
-			'pagos.*.nro_cobro' => 'required|integer',
-			'pagos.*.monto' => 'required|numeric|min:0',
-			'pagos.*.fecha_cobro' => 'required|date',
+			'emitir_online' => 'sometimes|boolean',
+			// Aceptar esquema antiguo 'pagos' o nuevo 'items'
+			'pagos' => 'sometimes|array|min:1',
+			'items' => 'sometimes|array|min:1',
+			// Campos por pago/item (duplicados para items.* y pagos.*)
+			'items.*.nro_cobro' => 'nullable|integer',
+			'items.*.monto' => 'required_with:items|numeric|min:0',
+			'items.*.fecha_cobro' => 'required_with:items|date',
+			'items.*.pu_mensualidad' => 'nullable|numeric|min:0',
+			'items.*.order' => 'nullable|integer',
+			'items.*.descuento' => 'nullable|numeric|min:0',
+			'items.*.observaciones' => 'nullable|string',
+			'items.*.nro_factura' => 'nullable|integer',
+			'items.*.nro_recibo' => 'nullable|integer',
+			'items.*.id_item' => 'nullable|integer|exists:items_cobro,id_item',
+			'items.*.id_asignacion_costo' => 'nullable|integer',
+			'items.*.id_cuota' => 'nullable|integer|exists:cuotas,id_cuota',
+			'items.*.tipo_documento' => 'nullable|in:F,R',
+			'items.*.medio_doc' => 'nullable|in:C,M',
+			
+			'pagos.*.nro_cobro' => 'nullable|integer',
+			'pagos.*.monto' => 'required_with:pagos|numeric|min:0',
+			'pagos.*.fecha_cobro' => 'required_with:pagos|date',
 			'pagos.*.pu_mensualidad' => 'nullable|numeric|min:0',
 			'pagos.*.order' => 'nullable|integer',
-			'pagos.*.descuento' => 'nullable|string|max:255',
+			'pagos.*.descuento' => 'nullable|numeric|min:0',
 			'pagos.*.observaciones' => 'nullable|string',
 			'pagos.*.nro_factura' => 'nullable|integer',
 			'pagos.*.nro_recibo' => 'nullable|integer',
 			'pagos.*.id_item' => 'nullable|integer|exists:items_cobro,id_item',
 			'pagos.*.id_asignacion_costo' => 'nullable|integer',
 			'pagos.*.id_cuota' => 'nullable|integer|exists:cuotas,id_cuota',
+			'pagos.*.tipo_documento' => 'nullable|in:F,R',
+			'pagos.*.medio_doc' => 'nullable|in:C,M',
 		];
 
 		$validator = Validator::make($request->all(), $rules);
@@ -578,47 +635,315 @@ class CobroController extends Controller
 		}
 
 		try {
-			$created = [];
-			DB::transaction(function () use ($request, & $created) {
-				foreach ($request->input('pagos') as $pago) {
+			$results = [];
+			$items = $request->input('items');
+			if (!is_array($items) || count($items) === 0) {
+				$items = $request->input('pagos', []); // compatibilidad
+			}
+			Log::info('batchStore: start', [ 'count' => count($items) ]);
+			DB::transaction(function () use ($request, $items, $reciboService, $facturaService, $cufdRepo, $ops, $cufGen, $payloadBuilder, $cuisRepo, & $results) {
+				$pv = (int) ($request->input('codigo_punto_venta', 0));
+				$sucursal = (int) ($request->input('codigo_sucursal', config('sin.sucursal')));
+				$emitirOnline = (bool) $request->boolean('emitir_online', false);
+				// Contexto de inscripción principal del estudiante (para derivar asignación de costos)
+				$codCetaCtx = (int) $request->cod_ceta;
+				$codPensumCtx = (string) $request->cod_pensum;
+				$gestionCtx = $request->gestion;
+				$primaryInscripcion = Inscripcion::query()
+					->where('cod_ceta', $codCetaCtx)
+					->when($gestionCtx, function($q) use ($gestionCtx){ $q->where('gestion', $gestionCtx); })
+					->orderByDesc('fecha_inscripcion')
+					->orderByDesc('created_at')
+					->first();
+				// Precargar asignaciones y cuotas pagadas para mapear automáticamente si faltan ids
+				$asignPrimarias = collect();
+				$paidTplIds = collect();
+				// Monto aplicado por plantilla de cuota dentro de este batch (para reusar misma cuota en pagos parciales sucesivos)
+				$batchPaidByTpl = [];
+				if ($primaryInscripcion) {
+					$asignPrimarias = AsignacionCostos::where('cod_pensum', $codPensumCtx)
+						->where('cod_inscrip', $primaryInscripcion->cod_inscrip)
+						->orderBy('numero_cuota')
+						->get();
+					$paidTplIds = Cobro::where('cod_ceta', $codCetaCtx)
+						->where('cod_pensum', $codPensumCtx)
+						->where('tipo_inscripcion', (string)$request->tipo_inscripcion)
+						->pluck('id_cuota')
+						->filter()
+						->map(fn($v) => (int)$v)
+						->values();
+				}
+				// Eliminamos tracking por asignación única; usaremos $batchPaidByTpl para decidir la siguiente cuota
+				foreach ($items as $idx => $item) {
+					$nroCobro = (int)($item['nro_cobro'] ?? 0);
+					// Si no viene o ya existe, asignar correlativo atómico global usando doc_counter
+					if ($nroCobro <= 0 || Cobro::where('nro_cobro', $nroCobro)->exists()) {
+						DB::statement(
+							"INSERT INTO doc_counter (scope, last, created_at, updated_at) VALUES (?, 1, NOW(), NOW())\n"
+							. "ON DUPLICATE KEY UPDATE last = LAST_INSERT_ID(last + 1), updated_at = NOW()",
+							['COBRO']
+						);
+						$row = DB::selectOne('SELECT LAST_INSERT_ID() AS id');
+						$nroCobro = (int)($row->id ?? 0);
+					}
+					Log::info('batchStore:nroCobro', [ 'idx' => $idx, 'nro' => $nroCobro ]);
 					$composite = [
 						'cod_ceta' => (int)$request->cod_ceta,
 						'cod_pensum' => (string)$request->cod_pensum,
 						'tipo_inscripcion' => (string)$request->tipo_inscripcion,
-						'nro_cobro' => (int)$pago['nro_cobro'],
+						'nro_cobro' => $nroCobro,
 					];
-					$exists = Cobro::where($composite)->exists();
-					if ($exists) {
-						throw new \RuntimeException('Cobro duplicado para nro_cobro: ' . $pago['nro_cobro']);
+
+					$tipoDoc = strtoupper((string)($item['tipo_documento'] ?? 'R'));
+					$medioDoc = strtoupper((string)($item['medio_doc'] ?? 'C'));
+					Log::info('batchStore:item', [ 'idx' => $idx, 'tipo' => $tipoDoc, 'medio' => $medioDoc ]);
+
+					$nroRecibo = $item['nro_recibo'] ?? null;
+					$nroFactura = $item['nro_factura'] ?? null;
+					$cliente = $request->input('cliente', []);
+					$numeroDoc = trim((string) ($cliente['numero'] ?? ''));
+					$codTipoDocIdentidad = $numeroDoc !== '' ? $numeroDoc : '0';
+
+					// Documentos
+					if ($tipoDoc === 'R') {
+						$anio = (int) date('Y', strtotime($item['fecha_cobro']));
+						if ($medioDoc === 'C') {
+							$nroRecibo = $reciboService->nextReciboAtomic($anio);
+							$reciboService->create($anio, $nroRecibo, [
+								'id_usuario' => (int)$request->id_usuario,
+								'id_forma_cobro' => (string)$request->id_forma_cobro,
+								'cod_ceta' => (int)$request->cod_ceta,
+								'monto_total' => (float)$item['monto'],
+								'periodo_facturado' => null,
+								'codigo_doc_sector' => config('sin.cod_doc_sector'),
+								'cod_tipo_doc_identidad' => $codTipoDocIdentidad,
+							]);
+						} else {
+							if (!is_numeric($nroRecibo)) {
+								throw new \InvalidArgumentException('nro_recibo requerido para recibo manual');
+							}
+							$anio = (int) date('Y', strtotime($item['fecha_cobro']));
+							if ($reciboService->exists($anio, (int)$nroRecibo)) {
+								throw new \RuntimeException('nro_recibo manual duplicado: ' . $nroRecibo);
+							}
+							$reciboService->create($anio, (int)$nroRecibo, [
+								'id_usuario' => (int)$request->id_usuario,
+								'id_forma_cobro' => (string)$request->id_forma_cobro,
+								'cod_ceta' => (int)$request->cod_ceta,
+								'monto_total' => (float)$item['monto'],
+								'periodo_facturado' => null,
+								'codigo_doc_sector' => config('sin.cod_doc_sector'),
+								'cod_tipo_doc_identidad' => $codTipoDocIdentidad,
+							]);
+						}
+					} elseif ($tipoDoc === 'F') {
+						$anio = (int) date('Y', strtotime($item['fecha_cobro']));
+						if ($medioDoc === 'C') {
+							// Computarizada: asegurar CUFD, generar correlativo, generar CUF e insertar factura
+							$cufd = $cufdRepo->getVigenteOrCreate($pv);
+							$nroFactura = method_exists($facturaService, 'nextFacturaAtomic')
+								? $facturaService->nextFacturaAtomic($anio, $sucursal, (string)$pv)
+								: $facturaService->nextFactura($anio, $sucursal, (string)$pv);
+							Log::info('batchStore: factura C', [ 'idx' => $idx, 'anio' => $anio, 'sucursal' => $sucursal, 'pv' => $pv, 'nro' => $nroFactura ]);
+							// Generar CUF según especificación SIAT
+							$fechaEmision = date('Y-m-d H:i:s.u');
+							$cufData = $cufGen->generate(
+								(int) config('sin.nit'),
+								$fechaEmision,
+								$sucursal,
+								(int) config('sin.modalidad'),
+								1, // tipo_emision: en línea
+								(int) config('sin.tipo_factura'),
+								(int) config('sin.cod_doc_sector'),
+								(int) $nroFactura,
+								(int) $pv
+							);
+							$cuf = $cufData['cuf'];
+							$facturaService->createComputarizada($anio, $nroFactura, [
+								'codigo_sucursal' => $sucursal,
+								'codigo_punto_venta' => (string)$pv,
+								'fecha_emision' => $item['fecha_cobro'],
+								'cod_ceta' => (int)$request->cod_ceta,
+								'id_usuario' => (int)$request->id_usuario,
+								'id_forma_cobro' => (string)$request->id_forma_cobro,
+								'monto_total' => (float)$item['monto'],
+								'codigo_cufd' => $cufd['codigo_cufd'] ?? null,
+								'cuf' => $cuf,
+							]);
+							// Paso 3: emisión online (opcional, solo si emitir_online=true y SIN_OFFLINE=false)
+							if ($emitirOnline) {
+								if (config('sin.offline')) {
+									Log::info('batchStore: skip recepcionFactura (OFFLINE)');
+								} else {
+									try {
+										// Obtener CUIS vigente requerido por recepcionFactura
+										$cuisRow = $cuisRepo->getVigenteOrCreate($pv);
+										$cuisCode = $cuisRow['codigo_cuis'] ?? '';
+										$payload = $payloadBuilder->buildRecepcionFacturaPayload([
+											'nit' => (int) config('sin.nit'),
+											'cod_sistema' => (string) config('sin.cod_sistema'),
+											'ambiente' => (int) config('sin.ambiente'),
+											'modalidad' => (int) config('sin.modalidad'),
+											'tipo_factura' => (int) config('sin.tipo_factura'),
+											'doc_sector' => (int) config('sin.cod_doc_sector'),
+											'tipo_emision' => 1,
+											'sucursal' => $sucursal,
+											'punto_venta' => $pv,
+											'cuis' => $cuisCode,
+											'cufd' => $cufd['codigo_cufd'] ?? '',
+											'cuf' => $cuf,
+											'fecha_emision' => $fechaEmision,
+											'monto_total' => (float) $item['monto'],
+											'numero_factura' => (int) $nroFactura,
+											'id_forma_cobro' => (string) $request->id_forma_cobro,
+											'cliente' => $request->input('cliente', []),
+											'detalle' => [
+												'codigo_sin' => 0,
+												'codigo' => 'ITEM-' . (int)$nroCobro,
+												'descripcion' => $item['observaciones'] ?? 'Cobro',
+												'cantidad' => 1,
+												'unidad_medida' => 1,
+												'precio_unitario' => (float)$item['monto'],
+												'descuento' => 0,
+												'subtotal' => (float)$item['monto'],
+											],
+										]);
+										$resp = $ops->recepcionFactura($payload);
+										$codRecep = $resp['RespuestaRecepcionFactura']['codigoRecepcion'] ?? null;
+										if ($codRecep) {
+											\DB::table('factura')
+												->where('anio', $anio)
+												->where('nro_factura', $nroFactura)
+												->where('codigo_sucursal', $sucursal)
+												->where('codigo_punto_venta', (string)$pv)
+												->update(['codigo_recepcion' => $codRecep]);
+											Log::info('batchStore: recepcionFactura ok', [ 'codigo_recepcion' => $codRecep ]);
+										} else {
+											Log::warning('batchStore: recepcionFactura sin codigoRecepcion', [ 'resp' => $resp ]);
+										}
+									} catch (\Throwable $e) {
+										Log::error('batchStore: recepcionFactura exception', [ 'error' => $e->getMessage() ]);
+									}
+								}
+							}
+						} else { // Manual
+							if (!is_numeric($nroFactura)) {
+								$nroFactura = $item['nro_factura'] ?? null;
+							}
+							if (!is_numeric($nroFactura)) {
+								throw new \InvalidArgumentException('nro_factura requerido para factura manual');
+							}
+							$range = $facturaService->withinCafcRange((int)$nroFactura);
+							if (!$range) {
+								throw new \RuntimeException('nro_factura fuera de rango CAFC');
+							}
+							Log::info('batchStore: factura M', [ 'idx' => $idx, 'anio' => $anio, 'sucursal' => $sucursal, 'pv' => $pv, 'nro' => (int)$nroFactura ]);
+							$facturaService->createManual($anio, (int)$nroFactura, [
+								'codigo_sucursal' => $sucursal,
+								'codigo_punto_venta' => (string)$pv,
+								'fecha_emision' => $item['fecha_cobro'],
+								'cod_ceta' => (int)$request->cod_ceta,
+								'id_usuario' => (int)$request->id_usuario,
+								'id_forma_cobro' => (string)$request->id_forma_cobro,
+								'monto_total' => (float)$item['monto'],
+								'codigo_cafc' => $range['cafc'] ?? null,
+							]);
+						}
 					}
+
+					// Derivar id_asignacion_costo / id_cuota cuando no vienen en el payload
+					$idAsign = $item['id_asignacion_costo'] ?? null;
+					$idCuota = $item['id_cuota'] ?? null;
+					$asignRow = null;
+					if ((!$idAsign || !$idCuota) && $primaryInscripcion) {
+						if ($idAsign) {
+							$asignRow = AsignacionCostos::find((int)$idAsign);
+						} elseif ($idCuota) {
+							$asignRow = AsignacionCostos::where('cod_pensum', $codPensumCtx)
+								->where('cod_inscrip', $primaryInscripcion->cod_inscrip)
+								->where('id_cuota_template', (int)$idCuota)
+								->first();
+						} else {
+							// Caso mensualidad sin ids: elegir la primera cuota con saldo pendiente considerando pagos de este batch
+							if (empty($item['id_item'])) {
+								$found = null;
+								foreach ($asignPrimarias as $asig) {
+									$tpl = (int)($asig->id_cuota_template ?? 0);
+									if (!$tpl) continue;
+									$alreadyPaid = (float)($asig->monto_pagado ?? 0) + (float)($batchPaidByTpl[$tpl] ?? 0);
+									$remaining = (float)($asig->monto ?? 0) - $alreadyPaid;
+									if ($remaining > 0) { $found = $asig; break; }
+								}
+								if ($found) { $asignRow = $found; }
+							}
+						}
+						if ($asignRow) {
+							$idAsign = $idAsign ?: (int) $asignRow->id_asignacion_costo;
+							$idCuota = $idCuota ?: ((int) ($asignRow->id_cuota_template ?? 0) ?: null);
+						}
+					}
+					$order = isset($item['order']) ? (int)$item['order'] : ($idx + 1);
+
 					$payload = array_merge($composite, [
-						'monto' => $pago['monto'],
-						'fecha_cobro' => $pago['fecha_cobro'],
-						'cobro_completo' => $pago['cobro_completo'] ?? null,
-						'observaciones' => $pago['observaciones'] ?? null,
+						'monto' => $item['monto'],
+						'fecha_cobro' => $item['fecha_cobro'],
+						'cobro_completo' => $item['cobro_completo'] ?? null,
+						'observaciones' => $item['observaciones'] ?? null,
 						'id_usuario' => (int)$request->id_usuario,
 						'id_forma_cobro' => (string)$request->id_forma_cobro,
-						'pu_mensualidad' => $pago['pu_mensualidad'] ?? 0,
-						'order' => $pago['order'] ?? 0,
-						'descuento' => $pago['descuento'] ?? null,
+						'pu_mensualidad' => $item['pu_mensualidad'] ?? 0,
+						'order' => $order,
+						'descuento' => $item['descuento'] ?? null,
 						'id_cuentas_bancarias' => $request->id_cuentas_bancarias ?? null,
-						'nro_factura' => $pago['nro_factura'] ?? null,
-						'nro_recibo' => $pago['nro_recibo'] ?? null,
-						'id_item' => $pago['id_item'] ?? null,
-						'id_asignacion_costo' => $pago['id_asignacion_costo'] ?? null,
-						'id_cuota' => $pago['id_cuota'] ?? null,
+						'nro_factura' => $nroFactura,
+						'nro_recibo' => $nroRecibo,
+						'id_item' => $item['id_item'] ?? null,
+						'id_asignacion_costo' => $idAsign,
+						'id_cuota' => $idCuota,
+						'tipo_documento' => $tipoDoc,
+						'medio_doc' => $medioDoc,
 						'gestion' => $request->gestion ?? null,
 					]);
-					$created[] = Cobro::create($payload)->load(['usuario', 'cuota', 'formaCobro', 'cuentaBancaria', 'itemCobro']);
+					$created = Cobro::create($payload)->load(['usuario', 'cuota', 'formaCobro', 'cuentaBancaria', 'itemCobro']);
+					// Acumular pagos del batch por plantilla de cuota para seguir aplicando a la misma cuota si aún queda saldo
+					if ($idCuota) {
+						$batchPaidByTpl[$idCuota] = ($batchPaidByTpl[$idCuota] ?? 0) + (float)$item['monto'];
+					}
+					// Actualizar estado de pago de la asignación si aplica
+					if ($idAsign) {
+						$toUpd = $asignRow ?: AsignacionCostos::find((int)$idAsign);
+						if ($toUpd) {
+							$prevPagado = (float)($toUpd->monto_pagado ?? 0);
+							$newPagado = $prevPagado + (float)$item['monto'];
+							$fullNow = $newPagado >= (float) ($toUpd->monto ?? 0) || !empty($item['cobro_completo']);
+							$upd = [ 'monto_pagado' => $newPagado ];
+							if ($fullNow) {
+								$upd['estado_pago'] = 'COBRADO';
+								$upd['fecha_pago'] = $item['fecha_cobro'];
+							} else {
+								$upd['estado_pago'] = 'PARCIAL';
+							}
+							AsignacionCostos::where('id_asignacion_costo', (int)$toUpd->id_asignacion_costo)->update($upd);
+						}
+					}
+					$results[] = [
+						'indice' => $idx,
+						'tipo_documento' => $tipoDoc,
+						'medio_doc' => $medioDoc,
+						'nro_recibo' => $nroRecibo,
+						'nro_factura' => $nroFactura,
+						'cobro' => $created,
+					];
 				}
 			});
 
 			return response()->json([
 				'success' => true,
 				'message' => 'Cobros creados correctamente',
-				'data' => $created,
+				'data' => [ 'items' => $results ],
 			], 201);
 		} catch (\Throwable $e) {
+			Log::error('batchStore: exception', [ 'error' => $e->getMessage() ]);
 			return response()->json([
 				'success' => false,
 				'message' => 'Error al crear cobros por lote: ' . $e->getMessage(),
@@ -652,6 +977,65 @@ class CobroController extends Controller
 			return response()->json([
 				'success' => false,
 				'message' => 'Error al eliminar cobro: ' . $e->getMessage()
+			], 500);
+		}
+	}
+
+	/**
+	 * Validar y preparar contexto de impuestos (CUIS/CUFD vigentes)
+	 */
+	public function validarImpuestos(Request $request, CuisRepository $cuisRepo, CufdRepository $cufdRepo)
+	{
+		$rules = [
+			'codigo_punto_venta' => 'nullable|integer|min:0',
+			'codigo_sucursal' => 'nullable|integer|min:0',
+			'id_usuario' => 'nullable|integer|exists:usuarios,id_usuario',
+			'ip_equipo' => 'nullable|string|max:50',
+		];
+		$validator = Validator::make($request->all(), $rules);
+		if ($validator->fails()) {
+			Log::warning('validar-impuestos: validation failed', [ 'errors' => $validator->errors()->toArray() ]);
+			return response()->json([
+				'success' => false,
+				'message' => 'Error de validación',
+				'errors' => $validator->errors(),
+			], 422);
+		}
+
+		$pv = (int) ($request->input('codigo_punto_venta', 0));
+		$sucursalInput = $request->input('codigo_sucursal');
+		Log::info('validar-impuestos: start', [ 'pv' => $pv, 'codigo_sucursal' => $sucursalInput ]);
+
+		try {
+			// CUIS vigente o crear
+			$cuis = $cuisRepo->getVigenteOrCreate($pv);
+			Log::info('validar-impuestos: CUIS ok', [ 'codigo_cuis' => $cuis['codigo_cuis'] ?? null, 'fecha_vigencia' => $cuis['fecha_vigencia'] ?? null ]);
+
+			// CUFD vigente o crear
+			$cufd = null;
+			try {
+				$cufd = $cufdRepo->getVigenteOrCreate($pv);
+				Log::info('validar-impuestos: CUFD ok', [ 'codigo_cufd' => $cufd['codigo_cufd'] ?? null, 'fecha_vigencia' => $cufd['fecha_vigencia'] ?? null ]);
+			} catch (\Throwable $e) {
+				// No bloquear: en algunos PV puede no requerirse CUFD inmediato
+				Log::warning('validar-impuestos: CUFD lookup failed', [ 'pv' => $pv, 'error' => $e->getMessage() ]);
+			}
+
+			// TODO: evento significativo/leyendas si es necesario (quedará para paso 2)
+			return response()->json([
+				'success' => true,
+				'data' => [
+					'cuis' => $cuis,
+					'cufd' => $cufd,
+					'punto_venta' => [ 'codigo_punto_venta' => $pv ],
+					'sucursal' => [ 'codigo_sucursal' => $sucursalInput ?? config('sin.sucursal') ],
+				],
+			]);
+		} catch (\Throwable $e) {
+			Log::error('validar-impuestos: exception', [ 'pv' => $pv, 'error' => $e->getMessage(), 'trace' => substr($e->getTraceAsString(), 0, 1000) ]);
+			return response()->json([
+				'success' => false,
+				'message' => 'Error al validar impuestos: ' . $e->getMessage(),
 			], 500);
 		}
 	}

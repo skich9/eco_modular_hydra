@@ -30,7 +30,7 @@ export class MensualidadModalComponent implements OnInit, OnChanges {
       costo_total: [{ value: 0, disabled: true }],
       descuento: [''],
       observaciones: [''],
-      comprobante: ['NINGUNO'], // NINGUNO | FACTURA | RECIBO
+      comprobante: ['RECIBO', [Validators.required]], // FACTURA | RECIBO (siempre seleccionado)
       nro_factura: [''],
       nro_recibo: [''],
       computarizada: ['COMPUTARIZADA'], // COMPUTARIZADA | MANUAL
@@ -91,6 +91,8 @@ export class MensualidadModalComponent implements OnInit, OnChanges {
           this.form.get('cantidad')?.disable({ emitEvent: false });
           this.form.get('monto_parcial')?.enable({ emitEvent: false });
           this.form.get('monto_parcial')?.setValidators([Validators.required, Validators.min(0.01), Validators.max(this.pu || Number.MAX_SAFE_INTEGER)]);
+          // Prefijar el monto parcial con el restante sugerido (pu)
+          this.form.get('monto_parcial')?.setValue(this.pu || 0, { emitEvent: false });
         } else {
           // restaurar cantidad y deshabilitar monto_parcial
           this.form.get('cantidad')?.enable({ emitEvent: false });
@@ -131,6 +133,8 @@ export class MensualidadModalComponent implements OnInit, OnChanges {
         this.form.get('cantidad')?.disable({ emitEvent: false });
         this.form.get('monto_parcial')?.enable({ emitEvent: false });
         this.form.get('monto_parcial')?.setValidators([Validators.required, Validators.min(0.01), Validators.max(this.pu || Number.MAX_SAFE_INTEGER)]);
+        // Prefijar con el restante sugerido (pu)
+        this.form.get('monto_parcial')?.setValue(this.pu || 0, { emitEvent: false });
       } else {
         this.form.get('cantidad')?.enable({ emitEvent: false });
         this.form.get('monto_parcial')?.setValue(0, { emitEvent: false });
@@ -166,8 +170,11 @@ export class MensualidadModalComponent implements OnInit, OnChanges {
       if (this.form.get('pago_parcial')?.value) {
         total = Number(this.form.get('monto_parcial')?.value || 0);
       } else {
-        const cant = Number(this.form.get('cantidad')?.value || 0);
-        total = Math.max(0, cant) * Number(this.pu || 0);
+        const cant = Math.max(0, Number(this.form.get('cantidad')?.value || 0));
+        const sum = this.sumNextKCuotasRestantes(cant);
+        // Fallback: si no hay data de cuotas en resumen, usar pu * cantidad
+        const pu = Number(this.pu || 0);
+        total = sum > 0 ? sum : (pu > 0 ? (pu * cant) : 0);
       }
     } else {
       total = Number(this.form.get('monto_manual')?.value || 0);
@@ -179,6 +186,34 @@ export class MensualidadModalComponent implements OnInit, OnChanges {
   getCantidadOptions(): number[] {
     const p = Math.max(0, Number(this.pendientes || 0));
     return Array.from({ length: p }, (_, i) => i + 1);
+  }
+
+  // Suma los montos restantes de las próximas k cuotas según resumen.asignacion_costos/asignaciones
+  private sumNextKCuotasRestantes(k: number): number {
+    if (!k) return 0;
+    const list = this.getOrderedCuotasRestantes();
+    let acc = 0; let c = 0;
+    for (const it of list) { acc += it.restante; c++; if (c >= k) break; }
+    return acc;
+  }
+
+  // Devuelve lista ordenada por numero_cuota con {numero, restante}
+  private getOrderedCuotasRestantes(): Array<{ numero: number; restante: number; id_cuota_template: number|null; id_asignacion_costo: number|null; }> {
+    const src: any[] = ((this.resumen?.asignacion_costos?.items || this.resumen?.asignaciones || []) as any[]);
+    const ord = (src || []).slice().sort((a: any, b: any) => Number(a?.numero_cuota || 0) - Number(b?.numero_cuota || 0));
+    const out: Array<{ numero: number; restante: number; id_cuota_template: number|null; id_asignacion_costo: number|null; }> = [];
+    for (const a of ord) {
+      const monto = Number(a?.monto || 0);
+      const pagado = Number(a?.monto_pagado || 0);
+      const restante = Math.max(0, monto - pagado);
+      if (restante > 0) out.push({
+        numero: Number(a?.numero_cuota || 0),
+        restante,
+        id_cuota_template: (a?.id_cuota_template !== undefined && a?.id_cuota_template !== null) ? Number(a?.id_cuota_template) : null,
+        id_asignacion_costo: (a?.id_asignacion_costo !== undefined && a?.id_asignacion_costo !== null) ? Number(a?.id_asignacion_costo) : null,
+      });
+    }
+    return out;
   }
 
   // Indica si el método seleccionado corresponde a TARJETA según el catálogo recibido
@@ -267,10 +302,16 @@ export class MensualidadModalComponent implements OnInit, OnChanges {
 
   addAndClose(): void {
     if (!this.form.valid) return;
+    // Validar comprobante explícitamente
+    const compSelRaw = (this.form.get('comprobante')?.value || '').toString().toUpperCase();
+    if (compSelRaw !== 'RECIBO' && compSelRaw !== 'FACTURA') {
+      this.form.get('comprobante')?.setErrors({ required: true });
+      return;
+    }
 
     const hoy = this.form.get('fecha_cobro')?.value || new Date().toISOString().slice(0, 10);
     const pagos: any[] = [];
-    const compSel = (this.form.get('comprobante')?.value || '').toString().toUpperCase();
+    const compSel = compSelRaw;
     const tipo_documento = compSel === 'FACTURA' ? 'F' : (compSel === 'RECIBO' ? 'R' : '');
     const medio_doc = (this.form.get('computarizada')?.value === 'MANUAL') ? 'M' : 'C';
 
@@ -295,25 +336,55 @@ export class MensualidadModalComponent implements OnInit, OnChanges {
           nro_recibo: this.form.get('comprobante')?.value === 'RECIBO' ? (this.form.get('nro_recibo')?.value || null) : null,
         });
       } else {
-        const cant = Number(this.form.get('cantidad')?.value || 0);
+        const cant = Math.max(0, Number(this.form.get('cantidad')?.value || 0));
+        const list = this.getOrderedCuotasRestantes().slice(0, cant);
         let nro = this.baseNro || 1;
-        for (let i = 0; i < cant; i++) {
-          pagos.push({
-            nro_cobro: nro++,
-            monto: Number(this.pu || 0),
-            fecha_cobro: hoy,
-            observaciones: this.composeObservaciones(),
-            pu_mensualidad: Number(this.pu || 0),
-            // doc/medio
-            tipo_documento,
-            medio_doc,
-            comprobante: compSel || 'NINGUNO',
-            computarizada: this.form.get('computarizada')?.value,
-            // opcionales
-            descuento: this.form.get('descuento')?.value || null,
-            nro_factura: this.form.get('comprobante')?.value === 'FACTURA' ? (this.form.get('nro_factura')?.value || null) : null,
-            nro_recibo: this.form.get('comprobante')?.value === 'RECIBO' ? (this.form.get('nro_recibo')?.value || null) : null,
-          });
+        if (list.length > 0) {
+          for (let i = 0; i < list.length; i++) {
+            const m = Number(list[i]?.restante || 0);
+            const numero_cuota = Number(list[i]?.numero || 0) || null;
+            const id_cuota_template = list[i]?.id_cuota_template ?? null;
+            const id_asignacion_costo = list[i]?.id_asignacion_costo ?? null;
+            pagos.push({
+              nro_cobro: nro++,
+              monto: m,
+              fecha_cobro: hoy,
+              observaciones: this.composeObservaciones(),
+              pu_mensualidad: m,
+              numero_cuota,
+              id_cuota: id_cuota_template,
+              id_asignacion_costo,
+              tipo_documento,
+              medio_doc,
+              comprobante: compSel || 'NINGUNO',
+              computarizada: this.form.get('computarizada')?.value,
+              descuento: this.form.get('descuento')?.value || null,
+              nro_factura: this.form.get('comprobante')?.value === 'FACTURA' ? (this.form.get('nro_factura')?.value || null) : null,
+              nro_recibo: this.form.get('comprobante')?.value === 'RECIBO' ? (this.form.get('nro_recibo')?.value || null) : null,
+            });
+          }
+        } else {
+          // Fallback: sin data de cuotas, generar 'cant' pagos usando PU
+          const pu = Number(this.pu || 0);
+          for (let i = 0; i < cant; i++) {
+            pagos.push({
+              nro_cobro: nro++,
+              monto: pu,
+              fecha_cobro: hoy,
+              observaciones: this.composeObservaciones(),
+              pu_mensualidad: pu,
+              numero_cuota: null,
+              id_cuota: null,
+              id_asignacion_costo: null,
+              tipo_documento,
+              medio_doc,
+              comprobante: compSel || 'NINGUNO',
+              computarizada: this.form.get('computarizada')?.value,
+              descuento: this.form.get('descuento')?.value || null,
+              nro_factura: this.form.get('comprobante')?.value === 'FACTURA' ? (this.form.get('nro_factura')?.value || null) : null,
+              nro_recibo: this.form.get('comprobante')?.value === 'RECIBO' ? (this.form.get('nro_recibo')?.value || null) : null,
+            });
+          }
         }
       }
     } else {

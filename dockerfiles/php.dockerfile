@@ -4,7 +4,7 @@ COPY src .
 
 RUN apk add --no-cache mysql-client msmtp perl wget procps shadow libzip libpng libjpeg-turbo libwebp freetype icu ca-certificates postgresql-libs
 RUN apk add --no-cache --virtual build-essentials \
-    icu-dev icu-libs zlib-dev g++ make automake autoconf libzip-dev libxml2-dev \
+    icu-dev icu-libs zlib-dev g++ make automake autoconf libzip-dev libxml2-dev oniguruma-dev \
     libpng-dev libwebp-dev libjpeg-turbo-dev freetype-dev postgresql-dev && \
     docker-php-ext-configure gd --enable-gd --with-freetype --with-jpeg --with-webp && \
     docker-php-ext-install gd && \
@@ -17,6 +17,7 @@ RUN apk add --no-cache --virtual build-essentials \
     docker-php-ext-install exif && \
     docker-php-ext-install zip && \
     docker-php-ext-install soap && \
+    docker-php-ext-install mbstring && \
     apk del build-essentials && rm -rf /usr/src/php*
 
 RUN apk add --no-cache pcre-dev $PHPIZE_DEPS && \

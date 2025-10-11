@@ -56,6 +56,12 @@ export class CobrosService {
 		);
 	}
 
+	// ===================== Descargas =====================
+	downloadReciboPdf(anio: number, nroRecibo: number): Observable<Blob> {
+		const url = `${this.apiUrl}/recibos/${anio}/${nroRecibo}/pdf`;
+		return this.http.get(url, { responseType: 'blob' });
+	}
+
 	// Catálogos
 	getGestionesActivas(): Observable<any> {
 		return this.http.get<any>(`${this.apiUrl}/gestiones/estado/activas`).pipe(

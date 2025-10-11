@@ -35,6 +35,8 @@ class Cobro extends Model
 		'nro_recibo',
 		'id_item',
 		'id_asignacion_costo',
+		'tipo_documento',
+		'medio_doc',
 	];
 
 	protected $casts = [

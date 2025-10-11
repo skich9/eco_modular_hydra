@@ -2,7 +2,9 @@ import { Component, OnInit } from '@angular/core';
 import { CommonModule } from '@angular/common';
 import { FormArray, FormBuilder, FormGroup, FormsModule, ReactiveFormsModule, Validators } from '@angular/forms';
 import { CobrosService } from '../../../services/cobros.service';
+import { AuthService } from '../../../services/auth.service';
 import { MensualidadModalComponent } from './mensualidad-modal/mensualidad-modal.component';
+import { environment } from '../../../../environments/environment';
 
 @Component({
   selector: 'app-cobros-page',
@@ -48,9 +50,22 @@ export class CobrosComponent implements OnInit {
   // Visibilidad del card de Opciones de cobro
   showOpciones = false;
 
+  // Modal de éxito (registro realizado)
+  successSummary: {
+    cod_ceta?: string;
+    estudiante?: string;
+    carrera?: string;
+    pensum?: string;
+    gestion?: string;
+    rows: Array<{ cant: number; detalle: string; pu: number; descuento: number; subtotal: number; obs?: string }>;
+    total?: number;
+    docs?: Array<{ anio: number; nro_recibo?: number }>
+  } | null = null;
+
   constructor(
     private fb: FormBuilder,
-    private cobrosService: CobrosService
+    private cobrosService: CobrosService,
+    private auth: AuthService
   ) {
     this.searchForm = this.fb.group({
       cod_ceta: ['', Validators.required],
@@ -60,8 +75,8 @@ export class CobrosComponent implements OnInit {
     this.batchForm = this.fb.group({
       cabecera: this.fb.group({
         cod_ceta: ['', Validators.required],
-        cod_pensum: ['', Validators.required],
-        tipo_inscripcion: ['', Validators.required],
+        cod_pensum: [''],
+        tipo_inscripcion: [''],
         gestion: [''],
         id_forma_cobro: ['', Validators.required],
         id_cuentas_bancarias: [''],
@@ -99,6 +114,193 @@ export class CobrosComponent implements OnInit {
       costo_total: [{ value: 0, disabled: true }],
       observaciones: ['']
     });
+  }
+
+
+  private buildSuccessModalHtml(): string {
+    const s = this.successSummary || { rows: [] } as any;
+    const rowsHtml = (s.rows || []).map((r: any) => `
+      <tr>
+        <td class="text-center">${r.cant ?? ''}</td>
+        <td>
+          <div class="small">${(r.detalle ?? '').toString().replace(/</g,'&lt;')}</div>
+          ${r.obs ? `<div class="text-muted small">${(r.obs ?? '').toString().replace(/</g,'&lt;')}</div>` : ''}
+        </td>
+        <td class="text-end">${Number(r.pu||0).toLocaleString(undefined,{minimumFractionDigits:2, maximumFractionDigits:2})}</td>
+        <td class="text-end">${Number(r.descuento||0).toLocaleString(undefined,{minimumFractionDigits:2, maximumFractionDigits:2})}</td>
+        <td class="text-end">${Number(r.subtotal||0).toLocaleString(undefined,{minimumFractionDigits:2, maximumFractionDigits:2})}</td>
+      </tr>`).join('');
+    const totalFmt = Number(s.total||0).toLocaleString(undefined,{minimumFractionDigits:2, maximumFractionDigits:2});
+    const pensumStr = s.pensum ? ` (${s.pensum})` : '';
+    return `
+      <div class="modal-dialog modal-lg">
+        <div class="modal-content success-modal">
+          <div class="modal-header">
+            <h5 class="modal-title">Registro realizado</h5>
+            <button type="button" class="btn-close" data-bs-dismiss="modal" aria-label="Close" id="btnSuccessCloseX"></button>
+          </div>
+          <div class="modal-body">
+            <div class="border rounded overflow-hidden mb-3">
+              <div class="panel-header">Datos del Estudiante:</div>
+              <div class="panel-body">
+                <div class="row g-3">
+                  <div class="col-9">
+                    <div><strong>Código:</strong> ${s.cod_ceta ?? ''}</div>
+                    <div><strong>Estudiante:</strong> ${(s.estudiante ?? '').toString().replace(/</g,'&lt;')}</div>
+                    <div><strong>Carrera:</strong> ${(s.carrera ?? '').toString().replace(/</g,'&lt;')}${pensumStr}</div>
+                    <div><strong>Gestión:</strong> ${s.gestion ?? ''}</div>
+                  </div>
+                  <div class="col-3 d-flex align-items-center justify-content-center">
+                    <i class="bi bi-person-circle" style="font-size:48px; opacity:.5"></i>
+                  </div>
+                </div>
+              </div>
+            </div>
+            <div class="border rounded overflow-hidden">
+              <div class="panel-header">Se realizó el registro de los siguientes datos</div>
+              <div class="panel-body">
+                <div class="table-responsive">
+                  <table class="table table-sm table-bordered align-middle mb-2">
+                    <thead class="table-light">
+                      <tr>
+                        <th style="width:8%">Cant.</th>
+                        <th>Detalle</th>
+                        <th style="width:14%">P/u</th>
+                        <th style="width:14%">Descuento</th>
+                        <th style="width:18%">Sub total</th>
+                      </tr>
+                    </thead>
+                    <tbody>${rowsHtml}</tbody>
+                    <tfoot>
+                      <tr class="table-success">
+                        <th colspan="4" class="text-end">Subtotales:</th>
+                        <th class="text-end">${totalFmt}</th>
+                      </tr>
+                    </tfoot>
+                  </table>
+                </div>
+              </div>
+            </div>
+          </div>
+          <div class="modal-footer">
+            <button type="button" class="btn btn-primary" id="btnSuccessPrint"><i class="bi bi-printer me-1"></i> Imprimir</button>
+            <button type="button" class="btn btn-danger" id="btnSuccessClose" data-bs-dismiss="modal">Cerrar</button>
+          </div>
+        </div>
+      </div>`;
+  }
+
+  private buildSuccessSummary(createdItems: any[]): any {
+    try {
+      const est = this.resumen?.estudiante || {};
+      const ins = (this.resumen?.inscripcion || this.resumen?.inscripciones?.[0]) || {};
+      const nombre = [est.nombres, est.ap_paterno, est.ap_materno].filter(Boolean).join(' ').trim();
+      const carrera: string = (est?.pensum?.carrera?.nombre || '') as any;
+      const pensum: string = (ins?.cod_pensum || this.batchForm.get('cabecera.cod_pensum')?.value || '') + '';
+      const gestion: string = (this.resumen?.gestion || ins?.gestion || this.batchForm.get('cabecera.gestion')?.value || '') + '';
+      const cod_ceta: string = (est?.cod_ceta || this.batchForm.get('cabecera.cod_ceta')?.value || this.searchForm.get('cod_ceta')?.value || '') + '';
+      const rows = (this.pagos.controls || []).map((ctrl, idx) => {
+        const g = ctrl as FormGroup;
+        return {
+          cant: Number(g.get('cantidad')?.value || 0),
+          detalle: (g.get('detalle')?.value || '').toString(),
+          pu: Number(g.get('pu_mensualidad')?.value || 0),
+          descuento: Number(g.get('descuento')?.value || 0),
+          subtotal: this.calcRowSubtotal(idx),
+          obs: (g.get('observaciones')?.value || '').toString()
+        };
+      });
+      const total = rows.reduce((acc, r) => acc + Number(r.subtotal || 0), 0);
+      const docs = (createdItems || []).filter((it: any) => (it?.tipo_documento === 'R' && it?.medio_doc === 'C' && it?.nro_recibo)).map((it: any) => {
+        const fecha = it?.cobro?.fecha_cobro || new Date().toISOString().slice(0,10);
+        const anio = new Date(fecha).getFullYear();
+        return { anio, nro_recibo: it?.nro_recibo };
+      });
+      return { cod_ceta, estudiante: nombre, carrera, pensum, gestion, rows, total, docs };
+    } catch {
+      return { rows: [] };
+    }
+  }
+
+  private openSuccessModal(): void {
+    // Crear modal dinámicamente si no existe en el template
+    let modalEl = document.getElementById('successModal');
+    if (!modalEl) {
+      modalEl = document.createElement('div');
+      modalEl.id = 'successModal';
+      modalEl.className = 'modal fade';
+      modalEl.setAttribute('tabindex', '-1');
+      modalEl.setAttribute('aria-hidden', 'true');
+      modalEl.innerHTML = this.buildSuccessModalHtml();
+      document.body.appendChild(modalEl);
+      // Wire buttons after insertion
+      setTimeout(() => {
+        const btnPrint = document.getElementById('btnSuccessPrint');
+        const btnClose = document.getElementById('btnSuccessClose');
+        btnPrint?.addEventListener('click', () => this.onSuccessPrint());
+        // Refrescar sólo con el botón Cerrar
+        btnClose?.addEventListener('click', () => this.onSuccessClose());
+        // Auto-clean DOM when closed
+        const bs = (window as any).bootstrap;
+        if (bs?.Modal) {
+          modalEl?.addEventListener('hidden.bs.modal', () => {
+            try { modalEl?.remove(); } catch {}
+          });
+        }
+      }, 0);
+    } else {
+      // Update content if already exists
+      modalEl.innerHTML = this.buildSuccessModalHtml();
+      const btnPrint = document.getElementById('btnSuccessPrint');
+      const btnClose = document.getElementById('btnSuccessClose');
+      btnPrint?.addEventListener('click', () => this.onSuccessPrint());
+      btnClose?.addEventListener('click', () => this.onSuccessClose());
+    }
+    const bs = (window as any).bootstrap;
+    if (modalEl && bs?.Modal) {
+      const modal = new bs.Modal(modalEl, { backdrop: 'static', keyboard: false });
+      modal.show();
+    }
+  }
+
+  onSuccessPrint(): void {
+    try {
+      const docs = this.successSummary?.docs || [];
+      if (docs.length) {
+        for (const d of docs) {
+          if (d?.nro_recibo && d?.anio) {
+            this.cobrosService.downloadReciboPdf(d.anio, d.nro_recibo).subscribe({ next: () => {}, error: () => {} });
+          }
+        }
+        return;
+      }
+    } catch {}
+    try { window.print(); } catch {}
+  }
+
+  onSuccessClose(): void {
+    // Limpiar todo como si fuera la primera carga
+    try {
+      (this.batchForm.get('pagos') as FormArray).clear();
+      this.batchForm.reset({ cabecera: { id_forma_cobro: '', id_cuentas_bancarias: '' }, pagos: [] });
+      this.identidadForm.reset({ nombre_completo: '', tipo_identidad: 1, ci: '', complemento_habilitado: false, complemento_ci: '', razon_social: '', email_habilitado: false, email: '', turno: '' });
+      this.modalIdentidadForm.reset({ tipo_identidad: 1, ci: '', complemento_habilitado: false, complemento_ci: '', razon_social: '' });
+      this.mensualidadModalForm.reset({ metodo_pago: '', cantidad: 1, costo_total: 0, observaciones: '' });
+      this.searchForm.reset({ cod_ceta: '', gestion: '' });
+      this.resumen = null;
+      this.showOpciones = false;
+      this.alertMessage = '';
+      this.successSummary = null;
+    } catch {}
+
+    // Cerrar modal si hay instancia y recargar para estado inicial real
+    const modalEl = document.getElementById('successModal');
+    const bs = (window as any).bootstrap;
+    if (modalEl && bs?.Modal) {
+      const instance = bs.Modal.getInstance(modalEl) || new bs.Modal(modalEl);
+      instance.hide();
+    }
+    try { setTimeout(() => { window.location.reload(); }, 150); } catch {}
   }
 
   private esFormaEfectivoById(val: any): boolean {
@@ -385,11 +587,15 @@ export class CobrosComponent implements OnInit {
             this.pensums = [];
           }
 
-          // Datos para Mensualidad: usar próxima cuota pendiente si existe
+          // Datos para Mensualidad:
+          // - pendientes: según expectativa del usuario = pending_count + parcial_count
           const nroCuotas = Number(this.resumen?.totales?.nro_cuotas || 0);
-          const pagadas = Number(this.resumen?.cobros?.mensualidad?.count || 0);
-          const pendFromNext = Number(this.resumen?.mensualidad_next?.pending_count ?? 0);
-          this.mensualidadesPendientes = pendFromNext > 0 ? pendFromNext : Math.max(0, nroCuotas - pagadas);
+          const pagadasFull = Number(((this.resumen?.asignacion_costos?.items || this.resumen?.asignaciones || []) as any[]).filter?.((a: any) => (a?.estado_pago || '') === 'COBRADO').length || 0);
+          const pendFromNext = Number(this.resumen?.mensualidad_next?.pending_count ?? 0) || 0;
+          const parcialesCnt = Number(this.resumen?.mensualidad_next?.parcial_count ?? 0) || 0;
+          const combined = pendFromNext + parcialesCnt;
+          this.mensualidadesPendientes = combined > 0 ? combined : Math.max(0, nroCuotas - pagadasFull);
+          // - PU: next_cuota.monto ya es restante si es PARCIAL, o el monto si es PENDIENTE
           const puNext = Number(this.resumen?.mensualidad_next?.next_cuota?.monto ?? 0);
           this.mensualidadPU = puNext > 0 ? puNext : Number(this.resumen?.totales?.pu_mensual || 0);
           // Inicializar modal de mensualidades
@@ -659,11 +865,12 @@ export class CobrosComponent implements OnInit {
       return;
     }
     if (!this.ensureMetodoPagoPermitido(['EFECTIVO','TARJETA','CHEQUE','DEPOSITO','TRANSFERENCIA','QR','OTRO'])) return;
-    const nroCuotas = Number(this.resumen?.totales?.nro_cuotas || 0);
-    const pagadas = Number(this.resumen?.cobros?.mensualidad?.count || 0);
-    const inForm = this.countMensualidadCuotasInForm();
-    this.mensualidadesPendientes = Math.max(0, (nroCuotas - pagadas) - inForm);
-    this.mensualidadPU = Number(this.resumen?.totales?.pu_mensual || 0);
+    const pendFromNext = Number(this.resumen?.mensualidad_next?.pending_count ?? 0) || 0;
+    const parcialesCnt = Number(this.resumen?.mensualidad_next?.parcial_count ?? 0) || 0;
+    // Mostrar suma pedida por usuario (pendientes + parciales)
+    this.mensualidadesPendientes = Math.max(0, pendFromNext + parcialesCnt);
+    const puNext = Number(this.resumen?.mensualidad_next?.next_cuota?.monto ?? 0);
+    this.mensualidadPU = puNext > 0 ? puNext : Number(this.resumen?.totales?.pu_mensual || 0);
     const defaultMetodo = (this.batchForm.get('cabecera.id_forma_cobro') as any)?.value || '';
     this.mensualidadModalForm.patchValue({
       metodo_pago: defaultMetodo,
@@ -728,6 +935,47 @@ export class CobrosComponent implements OnInit {
     return maxNro + 1;
   }
 
+  // Considera mensualidades e items para evitar duplicados globales
+  private getMaxCobroNroInResumen(): number {
+    let max = 0;
+    const mens = (this.resumen?.cobros?.mensualidad?.items || []) as any[];
+    for (const it of mens) {
+      const n = Number(it?.nro_cobro || 0);
+      if (n > max) max = n;
+    }
+    const otros = (this.resumen?.cobros?.items?.items || []) as any[];
+    for (const it of otros) {
+      const n = Number(it?.nro_cobro || 0);
+      if (n > max) max = n;
+    }
+    for (const ctrl of (this.pagos.controls || [])) {
+      const n = Number((ctrl as FormGroup).get('nro_cobro')?.value || 0);
+      if (n > max) max = n;
+    }
+    return max;
+  }
+
+  private getNextCobroNro(): number {
+    return this.getMaxCobroNroInResumen() + 1;
+  }
+
+  private computeMaxFromResumenData(data: any): number {
+    try {
+      let max = 0;
+      const mens = (data?.cobros?.mensualidad?.items || []) as any[];
+      for (const it of mens) {
+        const n = Number(it?.nro_cobro || 0);
+        if (n > max) max = n;
+      }
+      const otros = (data?.cobros?.items?.items || []) as any[];
+      for (const it of otros) {
+        const n = Number(it?.nro_cobro || 0);
+        if (n > max) max = n;
+      }
+      return max;
+    } catch { return 0; }
+  }
+
   // Devuelve cuántas cuotas de mensualidad ya están agregadas en el FormArray (no enviadas aún)
   private countMensualidadCuotasInForm(): number {
     let count = 0;
@@ -767,7 +1015,7 @@ export class CobrosComponent implements OnInit {
     const isMensualidad = this.modalTipo === 'mensualidad';
     const startCuota = this.getNextMensualidadStartCuota();
     pagos.forEach((p: any, idx: number) => {
-      const numeroCuota = isMensualidad ? (startCuota + idx) : null;
+      const numeroCuota = isMensualidad ? (Number(p?.numero_cuota || 0) || (startCuota + idx)) : null;
       const esParcial = !!p.pago_parcial;
       const baseDetalle = isMensualidad ? `Mensualidad - Cuota ${numeroCuota}` : (p.detalle || '');
       const detalle = esParcial ? `${baseDetalle} (Parcial)` : baseDetalle;
@@ -785,6 +1033,7 @@ export class CobrosComponent implements OnInit {
         // Backend-required/known fields
         nro_cobro: [p.nro_cobro, Validators.required],
         id_cuota: [p.id_cuota ?? null],
+        id_asignacion_costo: [p.id_asignacion_costo ?? null],
         id_item: [p.id_item ?? null],
         monto: [monto, [Validators.required, Validators.min(0)]],
         fecha_cobro: [p.fecha_cobro || hoy, Validators.required],
@@ -795,7 +1044,7 @@ export class CobrosComponent implements OnInit {
         nro_recibo: [p.nro_recibo ?? null],
         tipo_documento: [tipoDoc],
         medio_doc: [medioDoc],
-        pu_mensualidad: [pu],
+        pu_mensualidad: [esParcial ? monto : pu],
         order: [p.order ?? 0],
         // Campos UI para mostrar en la tabla como labels
         cantidad: [cant, [Validators.required, Validators.min(1)]],
@@ -813,7 +1062,74 @@ export class CobrosComponent implements OnInit {
   }
 
   submitBatch(): void {
+    if (this.loading) {
+      console.warn('[Cobros] submitBatch() ignored because loading=true');
+      return;
+    }
+    console.log('[Cobros] submitBatch() called', {
+      valid: this.batchForm.valid,
+      pagosLen: this.pagos.length,
+      cabecera: (this.batchForm.get('cabecera') as FormGroup)?.getRawValue?.() || null
+    });
+    const cab = this.batchForm.get('cabecera') as FormGroup;
+    // 1) cod_ceta: desde resumen o searchForm si falta
+    try {
+      const currentCod = cab?.get('cod_ceta')?.value;
+      if (!currentCod) {
+        const codFromResumen = this.resumen?.estudiante?.cod_ceta || '';
+        const codFromSearch = (this.searchForm.get('cod_ceta')?.value || '').toString().trim();
+        const codFinal = codFromResumen || codFromSearch;
+        if (codFinal) cab.patchValue({ cod_ceta: codFinal }, { emitEvent: false });
+      }
+    } catch {}
+    // 1.1) cod_pensum / tipo_inscripcion / gestion desde resumen.inscripcion si faltan
+    try {
+      const ins = (this.resumen as any)?.inscripcion || (this.resumen as any)?.inscripciones?.[0] || null;
+      const patch: any = {};
+      if (!cab?.get('cod_pensum')?.value && ins?.cod_pensum) patch.cod_pensum = String(ins.cod_pensum);
+      if (!cab?.get('tipo_inscripcion')?.value && ins?.tipo_inscripcion) patch.tipo_inscripcion = String(ins.tipo_inscripcion);
+      if (!cab?.get('gestion')?.value && (this.resumen as any)?.gestion) patch.gestion = String((this.resumen as any).gestion);
+      if (Object.keys(patch).length) cab.patchValue(patch, { emitEvent: false });
+    } catch {}
+    // 2) id_forma_cobro: tomar del modal si cabecera está vacío
+    try {
+      const currentForma = cab?.get('id_forma_cobro')?.value;
+      if (!currentForma) {
+        const metodo = this.mensualidadModalForm.get('metodo_pago')?.value;
+        if (metodo) cab.patchValue({ id_forma_cobro: String(metodo) }, { emitEvent: false });
+      }
+    } catch {}
+    // 3) id_usuario: desde AuthService o localStorage current_user
+    try {
+      const currentUser = this.auth?.getCurrentUser?.();
+      if (currentUser?.id_usuario && !cab?.get('id_usuario')?.value) {
+        cab.patchValue({ id_usuario: currentUser.id_usuario }, { emitEvent: false });
+      } else if (!cab?.get('id_usuario')?.value && typeof localStorage !== 'undefined') {
+        const raw = localStorage.getItem('current_user');
+        if (raw) {
+          const parsed = JSON.parse(raw);
+          if (parsed?.id_usuario) cab.patchValue({ id_usuario: parsed.id_usuario }, { emitEvent: false });
+        }
+      }
+    } catch {}
+    // Pre-completar fecha/monto y ASIGNAR nro_cobro único en cliente (hasta que backend lo haga atómico)
+    try {
+      const hoy = new Date().toISOString().slice(0, 10);
+      let next = this.getNextCobroNro();
+      (this.pagos.controls || []).forEach((ctrl, idx) => {
+        const fg = ctrl as FormGroup;
+        const raw: any = fg.getRawValue();
+        const subtotal = this.calcRowSubtotal(idx);
+        const fecha = raw?.fecha_cobro || hoy;
+        const nro = raw?.nro_cobro ? Number(raw.nro_cobro) : (next++);
+        fg.patchValue({ fecha_cobro: fecha, monto: subtotal, nro_cobro: nro }, { emitEvent: false });
+      });
+      this.batchForm.updateValueAndValidity({ onlySelf: false, emitEvent: false });
+    } catch {}
+    // Forzar visualización de errores de validación en el formulario
+    try { this.batchForm.markAllAsTouched(); } catch {}
     if (!this.batchForm.valid || this.pagos.length === 0) {
+      console.warn('[Cobros] submitBatch() invalid form or empty pagos');
       this.showAlert('Complete los datos y agregue al menos un pago', 'warning');
       return;
     }
@@ -821,29 +1137,91 @@ export class CobrosComponent implements OnInit {
     const { cabecera } = this.batchForm.value as any;
     // Mapear pagos para enviar solo con 'monto' calculado y fallbacks de nro/fecha
     const hoy = new Date().toISOString().slice(0, 10);
-    let next = this.getNextMensualidadNro();
     const pagos = (this.pagos.controls || []).map((ctrl, idx) => {
       const raw = (ctrl as FormGroup).getRawValue() as any;
       const subtotal = this.calcRowSubtotal(idx);
-      const nro = raw.nro_cobro || (next++);
       const fecha = raw.fecha_cobro || hoy;
-      return { ...raw, nro_cobro: nro, fecha_cobro: fecha, monto: subtotal };
+      const item: any = { ...raw, fecha_cobro: fecha, monto: subtotal, nro_cobro: Number(raw?.nro_cobro || 0) };
+      if (!item.nro_cobro || item.nro_cobro <= 0) {
+        item.nro_cobro = this.getNextCobroNro();
+      }
+      return item;
     });
-    const payload = { ...cabecera, pagos };
+    const payload = {
+      ...cabecera,
+      id_forma_cobro: (cabecera?.id_forma_cobro !== undefined && cabecera?.id_forma_cobro !== null)
+        ? String(cabecera.id_forma_cobro)
+        : cabecera?.id_forma_cobro,
+      pagos,
+      cliente: {
+        tipo_identidad: Number(this.identidadForm.get('tipo_identidad')?.value || 0),
+        numero: (this.identidadForm.get('ci')?.value || '').toString(),
+        razon_social: (this.identidadForm.get('razon_social')?.value || '').toString()
+      }
+    } as any;
     this.cobrosService.batchStore(payload).subscribe({
       next: (res) => {
         if (res.success) {
+          try {
+            const items = (res?.data?.items || []) as Array<any>;
+            // Construir resumen de éxito ANTES de cualquier limpieza
+            this.successSummary = this.buildSuccessSummary(items);
+            // Mostrar modal de éxito
+            this.openSuccessModal();
+            for (const it of items) {
+              if ((it?.tipo_documento === 'R') && (it?.medio_doc === 'C') && it?.nro_recibo) {
+                const fecha = it?.cobro?.fecha_cobro || hoy;
+                const anio = new Date(fecha).getFullYear();
+                // Descargar PDF sin abrir nueva pestaña
+                this.cobrosService.downloadReciboPdf(anio, it.nro_recibo).subscribe({
+                  next: (blob) => {
+                    const fileName = `recibo_${anio}_${it.nro_recibo}.pdf`;
+                    const url = URL.createObjectURL(blob);
+                    const a = document.createElement('a');
+                    a.href = url;
+                    a.download = fileName;
+                    document.body.appendChild(a);
+                    a.click();
+                    a.remove();
+                    URL.revokeObjectURL(url);
+                  },
+                  error: () => {
+                    // Fallback: intentar abrir en nueva pestaña si falla descarga
+                    const url = `${environment.apiUrl}/recibos/${anio}/${it.nro_recibo}/pdf`;
+                    try { window.open(url, '_blank'); } catch {}
+                  }
+                });
+              }
+            }
+          } catch {}
           this.showAlert('Cobros registrados', 'success');
-          this.batchForm.reset({ cabecera: {}, pagos: [] });
-          (this.batchForm.get('pagos') as FormArray).clear();
+          // No limpiar aún; se limpia al cerrar el modal de éxito
         } else {
           this.showAlert(res.message || 'No se pudo registrar', 'warning');
         }
         this.loading = false;
       },
       error: (err: any) => {
-        console.error('Batch error:', err);
-        const msg = err?.error?.message || 'Error al registrar cobros';
+        try {
+          const detail = {
+            status: err?.status,
+            message: err?.message,
+            backend: err?.error,
+            payload
+          };
+          console.error('Batch error detail:', detail);
+        } catch {}
+        const backendMsg = (err?.error?.message || '').toString();
+        const validationErrors = err?.error?.errors;
+        let msg = backendMsg || err?.message || 'Error al registrar cobros';
+        if (validationErrors && typeof validationErrors === 'object') {
+          const parts: string[] = [];
+          for (const k of Object.keys(validationErrors)) {
+            const arr = validationErrors[k];
+            if (Array.isArray(arr)) parts.push(`${k}: ${arr.join(', ')}`);
+          }
+          if (parts.length) msg += ` | Detalles: ${parts.join(' | ')}`;
+        }
         this.showAlert(msg, 'error');
         this.loading = false;
       }
