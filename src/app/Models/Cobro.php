@@ -21,6 +21,7 @@ class Cobro extends Model
 		'id_cuota',
 		'gestion',
 		'nro_cobro',
+		'anio_cobro',
 		'monto',
 		'fecha_cobro',
 		'cobro_completo',
@@ -42,6 +43,7 @@ class Cobro extends Model
 	protected $casts = [
 		'cod_ceta' => 'integer',
 		'nro_cobro' => 'integer',
+		'anio_cobro' => 'integer',
 		'monto' => 'decimal:2',
 		'pu_mensualidad' => 'decimal:2',
 		'cobro_completo' => 'boolean',

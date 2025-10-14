@@ -380,7 +380,9 @@ class InscripcionesWebhookController extends Controller
 				'source_cod_inscrip' => (string) $sgacode,
 			];
 			$queueName = env('HYDRA_QUEUE_INSCRIPCIONES', 'default');
-			$runSync = filter_var(env('HYDRA_ASSIGN_SYNC', false), FILTER_VALIDATE_BOOL);
+			// En entorno local, por defecto ejecutar en modo SYNC para asegurar la asignación inmediata
+			$defaultSync = app()->environment('local');
+			$runSync = filter_var(env('HYDRA_ASSIGN_SYNC', $defaultSync), FILTER_VALIDATE_BOOL);
 			if ($runSync) {
 				\Log::info('Dispatching AssignCostoSemestralFromInscripcion SYNC');
 				AssignCostoSemestralFromInscripcion::dispatchSync($payload);

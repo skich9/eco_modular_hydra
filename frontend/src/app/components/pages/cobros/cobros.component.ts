@@ -78,6 +78,9 @@ export class CobrosComponent implements OnInit {
         cod_pensum: [''],
         tipo_inscripcion: [''],
         gestion: [''],
+        // UI value (como SGA): codigo SIN del método
+        codigo_sin: [''],
+        // Valor requerido para backend: id interno
         id_forma_cobro: ['', Validators.required],
         id_cuentas_bancarias: [''],
         id_usuario: ['', Validators.required]
@@ -411,6 +414,15 @@ export class CobrosComponent implements OnInit {
           this.formasCobro = res.data;
           // Si ya hay un valor y corresponde a EFECTIVO, limpiar error custom
           this.clearSoloEfectivoErrorIfMatches();
+          // Sincronizar codigo_sin desde id_forma_cobro si ya hubiese uno seleccionado
+          const cab = this.batchForm.get('cabecera') as FormGroup;
+          const idSel = (cab.get('id_forma_cobro')?.value ?? '').toString();
+          if (idSel) {
+            const match = (this.formasCobro || []).find((f: any) => `${f?.id_forma_cobro}` === idSel);
+            if (match) {
+              cab.patchValue({ codigo_sin: match.codigo_sin }, { emitEvent: false });
+            }
+          }
         }
       },
       error: () => {}
@@ -449,8 +461,8 @@ export class CobrosComponent implements OnInit {
   }
 
   get selectedFormaCobroId(): string {
-    const v = (this.batchForm.get('cabecera.id_forma_cobro') as any)?.value;
-    return (v === null || v === undefined) ? '' : `${v}`;
+    const id = (this.batchForm.get('cabecera.id_forma_cobro') as any)?.value;
+    return (id === null || id === undefined) ? '' : `${id}`;
   }
 
   get isFormaCobroInvalid(): boolean {
@@ -657,6 +669,22 @@ export class CobrosComponent implements OnInit {
       return;
     }
     this.loadResumen();
+  }
+
+  onMetodoPagoChange(ev: any): void {
+    const sel = (ev?.target?.value ?? '').toString(); // codigo_sin
+    const cab = this.batchForm.get('cabecera') as FormGroup;
+    cab.patchValue({ codigo_sin: sel }, { emitEvent: false });
+    // Mapear a id_forma_cobro requerido por backend
+    let match = (this.formasCobro || []).find((f: any) => `${f?.codigo_sin}` === sel);
+    if (!match) match = (this.formasCobro || []).find((f: any) => `${f?.id_forma_cobro}` === sel);
+    const idInterno = match ? `${match.id_forma_cobro}` : '';
+    cab.patchValue({ id_forma_cobro: idInterno }, { emitEvent: false });
+    const idCtrl = cab.get('id_forma_cobro');
+    idCtrl?.markAsTouched();
+    idCtrl?.updateValueAndValidity({ emitEvent: false });
+    // Revalidar y limpiar errores si corresponde
+    this.clearSoloEfectivoErrorIfMatches();
   }
 
   openKardexModal(): void {
@@ -1046,6 +1074,13 @@ export class CobrosComponent implements OnInit {
         medio_doc: [medioDoc],
         pu_mensualidad: [esParcial ? monto : pu],
         order: [p.order ?? 0],
+        // Datos bancarios/tarjeta para nota_bancaria
+        id_cuentas_bancarias: [p.id_cuentas_bancarias ?? null],
+        banco_origen: [p.banco_origen ?? null],
+        fecha_deposito: [p.fecha_deposito ?? null],
+        nro_deposito: [p.nro_deposito ?? null],
+        tarjeta_first4: [p.tarjeta_first4 ?? null],
+        tarjeta_last4: [p.tarjeta_last4 ?? null],
         // Campos UI para mostrar en la tabla como labels
         cantidad: [cant, [Validators.required, Validators.min(1)]],
         detalle: [detalle],

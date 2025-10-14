@@ -50,7 +50,6 @@ class CobroController extends Controller
 				'cod_ceta' => 'required|integer',
 				'cod_pensum' => 'required|string|max:50',
 				'tipo_inscripcion' => 'required|string|max:255',
-				'nro_cobro' => 'required|integer',
 				'monto' => 'required|numeric|min:0',
 				'fecha_cobro' => 'required|date',
 				'cobro_completo' => 'nullable|boolean',
@@ -77,20 +76,20 @@ class CobroController extends Controller
 				], 422);
 			}
 
-			// Verificar que no exista el registro con la misma clave compuesta
-			$exists = Cobro::where('cod_ceta', $request->cod_ceta)
-				->where('cod_pensum', $request->cod_pensum)
-				->where('tipo_inscripcion', $request->tipo_inscripcion)
-				->where('nro_cobro', $request->nro_cobro)
-				->exists();
-			if ($exists) {
-				return response()->json([
-					'success' => false,
-					'message' => 'Ya existe un cobro con esa clave compuesta.'
-				], 409);
-			}
-
-			$cobro = Cobro::create($request->all());
+			// Generar correlativo atómico por año para nro_cobro
+			$anioCobro = (int) date('Y', strtotime((string)$request->fecha_cobro));
+			$scopeCobro = 'COBRO:' . $anioCobro;
+			DB::statement(
+				"INSERT INTO doc_counter (scope, last, created_at, updated_at) VALUES (?, 1, NOW(), NOW())\n"
+				. "ON DUPLICATE KEY UPDATE last = LAST_INSERT_ID(last + 1), updated_at = NOW()",
+				[$scopeCobro]
+			);
+			$row = DB::selectOne('SELECT LAST_INSERT_ID() AS id');
+			$nroCobro = (int)($row->id ?? 0);
+			$data = $request->all();
+			$data['nro_cobro'] = $nroCobro;
+			$data['anio_cobro'] = $anioCobro;
+			$cobro = Cobro::create($data);
 
 			return response()->json([
 				'success' => true,
@@ -348,6 +347,12 @@ class CobroController extends Controller
 							'estado_pago' => (string)($nextPend->estado_pago ?? 'PENDIENTE'),
 						];
 					}
+
+					// Pending count: solo cuotas en estado pendiente (excluye PARCIAL y COBRADO)
+					$mensualidadPendingCount = $asignacionesPrimarias->filter(function($a){
+						$st = (string)($a->estado_pago ?? '');
+						return $st !== 'COBRADO' && $st !== 'PARCIAL';
+					})->count();
 				}
 				// Pending count: solo cuotas en estado pendiente (excluye PARCIAL y COBRADO)
 				$mensualidadPendingCount = $asignacionesPrimarias->filter(function($a){
@@ -451,11 +456,11 @@ class CobroController extends Controller
 			$saldoMensualidad = isset($montoSemestre) ? (float) $montoSemestre - (float) $totalMensualidad : null;
 			$puMensualFromNext = $mensualidadNext ? round((float) ($mensualidadNext['monto'] ?? 0), 2) : null;
 			$puMensualFromAsignacion = $asignacionesPrimarias->count() > 0 ? round((float) $asignacionesPrimarias->avg('monto'), 2) : null;
-			$puMensual = $puMensualFromNext !== null
-				? $puMensualFromNext
-				: ($puMensualFromAsignacion !== null
-					? $puMensualFromAsignacion
-					: (($montoSemestre !== null && $nroCuotas) ? round(((float) $montoSemestre) / max(1, $nroCuotas), 2) : null));
+			$puMensualNominal = $puMensualFromAsignacion !== null
+				? $puMensualFromAsignacion
+				: (($montoSemestre !== null && $nroCuotas) ? round(((float) $montoSemestre) / max(1, $nroCuotas), 2) : null);
+			// pu_mensual (para mostrar en UI): si hay PARCIAL, mostrar su restante; si no, mostrar nominal
+			$puMensual = $puMensualFromNext !== null ? $puMensualFromNext : $puMensualNominal;
 
 			// Documentos presentados del estudiante y deducción de documento de identidad
 			$documentosPresentados = collect();
@@ -535,6 +540,18 @@ class CobroController extends Controller
 						'nro_cuotas' => $paramNroCuotas,
 					],
 					'asignacion_costos' => $asignacion,
+					// Exponer todas las cuotas ordenadas con datos clave para el modal
+					'asignaciones' => $asignacionesPrimarias->map(function($a){
+						return [
+							'numero_cuota' => (int) ($a->numero_cuota ?? 0),
+							'monto' => (float) ($a->monto ?? 0),
+							'monto_pagado' => (float) ($a->monto_pagado ?? 0),
+							'estado_pago' => (string) ($a->estado_pago ?? ''),
+							'id_asignacion_costo' => (int) ($a->id_asignacion_costo ?? 0) ?: null,
+							'id_cuota_template' => isset($a->id_cuota_template) ? ((int)$a->id_cuota_template ?: null) : null,
+							'fecha_vencimiento' => $a->fecha_vencimiento,
+						];
+					})->values(),
 					'arrastre' => $arrastreSummary,
 					'cobros' => [
 						'mensualidad' => [
@@ -560,6 +577,7 @@ class CobroController extends Controller
 						'total_pagado' => (float) ($totalMensualidad + $totalItems),
 						'nro_cuotas' => $nroCuotas,
 						'pu_mensual' => $puMensual,
+						'pu_mensual_nominal' => $puMensualNominal,
 					],
 					'documentos_presentados' => $documentosPresentados,
 					'documento_identidad' => $documentoIdentidad,
@@ -674,24 +692,32 @@ class CobroController extends Controller
 						->values();
 				}
 				// Eliminamos tracking por asignación única; usaremos $batchPaidByTpl para decidir la siguiente cuota
+				// Preparar nickname de usuario y forma de cobro para anotar en notas
+				$usuarioNick = (string) (DB::table('usuarios')->where('id_usuario', (int)$request->id_usuario)->value('nickname') ?? '');
+				$formaRow = DB::table('formas_cobro')->where('id_forma_cobro', (string)$request->id_forma_cobro)->first();
+				$formaNombre = strtoupper(trim((string)($formaRow->nombre ?? $formaRow->descripcion ?? $formaRow->label ?? '')));
+				// Normalizar acentos
+				$formaNombre = iconv('UTF-8','ASCII//TRANSLIT',$formaNombre);
+				$formaCode = strtoupper(trim((string)($formaRow->id_forma_cobro ?? '')));
+
 				foreach ($items as $idx => $item) {
-					$nroCobro = (int)($item['nro_cobro'] ?? 0);
-					// Si no viene o ya existe, asignar correlativo atómico global usando doc_counter
-					if ($nroCobro <= 0 || Cobro::where('nro_cobro', $nroCobro)->exists()) {
-						DB::statement(
-							"INSERT INTO doc_counter (scope, last, created_at, updated_at) VALUES (?, 1, NOW(), NOW())\n"
-							. "ON DUPLICATE KEY UPDATE last = LAST_INSERT_ID(last + 1), updated_at = NOW()",
-							['COBRO']
-						);
-						$row = DB::selectOne('SELECT LAST_INSERT_ID() AS id');
-						$nroCobro = (int)($row->id ?? 0);
-					}
+					// Asignar SIEMPRE un correlativo atómico global para garantizar unicidad
+					$anioItem = (int) date('Y', strtotime((string)($item['fecha_cobro'] ?? date('Y-m-d'))));
+					$scopeCobro = 'COBRO:' . $anioItem;
+					DB::statement(
+						"INSERT INTO doc_counter (scope, last, created_at, updated_at) VALUES (?, 1, NOW(), NOW())\n"
+						. "ON DUPLICATE KEY UPDATE last = LAST_INSERT_ID(last + 1), updated_at = NOW()",
+						[$scopeCobro]
+					);
+					$row = DB::selectOne('SELECT LAST_INSERT_ID() AS id');
+					$nroCobro = (int)($row->id ?? 0);
 					Log::info('batchStore:nroCobro', [ 'idx' => $idx, 'nro' => $nroCobro ]);
 					$composite = [
 						'cod_ceta' => (int)$request->cod_ceta,
 						'cod_pensum' => (string)$request->cod_pensum,
 						'tipo_inscripcion' => (string)$request->tipo_inscripcion,
 						'nro_cobro' => $nroCobro,
+						'anio_cobro' => $anioItem,
 					];
 
 					$tipoDoc = strtoupper((string)($item['tipo_documento'] ?? 'R'));
@@ -851,6 +877,8 @@ class CobroController extends Controller
 						}
 					}
 
+					// Inserción en notas SGA: después de resolver id_asign/id_cuota para formar el detalle correcto
+
 					// Derivar id_asignacion_costo / id_cuota cuando no vienen en el payload
 					$idAsign = $item['id_asignacion_costo'] ?? null;
 					$idCuota = $item['id_cuota'] ?? null;
@@ -883,6 +911,110 @@ class CobroController extends Controller
 						}
 					}
 					$order = isset($item['order']) ? (int)$item['order'] : ($idx + 1);
+
+					// Construir detalle de cuota para notas: "Mensualidad - Cuota N (Parcial)"
+					$detalle = (string)($item['observaciones'] ?? '');
+					$obsOriginal = $detalle;
+					if ($idCuota) {
+						$cuotaRow = $asignRow;
+						if (!$cuotaRow && $primaryInscripcion) {
+							$cuotaRow = AsignacionCostos::where('cod_pensum', $codPensumCtx)
+								->where('cod_inscrip', $primaryInscripcion->cod_inscrip)
+								->where('id_cuota_template', (int)$idCuota)
+								->first();
+						}
+						if ($cuotaRow) {
+							$numeroCuota = (int)($cuotaRow->numero_cuota ?? 0);
+							$prevPag = (float)($cuotaRow->monto_pagado ?? 0);
+							$totalCuota = (float)($cuotaRow->monto ?? 0);
+							$parcial = ($prevPag + (float)$item['monto']) < $totalCuota;
+							$detalle = 'Mensualidad - Cuota ' . ($numeroCuota ?: $idCuota) . ($parcial ? ' (Parcial)' : '');
+						}
+					}
+
+					// Inserción en notas SGA usando el detalle correcto
+					try {
+						$fechaNota = (string)($item['fecha_cobro'] ?? date('Y-m-d'));
+						$anioFull = (int) date('Y', strtotime($fechaNota));
+						$anio2 = (int) date('y', strtotime($fechaNota));
+						$prefijoCarrera = 'E';
+						$codCeta = (int) $request->cod_ceta;
+						$monto = (float) $item['monto'];
+						$isEfectivo = ($formaNombre === 'EFECTIVO');
+						$isBancario = in_array($formaNombre, ['TARJETA','CHEQUE','DEPOSITO','TRANSFERENCIA','QR']) || in_array($formaCode, ['O']);
+
+						if ($isEfectivo) {
+							DB::statement(
+								"INSERT INTO doc_counter (scope, last, created_at, updated_at) VALUES (?, 1, NOW(), NOW())\n"
+								. "ON DUPLICATE KEY UPDATE last = LAST_INSERT_ID(last + 1), updated_at = NOW()",
+								['NOTA_REPOSICION']
+							);
+							$rowNr = DB::selectOne('SELECT LAST_INSERT_ID() AS id');
+							$nrCorrelativo = (int)($rowNr->id ?? 0);
+							DB::table('nota_reposicion')->insert([
+								'correlativo' => $nrCorrelativo,
+								'usuario' => $usuarioNick,
+								'cod_ceta' => $codCeta,
+								'monto' => $monto,
+								'concepto_adm' => $detalle,
+								'fecha_nota' => $fechaNota,
+								'concepto_est' => $detalle,
+								'observaciones' => $obsOriginal,
+								'prefijo_carrera' => $prefijoCarrera,
+								'anulado' => false,
+								'anio_reposicion' => $anio2,
+								'nro_recibo' => $nroRecibo ? (string)$nroRecibo : null,
+								'tipo_ingreso' => null,
+								'cont' => 2,
+							]);
+						}
+
+						if ($isBancario) {
+							DB::statement(
+								"INSERT INTO doc_counter (scope, last, created_at, updated_at) VALUES (?, 1, NOW(), NOW())\n"
+								. "ON DUPLICATE KEY UPDATE last = LAST_INSERT_ID(last + 1), updated_at = NOW()",
+								['NOTA_BANCARIA']
+							);
+							$rowNb = DB::selectOne('SELECT LAST_INSERT_ID() AS id');
+							$nbCorrelativo = (int)($rowNb->id ?? 0);
+							$tarj4 = trim((string)($item['tarjeta_first4'] ?? ''));
+							$tarjL4 = trim((string)($item['tarjeta_last4'] ?? ''));
+							// Banco destino desde la cuenta seleccionada
+							$bancoDest = '';
+							try {
+								$idCuenta = $request->id_cuentas_bancarias ?? ($item['id_cuentas_bancarias'] ?? null);
+								if ($idCuenta) {
+									$cb = DB::table('cuentas_bancarias')->where('id_cuentas_bancarias', (int)$idCuenta)->first();
+									if ($cb) { $bancoDest = trim((string)($cb->banco ?? '')) . ' - ' . trim((string)($cb->numero_cuenta ?? '')); }
+								}
+							} catch (\Throwable $e) {}
+							// nro_tarjeta completo: first4 + 00000000 + last4
+							$nroTarjetaFull = ($tarj4 && $tarjL4) ? ($tarj4 . '00000000' . $tarjL4) : null;
+							DB::table('nota_bancaria')->insert([
+								'anio_deposito' => $anioFull,
+								'correlativo' => $nbCorrelativo,
+								'usuario' => $usuarioNick,
+								'fecha_nota' => $fechaNota,
+								'cod_ceta' => $codCeta,
+								'monto' => $monto,
+								'concepto' => $detalle,
+								'nro_factura' => $nroFactura ? (string)$nroFactura : '',
+								'nro_recibo' => $nroRecibo ? (string)$nroRecibo : '',
+								'banco' => $bancoDest,
+								'fecha_deposito' => (string)($item['fecha_deposito'] ?? ''),
+								'nro_transaccion' => (string)($item['nro_deposito'] ?? ''),
+								'prefijo_carrera' => $prefijoCarrera,
+								'concepto_est' => $detalle,
+								'observacion' => $obsOriginal,
+								'anulado' => false,
+								'tipo_nota' => (string)($request->id_forma_cobro ?? ''),
+								'banco_origen' => (string)($item['banco_origen'] ?? ''),
+								'nro_tarjeta' => $nroTarjetaFull,
+							]);
+						}
+					} catch (\Throwable $e) {
+						\Log::warning('batchStore: nota insert failed', [ 'err' => $e->getMessage() ]);
+					}
 
 					$payload = array_merge($composite, [
 						'monto' => $item['monto'],

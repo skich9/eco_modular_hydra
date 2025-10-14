@@ -91,7 +91,7 @@
           </div>
 
           <!-- Datos de Cheque / Depósito / Transferencia / QR -->
-          <ng-container *ngIf="isCheque || isDeposito || isTransferencia || isQR">
+          <ng-container *ngIf="showBancarioBlock">
             <div class="col-12">
               <div class="border rounded p-3 mb-2">
                 <div class="row g-3 align-items-end">
@@ -109,6 +109,10 @@
                   <div class="col-md-4">
                     <label class="form-label">Num. depósito</label>
                     <input type="text" class="form-control" formControlName="nro_deposito" />
+                  </div>
+                  <div class="col-md-4" *ngIf="isTransferencia">
+                    <label class="form-label">Banco Origen</label>
+                    <input type="text" class="form-control" formControlName="banco_origen" placeholder="Banco origen" />
                   </div>
                 </div>
               </div>

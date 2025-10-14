@@ -52,24 +52,67 @@ export class MensualidadModalComponent implements OnInit, OnChanges {
     });
   }
 
+  // Verifica si el bloque de tarjeta está completo para habilitar el resto del formulario
+  isCardBlockValid(): boolean {
+    if (!this.isTarjeta) return true;
+    const controls = [
+      'banco_origen',
+      'tarjeta_first4',
+      'tarjeta_last4',
+      'id_cuentas_bancarias',
+      'fecha_deposito',
+      'nro_deposito',
+    ];
+    for (const name of controls) {
+      const c = this.form.get(name);
+      if (!c) return false;
+      c.updateValueAndValidity({ emitEvent: false });
+      if (!c.valid) return false;
+      const v = (c.value ?? '').toString().trim();
+      if (!v) return false;
+      if ((name === 'tarjeta_first4' || name === 'tarjeta_last4') && !/^\d{4}$/.test(v)) return false;
+    }
+    return true;
+  }
+
   // Indica si el método seleccionado corresponde a pago con QR
   get isQR(): boolean {
-    const id = (this.form.get('metodo_pago')?.value || '').toString();
-    if (!id) return false;
-    const match = (this.formasCobro || []).find((f: any) => `${f?.id_forma_cobro}` === `${id}`);
-    const raw = (match?.nombre ?? match?.name ?? match?.descripcion ?? match?.label ?? '').toString().trim().toUpperCase();
+    const f = this.getSelectedForma();
+    if (f && `${f.id_forma_cobro}`.toUpperCase() === 'O') return false;
+    const code = this.getSelectedCodigoSin();
+    if (code !== null) {
+      // No existe código estándar de QR en SIN; usar fallback textual
+    }
+    const match = this.getSelectedForma();
+    const raw = (match?.descripcion_sin ?? match?.nombre ?? match?.name ?? match?.descripcion ?? match?.label ?? '').toString().trim().toUpperCase();
     const nombre = raw.normalize('NFD').replace(/\p{Diacritic}/gu, '');
     return nombre.includes('QR');
   }
 
   // Indica si el método seleccionado corresponde a TRANSFERENCIA
   get isTransferencia(): boolean {
-    const id = (this.form.get('metodo_pago')?.value || '').toString();
-    if (!id) return false;
-    const match = (this.formasCobro || []).find((f: any) => `${f?.id_forma_cobro}` === `${id}`);
-    const raw = (match?.nombre ?? match?.name ?? match?.descripcion ?? match?.label ?? '').toString().trim().toUpperCase();
+    const f = this.getSelectedForma();
+    if (f && `${f.id_forma_cobro}`.toUpperCase() === 'O') return false;
+    const code = this.getSelectedCodigoSin();
+    if (code !== null) {
+      if ([5].includes(code)) return true; // 5 ~ Transferencia bancaria (usual en SIN)
+    }
+    const match = this.getSelectedForma();
+    const raw = (match?.descripcion_sin ?? match?.nombre ?? match?.name ?? match?.descripcion ?? match?.label ?? '').toString().trim().toUpperCase();
     const nombre = raw.normalize('NFD').replace(/\p{Diacritic}/gu, '');
-    return nombre === 'TRANSFERENCIA';
+    return nombre.includes('TRANSFER');
+  }
+
+  // Indica si el método seleccionado es OTRO (id_forma_cobro = 'O')
+  get isOtro(): boolean {
+    const f = this.getSelectedForma();
+    return !!(f && `${f.id_forma_cobro}`.toUpperCase() === 'O');
+  }
+
+  // Controla visibilidad del bloque bancario (Cheque/Depósito/Transferencia/QR)
+  get showBancarioBlock(): boolean {
+    if (this.isOtro) return false;
+    return this.isCheque || this.isDeposito || this.isTransferencia || this.isQR;
   }
 
   ngOnInit(): void {
@@ -108,7 +151,7 @@ export class MensualidadModalComponent implements OnInit, OnChanges {
   }
 
   ngOnChanges(changes: SimpleChanges): void {
-    if (changes['pendientes'] || changes['pu'] || changes['tipo']) {
+    if (changes['pendientes'] || changes['pu'] || changes['tipo'] || changes['resumen']) {
       this.configureByTipo();
       this.recalcTotal();
     }
@@ -172,9 +215,16 @@ export class MensualidadModalComponent implements OnInit, OnChanges {
       } else {
         const cant = Math.max(0, Number(this.form.get('cantidad')?.value || 0));
         const sum = this.sumNextKCuotasRestantes(cant);
-        // Fallback: si no hay data de cuotas en resumen, usar pu * cantidad
-        const pu = Number(this.pu || 0);
-        total = sum > 0 ? sum : (pu > 0 ? (pu * cant) : 0);
+        // Fallback enriquecido: si no hay data de cuotas en resumen, usar [next restante, siguientes = puSemestral]
+        if (sum > 0) {
+          total = sum;
+        } else {
+          const puNext = Number(this.pu || 0);
+          const avg = this.avgAsignMonto();
+          const puTotales = Number(this.resumen?.totales?.pu_mensual || 0);
+          const puSemestral = (avg !== null && avg !== undefined) ? avg : (puTotales || puNext);
+          if (cant <= 0) total = 0; else if (cant === 1) total = puNext; else total = puNext + Math.max(0, cant - 1) * (puSemestral || puNext);
+        }
       }
     } else {
       total = Number(this.form.get('monto_manual')?.value || 0);
@@ -203,8 +253,8 @@ export class MensualidadModalComponent implements OnInit, OnChanges {
     const ord = (src || []).slice().sort((a: any, b: any) => Number(a?.numero_cuota || 0) - Number(b?.numero_cuota || 0));
     const out: Array<{ numero: number; restante: number; id_cuota_template: number|null; id_asignacion_costo: number|null; }> = [];
     for (const a of ord) {
-      const monto = Number(a?.monto || 0);
-      const pagado = Number(a?.monto_pagado || 0);
+      const monto = this.toNumberLoose(a?.monto);
+      const pagado = this.toNumberLoose(a?.monto_pagado);
       const restante = Math.max(0, monto - pagado);
       if (restante > 0) out.push({
         numero: Number(a?.numero_cuota || 0),
@@ -216,33 +266,96 @@ export class MensualidadModalComponent implements OnInit, OnChanges {
     return out;
   }
 
+  // Promedio nominal de las cuotas (monto sin considerar pagos) para fallback
+  private avgAsignMonto(): number | null {
+    try {
+      const src: any[] = ((this.resumen?.asignacion_costos?.items || this.resumen?.asignaciones || []) as any[]);
+      if (!src || !src.length) return null;
+      const vals = src.map(a => this.toNumberLoose(a?.monto)).filter(n => n > 0);
+      if (!vals.length) return null;
+      const sum = vals.reduce((acc, n) => acc + n, 0);
+      return sum / vals.length;
+    } catch { return null; }
+  }
+
+  // Convierte valores como '800,00' o '1.200,50' a número 800.00 / 1200.50
+  private toNumberLoose(v: any): number {
+    if (typeof v === 'number') return isFinite(v) ? v : 0;
+    if (v === null || v === undefined) return 0;
+    const s = String(v).trim();
+    if (!s) return 0;
+    // quitar espacios y caracteres no numéricos salvo separadores
+    let t = s.replace(/\s+/g, '');
+    // si hay coma decimal, normalizar a punto; remover separadores de miles
+    // estrategia: quitar todos los puntos y luego reemplazar la última coma por punto
+    if (t.indexOf(',') >= 0 && t.indexOf('.') < 0) {
+      t = t.replace(/\./g, '');
+      t = t.replace(/,/g, '.');
+    } else if (t.indexOf('.') >= 0 && t.indexOf(',') >= 0) {
+      // formato tipo 1.234,56 -> quitar puntos (miles) y coma->punto
+      t = t.replace(/\./g, '');
+      t = t.replace(/,/g, '.');
+    }
+    const n = parseFloat(t);
+    return isNaN(n) ? 0 : n;
+  }
+
   // Indica si el método seleccionado corresponde a TARJETA según el catálogo recibido
   get isTarjeta(): boolean {
-    const id = (this.form.get('metodo_pago')?.value || '').toString();
-    if (!id) return false;
-    const match = (this.formasCobro || []).find((f: any) => `${f?.id_forma_cobro}` === `${id}`);
-    const nombre = (match?.nombre ?? match?.name ?? match?.descripcion ?? match?.label ?? '').toString().trim().toUpperCase();
-    return nombre === 'TARJETA';
+    const f = this.getSelectedForma();
+    if (f && `${f.id_forma_cobro}`.toUpperCase() === 'O') return false;
+    const code = this.getSelectedCodigoSin();
+    if (code !== null) {
+      if ([2].includes(code)) return true; // 2 ~ Tarjeta (deb/cred)
+    }
+    const match = this.getSelectedForma();
+    const nombre = (match?.descripcion_sin ?? match?.nombre ?? match?.name ?? match?.descripcion ?? match?.label ?? '').toString().trim().toUpperCase();
+    return nombre.includes('TARJETA');
   }
 
   // Indica si el método seleccionado corresponde a CHEQUE
   get isCheque(): boolean {
-    const id = (this.form.get('metodo_pago')?.value || '').toString();
-    if (!id) return false;
-    const match = (this.formasCobro || []).find((f: any) => `${f?.id_forma_cobro}` === `${id}`);
-    const nombre = (match?.nombre ?? match?.name ?? match?.descripcion ?? match?.label ?? '').toString().trim().toUpperCase();
-    return nombre === 'CHEQUE';
+    const f = this.getSelectedForma();
+    if (f && `${f.id_forma_cobro}`.toUpperCase() === 'O') return false;
+    const code = this.getSelectedCodigoSin();
+    if (code !== null) {
+      if ([3].includes(code)) return true; // 3 ~ Cheque
+    }
+    const match = this.getSelectedForma();
+    const nombre = (match?.descripcion_sin ?? match?.nombre ?? match?.name ?? match?.descripcion ?? match?.label ?? '').toString().trim().toUpperCase();
+    return nombre.includes('CHEQUE');
   }
 
   // Indica si el método seleccionado corresponde a DEPOSITO/DEPÓSITO
   get isDeposito(): boolean {
-    const id = (this.form.get('metodo_pago')?.value || '').toString();
-    if (!id) return false;
-    const match = (this.formasCobro || []).find((f: any) => `${f?.id_forma_cobro}` === `${id}`);
-    const raw = (match?.nombre ?? match?.name ?? match?.descripcion ?? match?.label ?? '').toString().trim().toUpperCase();
+    const f = this.getSelectedForma();
+    if (f && `${f.id_forma_cobro}`.toUpperCase() === 'O') return false;
+    const code = this.getSelectedCodigoSin();
+    if (code !== null) {
+      if ([4].includes(code)) return true; // 4 ~ Depósito en cuenta
+    }
+    const match = this.getSelectedForma();
+    const raw = (match?.descripcion_sin ?? match?.nombre ?? match?.name ?? match?.descripcion ?? match?.label ?? '').toString().trim().toUpperCase();
     // tolerar acento
     const nombre = raw.normalize('NFD').replace(/\p{Diacritic}/gu, '');
-    return nombre === 'DEPOSITO';
+    return nombre.includes('DEPOSITO');
+  }
+
+  // Helper: encuentra la forma seleccionada por codigo_sin o por id_forma_cobro (fallback)
+  private getSelectedForma(): any | null {
+    const val = (this.form.get('metodo_pago')?.value || '').toString();
+    if (!val) return null;
+    const list = (this.formasCobro || []) as any[];
+    let match = list.find((f: any) => `${f?.codigo_sin}` === val);
+    if (!match) match = list.find((f: any) => `${f?.id_forma_cobro}` === val);
+    return match || null;
+  }
+
+  private getSelectedCodigoSin(): number | null {
+    const match = this.getSelectedForma();
+    if (!match) return null;
+    const code = Number(match?.codigo_sin);
+    return isFinite(code) ? code : null;
   }
 
   // Activa/desactiva validadores requeridos para TARJETA o CHEQUE
@@ -275,8 +388,8 @@ export class MensualidadModalComponent implements OnInit, OnChanges {
       last4Ctrl?.clearValidators();
     }
 
-    // Validadores específicos de cheque/deposito (exigimos fecha y número de depósito)
-    if (enableCheque || enableDeposito || enableTransfer || enableQR) {
+    // Validadores específicos de cheque/deposito/transfer/QR y también TARJETA
+    if (enableCheque || enableDeposito || enableTransfer || enableQR || enableTarjeta) {
       fechaDepCtrl?.setValidators([Validators.required]);
       nroDepCtrl?.setValidators([Validators.required]);
     } else {
@@ -284,12 +397,11 @@ export class MensualidadModalComponent implements OnInit, OnChanges {
       nroDepCtrl?.clearValidators();
     }
 
-    // Banco origen requerido para transferencia (opcional para tarjeta)
-    if (enableTransfer) {
+    // Banco origen requerido para transferencia y tarjeta
+    if (enableTransfer || enableTarjeta) {
       bancoOrigenCtrl?.setValidators([Validators.required]);
     } else {
-      // Para tarjeta lo dejamos opcional
-      if (enableTarjeta) bancoOrigenCtrl?.clearValidators(); else bancoOrigenCtrl?.clearValidators();
+      bancoOrigenCtrl?.clearValidators();
     }
 
     idCuentaCtrl?.updateValueAndValidity({ emitEvent: false });
@@ -330,6 +442,13 @@ export class MensualidadModalComponent implements OnInit, OnChanges {
           medio_doc,
           comprobante: compSel || 'NINGUNO',
           computarizada: this.form.get('computarizada')?.value,
+          // bancarias
+          id_cuentas_bancarias: this.form.get('id_cuentas_bancarias')?.value || null,
+          banco_origen: this.form.get('banco_origen')?.value || null,
+          fecha_deposito: this.form.get('fecha_deposito')?.value || null,
+          nro_deposito: this.form.get('nro_deposito')?.value || null,
+          tarjeta_first4: this.form.get('tarjeta_first4')?.value || null,
+          tarjeta_last4: this.form.get('tarjeta_last4')?.value || null,
           // opcionales
           descuento: this.form.get('descuento')?.value || null,
           nro_factura: this.form.get('comprobante')?.value === 'FACTURA' ? (this.form.get('nro_factura')?.value || null) : null,
@@ -358,21 +477,31 @@ export class MensualidadModalComponent implements OnInit, OnChanges {
               medio_doc,
               comprobante: compSel || 'NINGUNO',
               computarizada: this.form.get('computarizada')?.value,
+              id_cuentas_bancarias: this.form.get('id_cuentas_bancarias')?.value || null,
+              banco_origen: this.form.get('banco_origen')?.value || null,
+              fecha_deposito: this.form.get('fecha_deposito')?.value || null,
+              nro_deposito: this.form.get('nro_deposito')?.value || null,
+              tarjeta_first4: this.form.get('tarjeta_first4')?.value || null,
+              tarjeta_last4: this.form.get('tarjeta_last4')?.value || null,
               descuento: this.form.get('descuento')?.value || null,
               nro_factura: this.form.get('comprobante')?.value === 'FACTURA' ? (this.form.get('nro_factura')?.value || null) : null,
               nro_recibo: this.form.get('comprobante')?.value === 'RECIBO' ? (this.form.get('nro_recibo')?.value || null) : null,
             });
           }
         } else {
-          // Fallback: sin data de cuotas, generar 'cant' pagos usando PU
-          const pu = Number(this.pu || 0);
-          for (let i = 0; i < cant; i++) {
+          // Fallback enriquecido: primer pago = next restante (this.pu), siguientes = puSemestral
+          const puNext = Number(this.pu || 0);
+          const avg = this.avgAsignMonto();
+          const puTotales = Number(this.resumen?.totales?.pu_mensual || 0);
+          const puSemestral = (avg !== null && avg !== undefined) ? avg : (puTotales || puNext);
+          const k = Math.max(0, cant);
+          if (k >= 1) {
             pagos.push({
               nro_cobro: nro++,
-              monto: pu,
+              monto: puNext,
               fecha_cobro: hoy,
               observaciones: this.composeObservaciones(),
-              pu_mensualidad: pu,
+              pu_mensualidad: puNext,
               numero_cuota: null,
               id_cuota: null,
               id_asignacion_costo: null,
@@ -380,6 +509,37 @@ export class MensualidadModalComponent implements OnInit, OnChanges {
               medio_doc,
               comprobante: compSel || 'NINGUNO',
               computarizada: this.form.get('computarizada')?.value,
+              id_cuentas_bancarias: this.form.get('id_cuentas_bancarias')?.value || null,
+              banco_origen: this.form.get('banco_origen')?.value || null,
+              fecha_deposito: this.form.get('fecha_deposito')?.value || null,
+              nro_deposito: this.form.get('nro_deposito')?.value || null,
+              tarjeta_first4: this.form.get('tarjeta_first4')?.value || null,
+              tarjeta_last4: this.form.get('tarjeta_last4')?.value || null,
+              descuento: this.form.get('descuento')?.value || null,
+              nro_factura: this.form.get('comprobante')?.value === 'FACTURA' ? (this.form.get('nro_factura')?.value || null) : null,
+              nro_recibo: this.form.get('comprobante')?.value === 'RECIBO' ? (this.form.get('nro_recibo')?.value || null) : null,
+            });
+          }
+          for (let i = 1; i < k; i++) {
+            pagos.push({
+              nro_cobro: nro++,
+              monto: puSemestral,
+              fecha_cobro: hoy,
+              observaciones: this.composeObservaciones(),
+              pu_mensualidad: puSemestral,
+              numero_cuota: null,
+              id_cuota: null,
+              id_asignacion_costo: null,
+              tipo_documento,
+              medio_doc,
+              comprobante: compSel || 'NINGUNO',
+              computarizada: this.form.get('computarizada')?.value,
+              id_cuentas_bancarias: this.form.get('id_cuentas_bancarias')?.value || null,
+              banco_origen: this.form.get('banco_origen')?.value || null,
+              fecha_deposito: this.form.get('fecha_deposito')?.value || null,
+              nro_deposito: this.form.get('nro_deposito')?.value || null,
+              tarjeta_first4: this.form.get('tarjeta_first4')?.value || null,
+              tarjeta_last4: this.form.get('tarjeta_last4')?.value || null,
               descuento: this.form.get('descuento')?.value || null,
               nro_factura: this.form.get('comprobante')?.value === 'FACTURA' ? (this.form.get('nro_factura')?.value || null) : null,
               nro_recibo: this.form.get('comprobante')?.value === 'RECIBO' ? (this.form.get('nro_recibo')?.value || null) : null,
@@ -401,6 +561,12 @@ export class MensualidadModalComponent implements OnInit, OnChanges {
         medio_doc,
         comprobante: compSel || 'NINGUNO',
         computarizada: this.form.get('computarizada')?.value,
+        id_cuentas_bancarias: this.form.get('id_cuentas_bancarias')?.value || null,
+        banco_origen: this.form.get('banco_origen')?.value || null,
+        fecha_deposito: this.form.get('fecha_deposito')?.value || null,
+        nro_deposito: this.form.get('nro_deposito')?.value || null,
+        tarjeta_first4: this.form.get('tarjeta_first4')?.value || null,
+        tarjeta_last4: this.form.get('tarjeta_last4')?.value || null,
         descuento: this.form.get('descuento')?.value || null,
         nro_factura: this.form.get('comprobante')?.value === 'FACTURA' ? (this.form.get('nro_factura')?.value || null) : null,
         nro_recibo: this.form.get('comprobante')?.value === 'RECIBO' ? (this.form.get('nro_recibo')?.value || null) : null,
@@ -434,70 +600,7 @@ export class MensualidadModalComponent implements OnInit, OnChanges {
   }
 
   private composeObservaciones(): string {
-    const base = this.buildObservaciones();
-    const idCuenta = this.form.get('id_cuentas_bancarias')?.value;
-    const cuenta = (this.cuentasBancarias || []).find((c: any) => `${c?.id_cuentas_bancarias}` === `${idCuenta}`);
-    const bancoDestino = cuenta ? `${cuenta.banco} ${cuenta.numero_cuenta}` : '';
-    const fechaDep = (this.form.get('fecha_deposito')?.value || '').toString().trim();
-    const nroDep = (this.form.get('nro_deposito')?.value || '').toString().trim();
-
-    if (this.isTarjeta) {
-      const bancoOrigen = (this.form.get('banco_origen')?.value || '').toString().trim();
-      const first4 = (this.form.get('tarjeta_first4')?.value || '').toString().trim();
-      const last4 = (this.form.get('tarjeta_last4')?.value || '').toString().trim();
-      const detalles = [
-        `TARJETA`,
-        bancoOrigen && `Banco origen: ${bancoOrigen}`,
-        (first4 && last4) && `Tarjeta **** ${first4}..${last4}`,
-        fechaDep && `Fecha: ${fechaDep}`,
-        nroDep && `Depósito: ${nroDep}`,
-        bancoDestino && `Cuenta: ${bancoDestino}`
-      ].filter(Boolean).join(' | ');
-      return [base, detalles].filter(Boolean).join(' | ');
-    }
-
-    if (this.isCheque) {
-      const detalles = [
-        `CHEQUE`,
-        fechaDep && `Fecha: ${fechaDep}`,
-        nroDep && `Depósito: ${nroDep}`,
-        bancoDestino && `Cuenta: ${bancoDestino}`
-      ].filter(Boolean).join(' | ');
-      return [base, detalles].filter(Boolean).join(' | ');
-    }
-
-    if (this.isDeposito) {
-      const detalles = [
-        `DEPOSITO`,
-        fechaDep && `Fecha: ${fechaDep}`,
-        nroDep && `Depósito: ${nroDep}`,
-        bancoDestino && `Cuenta: ${bancoDestino}`
-      ].filter(Boolean).join(' | ');
-      return [base, detalles].filter(Boolean).join(' | ');
-    }
-
-    if (this.isTransferencia) {
-      const bancoOrigen = (this.form.get('banco_origen')?.value || '').toString().trim();
-      const detalles = [
-        `TRANSFERENCIA`,
-        bancoOrigen && `Banco origen: ${bancoOrigen}`,
-        fechaDep && `Fecha: ${fechaDep}`,
-        nroDep && `Depósito: ${nroDep}`,
-        bancoDestino && `Cuenta: ${bancoDestino}`
-      ].filter(Boolean).join(' | ');
-      return [base, detalles].filter(Boolean).join(' | ');
-    }
-
-    if (this.isQR) {
-      const detalles = [
-        `QR`,
-        fechaDep && `Fecha: ${fechaDep}`,
-        nroDep && `Depósito: ${nroDep}`,
-        bancoDestino && `Cuenta: ${bancoDestino}`
-      ].filter(Boolean).join(' | ');
-      return [base, detalles].filter(Boolean).join(' | ');
-    }
-
-    return base;
+    // Sólo el texto ingresado por el usuario (con flags), sin detalles de pago
+    return this.buildObservaciones();
   }
 }

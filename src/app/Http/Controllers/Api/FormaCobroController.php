@@ -19,7 +19,8 @@ class FormaCobroController extends Controller
 					'f.id_forma_cobro',
 					'f.nombre',           // se mantiene para lógica existente (comparaciones "EFECTIVO", etc.)
 					'f.estado as activo',  // por compatibilidad si el modelo lo expone como 'estado'
-					's.descripcion_sin'
+					's.descripcion_sin',
+					's.codigo_sin'
 				)
 				->orderBy('f.nombre', 'asc')
 				->get();
