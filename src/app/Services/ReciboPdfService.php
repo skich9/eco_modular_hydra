@@ -73,11 +73,13 @@ class ReciboPdfService
         foreach ($cobros as $c) {
             $c = (object)$c;
             $obs = trim((string)($c->observaciones ?? ''));
-            if ($obs !== '') $observaciones[] = $obs;
+            $isArr = stripos($obs, 'ARRASTRE') !== false;
+            $obsClean = $obs !== '' ? trim(preg_replace('/\[\s*ARRASTRE\s*\]/i', '', $obs)) : '';
+            if ($obsClean !== '') $observaciones[] = $obsClean;
             if (!empty($c->id_item)) {
                 try {
                     $it = DB::table('items_cobro')->where('id_item', $c->id_item)->first();
-                    $detalles[] = $it ? ((string)($it->descripcion ?? $it->nombre ?? 'Item ' . $c->id_item)) : ('Item ' . $c->id_item);
+                    $detalles[] = ($it && isset($it->nombre_servicio)) ? (string)$it->nombre_servicio : ('Item ' . $c->id_item);
                 } catch (\Throwable $e) { $detalles[] = 'Item ' . $c->id_item; }
             } else {
                 $numCuota = null;
@@ -90,7 +92,8 @@ class ReciboPdfService
                         if ($asig && isset($asig->numero_cuota)) $numCuota = (int)$asig->numero_cuota;
                     }
                 } catch (\Throwable $e) {}
-                $lbl = 'Mensualidad' . ($numCuota ? (' - Cuota ' . $numCuota) : '');
+                $lblBase = ($isArr) ? 'Mensualidad (Arrastre)' : 'Mensualidad';
+                $lbl = $lblBase . ($numCuota ? (' - Cuota ' . $numCuota) : '');
                 $detalles[] = $lbl;
             }
         }
@@ -226,11 +229,13 @@ HTML;
         foreach ($cobros as $c) {
             $c = (object)$c;
             $obs = trim((string)($c->observaciones ?? ''));
-            if ($obs !== '') $observaciones[] = $obs;
+            $isArr = stripos($obs, 'ARRASTRE') !== false;
+            $obsClean = $obs !== '' ? trim(preg_replace('/\[\s*ARRASTRE\s*\]/i', '', $obs)) : '';
+            if ($obsClean !== '') $observaciones[] = $obsClean;
             if (!empty($c->id_item)) {
                 try {
                     $it = DB::table('items_cobro')->where('id_item', $c->id_item)->first();
-                    $detalles[] = $it ? ((string)($it->descripcion ?? $it->nombre ?? 'Item ' . $c->id_item)) : ('Item ' . $c->id_item);
+                    $detalles[] = ($it && isset($it->nombre_servicio)) ? (string)$it->nombre_servicio : ('Item ' . $c->id_item);
                 } catch (\Throwable $e) { $detalles[] = 'Item ' . $c->id_item; }
             } else {
                 $numCuota = null;
@@ -243,7 +248,8 @@ HTML;
                         if ($asig && isset($asig->numero_cuota)) $numCuota = (int)$asig->numero_cuota;
                     }
                 } catch (\Throwable $e) {}
-                $lbl = 'Mensualidad' . ($numCuota ? (' - Cuota ' . $numCuota) : '');
+                $lblBase = ($isArr) ? 'Mensualidad (Arrastre)' : 'Mensualidad';
+                $lbl = $lblBase . ($numCuota ? (' - Cuota ' . $numCuota) : '');
                 $detalles[] = $lbl;
             }
         }
@@ -396,11 +402,13 @@ HTML;
         foreach ($cobros as $c) {
             $c = (object)$c;
             $obs = trim((string)($c->observaciones ?? ''));
-            if ($obs !== '') $observaciones[] = $obs;
+            $isArr = stripos($obs, 'ARRASTRE') !== false;
+            $obsClean = $obs !== '' ? trim(preg_replace('/\[\s*ARRASTRE\s*\]/i', '', $obs)) : '';
+            if ($obsClean !== '') $observaciones[] = $obsClean;
             if (!empty($c->id_item)) {
                 try {
                     $it = DB::table('items_cobro')->where('id_item', $c->id_item)->first();
-                    $detalles[] = $it ? ((string)($it->descripcion ?? $it->nombre ?? 'Item ' . $c->id_item)) : ('Item ' . $c->id_item);
+                    $detalles[] = ($it && isset($it->nombre_servicio)) ? (string)$it->nombre_servicio : ('Item ' . $c->id_item);
                 } catch (\Throwable $e) { $detalles[] = 'Item ' . $c->id_item; }
             } else {
                 $numCuota = null;
@@ -413,7 +421,8 @@ HTML;
                         if ($asig && isset($asig->numero_cuota)) $numCuota = (int)$asig->numero_cuota;
                     }
                 } catch (\Throwable $e) {}
-                $lbl = 'Mensualidad' . ($numCuota ? (' - Cuota ' . $numCuota) : '');
+                $lblBase = ($isArr) ? 'Mensualidad (Arrastre)' : 'Mensualidad';
+                $lbl = $lblBase . ($numCuota ? (' - Cuota ' . $numCuota) : '');
                 $detalles[] = $lbl;
             }
         }
@@ -566,11 +575,13 @@ HTML;
         foreach ($cobros as $c) {
             $c = (object)$c;
             $obs = trim((string)($c->observaciones ?? ''));
-            if ($obs !== '') $observaciones[] = $obs;
+            $isArr = stripos($obs, 'ARRASTRE') !== false;
+            $obsClean = $obs !== '' ? trim(preg_replace('/\[\s*ARRASTRE\s*\]/i', '', $obs)) : '';
+            if ($obsClean !== '') $observaciones[] = $obsClean;
             if (!empty($c->id_item)) {
                 try {
                     $it = DB::table('items_cobro')->where('id_item', $c->id_item)->first();
-                    $detalles[] = $it ? ((string)($it->descripcion ?? $it->nombre ?? 'Item ' . $c->id_item)) : ('Item ' . $c->id_item);
+                    $detalles[] = ($it && isset($it->nombre_servicio)) ? (string)$it->nombre_servicio : ('Item ' . $c->id_item);
                 } catch (\Throwable $e) { $detalles[] = 'Item ' . $c->id_item; }
             } else {
                 $numCuota = null;
@@ -583,7 +594,8 @@ HTML;
                         if ($asig && isset($asig->numero_cuota)) $numCuota = (int)$asig->numero_cuota;
                     }
                 } catch (\Throwable $e) {}
-                $lbl = 'Mensualidad' . ($numCuota ? (' - Cuota ' . $numCuota) : '');
+                $lblBase = ($isArr) ? 'Mensualidad (Arrastre)' : 'Mensualidad';
+                $lbl = $lblBase . ($numCuota ? (' - Cuota ' . $numCuota) : '');
                 $detalles[] = $lbl;
             }
         }
@@ -765,7 +777,7 @@ HTML;
         } catch (\Throwable $e) {}
 
         $formaIds = array_values(array_unique(array_map(function($c){ return isset($c->id_forma_cobro) ? (string)$c->id_forma_cobro : ''; }, $cobros)));
-        $isTarjeta = false; $isCheque = false; $isDeposito = false; $isTransferencia = false; $isOtro = false;
+        $isTarjeta = false; $isCheque = false; $isDeposito = false; $isTransferencia = false; $isOtro = false; $isEfectivo = false;
         if (!empty($formaIds)) {
             try {
                 $rows = DB::table('formas_cobro')->whereIn('id_forma_cobro', $formaIds)->get();
@@ -773,17 +785,49 @@ HTML;
                     $raw = strtoupper(trim((string)($r->nombre ?? $r->descripcion ?? $r->label ?? '')));
                     $norm = iconv('UTF-8','ASCII//TRANSLIT',$raw);
                     $code = strtoupper(trim((string)($r->id_forma_cobro ?? '')));
-                    if ($norm === 'TARJETA') { $isTarjeta = true; }
-                    if ($norm === 'CHEQUE') { $isCheque = true; }
-                    if ($norm === 'DEPOSITO') { $isDeposito = true; }
-                    if ($norm === 'TRANSFERENCIA') { $isTransferencia = true; }
-                    if ($norm === 'OTRO' || $code === 'O') { $isOtro = true; }
+                    // Usar coincidencias por subcadena para tolerar variantes: 'DEPOSITO EN CUENTA', 'TRANSFERENCIA BANCARIA', etc.
+                    if (strpos($norm, 'EFECTIVO') !== false) { $isEfectivo = true; }
+                    if (strpos($norm, 'TARJETA') !== false) { $isTarjeta = true; }
+                    if (strpos($norm, 'CHEQUE') !== false) { $isCheque = true; }
+                    if (strpos($norm, 'DEPOSITO') !== false) { $isDeposito = true; }
+                    if (strpos($norm, 'TRANSFER') !== false) { $isTransferencia = true; }
+                    // Tratar como 'OTRO' cualquier forma especial o código interno 'O'
+                    if (
+                        strpos($norm, 'OTRO') !== false ||
+                        strpos($norm, 'VALES') !== false ||
+                        strpos($norm, 'SWIFT') !== false ||
+                        strpos($norm, 'GIFT') !== false ||
+                        strpos($norm, 'CANAL') !== false ||
+                        $code === 'O'
+                    ) { $isOtro = true; }
                 }
             } catch (\Throwable $e) {}
         }
 
         $html = '';
-        if ($isTarjeta) {
+        $hasBancario = ($isTarjeta || $isCheque || $isDeposito || $isTransferencia || $isOtro);
+        $bankingCount = ($isTarjeta?1:0) + ($isCheque?1:0) + ($isDeposito?1:0) + ($isTransferencia?1:0);
+        // Generar COMBINADO si:
+        // - EFECTIVO + (al menos un bancario), o
+        // - combinación entre 2 o más métodos bancarios (TARJETA/CHEQUE/DEPÓSITO/TRANSFERENCIA)
+        if (($isEfectivo && $hasBancario) || ($bankingCount >= 2)) {
+            // PDF combinado
+            $nb = null; $dest = null; $fechaCobroDT = null;
+            try {
+                $nb = DB::table('nota_bancaria')
+                    ->where('nro_recibo', (string)$recibo->nro_recibo)
+                    ->orderBy('fecha_nota','desc')
+                    ->first();
+            } catch (\Throwable $e) {}
+            try {
+                $idDest = null; foreach ($cobros as $c) { if (!empty($c->id_cuentas_bancarias)) { $idDest = $c->id_cuentas_bancarias; break; } }
+                if ($idDest) { $dest = DB::table('cuentas_bancarias')->where('id_cuentas_bancarias', $idDest)->first(); }
+            } catch (\Throwable $e) {}
+            try {
+                $fechaCobroDT = new \DateTime($cobros && isset($cobros[0]) ? ((string)($cobros[0]->fecha_cobro ?? 'now')) : 'now');
+            } catch (\Throwable $e) { $fechaCobroDT = new \DateTime('now'); }
+            $html = $this->renderHtmlCombinado($recibo, $cobros, $est, [ 'carrera' => $carrera, 'logo' => $logo, 'nota' => $nb, 'dest' => $dest, 'fecha_dt' => $fechaCobroDT ]);
+        } elseif ($isTarjeta) {
             $nb = null; $dest = null; $fechaCobroDT = null; $codCobro = '';
             try {
                 $nb = DB::table('nota_bancaria')
@@ -889,7 +933,9 @@ HTML;
         foreach ($cobros as $c) {
             $c = (object)$c;
             $obs = trim((string)($c->observaciones ?? ''));
-            if ($obs !== '') $observaciones[] = $obs;
+            $isArr = stripos($obs, 'ARRASTRE') !== false;
+            $obsClean = $obs !== '' ? trim(preg_replace('/\[\s*ARRASTRE\s*\]/i', '', $obs)) : '';
+            if ($obsClean !== '') $observaciones[] = $obsClean;
             if (!empty($c->id_item)) {
                 try {
                     $it = DB::table('items_cobro')->where('id_item', $c->id_item)->first();
@@ -906,7 +952,8 @@ HTML;
                         if ($asig && isset($asig->numero_cuota)) $numCuota = (int)$asig->numero_cuota;
                     }
                 } catch (\Throwable $e) {}
-                $lbl = 'Mensualidad' . ($numCuota ? (' - Cuota ' . $numCuota) : '');
+                $lblBase = ($isArr) ? 'Mensualidad (Arrastre)' : 'Mensualidad';
+                $lbl = $lblBase . ($numCuota ? (' - Cuota ' . $numCuota) : '');
                 $detalles[] = $lbl;
             }
         }
@@ -1012,6 +1059,172 @@ HTML;
         return $html;
     }
 
+    // NOTA PAGO COMBINADO (EFECTIVO + Bancario)
+    private function renderHtmlCombinado(object $recibo, array $cobros, ?object $est, array $extras = []): string
+    {
+        $fechaDT = new \DateTime('now', new \DateTimeZone('America/La_Paz'));
+        $fechaLiteral = $this->fechaLiteral($fechaDT);
+        $total = (float)($recibo->monto_total ?? 0);
+        $totalFmt = number_format($total, 2, '.', '');
+        $literal = $this->numToLiteral($total);
+        $nombre = '';
+        if ($est) {
+            $nombre = trim(implode(' ', array_filter([
+                $est->nombres ?? '',
+                $est->ap_paterno ?? '',
+                $est->ap_materno ?? ''
+            ])));
+        }
+        // Usuario para firma/footer
+        $usuario = null; $usuarioNombre = '';
+        if (isset($recibo->id_usuario)) {
+            $usuario = DB::table('usuarios')->where('id_usuario', $recibo->id_usuario)->first();
+            $usuarioNombre = (string) ($usuario->usuario ?? ($usuario->nombre ?? ''));
+        }
+        // Totales por categoría de método
+        $totales = [
+            'EFECTIVO' => 0.0,
+            'TARJETA' => 0.0,
+            'CHEQUE' => 0.0,
+            'DEPOSITO' => 0.0,
+            'TRANSFERENCIA' => 0.0,
+            'OTRO' => 0.0,
+        ];
+        $detalles = []; $observaciones = [];
+        foreach ($cobros as $c) {
+            $c = (object)$c;
+            $obs = trim((string)($c->observaciones ?? ''));
+            $isArr = stripos($obs, 'ARRASTRE') !== false;
+            $obsClean = $obs !== '' ? trim(preg_replace('/\[\s*ARRASTRE\s*\]/i', '', $obs)) : '';
+            if ($obsClean !== '') $observaciones[] = $obsClean;
+            // detectar etiqueta
+            if (!empty($c->id_item)) {
+                try { $it = DB::table('items_cobro')->where('id_item', $c->id_item)->first(); $detalles[] = ($it && isset($it->nombre_servicio)) ? (string)$it->nombre_servicio : ('Item ' . $c->id_item); }
+                catch (\Throwable $e) { $detalles[] = 'Item ' . $c->id_item; }
+            } else {
+                $numCuota = null;
+                try {
+                    if (!empty($c->id_asignacion_costo)) {
+                        $asig = DB::table('asignacion_costos')->where('id_asignacion_costo', $c->id_asignacion_costo)->first();
+                        if ($asig && isset($asig->numero_cuota)) $numCuota = (int)$asig->numero_cuota;
+                    } elseif (!empty($c->id_cuota)) {
+                        $asig = DB::table('asignacion_costos')->where('id_cuota_template', $c->id_cuota)->first();
+                        if ($asig && isset($asig->numero_cuota)) $numCuota = (int)$asig->numero_cuota;
+                    }
+                } catch (\Throwable $e) {}
+                $detalles[] = (($isArr ? 'Mensualidad (Arrastre)' : 'Mensualidad') . ($numCuota ? (' - Cuota ' . $numCuota) : ''));
+            }
+            // clasificar forma en categoría específica
+            $forma = null;
+            try { $forma = DB::table('formas_cobro')->where('id_forma_cobro', $c->id_forma_cobro)->first(); } catch (\Throwable $e) {}
+            $raw = strtoupper(trim((string)($forma->nombre ?? $forma->descripcion ?? $forma->label ?? '')));
+            $norm = iconv('UTF-8','ASCII//TRANSLIT',$raw);
+            $code = strtoupper((string)($forma->id_forma_cobro ?? ''));
+            $cat = 'OTRO';
+            if (strpos($norm,'EFECTIVO') !== false) { $cat = 'EFECTIVO'; }
+            elseif (strpos($norm,'TARJETA') !== false) { $cat = 'TARJETA'; }
+            elseif (strpos($norm,'CHEQUE') !== false) { $cat = 'CHEQUE'; }
+            elseif (strpos($norm,'DEPOSITO') !== false) { $cat = 'DEPOSITO'; }
+            elseif (strpos($norm,'TRANSFER') !== false) { $cat = 'TRANSFERENCIA'; }
+            elseif ($code === 'O') { $cat = 'OTRO'; }
+            $totales[$cat] += (float)($c->monto ?? 0);
+        }
+        $detalle = implode(' | ', array_unique(array_filter($detalles)));
+        $obsLinea = implode(' | ', array_unique(array_filter($observaciones)));
+        $carrera = (string)($extras['carrera'] ?? '');
+        $logo = (string)($extras['logo'] ?? '');
+        $logoHtml = $logo ? ('<img src="' . $logo . '" width="60" height="60" />') : '';
+        // Construir filas dinámicas Método/Monto
+        $order = ['EFECTIVO','TARJETA','CHEQUE','DEPOSITO','TRANSFERENCIA','OTRO'];
+        $rows = '';
+        foreach ($order as $k) {
+            $val = (float)($totales[$k] ?? 0);
+            if ($val > 0) {
+                $rows .= '<tr><td>'.$k.'</td><td class="right">'.number_format($val,2,'.','').'</td></tr>';
+            }
+        }
+
+        $html = <<<HTML
+<!DOCTYPE html>
+<html lang="es">
+<head>
+    <meta charset="utf-8" />
+    <style>
+        @page { size: 8.5in 5.5in; margin: 3mm; }
+        body { font-family: DejaVu Sans, sans-serif; font-size: 8.7pt; line-height: 1.12; }
+        .right { text-align:right; }
+        .small { font-size: 8pt; color: #333; }
+        .tabla { width:100%; border-collapse: collapse; page-break-inside: avoid; }
+        .tabla th, .tabla td { border: 1px solid #000; padding: 2px; }
+        .sinborde td { border: none; }
+        .label { background:#C8C8C8; font-weight:bold; }
+        .separador { border-bottom:2px dotted #000; margin: 4px 0; }
+    </style>
+    <title>Recibo {$recibo->nro_recibo}/{$recibo->anio}</title>
+    </head>
+    <body>
+        <table class="sinborde" style="width:100%">
+            <tr>
+                <td style="width:20%; text-align:center; vertical-align:top">{$logoHtml}</td>
+                <td style="width:80%; text-align:center; vertical-align:top">
+                    <div style="font-size:13pt; color:black; font-weight:bold;">Instituto Tecnológico de Enseñanza Automotriz CETA S.R.L.</div>
+                    <div style="font-size:11pt; color:black; font-weight:bold;">Carrera: {$carrera}</div>
+                    <div style="font-size:12pt; color:#1E2768; font-weight:bold; border-top:2px solid #000; margin-top:3px; padding-top:3px;">NOTA PAGO COMBINADO</div>
+                </td>
+            </tr>
+        </table>
+        <table class="sinborde" style="width:100%; margin-top:2px">
+            <tr>
+                <td style="width:60%"></td>
+                <td class="right" style="width:40%">
+                    N° E-{$recibo->nro_recibo}<br>
+                    {$fechaLiteral}
+                </td>
+            </tr>
+        </table>
+        <table class="tabla" style="margin-top:4px">
+            <tr>
+                <td class="label" style="width:20%">&nbsp;Estudiante:</td>
+                <td style="width:60%">{$nombre}</td>
+                <td class="right" style="width:20%; font-weight:bold">{$totalFmt}</td>
+            </tr>
+            <tr>
+                <td class="label">&nbsp;Código CETA:</td>
+                <td colspan="2">{$recibo->cod_ceta}</td>
+            </tr>
+        </table>
+        <table class="sinborde" style="width:100%; margin-top:3px">
+            <tr>
+                <td style="width:70%">
+                    <div><span style="font-weight:bold; color:#0B2161">MONTO:</span></div>
+                    <div><span style="font-weight:bold; color:#0B2161">Literal:</span> {$literal}</div>
+                    <div><span style="font-weight:bold; color:#0B2161">Detalle:</span> {$detalle}</div>
+                    <div><span style="font-weight:bold; color:#0B2161">Observacion:</span> {$obsLinea}</div>
+                </td>
+                <td class="right" style="width:30%; vertical-align:top"><div style="font-weight:bold">{$totalFmt}</div></td>
+            </tr>
+        </table>
+        <div class="separador"></div>
+        <table class="tabla" style="margin-top:4px">
+            <thead>
+                <tr><th>MÉTODO</th><th class="right">MONTO</th></tr>
+            </thead>
+            <tbody>
+                {$rows}
+            </tbody>
+        </table>
+        <table class="sinborde" style="width:100%; margin-top:2px">
+            <tr>
+                <td style="width:60%"></td>
+                <td style="width:40%" class="small">{$usuarioNombre} - Firma:</td>
+            </tr>
+        </table>
+    </body>
+    </html>
+HTML;
+        return $html;
+    }
+
     private function renderHtml(object $recibo, array $cobros, ?object $est, array $extras = []): string
     {
         $fechaDT = new \DateTime('now', new \DateTimeZone('America/La_Paz'));
@@ -1040,13 +1253,15 @@ HTML;
             $c = (object)$c;
             // Acumular observaciones si existen
             $obs = trim((string)($c->observaciones ?? ''));
-            if ($obs !== '') $observaciones[] = $obs;
+            $isArr = stripos($obs, 'ARRASTRE') !== false;
+            $obsClean = $obs !== '' ? trim(preg_replace('/\[\s*ARRASTRE\s*\]/i', '', $obs)) : '';
+            if ($obsClean !== '') $observaciones[] = $obsClean;
             // Determinar etiqueta de detalle
             if (!empty($c->id_item)) {
                 try {
                     $it = DB::table('items_cobro')->where('id_item', $c->id_item)->first();
-                    $nombre = $it ? ((string)($it->descripcion ?? $it->nombre ?? 'Item ' . $c->id_item)) : ('Item ' . $c->id_item);
-                    $detalles[] = $nombre;
+                    $detalleItem = ($it && isset($it->nombre_servicio)) ? (string)$it->nombre_servicio : ('Item ' . $c->id_item);
+                    $detalles[] = $detalleItem;
                 } catch (\Throwable $e) {
                     $detalles[] = 'Item ' . $c->id_item;
                 }
@@ -1062,7 +1277,8 @@ HTML;
                         if ($asig && isset($asig->numero_cuota)) $numCuota = (int)$asig->numero_cuota;
                     }
                 } catch (\Throwable $e) {}
-                $lbl = 'Mensualidad' . ($numCuota ? (' - Cuota ' . $numCuota) : '');
+                $lblBase = ($isArr) ? 'Mensualidad (Arrastre)' : 'Mensualidad';
+                $lbl = $lblBase . ($numCuota ? (' - Cuota ' . $numCuota) : '');
                 $detalles[] = $lbl;
             }
         }

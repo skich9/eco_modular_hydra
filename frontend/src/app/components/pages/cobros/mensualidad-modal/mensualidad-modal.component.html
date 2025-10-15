@@ -21,7 +21,7 @@
               <label class="form-label">Método de Pago</label>
               <select class="form-select" formControlName="metodo_pago">
                 <option value="">-- Seleccione --</option>
-                <option *ngFor="let f of formasCobro" [value]="f.id_forma_cobro">{{ f.nombre }}</option>
+                <option *ngFor="let f of formasCobro" [value]="f.id_forma_cobro">{{ labelForma(f) }}</option>
               </select>
             </div>
           </div>
@@ -64,7 +64,7 @@
               </div>
             </div>
           </ng-container>
-
+            
           <!-- Tipo de registro y switches -->
           <div class="col-md-4 ">
             <label class="form-label">Tipo de registro</label>
@@ -79,7 +79,7 @@
               </div>
             </div>
           </div>
-          <div class="col-md-8 d-flex align-items-center gap-4">
+          <div class="col-md-8 d-flex align-items-center gap-4" *ngIf="tipo === 'mensualidad'">
             <div class="form-check">
               <input class="form-check-input" type="checkbox" id="chkTotalSem" formControlName="cobro_total_semestre" />
               <label class="form-check-label" for="chkTotalSem">Cobro total del semestre</label>
@@ -119,7 +119,7 @@
             </div>
           </ng-container>
 
-          <ng-container *ngIf="tipo === 'mensualidad'; else noMensualidad">
+          <ng-container *ngIf="tipo === 'mensualidad' || tipo === 'arrastre'; else noMensualidad">
             <div class="col-md-4">
               <label class="form-label">Precio Unitario</label>
               <input class="form-control" [value]="pu | number:'1.2-2'" readonly />

@@ -700,6 +700,8 @@ class CobroController extends Controller
 				$formaNombre = iconv('UTF-8','ASCII//TRANSLIT',$formaNombre);
 				$formaCode = strtoupper(trim((string)($formaRow->id_forma_cobro ?? '')));
 
+				// Control para agrupar Recibos computarizados en un único nro_recibo por transacción
+				$nroReciboBatch = null; $anioReciboBatch = null;
 				foreach ($items as $idx => $item) {
 					// Asignar SIEMPRE un correlativo atómico global para garantizar unicidad
 					$anioItem = (int) date('Y', strtotime((string)($item['fecha_cobro'] ?? date('Y-m-d'))));
@@ -724,6 +726,14 @@ class CobroController extends Controller
 					$medioDoc = strtoupper((string)($item['medio_doc'] ?? 'C'));
 					Log::info('batchStore:item', [ 'idx' => $idx, 'tipo' => $tipoDoc, 'medio' => $medioDoc ]);
 
+					$formaIdItem = (string)($item['id_forma_cobro'] ?? $request->id_forma_cobro);
+					try {
+						$formaRowItem = DB::table('formas_cobro')->where('id_forma_cobro', $formaIdItem)->first();
+						$formaNombre = strtoupper(trim((string)($formaRowItem->nombre ?? $formaRowItem->descripcion ?? $formaRowItem->label ?? '')));
+						$formaNombre = iconv('UTF-8','ASCII//TRANSLIT',$formaNombre);
+						$formaCode = strtoupper(trim((string)($formaRowItem->id_forma_cobro ?? '')));
+					} catch (\Throwable $e) {}
+
 					$nroRecibo = $item['nro_recibo'] ?? null;
 					$nroFactura = $item['nro_factura'] ?? null;
 					$cliente = $request->input('cliente', []);
@@ -734,16 +744,26 @@ class CobroController extends Controller
 					if ($tipoDoc === 'R') {
 						$anio = (int) date('Y', strtotime($item['fecha_cobro']));
 						if ($medioDoc === 'C') {
-							$nroRecibo = $reciboService->nextReciboAtomic($anio);
-							$reciboService->create($anio, $nroRecibo, [
-								'id_usuario' => (int)$request->id_usuario,
-								'id_forma_cobro' => (string)$request->id_forma_cobro,
-								'cod_ceta' => (int)$request->cod_ceta,
-								'monto_total' => (float)$item['monto'],
-								'periodo_facturado' => null,
-								'codigo_doc_sector' => config('sin.cod_doc_sector'),
-								'cod_tipo_doc_identidad' => $codTipoDocIdentidad,
-							]);
+							if ($nroReciboBatch === null) {
+								$nroRecibo = $reciboService->nextReciboAtomic($anio);
+								$reciboService->create($anio, $nroRecibo, [
+									'id_usuario' => (int)$request->id_usuario,
+									'id_forma_cobro' => $formaIdItem,
+									'cod_ceta' => (int)$request->cod_ceta,
+									'monto_total' => (float)$item['monto'],
+									'periodo_facturado' => null,
+									'codigo_doc_sector' => config('sin.cod_doc_sector'),
+									'cod_tipo_doc_identidad' => $codTipoDocIdentidad,
+								]);
+								$nroReciboBatch = (int) $nroRecibo; $anioReciboBatch = (int) $anio;
+							} else {
+								// Reutilizar el mismo Recibo y acumular el total
+								$nroRecibo = $nroReciboBatch; $anio = $anioReciboBatch ?: $anio;
+								DB::table('recibo')
+									->where('anio', (int)$anio)
+									->where('nro_recibo', (int)$nroRecibo)
+									->update([ 'monto_total' => DB::raw('monto_total + ' . ((float)$item['monto'])) ]);
+							}
 						} else {
 							if (!is_numeric($nroRecibo)) {
 								throw new \InvalidArgumentException('nro_recibo requerido para recibo manual');
@@ -754,7 +774,7 @@ class CobroController extends Controller
 							}
 							$reciboService->create($anio, (int)$nroRecibo, [
 								'id_usuario' => (int)$request->id_usuario,
-								'id_forma_cobro' => (string)$request->id_forma_cobro,
+								'id_forma_cobro' => $formaIdItem,
 								'cod_ceta' => (int)$request->cod_ceta,
 								'monto_total' => (float)$item['monto'],
 								'periodo_facturado' => null,
@@ -791,7 +811,7 @@ class CobroController extends Controller
 								'fecha_emision' => $item['fecha_cobro'],
 								'cod_ceta' => (int)$request->cod_ceta,
 								'id_usuario' => (int)$request->id_usuario,
-								'id_forma_cobro' => (string)$request->id_forma_cobro,
+								'id_forma_cobro' => $formaIdItem,
 								'monto_total' => (float)$item['monto'],
 								'codigo_cufd' => $cufd['codigo_cufd'] ?? null,
 								'cuf' => $cuf,
@@ -821,7 +841,7 @@ class CobroController extends Controller
 											'fecha_emision' => $fechaEmision,
 											'monto_total' => (float) $item['monto'],
 											'numero_factura' => (int) $nroFactura,
-											'id_forma_cobro' => (string) $request->id_forma_cobro,
+											'id_forma_cobro' => $formaIdItem,
 											'cliente' => $request->input('cliente', []),
 											'detalle' => [
 												'codigo_sin' => 0,
@@ -870,7 +890,7 @@ class CobroController extends Controller
 								'fecha_emision' => $item['fecha_cobro'],
 								'cod_ceta' => (int)$request->cod_ceta,
 								'id_usuario' => (int)$request->id_usuario,
-								'id_forma_cobro' => (string)$request->id_forma_cobro,
+								'id_forma_cobro' => $formaIdItem,
 								'monto_total' => (float)$item['monto'],
 								'codigo_cafc' => $range['cafc'] ?? null,
 							]);
@@ -1007,7 +1027,7 @@ class CobroController extends Controller
 								'concepto_est' => $detalle,
 								'observacion' => $obsOriginal,
 								'anulado' => false,
-								'tipo_nota' => (string)($request->id_forma_cobro ?? ''),
+								'tipo_nota' => (string)($formaIdItem ?? ''),
 								'banco_origen' => (string)($item['banco_origen'] ?? ''),
 								'nro_tarjeta' => $nroTarjetaFull,
 							]);
@@ -1022,7 +1042,7 @@ class CobroController extends Controller
 						'cobro_completo' => $item['cobro_completo'] ?? null,
 						'observaciones' => $item['observaciones'] ?? null,
 						'id_usuario' => (int)$request->id_usuario,
-						'id_forma_cobro' => (string)$request->id_forma_cobro,
+						'id_forma_cobro' => $item['id_forma_cobro'] ?? $formaIdItem,
 						'pu_mensualidad' => $item['pu_mensualidad'] ?? 0,
 						'order' => $order,
 						'descuento' => $item['descuento'] ?? null,

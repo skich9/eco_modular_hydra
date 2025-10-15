@@ -275,7 +275,7 @@
 										  <button
 											type="button"
 											class="btn btn-sm btn-success"
-											(click)="addArrastrePago()"
+											(click)="openArrastreModal()"
 											[disabled]="(resumen?.arrastre?.pending_count || 0) === 0 || !resumen?.arrastre?.next_cuota">
 											<i class="bi bi-plus"></i>
 										  </button>
@@ -526,12 +526,23 @@
     <!-- Modal: Mensualidades / Rezagado / Recuperación (componente) -->
     <app-mensualidad-modal
       [resumen]="resumen"
-      [formasCobro]="formasCobro"
+      [formasCobro]="modalFormasCobro"
       [cuentasBancarias]="cuentasBancarias"
       [tipo]="modalTipo"
       [pendientes]="mensualidadesPendientes"
       [pu]="mensualidadPU"
       [baseNro]="getNextMensualidadNro()"
-      [defaultMetodoPago]="selectedFormaCobroId"
+      [defaultMetodoPago]="modalFormasCobro[0]?.id_forma_cobro || selectedFormaCobroId"
       (addPagos)="onAddPagosFromModal($event)"
     ></app-mensualidad-modal>
+
+    <!-- Modal: Items de Cobro (Libros/Textos/Material) -->
+    <app-items-modal
+      #itemsDlg
+      [resumen]="resumen"
+      [formasCobro]="modalFormasCobro"
+      [cuentasBancarias]="cuentasBancarias"
+      [baseNro]="getNextCobroNro()"
+      [defaultMetodoPago]="modalFormasCobro[0]?.id_forma_cobro || selectedFormaCobroId"
+      (addItem)="onAddItem($event)"
+    ></app-items-modal>

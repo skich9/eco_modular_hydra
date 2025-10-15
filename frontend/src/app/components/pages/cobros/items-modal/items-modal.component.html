@@ -1,0 +1,140 @@
+<div class="modal fade" id="itemsModal" tabindex="-1" aria-labelledby="itemsModalLabel" aria-hidden="true">
+	<div class="modal-dialog modal-lg">
+		<div class="modal-content">
+			<div class="modal-header">
+				<h5 class="modal-title" id="itemsModalLabel">Datos de los Libros y Textos</h5>
+				<button type="button" class="btn-close" data-bs-dismiss="modal" aria-label="Close"></button>
+			</div>
+			<div class="modal-body">
+                <!-- Panel superior: Datos del estudiante + Método de Pago -->
+                <div class="p-3 bg-primary bg-opacity-10 rounded mb-3">
+                    <form [formGroup]="form" class="row g-3 align-items-center">
+                        <div class="col-md-8">
+                            <div class="small fw-semibold">Datos del Estudiante</div>
+                            <div class="small text-muted">{{ resumen?.estudiante?.cod_ceta }} - {{ resumen?.estudiante?.nombre_completo || resumen?.estudiante?.nombres }}</div>
+                            <div class="small">Pensum: {{ resumen?.inscripcion?.cod_pensum }} | Tipo: {{ resumen?.inscripcion?.tipo_inscripcion }}</div>
+                            <div class="small">Gestión: {{ resumen?.gestion }}</div>
+                        </div>
+                        <div class="col-md-4">
+                            <label class="form-label">Método de Pago</label>
+                            <select class="form-select" formControlName="metodo_pago">
+                                <option value="">-- Seleccione --</option>
+                                <option *ngFor="let f of formasCobro" [value]="f.id_forma_cobro">{{ labelForma(f) }}</option>
+                            </select>
+                        </div>
+                    </form>
+                </div>
+
+                <!-- Tipo de registro -->
+                <div class="mb-2">
+                    <div class="form-label fw-semibold">Tipo de registro</div>
+                    <div class="d-flex align-items-center gap-3">
+                        <div class="form-check">
+                            <input class="form-check-input" type="radio" id="compu_items" value="COMPUTARIZADA" formControlName="computarizada" />
+                            <label class="form-check-label" for="compu_items">Computarizada</label>
+                        </div>
+                        <div class="form-check">
+                            <input class="form-check-input" type="radio" id="manual_items" value="MANUAL" formControlName="computarizada" />
+                            <label class="form-check-label" for="manual_items">Manual</label>
+                        </div>
+                    </div>
+                </div>
+
+                <form [formGroup]="form" class="row g-3">
+                    <!-- Bancario/Tarjeta (visible sólo si corresponde al método de pago) -->
+                    <ng-container *ngIf="showBancarioBlock">
+                        <div class="col-12">
+                            <div class="border rounded p-3 mb-2">
+                                <div class="row g-3 align-items-end">
+                                    <div class="col-md-4">
+                                        <label class="form-label">Cuenta destino</label>
+                                        <select class="form-select" formControlName="id_cuentas_bancarias" [class.is-invalid]="form.get('id_cuentas_bancarias')?.invalid && (form.get('id_cuentas_bancarias')?.touched || form.get('id_cuentas_bancarias')?.dirty)">
+                                            <option value="">Seleccione cuenta/banco</option>
+                                            <option *ngFor="let c of cuentasBancarias" [value]="c.id_cuentas_bancarias">{{ c.banco }} - {{ c.numero_cuenta }}</option>
+                                        </select>
+                                    </div>
+                                    <div class="col-md-4">
+                                        <label class="form-label">Fecha depósito</label>
+                                        <input type="date" class="form-control" formControlName="fecha_deposito" [class.is-invalid]="form.get('fecha_deposito')?.invalid && (form.get('fecha_deposito')?.touched || form.get('fecha_deposito')?.dirty)" />
+                                    </div>
+                                    <div class="col-md-4">
+                                        <label class="form-label">Num. depósito</label>
+                                        <input type="text" class="form-control" formControlName="nro_deposito" [class.is-invalid]="form.get('nro_deposito')?.invalid && (form.get('nro_deposito')?.touched || form.get('nro_deposito')?.dirty)" />
+                                    </div>
+                                    <div class="col-md-4" *ngIf="isTransferencia || isTarjeta">
+                                        <label class="form-label">Banco Origen</label>
+                                        <input type="text" class="form-control" formControlName="banco_origen" placeholder="Banco origen" [class.is-invalid]="form.get('banco_origen')?.invalid && (form.get('banco_origen')?.touched || form.get('banco_origen')?.dirty)" />
+                                    </div>
+                                    <div class="col-md-2" *ngIf="isTarjeta">
+                                        <label class="form-label">Tarjeta (4 primeros)</label>
+                                        <input class="form-control" maxlength="4" formControlName="tarjeta_first4" [class.is-invalid]="form.get('tarjeta_first4')?.invalid && (form.get('tarjeta_first4')?.touched || form.get('tarjeta_first4')?.dirty)" />
+                                    </div>
+                                    <div class="col-md-2" *ngIf="isTarjeta">
+                                        <label class="form-label">Tarjeta (4 últimos)</label>
+                                        <input class="form-control" maxlength="4" formControlName="tarjeta_last4" [class.is-invalid]="form.get('tarjeta_last4')?.invalid && (form.get('tarjeta_last4')?.touched || form.get('tarjeta_last4')?.dirty)" />
+                                    </div>
+                                </div>
+                            </div>
+                        </div>
+                    </ng-container>
+                    <!-- Bloque principal: Libro/Texto y buscador -->
+                    <div class="col-md-8">
+                        <div class="border rounded p-3 h-100">
+                            <div class="row g-3">
+                                <div class="col-12">
+                                    <label class="form-label">Libro o Texto</label>
+                                    <select class="form-select" formControlName="id_item" [class.is-invalid]="form.get('id_item')?.invalid && (form.get('id_item')?.touched || form.get('id_item')?.dirty)">
+                                        <option value="">-- Seleccione --</option>
+                                        <option *ngFor="let it of filteredItems" [value]="it.id_item">{{ it.nombre_servicio }}</option>
+                                    </select>
+                                </div>
+                                <div class="col-md-4">
+                                    <label class="form-label">Precio</label>
+                                    <input class="form-control" [value]="form.get('precio')?.value | number:'1.2-2'" readonly />
+                                </div>
+                                <div class="col-md-4">
+                                    <label class="form-label">Cantidad</label>
+                                    <input type="number" min="1" class="form-control" formControlName="cantidad" [class.is-invalid]="form.get('cantidad')?.invalid && (form.get('cantidad')?.touched || form.get('cantidad')?.dirty)" />
+                                </div>
+                                <div class="col-md-4">
+                                    <label class="form-label">Costo</label>
+                                    <input class="form-control" formControlName="costo_total" readonly />
+                                </div>
+                            </div>
+                        </div>
+                    </div>
+                    <div class="col-md-4">
+                        <div class="h-100 d-flex flex-column gap-3">
+                            <div>
+                                <label class="form-label">&nbsp;</label>
+                                <div class="input-group">
+                                    <input type="text" class="form-control" placeholder="Buscar..." [(ngModel)]="search" [ngModelOptions]="{standalone: true}" />
+                                    <span class="input-group-text"><i class="bi bi-search"></i></span>
+                                </div>
+                            </div>
+                            <div class="border rounded p-3">
+                                <label class="form-label">Comprobante</label>
+                                <select class="form-select" formControlName="comprobante">
+                                    <option value="RECIBO">Recibo</option>
+                                    <option value="FACTURA">Factura</option>
+                                </select>
+                            </div>
+                        </div>
+                    </div>
+
+                    <div class="col-12">
+                        <label class="form-label">Observaciones</label>
+                        <textarea class="form-control" rows="3" formControlName="observaciones"></textarea>
+                    </div>
+                </form>
+                <div *ngIf="submitError" class="alert alert-warning mt-2 mb-0 py-2">{{ submitError }}</div>
+            </div>
+            <div class="modal-footer">
+                <button type="button" class="btn btn-success" (click)="addAndClose()">
+                    <i class="bi bi-plus-circle me-1"></i> Agregar Item
+                </button>
+                <button type="button" class="btn btn-secondary" data-bs-dismiss="modal">Cerrar</button>
+            </div>
+		</div>
+	</div>
+</div>

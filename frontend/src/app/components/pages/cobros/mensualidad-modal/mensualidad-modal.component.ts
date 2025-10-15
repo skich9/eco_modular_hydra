@@ -13,7 +13,7 @@ export class MensualidadModalComponent implements OnInit, OnChanges {
   @Input() resumen: any = null;
   @Input() formasCobro: any[] = [];
   @Input() cuentasBancarias: any[] = [];
-  @Input() tipo: 'mensualidad' | 'rezagado' | 'recuperacion' = 'mensualidad';
+  @Input() tipo: 'mensualidad' | 'rezagado' | 'recuperacion' | 'arrastre' = 'mensualidad';
   @Input() pendientes = 0;
   @Input() pu = 0; // precio unitario de mensualidad
   @Input() baseNro = 1; // nro_cobro inicial sugerido
@@ -78,7 +78,6 @@ export class MensualidadModalComponent implements OnInit, OnChanges {
   // Indica si el método seleccionado corresponde a pago con QR
   get isQR(): boolean {
     const f = this.getSelectedForma();
-    if (f && `${f.id_forma_cobro}`.toUpperCase() === 'O') return false;
     const code = this.getSelectedCodigoSin();
     if (code !== null) {
       // No existe código estándar de QR en SIN; usar fallback textual
@@ -92,7 +91,6 @@ export class MensualidadModalComponent implements OnInit, OnChanges {
   // Indica si el método seleccionado corresponde a TRANSFERENCIA
   get isTransferencia(): boolean {
     const f = this.getSelectedForma();
-    if (f && `${f.id_forma_cobro}`.toUpperCase() === 'O') return false;
     const code = this.getSelectedCodigoSin();
     if (code !== null) {
       if ([5].includes(code)) return true; // 5 ~ Transferencia bancaria (usual en SIN)
@@ -106,12 +104,17 @@ export class MensualidadModalComponent implements OnInit, OnChanges {
   // Indica si el método seleccionado es OTRO (id_forma_cobro = 'O')
   get isOtro(): boolean {
     const f = this.getSelectedForma();
-    return !!(f && `${f.id_forma_cobro}`.toUpperCase() === 'O');
+    const raw = (f?.descripcion_sin ?? f?.nombre ?? f?.name ?? f?.descripcion ?? f?.label ?? '').toString().trim().toUpperCase();
+    const nombre = raw.normalize('NFD').replace(/\p{Diacritic}/gu, '');
+    if (!nombre) return false;
+    if (nombre.includes('TRANSFER') || nombre.includes('TARJETA') || nombre.includes('CHEQUE') || nombre.includes('DEPOSITO') || nombre.includes('QR')) return false;
+    return nombre.includes('OTRO') || nombre.includes('VALES') || nombre.includes('PAGO POSTERIOR');
   }
 
   // Controla visibilidad del bloque bancario (Cheque/Depósito/Transferencia/QR)
   get showBancarioBlock(): boolean {
     if (this.isOtro) return false;
+    // Para TARJETA ya existe un bloque específico arriba; evitar duplicar campos
     return this.isCheque || this.isDeposito || this.isTransferencia || this.isQR;
   }
 
@@ -127,7 +130,7 @@ export class MensualidadModalComponent implements OnInit, OnChanges {
 
     // Alternar validadores/estado para pago parcial
     this.form.get('pago_parcial')?.valueChanges.subscribe((on: boolean) => {
-      if (this.tipo === 'mensualidad') {
+      if (this.tipo === 'mensualidad' || this.tipo === 'arrastre') {
         if (on) {
           // bloquear cantidad a 1 y habilitar monto_parcial
           this.form.get('cantidad')?.setValue(1, { emitEvent: false });
@@ -166,12 +169,12 @@ export class MensualidadModalComponent implements OnInit, OnChanges {
   }
 
   private configureByTipo(): void {
-    if (this.tipo === 'mensualidad') {
+    if (this.tipo === 'mensualidad' || this.tipo === 'arrastre') {
       this.form.get('cantidad')?.setValidators([Validators.required, Validators.min(1), Validators.max(this.pendientes || 1)]);
       this.form.get('monto_manual')?.clearValidators();
       this.form.get('monto_manual')?.setValue(0, { emitEvent: false });
       // Si ya está activo pago parcial, aplicar estado/validadores correspondientes
-      if (this.form.get('pago_parcial')?.value) {
+      if (this.tipo === 'mensualidad' && this.form.get('pago_parcial')?.value) {
         this.form.get('cantidad')?.setValue(1, { emitEvent: false });
         this.form.get('cantidad')?.disable({ emitEvent: false });
         this.form.get('monto_parcial')?.enable({ emitEvent: false });
@@ -203,6 +206,7 @@ export class MensualidadModalComponent implements OnInit, OnChanges {
     switch (this.tipo) {
       case 'rezagado': return 'Pago de Rezagado';
       case 'recuperacion': return 'Pago de Prueba de Recuperación';
+      case 'arrastre': return 'Pago de Arrastre';
       default: return 'Pago de Mensualidades';
     }
   }
@@ -215,7 +219,6 @@ export class MensualidadModalComponent implements OnInit, OnChanges {
       } else {
         const cant = Math.max(0, Number(this.form.get('cantidad')?.value || 0));
         const sum = this.sumNextKCuotasRestantes(cant);
-        // Fallback enriquecido: si no hay data de cuotas en resumen, usar [next restante, siguientes = puSemestral]
         if (sum > 0) {
           total = sum;
         } else {
@@ -226,6 +229,9 @@ export class MensualidadModalComponent implements OnInit, OnChanges {
           if (cant <= 0) total = 0; else if (cant === 1) total = puNext; else total = puNext + Math.max(0, cant - 1) * (puSemestral || puNext);
         }
       }
+    } else if (this.tipo === 'arrastre') {
+      const cant = Math.max(0, Number(this.form.get('cantidad')?.value || 0));
+      total = cant * Number(this.pu || 0);
     } else {
       total = Number(this.form.get('monto_manual')?.value || 0);
     }
@@ -303,7 +309,6 @@ export class MensualidadModalComponent implements OnInit, OnChanges {
   // Indica si el método seleccionado corresponde a TARJETA según el catálogo recibido
   get isTarjeta(): boolean {
     const f = this.getSelectedForma();
-    if (f && `${f.id_forma_cobro}`.toUpperCase() === 'O') return false;
     const code = this.getSelectedCodigoSin();
     if (code !== null) {
       if ([2].includes(code)) return true; // 2 ~ Tarjeta (deb/cred)
@@ -316,7 +321,6 @@ export class MensualidadModalComponent implements OnInit, OnChanges {
   // Indica si el método seleccionado corresponde a CHEQUE
   get isCheque(): boolean {
     const f = this.getSelectedForma();
-    if (f && `${f.id_forma_cobro}`.toUpperCase() === 'O') return false;
     const code = this.getSelectedCodigoSin();
     if (code !== null) {
       if ([3].includes(code)) return true; // 3 ~ Cheque
@@ -329,7 +333,6 @@ export class MensualidadModalComponent implements OnInit, OnChanges {
   // Indica si el método seleccionado corresponde a DEPOSITO/DEPÓSITO
   get isDeposito(): boolean {
     const f = this.getSelectedForma();
-    if (f && `${f.id_forma_cobro}`.toUpperCase() === 'O') return false;
     const code = this.getSelectedCodigoSin();
     if (code !== null) {
       if ([4].includes(code)) return true; // 4 ~ Depósito en cuenta
@@ -356,6 +359,18 @@ export class MensualidadModalComponent implements OnInit, OnChanges {
     if (!match) return null;
     const code = Number(match?.codigo_sin);
     return isFinite(code) ? code : null;
+  }
+
+  labelForma(f: any): string {
+    const raw = (f?.descripcion_sin ?? f?.nombre ?? f?.name ?? f?.descripcion ?? f?.label ?? '').toString().trim();
+    if (raw) return raw;
+    const code = Number(f?.codigo_sin);
+    if (code === 1) return 'Efectivo';
+    if (code === 2) return 'Tarjeta';
+    if (code === 3) return 'Cheque';
+    if (code === 4) return 'Deposito';
+    if (code === 5) return 'Transferencia';
+    return (f?.nombre || 'Otro');
   }
 
   // Activa/desactiva validadores requeridos para TARJETA o CHEQUE
@@ -427,10 +442,41 @@ export class MensualidadModalComponent implements OnInit, OnChanges {
     const tipo_documento = compSel === 'FACTURA' ? 'F' : (compSel === 'RECIBO' ? 'R' : '');
     const medio_doc = (this.form.get('computarizada')?.value === 'MANUAL') ? 'M' : 'C';
 
-    if (this.tipo === 'mensualidad') {
+    if (this.tipo === 'arrastre') {
+      const next = this.resumen?.arrastre?.next_cuota || null;
+      const monto = next ? Number(next?.monto || 0) : Number(this.pu || 0);
+      pagos.push({
+        id_forma_cobro: this.form.get('metodo_pago')?.value || null,
+        nro_cobro: this.baseNro || 1,
+        monto: monto,
+        fecha_cobro: hoy,
+        observaciones: this.composeObservaciones(),
+        pu_mensualidad: monto,
+        numero_cuota: next ? (Number(next?.numero_cuota || 0) || null) : null,
+        id_cuota: next ? (next?.id_cuota_template ?? null) : null,
+        id_asignacion_costo: next ? (next?.id_asignacion_costo ?? null) : null,
+        // doc/medio
+        tipo_documento,
+        medio_doc,
+        comprobante: compSel || 'NINGUNO',
+        computarizada: this.form.get('computarizada')?.value,
+        // bancarias
+        id_cuentas_bancarias: this.form.get('id_cuentas_bancarias')?.value || null,
+        banco_origen: this.form.get('banco_origen')?.value || null,
+        fecha_deposito: this.form.get('fecha_deposito')?.value || null,
+        nro_deposito: this.form.get('nro_deposito')?.value || null,
+        tarjeta_first4: this.form.get('tarjeta_first4')?.value || null,
+        tarjeta_last4: this.form.get('tarjeta_last4')?.value || null,
+        // opcionales
+        descuento: this.form.get('descuento')?.value || null,
+        nro_factura: this.form.get('comprobante')?.value === 'FACTURA' ? (this.form.get('nro_factura')?.value || null) : null,
+        nro_recibo: this.form.get('comprobante')?.value === 'RECIBO' ? (this.form.get('nro_recibo')?.value || null) : null,
+      });
+    } else if (this.tipo === 'mensualidad') {
       const esParcial = !!this.form.get('pago_parcial')?.value;
       if (esParcial) {
         pagos.push({
+          id_forma_cobro: this.form.get('metodo_pago')?.value || null,
           nro_cobro: this.baseNro || 1,
           monto: Number(this.form.get('monto_parcial')?.value || 0),
           fecha_cobro: hoy,
@@ -465,6 +511,7 @@ export class MensualidadModalComponent implements OnInit, OnChanges {
             const id_cuota_template = list[i]?.id_cuota_template ?? null;
             const id_asignacion_costo = list[i]?.id_asignacion_costo ?? null;
             pagos.push({
+              id_forma_cobro: this.form.get('metodo_pago')?.value || null,
               nro_cobro: nro++,
               monto: m,
               fecha_cobro: hoy,
@@ -497,6 +544,7 @@ export class MensualidadModalComponent implements OnInit, OnChanges {
           const k = Math.max(0, cant);
           if (k >= 1) {
             pagos.push({
+              id_forma_cobro: this.form.get('metodo_pago')?.value || null,
               nro_cobro: nro++,
               monto: puNext,
               fecha_cobro: hoy,
@@ -522,6 +570,7 @@ export class MensualidadModalComponent implements OnInit, OnChanges {
           }
           for (let i = 1; i < k; i++) {
             pagos.push({
+              id_forma_cobro: this.form.get('metodo_pago')?.value || null,
               nro_cobro: nro++,
               monto: puSemestral,
               fecha_cobro: hoy,
@@ -551,6 +600,7 @@ export class MensualidadModalComponent implements OnInit, OnChanges {
       // Rezagado o Recuperación: generamos un único registro
       const monto = Number(this.form.get('monto_manual')?.value || 0);
       pagos.push({
+        id_forma_cobro: this.form.get('metodo_pago')?.value || null,
         nro_cobro: this.baseNro || 1,
         monto,
         fecha_cobro: hoy,
@@ -595,6 +645,7 @@ export class MensualidadModalComponent implements OnInit, OnChanges {
     const flags: string[] = [];
     if (this.tipo === 'rezagado' || this.form.get('rezagado')?.value) flags.push('Rezagado');
     if (this.tipo === 'recuperacion' || this.form.get('recuperacion')?.value) flags.push('Prueba de recuperación');
+    if (this.tipo === 'arrastre') flags.push('Arrastre');
     const joined = flags.length ? `[${flags.join(', ')}]` : '';
     return [joined, obs].filter(Boolean).join(' ').trim();
   }
