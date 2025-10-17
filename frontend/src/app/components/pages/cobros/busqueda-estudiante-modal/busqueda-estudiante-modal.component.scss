@@ -1,0 +1,10 @@
+/* estilos del modal de búsqueda (placeholder) */
+.table td, .table th { vertical-align: middle; }
+
+/* Asegurar que el hover se vea aún con estilos de Bootstrap */
+:host ::ng-deep .table-hover > tbody > tr:hover > * {
+    background-color: #fff3cd !important; /* amarillo suave */
+    transition: background-color .15s ease-in-out;
+}
+
+.table-hover tbody tr { cursor: pointer; }

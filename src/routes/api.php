@@ -2,6 +2,7 @@
 
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\Route;
+use App\Http\Controllers\Api\EstudianteController;
 use App\Http\Controllers\Api\ParametrosEconomicosController;
 use App\Http\Controllers\Api\ItemsCobroController;
 use App\Http\Controllers\Api\CobroController;
@@ -28,6 +29,9 @@ use App\Http\Controllers\Api\CuotaController;
 use App\Http\Controllers\Api\InscripcionesWebhookController;
 use App\Http\Controllers\Api\KardexNotasController;
 use App\Http\Controllers\Api\RezagadoController;
+
+// Búsqueda de estudiantes
+Route::get('/estudiantes/search', [EstudianteController::class, 'search']);
 
 /*
 --------------------------------------------------------------------------

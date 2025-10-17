@@ -16,6 +16,7 @@
 			<div class="card mb-4 shadow-sm">
 				<div class="card-header d-flex justify-content-between align-items-center">
 					<strong>Datos del estudiante</strong>
+					<button type="button" class="btn btn-sm btn-success" (click)="openBusquedaModal()">Búsqueda por nombre</button>
 				</div>
 				
 				<div class="card-body">
@@ -573,3 +574,16 @@
       [costoRecuperacion]="(resumen?.recuperacion?.monto ?? resumen?.recuperacion_pendiente?.monto)"
       (addRecuperacion)="onAddPagosFromModal($event)"
     ></app-recuperacion-modal>
+
+    <!-- Modal: Búsqueda de Estudiante -->
+    <app-busqueda-estudiante-modal
+      [loading]="busquedaLoading"
+      [results]="busquedaResults"
+      [meta]="busquedaMeta"
+      [page]="busquedaPage"
+      [perPage]="busquedaPerPage"
+      (buscar)="onBuscarEstudiantes($event)"
+      (seleccionar)="onSeleccionarEstudiante($event)"
+      (pageChange)="onBusquedaPageChange($event)"
+      (perPageChange)="onBusquedaPerPageChange($event)"
+    ></app-busqueda-estudiante-modal>

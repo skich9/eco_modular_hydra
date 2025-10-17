@@ -25,6 +25,19 @@ export class CobrosService {
 		);
 	}
 
+	// ===================== Estudiantes =====================
+	searchEstudiantes(params: { ap_paterno?: string; ap_materno?: string; nombres?: string; ci?: string; page?: number; per_page?: number }): Observable<any> {
+		let httpParams = new HttpParams();
+		Object.entries(params || {}).forEach(([k, v]) => {
+			if (v !== undefined && v !== null && String(v).trim() !== '') {
+				httpParams = httpParams.set(k, String(v));
+			}
+		});
+		return this.http.get<any>(`${this.apiUrl}/estudiantes/search`, { params: httpParams }).pipe(
+			map((res: any) => ({ success: !!res?.success, data: res?.data || [], meta: res?.meta || null, message: res?.message }))
+		);
+	}
+
 	// ===================== Parámetros de Cuotas =====================
 	getParametrosCuotasActivas(): Observable<any> {
 		return this.http.get<any>(`${this.apiUrl}/parametros-cuota/activos`).pipe(

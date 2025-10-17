@@ -1,0 +1,81 @@
+<div class="modal fade" id="buscarEstudianteModal" tabindex="-1" aria-hidden="true">
+  <div class="modal-dialog modal-lg">
+    <div class="modal-content">
+      <div class="modal-header">
+        <h5 class="modal-title">Búsqueda de estudiante</h5>
+        <button type="button" class="btn-close" data-bs-dismiss="modal" aria-label="Close"></button>
+      </div>
+      <div class="modal-body">
+        <form [formGroup]="form" class="row g-3">
+          <div class="col-md-3">
+            <label class="form-label">Ap. Paterno</label>
+            <input class="form-control" formControlName="ap_paterno" (keypress)="onKeypressLettersOnly($event)" />
+          </div>
+          <div class="col-md-3">
+            <label class="form-label">Ap. Materno</label>
+            <input class="form-control" formControlName="ap_materno" (keypress)="onKeypressLettersOnly($event)" />
+          </div>
+          <div class="col-md-3">
+            <label class="form-label">Nombres</label>
+            <input class="form-control" formControlName="nombres" (keypress)="onKeypressLettersOnly($event)" />
+          </div>
+          <div class="col-md-3">
+            <label class="form-label">CI</label>
+            <input class="form-control" formControlName="ci" />
+          </div>
+          <div class="col-12 d-flex justify-content-end">
+            <button type="button" class="btn btn-primary" (click)="onBuscar()" [disabled]="loading">
+              <span *ngIf="loading" class="spinner-border spinner-border-sm me-2"></span>
+              Buscar
+            </button>
+          </div>
+        </form>
+
+        <div class="table-responsive mt-3" style="overflow-x:auto;" *ngIf="(results || []).length">
+          <table class="table table-sm table-bordered table-hover align-middle">
+            <thead class="table-light">
+              <tr>
+                <th style="width:5%">Nº</th>
+                <th style="width:12%">Cod. CETA</th>
+                <th style="width:18%">Ap. Paterno</th>
+                <th style="width:18%">Ap. Materno</th>
+                <th>Nombres</th>
+                <th style="width:14%">Cédula de Identidad</th>
+                <th style="width:8%">Acción</th>
+              </tr>
+            </thead>
+            <tbody>
+              <tr *ngFor="let r of results; let i = index">
+                <td>{{ i + 1 }}</td>
+                <td>{{ r.cod_ceta }}</td>
+                <td>{{ r.ap_paterno }}</td>
+                <td>{{ r.ap_materno }}</td>
+                <td>{{ r.nombres }}</td>
+                <td>{{ r.ci }}</td>
+                <td class="text-center">
+                  <button type="button" class="btn btn-sm btn-success" (click)="selectRow(r)"><i class="bi bi-check2"></i></button>
+                </td>
+              </tr>
+            </tbody>
+          </table>
+        </div>
+        <div class="d-flex justify-content-between align-items-center mt-2" *ngIf="meta as m">
+          <div class="d-flex align-items-center gap-2">
+            <label class="me-2">Filas por página</label>
+            <select class="form-select form-select-sm" style="width:auto" [value]="m.per_page || perPage" (change)="setPerPage($any($event.target).value)">
+              <option [value]="10">10</option>
+              <option [value]="20">20</option>
+              <option [value]="50">50</option>
+              <option [value]="100">100</option>
+            </select>
+          </div>
+          <div>
+            <button class="btn btn-sm btn-outline-secondary me-2" (click)="onPrevPage()" [disabled]="(m.page || 1) <= 1">Anterior</button>
+            <span>Página {{ m.page || 1 }} de {{ m.last_page || 1 }}</span>
+            <button class="btn btn-sm btn-outline-secondary ms-2" (click)="onNextPage()" [disabled]="(m.page || 1) >= (m.last_page || 1)">Siguiente</button>
+          </div>
+        </div>
+      </div>
+    </div>
+  </div>
+</div>

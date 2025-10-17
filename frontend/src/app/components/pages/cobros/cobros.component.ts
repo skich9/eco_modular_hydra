@@ -7,12 +7,13 @@ import { MensualidadModalComponent } from './mensualidad-modal/mensualidad-modal
 import { RezagadoModalComponent } from './rezagado-modal/rezagado-modal.component';
 import { RecuperacionModalComponent } from './recuperacion-modal/recuperacion-modal.component';
 import { ItemsModalComponent } from './items-modal/items-modal.component';
+import { BusquedaEstudianteModalComponent } from './busqueda-estudiante-modal/busqueda-estudiante-modal.component';
 import { environment } from '../../../../environments/environment';
 
 @Component({
   selector: 'app-cobros-page',
   standalone: true,
-  imports: [CommonModule, ReactiveFormsModule, FormsModule, MensualidadModalComponent, ItemsModalComponent, RezagadoModalComponent, RecuperacionModalComponent],
+  imports: [CommonModule, ReactiveFormsModule, FormsModule, MensualidadModalComponent, ItemsModalComponent, RezagadoModalComponent, RecuperacionModalComponent, BusquedaEstudianteModalComponent],
   templateUrl: './cobros.component.html',
   styleUrls: ['./cobros.component.scss']
 })
@@ -65,6 +66,7 @@ export class CobrosComponent implements OnInit {
   @ViewChild(RezagadoModalComponent) rezagadoDlg?: RezagadoModalComponent;
   // Ref del modal de recuperación
   @ViewChild(RecuperacionModalComponent) recuperacionDlg?: RecuperacionModalComponent;
+  @ViewChild(BusquedaEstudianteModalComponent) buscarDlg?: BusquedaEstudianteModalComponent;
 
   // Modal de éxito (registro realizado)
   successSummary: {
@@ -77,6 +79,13 @@ export class CobrosComponent implements OnInit {
     total?: number;
     docs?: Array<{ anio: number; nro_recibo?: number }>
   } | null = null;
+
+  busquedaLoading = false;
+  busquedaResults: any[] = [];
+  busquedaMeta: { page: number; per_page: number; total: number; last_page: number } | null = null;
+  busquedaPage = 1;
+  busquedaPerPage = 10;
+  private busquedaCriteria: { ap_paterno?: string; ap_materno?: string; nombres?: string; ci?: string } = {};
 
   constructor(
     private fb: FormBuilder,
@@ -133,6 +142,44 @@ export class CobrosComponent implements OnInit {
       costo_total: [{ value: 0, disabled: true }],
       observaciones: ['']
     });
+  }
+
+  // ================== Búsqueda de estudiante por nombre/CI ==================
+  openBusquedaModal(): void {
+    try { this.buscarDlg?.open(); } catch {}
+  }
+
+  onBuscarEstudiantes(criteria: { ap_paterno?: string; ap_materno?: string; nombres?: string; ci?: string }): void {
+    this.busquedaCriteria = { ...criteria };
+    this.busquedaLoading = true;
+    this.busquedaResults = [];
+    this.cobrosService.searchEstudiantes({ ...criteria, page: this.busquedaPage, per_page: this.busquedaPerPage }).subscribe({
+      next: (res) => {
+        this.busquedaResults = Array.isArray(res?.data) ? res.data : [];
+        this.busquedaMeta = res?.meta || null;
+        this.busquedaLoading = false;
+      },
+      error: () => { this.busquedaLoading = false; this.busquedaResults = []; }
+    });
+  }
+
+  onSeleccionarEstudiante(row: any): void {
+    try { this.buscarDlg?.close(); } catch {}
+    const cod = (row?.cod_ceta ?? row?.codCeta ?? row?.codigo ?? '').toString();
+    if (!cod) return;
+    this.searchForm.patchValue({ cod_ceta: cod }, { emitEvent: false });
+    this.loadResumen();
+  }
+
+  onBusquedaPageChange(p: number): void {
+    this.busquedaPage = p;
+    this.onBuscarEstudiantes(this.busquedaCriteria);
+  }
+
+  onBusquedaPerPageChange(n: number): void {
+    this.busquedaPerPage = n;
+    this.busquedaPage = 1;
+    this.onBuscarEstudiantes(this.busquedaCriteria);
   }
 
   private updateRezagadoCosto(): void {
