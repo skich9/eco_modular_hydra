@@ -21,6 +21,7 @@ export class ItemsModalComponent implements OnInit, OnChanges {
 	items: any[] = [];
 	form: FormGroup;
 	search: string = '';
+	comboOpen = false;
 	submitError: string = '';
 
 	constructor(private fb: FormBuilder, private itemsService: ItemsCobroService) {
@@ -205,6 +206,22 @@ export class ItemsModalComponent implements OnInit, OnChanges {
 			const d = (it?.nombre_servicio || it?.descripcion || '').toString().toUpperCase();
 			return d.includes(q);
 		});
+	}
+
+	onComboInputFocus(): void {
+		this.comboOpen = true;
+	}
+
+	onComboInputBlur(): void {
+		// pequeño timeout para permitir click en opción
+		setTimeout(() => { this.comboOpen = false; }, 150);
+	}
+
+	selectComboItem(it: any): void {
+		if (!it) return;
+		this.form.patchValue({ id_item: it.id_item }, { emitEvent: true });
+		this.search = it.nombre_servicio || '';
+		this.comboOpen = false;
 	}
 
 	labelForma(f: any): string {

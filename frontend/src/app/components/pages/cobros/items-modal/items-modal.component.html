@@ -25,17 +25,34 @@
                     </form>
                 </div>
 
-                <!-- Tipo de registro -->
+                <!-- Tipo de registro + Comprobante lado a lado -->
                 <div class="mb-2">
-                    <div class="form-label fw-semibold">Tipo de registro</div>
-                    <div class="d-flex align-items-center gap-3">
-                        <div class="form-check">
-                            <input class="form-check-input" type="radio" id="compu_items" value="COMPUTARIZADA" formControlName="computarizada" />
-                            <label class="form-check-label" for="compu_items">Computarizada</label>
+                    <div class="row align-items-center">
+                        <div class="col-md-6 mb-2 mb-md-0">
+                            <div class="form-label fw-semibold mb-1">Tipo de registro</div>
+                            <div class="d-flex align-items-center gap-3">
+                                <div class="form-check">
+                                    <input class="form-check-input" type="radio" id="compu_items" value="COMPUTARIZADA" formControlName="computarizada" />
+                                    <label class="form-check-label" for="compu_items">Computarizada</label>
+                                </div>
+                                <div class="form-check">
+                                    <input class="form-check-input" type="radio" id="manual_items" value="MANUAL" formControlName="computarizada" />
+                                    <label class="form-check-label" for="manual_items">Manual</label>
+                                </div>
+                            </div>
                         </div>
-                        <div class="form-check">
-                            <input class="form-check-input" type="radio" id="manual_items" value="MANUAL" formControlName="computarizada" />
-                            <label class="form-check-label" for="manual_items">Manual</label>
+                        <div class="col-md-6">
+                            <div class="form-label fw-semibold mb-1">Comprobante</div>
+                            <div class="d-flex align-items-center gap-3">
+                                <div class="form-check">
+                                    <input class="form-check-input" type="radio" id="comp_recibo_top" value="RECIBO" formControlName="comprobante">
+                                    <label class="form-check-label" for="comp_recibo_top">Recibo</label>
+                                </div>
+                                <div class="form-check">
+                                    <input class="form-check-input" type="radio" id="comp_factura_top" value="FACTURA" formControlName="comprobante">
+                                    <label class="form-check-label" for="comp_factura_top">Factura</label>
+                                </div>
+                            </div>
                         </div>
                     </div>
                 </div>
@@ -78,15 +95,21 @@
                         </div>
                     </ng-container>
                     <!-- Bloque principal: Libro/Texto y buscador -->
-                    <div class="col-md-8">
+                    <div class="col-md-12">
                         <div class="border rounded p-3 h-100">
                             <div class="row g-3">
-                                <div class="col-12">
+                                <div class="col-12 position-relative">
                                     <label class="form-label">Libro o Texto</label>
-                                    <select class="form-select" formControlName="id_item" [class.is-invalid]="form.get('id_item')?.invalid && (form.get('id_item')?.touched || form.get('id_item')?.dirty)">
-                                        <option value="">-- Seleccione --</option>
-                                        <option *ngFor="let it of filteredItems" [value]="it.id_item">{{ it.nombre_servicio }}</option>
-                                    </select>
+                                    <input type="text" class="form-control" placeholder="-- Seleccione --" [(ngModel)]="search" [ngModelOptions]="{standalone: true}"
+                                           (focus)="onComboInputFocus()" (blur)="onComboInputBlur()" />
+                                    <div class="dropdown-menu show w-100 mt-1" *ngIf="comboOpen">
+                                        <button type="button" class="dropdown-item" *ngFor="let it of filteredItems" (mousedown)="$event.preventDefault()" (click)="selectComboItem(it)">
+                                            {{ it.nombre_servicio }}
+                                        </button>
+                                        <div class="dropdown-item text-muted" *ngIf="(filteredItems || []).length === 0">Sin resultados</div>
+                                    </div>
+                                    <input type="hidden" formControlName="id_item" />
+                                    <div class="invalid-feedback d-block" *ngIf="form.get('id_item')?.invalid && (form.get('id_item')?.touched || form.get('id_item')?.dirty)">Seleccione un ítem</div>
                                 </div>
                                 <div class="col-md-4">
                                     <label class="form-label">Precio</label>
@@ -100,24 +123,6 @@
                                     <label class="form-label">Costo</label>
                                     <input class="form-control" formControlName="costo_total" readonly />
                                 </div>
-                            </div>
-                        </div>
-                    </div>
-                    <div class="col-md-4">
-                        <div class="h-100 d-flex flex-column gap-3">
-                            <div>
-                                <label class="form-label">&nbsp;</label>
-                                <div class="input-group">
-                                    <input type="text" class="form-control" placeholder="Buscar..." [(ngModel)]="search" [ngModelOptions]="{standalone: true}" />
-                                    <span class="input-group-text"><i class="bi bi-search"></i></span>
-                                </div>
-                            </div>
-                            <div class="border rounded p-3">
-                                <label class="form-label">Comprobante</label>
-                                <select class="form-select" formControlName="comprobante">
-                                    <option value="RECIBO">Recibo</option>
-                                    <option value="FACTURA">Factura</option>
-                                </select>
                             </div>
                         </div>
                     </div>
