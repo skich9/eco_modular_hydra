@@ -7,13 +7,14 @@ import { MensualidadModalComponent } from './mensualidad-modal/mensualidad-modal
 import { RezagadoModalComponent } from './rezagado-modal/rezagado-modal.component';
 import { RecuperacionModalComponent } from './recuperacion-modal/recuperacion-modal.component';
 import { ItemsModalComponent } from './items-modal/items-modal.component';
+import { KardexModalComponent } from './kardex-modal/kardex-modal.component';
 import { BusquedaEstudianteModalComponent } from './busqueda-estudiante-modal/busqueda-estudiante-modal.component';
 import { environment } from '../../../../environments/environment';
 
 @Component({
   selector: 'app-cobros-page',
   standalone: true,
-  imports: [CommonModule, ReactiveFormsModule, FormsModule, MensualidadModalComponent, ItemsModalComponent, RezagadoModalComponent, RecuperacionModalComponent, BusquedaEstudianteModalComponent],
+  imports: [CommonModule, ReactiveFormsModule, FormsModule, MensualidadModalComponent, ItemsModalComponent, RezagadoModalComponent, RecuperacionModalComponent, BusquedaEstudianteModalComponent, KardexModalComponent],
   templateUrl: './cobros.component.html',
   styleUrls: ['./cobros.component.scss']
 })
@@ -144,6 +145,84 @@ export class CobrosComponent implements OnInit {
     });
   }
 
+  private sumCobrosMensualidadByGestionInscripciones(): number {
+    try {
+      const gestion = this.getCurrentGestion();
+      const allowed = this.getAllowedInscripcionIds();
+      const items: any[] = Array.isArray(this.resumen?.cobros?.mensualidad?.items) ? this.resumen!.cobros.mensualidad.items : [];
+      if (!items.length) return 0;
+      let sum = 0;
+      for (const it of items) {
+        const g = `${it?.gestion ?? it?.gestion_cuota ?? ''}`;
+        if (gestion && g && `${g}` !== `${gestion}`) continue;
+        const ins = `${it?.id_inscripcion ?? it?.inscripcion_id ?? it?.cod_inscrip ?? ''}`;
+        if (allowed.size && ins && !allowed.has(ins)) continue;
+        sum += this.toNumber(it?.monto);
+      }
+      return sum;
+    } catch { return 0; }
+  }
+
+  // Cálculo específico solicitado:
+  // - NORMAL: desde 'asignaciones' (monto_pagado) con estados COBRADO o PARCIAL
+  // - ARRASTRE: desde 'cobros.mensualidad.items' detectando plantillas de arrastre por id_cuota >= 570
+  private computeTotalPagadoExact(): number {
+    try {
+      const gestion = this.getCurrentGestion();
+      // NORMAL
+      const asignaciones: any[] = Array.isArray(this.resumen?.asignaciones) ? this.resumen!.asignaciones : [];
+      let normal = 0;
+      const normalAsignIds = new Set<number>();
+      for (const it of asignaciones) {
+        const st = (it?.estado_pago || '').toString().trim().toUpperCase();
+        if (st !== 'COBRADO' && st !== 'PARCIAL') continue;
+        const g = `${it?.gestion ?? it?.gestion_cuota ?? ''}`;
+        if (gestion && g && `${g}` !== `${gestion}`) continue;
+        normal += this.toNumber(it?.monto_pagado);
+        const ida = Number(it?.id_asignacion_costo || 0);
+        if (ida) normalAsignIds.add(ida);
+      }
+      // ARRASTRE
+      const cobros: any[] = Array.isArray(this.resumen?.cobros?.mensualidad?.items) ? this.resumen!.cobros.mensualidad.items : [];
+      let arrastre = 0;
+      for (const it of cobros) {
+        const idCuota = Number(it?.id_cuota || 0);
+        if (!idCuota) continue;
+        const g = `${it?.gestion ?? it?.gestion_cuota ?? ''}`;
+        if (gestion && g && `${g}` !== `${gestion}`) continue;
+        // Identificar arrastre: id_asignacion_costo que NO está en las asignaciones (NORMAL)
+        const ida = Number(it?.id_asignacion_costo || 0);
+        if (!ida) continue; // ignorar items sin asignación vinculada
+        if (normalAsignIds.has(ida)) continue; // pertenece a NORMAL, ya está considerado en 'asignaciones'
+        arrastre += this.toNumber(it?.monto);
+      }
+      return normal + arrastre;
+    } catch { return 0; }
+  }
+
+  private toNumber(v: any): number {
+    try {
+      if (v === null || v === undefined) return 0;
+      if (typeof v === 'number') return isFinite(v) ? v : 0;
+      let s = String(v).trim();
+      if (!s) return 0;
+      // Normalizar: manejar formatos "1.234,56" o "1234,56" o "1234.56"
+      const hasComma = s.includes(',');
+      const hasDot = s.includes('.');
+      if (hasComma && hasDot) {
+        // Asumir '.' como miles y ',' como decimal
+        s = s.replace(/\./g, '').replace(',', '.');
+      } else if (hasComma && !hasDot) {
+        // Solo coma: tratar como decimal
+        s = s.replace(',', '.');
+      }
+      // Remover cualquier símbolo no numérico restante (excepto - y .)
+      s = s.replace(/[^0-9.\-]/g, '');
+      const n = parseFloat(s);
+      return isNaN(n) ? 0 : n;
+    } catch { return 0; }
+  }
+
   // ================== Búsqueda de estudiante por nombre/CI ==================
   openBusquedaModal(): void {
     try { this.buscarDlg?.open(); } catch {}
@@ -180,6 +259,23 @@ export class CobrosComponent implements OnInit {
     this.busquedaPerPage = n;
     this.busquedaPage = 1;
     this.onBuscarEstudiantes(this.busquedaCriteria);
+  }
+
+  // =============== Resumen económico (sidebar) ===============
+  get cuotasPendientes(): Array<any> {
+    const arr = (this.resumen?.asignaciones || []) as Array<any>;
+    return arr.filter(a => {
+      const st = (a?.estado_pago || '').toString().toUpperCase();
+      return st !== 'COBRADO';
+    });
+  }
+
+  estadoEtiqueta(a: any): string {
+    const st = (a?.estado_pago || '').toString().toUpperCase();
+    if (st === 'PARCIAL') return 'Pagado Parcial';
+    if (st === 'COBRADO') return 'Pagado';
+    if (st === 'VENCIDO') return 'Vencido';
+    return 'Sin pagar';
   }
 
   private updateRezagadoCosto(): void {
@@ -1685,6 +1781,118 @@ export class CobrosComponent implements OnInit {
   get totalCobro(): number {
     // Por ahora, igual a la suma de subtotales
     return this.totalSubtotal;
+  }
+
+  get totalPagadoMensualidad(): number {
+    try {
+      const gestion = this.getCurrentGestion();
+      const montoSemestral = this.toNumber((this.resumen?.totales?.monto_semestral ?? 0));
+
+      // 1) Si tenemos 'asignaciones' pero no 'asignacion_costos', usar cálculo exacto solicitado (NORMAL + ARRASTRE)
+      const hasAsignaciones = Array.isArray(this.resumen?.asignaciones) && this.resumen!.asignaciones.length > 0;
+      const noAsignCostos = !this.resumen?.asignacion_costos;
+      if (hasAsignaciones && noAsignCostos) {
+        const exact = this.computeTotalPagadoExact();
+        return Math.min(exact, montoSemestral);
+      }
+
+      // 2) Fuente del backend si no aplica el cálculo exacto anterior
+      const mensualidadTotal = this.toNumber(this.resumen?.cobros?.mensualidad?.total ?? 0);
+      if (mensualidadTotal > 0) {
+        return Math.min(mensualidadTotal, montoSemestral);
+      }
+
+      // Fuente AUTORITATIVA: tabla de asignación de costos (lo que se ve en la UI)
+      const asignCostos: any[] = Array.isArray(this.resumen?.asignacion_costos?.items) ? this.resumen!.asignacion_costos.items : [];
+      const allowedIns = this.getAllowedInscripcionIds();
+      const isGestion = (it: any) => {
+        const g = `${it?.gestion ?? it?.gestion_cuota ?? it?.gestion_asignacion ?? ''}`;
+        // Si el item no trae gestión, no excluirlo; si trae, exigir coincidencia cuando se consultó gestión
+        if (gestion) return !g || `${g}` === `${gestion}`;
+        return true;
+      };
+      const isInscripcion = (it: any) => {
+        const id = `${it?.id_inscripcion ?? it?.inscripcion_id ?? it?.cod_inscrip ?? ''}`;
+        // Si el item no trae id de inscripción, no filtrar por inscripción
+        if (!id) return true;
+        // si tenemos lista de inscripciones válidas, exigir pertenencia
+        return allowedIns.size ? allowedIns.has(id) : true;
+      };
+      const isEstadoPagado = (it: any) => {
+        const st = (it?.estado_pago || '').toString().trim().toUpperCase();
+        return st === 'COBRADO' || st === 'PARCIAL';
+      };
+      let suma = 0;
+      if (asignCostos.length) {
+        // Sumar exactamente como en la grilla: monto_pagado de filas de la gestión, sin otras fuentes
+        for (const it of asignCostos) {
+          if (!isGestion(it) || !isInscripcion(it) || !isEstadoPagado(it)) continue;
+          suma += this.toNumber(it?.monto_pagado);
+        }
+        // Complementar con cobros.mensualidad por si falta ARRASTRE en asignaciones
+        const sumCobros = this.sumCobrosMensualidadByGestionInscripciones();
+        const base = Math.max(suma, sumCobros);
+        return Math.min(base, montoSemestral);
+      }
+
+      // Fallback: usar 'asignaciones' si no llegó asignacion_costos
+      const asignaciones: any[] = Array.isArray(this.resumen?.asignaciones) ? this.resumen!.asignaciones : [];
+      if (asignaciones.length) {
+        for (const it of asignaciones) {
+          if (!isGestion(it) || !isEstadoPagado(it)) continue; // no exigimos id de inscripción aquí
+          suma += this.toNumber(it?.monto_pagado);
+        }
+        // Complementar con cobros.mensualidad por si falta ARRASTRE
+        const sumCobros = this.sumCobrosMensualidadByGestionInscripciones();
+        const base = Math.max(suma, sumCobros);
+        return Math.min(base, montoSemestral);
+      }
+
+      // Sin datos
+      return 0;
+    } catch { return 0; }
+  }
+
+  get saldoMensualidadCalc(): number {
+    const sem = this.toNumber((this.resumen?.totales?.monto_semestral ?? 0));
+    const pag = this.totalPagadoMensualidad;
+    const s = sem - pag;
+    return s > 0 ? s : 0;
+  }
+
+  private getCurrentGestion(): string {
+    try {
+      const cab = (this.batchForm.get('cabecera') as FormGroup);
+      const fromResumen = (this.resumen as any)?.gestion || (this.resumen as any)?.inscripcion?.gestion || (this.resumen as any)?.inscripciones?.[0]?.gestion || '';
+      const fromCab = cab?.get('gestion')?.value || '';
+      const fromSearch = (this.searchForm.get('gestion')?.value || '').toString();
+      return `${fromCab || fromResumen || fromSearch || ''}`;
+    } catch { return ''; }
+  }
+
+  private getAllowedInscripcionIds(): Set<string> {
+    const out = new Set<string>();
+    try {
+      const gestion = this.getCurrentGestion();
+      const ins = (this.resumen as any)?.inscripcion;
+      const arr = (this.resumen as any)?.arrastre;
+      const list = (this.resumen as any)?.inscripciones; // potencialmente varias inscripciones
+      const push = (v: any) => { const s = (v === null || v === undefined) ? '' : `${v}`; if (s) out.add(s); };
+      const matchGestion = (g: any) => {
+        const gx = (g === null || g === undefined) ? '' : `${g}`;
+        if (!gestion) return true;
+        return gx === `${gestion}`;
+      };
+      if (ins && matchGestion((ins as any).gestion)) push((ins as any).id_inscripcion || (ins as any).id || (ins as any).cod_inscrip);
+      if (arr && matchGestion((arr as any).gestion)) push((arr as any).id_inscripcion || (arr as any).id || (arr as any).cod_inscrip);
+      if (Array.isArray(list)) {
+        for (const it of list) {
+          if (!matchGestion(it?.gestion)) continue;
+          push(it?.id_inscripcion || it?.id || it?.cod_inscrip);
+        }
+      }
+    } catch {}
+    return out;
   }
 
   // Opciones válidas para el selector de cantidad por fila

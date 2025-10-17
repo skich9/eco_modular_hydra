@@ -466,9 +466,21 @@ class CobroController extends Controller
 			}
 
 			// Calcular monto del semestre, saldo y precio unitario mensual
-			$montoSemestre = optional($costoSemestral)->monto_semestre
-				?: ($asignacionesPrimarias->count() > 0 ? (float) $asignacionesPrimarias->sum('monto') : null)
-				?: ($paramMonto ? (float) $paramMonto->valor : null);
+			// Preferencia: sumar todos los montos de asignacion_costos para TODAS las inscripciones del estudiante en la gestión seleccionada
+			$montoSemestralFromAsignGestion = null;
+			try {
+				$inscripIds = $inscripciones->pluck('cod_inscrip')->filter()->map(fn($v) => (int)$v)->values();
+				if ($inscripIds->count() > 0 && Schema::hasTable('asignacion_costos')) {
+					$montoSemestralFromAsignGestion = (float) DB::table('asignacion_costos')
+						->whereIn('cod_inscrip', $inscripIds)
+						->sum('monto');
+				}
+			} catch (\Throwable $e) { /* fallback automático abajo */ }
+			$montoSemestre = ($montoSemestralFromAsignGestion !== null && $montoSemestralFromAsignGestion > 0)
+				? $montoSemestralFromAsignGestion
+				: (optional($costoSemestral)->monto_semestre
+					?: ($asignacionesPrimarias->count() > 0 ? (float) $asignacionesPrimarias->sum('monto') : null)
+					?: ($paramMonto ? (float) $paramMonto->valor : null));
 			$saldoMensualidad = isset($montoSemestre) ? (float) $montoSemestre - (float) $totalMensualidad : null;
 			$puMensualFromNext = $mensualidadNext ? round((float) ($mensualidadNext['monto'] ?? 0), 2) : null;
 			$puMensualFromAsignacion = $asignacionesPrimarias->count() > 0 ? round((float) $asignacionesPrimarias->avg('monto'), 2) : null;
@@ -565,7 +577,7 @@ class CobroController extends Controller
 						'monto' => $recuperacionMonto,
 					],
 					'asignacion_costos' => $asignacion,
-					// Exponer todas las cuotas ordenadas con datos clave para el modal
+					// Exponer todas las cuotas ordenadas con datos clave para el modal 
 					'asignaciones' => $asignacionesPrimarias->map(function($a){
 						return [
 							'numero_cuota' => (int) ($a->numero_cuota ?? 0),

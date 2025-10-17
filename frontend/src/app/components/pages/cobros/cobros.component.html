@@ -173,7 +173,7 @@
 								
 										<!-- Obs. -->
 										<td>
-											<ng-container *ngIf="pg.get('observaciones')?.value as obs; else noObsTpl">
+											<ng-container *ngIf="pg.get('observaciones')?.value as obs; else _obsVacias">
 												<div class="obs-cell">
 													<span class="obs-icon" aria-label="Observaciones"><i class="bi bi-eye"></i></span>
 													<div class="obs-popover">
@@ -182,7 +182,7 @@
 													</div>
 												</div>
 											</ng-container>
-											<ng-template #noObsTpl>
+											<ng-template #_obsVacias>
 												<span class="text-muted">—</span>
 											</ng-template>
 										</td>
@@ -232,12 +232,13 @@
 			</form>
 		</div>
 		<div class="col-12 col-lg-4">
+			
 			<div class="card mb-4 shadow-sm">
 				<div class="card-header d-flex justify-content-between align-items-center">
 					<strong>Opciones de cobro</strong>
 				</div>
 				<div class="card-body">
-					<ng-container *ngIf="showOpciones; else opcionesVacias">
+					<ng-container *ngIf="showOpciones; else _opVacias">
 						<div class="table-responsive">
 							<table class="table table-sm table-bordered align-middle">
 								<thead class="table-light">
@@ -300,234 +301,134 @@
 							</button>
 						</div>
 					</ng-container>
-					<ng-template #opcionesVacias>
+					<ng-template #_opVacias>
 						<div class="text-muted small">Ingrese un código y consulte para ver las opciones de cobro.</div>
 					</ng-template>
 				</div>
 			</div>
-			<!-- Fin resumen -->
-			<!-- Kardex económico -->
-			<div class="kardex-card card mb-4 shadow-sm">
+
+			<!-- Resumen económico -->
+			<div class="card mb-4 shadow-sm">
 				<div class="card-header d-flex justify-content-between align-items-center">
-					<strong>Datos del Estudiante</strong>
-					<button type="button" class="btn btn-sm btn-outline-primary" [disabled]="!resumen" (click)="openKardexModal()">
+					<strong>Resumen economico</strong>
+					<button type="button" class="btn btn-sm btn-outline-primary" [disabled]="!resumen" (click)="kardexDlg.open()">
 						<i class="bi bi-journal-text me-1"></i>Kardex económico
 					</button>
 				</div>
 				<div class="card-body">
-					<form [formGroup]="searchForm" (ngSubmit)="loadResumen()">
-						<div class="col-mb-4">
-							<label class="form-label">Código CETA</label>
-							<input class="form-control" formControlName="cod_ceta" placeholder="Ej: 20201234" />
+					<div *ngIf="resumen as r; else emptyResumen">
+						<h6 class="mb-2">Totales</h6>
+						<hr class="mt-0" />
+						<div class="mb-2 d-flex justify-content-between">
+							<span>Monto Semestral:</span>
+							<strong>{{ r?.totales?.monto_semestral | number: '1.2-2' }}</strong>
 						</div>
-						<div class="col-mb-4">
-							<label class="form-label">Gestión (opcional)</label>
-							<select class="form-select" formControlName="gestion">
-								<option value="">-- Seleccione --</option>
-								<option *ngFor="let g of gestiones" [value]="g.gestion">{{ g.gestion }}</option>
-							</select>
+						<div class="mb-2 d-flex justify-content-between">
+							<span>Total Pagado:</span>
+							<strong class="text-success">{{ totalPagadoMensualidad | number: '1.2-2' }}</strong>
 						</div>
-						<div class="d-grid">
-							<button class="btn btn-primary py-2" [disabled]="loading" type="submit">
-								<i class="bi bi-search me-2"></i> Consultar
-							</button>
+						<div class="mb-3 d-flex justify-content-between">
+							<span>Saldo Mensualidad:</span>
+							<strong class="text-danger">{{ saldoMensualidadCalc | number: '1.2-2' }}</strong>
 						</div>
-					</form>
 
-					<hr class="my-4"/>
-
-					<div *ngIf="resumen as r">
-						<h6 class="mb-3 border-bottom pb-2">Totales</h6>
-        				<div class="row">
-          					<div class="col-12">
-            					<div class="d-flex justify-content-between align-items-center mb-2">
-             				 	<span class="fw-medium">Monto Semestral:</span>
-								<strong class="text-end">{{ r?.totales?.monto_semestral | number: '1.2-2' }}</strong>
+						<div class="mt-3">
+							<h6 class="mb-2">Cuotas pendientes: {{ cuotasPendientes.length }}</h6>
+							<div class="small" *ngFor="let a of cuotasPendientes">
+								<div>
+									<span>Cuota {{ a?.numero_cuota }} :</span>
+									<span> {{ a?.monto | number:'1.0-0' }} Bs </span>
+									<span class="ms-2" [ngClass]="{
+										'text-success': (a?.estado_pago||'').toUpperCase()==='COBRADO',
+										'text-warning': (a?.estado_pago||'').toUpperCase()==='PARCIAL',
+										'text-danger': (a?.estado_pago||'').toUpperCase()==='VENCIDO'
+									}">{{ estadoEtiqueta(a) }}</span>
+								</div>
 							</div>
-							<div class="d-flex justify-content-between align-items-center mb-2">
-             				 	<span class="fw-medium">Total Pagado:</span>
-            				  	<strong class="text-success">{{ r?.totales?.total_pagado | number: '1.2-2' }}</strong>
-           				 	</div>
-           				 	<div class="d-flex justify-content-between align-items-center">
-             				 	<span class="fw-medium">Saldo Mensualidad:</span>
-              					<strong class="text-danger">{{ r?.totales?.saldo_mensualidad | number: '1.2-2' }}</strong>
-           				 	</div>
-          				</div>
-       				 </div>
-					<div *ngIf="!resumen" class="text-muted small">Ingrese un código y consulte para ver el resumen.</div>
+						</div>
+					</div>
+					<ng-template #emptyResumen>
+						<div class="text-muted small">Ingrese un código y consulte para ver el resumen.</div>
+					</ng-template>
 				</div>
 			</div>
 		</div>
 	</div>
 
-	<!-- Modal: Razón social / Documento -->
-	<div class="modal fade" id="razonSocialModal" tabindex="-1" aria-labelledby="razonSocialModalLabel" aria-hidden="true">
-		<div class="modal-dialog modal-lg">
-			<div class="modal-content">
-				<div class="modal-header">
-					<h5 class="modal-title" id="razonSocialModalLabel">Razón social</h5>
-					<button type="button" class="btn-close" data-bs-dismiss="modal" aria-label="Close"></button>
-				</div>
-				<div class="modal-body">
-					<!-- Alertas del modal -->
-					<div *ngIf="modalAlertMessage" class="alert mb-3" [ngClass]="{
-						'alert-success': modalAlertType === 'success',
-						'alert-danger': modalAlertType === 'error',
-						'alert-warning': modalAlertType === 'warning'
-					}">{{ modalAlertMessage }}</div>
+    <!-- Modal: Razón social / Documento -->
+    <div class="modal fade" id="razonSocialModal" tabindex="-1" aria-labelledby="razonSocialModalLabel" aria-hidden="true">
+      <div class="modal-dialog modal-lg">
+        <div class="modal-content">
+          <div class="modal-header">
+            <h5 class="modal-title" id="razonSocialModalLabel">Razón social</h5>
+            <button type="button" class="btn-close" data-bs-dismiss="modal" aria-label="Close"></button>
+          </div>
+          <div class="modal-body">
+            <!-- Alertas del modal -->
+            <div *ngIf="modalAlertMessage" class="alert mb-3" [ngClass]="{
+              'alert-success': modalAlertType === 'success',
+              'alert-danger': modalAlertType === 'error',
+              'alert-warning': modalAlertType === 'warning'
+            }">{{ modalAlertMessage }}</div>
 
-					<!-- Panel verde con cabecera azul -->
-					<div class="p-3 bg-success bg-opacity-10 rounded">
-						<div class="border rounded">
-							<div class="bg-primary text-white px-3 py-2 rounded-top">
-								<strong>Búsqueda de NIT y Razón Social:</strong>
-							</div>
-							<div class="p-3">
-								<form [formGroup]="modalIdentidadForm" class="row g-3 align-items-center">
-									<div class="col-md-6">
-										<label class="form-label fw-semibold text-success">Tipo de Identidad</label>
-										<select class="form-select" formControlName="tipo_identidad">
-											<option *ngFor="let d of sinDocsIdentidad" [ngValue]="d.codigo">{{ d.descripcion }}</option>
-										</select>
-									</div>
-									<div class="col-md-6">
-										<label class="form-label fw-semibold text-success">{{ docLabel }}</label>
-										<div class="input-group">
-											<input class="form-control" formControlName="ci" [placeholder]="docPlaceholder" />
-											<button class="btn btn-outline-primary" type="button" (click)="buscarPorCI()">
-												<i class="bi bi-search"></i>
-											</button>
-										</div>
-									</div>
+            <!-- Panel verde con cabecera azul -->
+            <div class="p-3 bg-success bg-opacity-10 rounded">
+              <div class="border rounded">
+                <div class="bg-primary text-white px-3 py-2 rounded-top">
+                  <strong>Búsqueda de NIT y Razón Social:</strong>
+                </div>
+                <div class="p-3">
+                  <form [formGroup]="modalIdentidadForm" class="row g-3 align-items-center">
+                    <div class="col-md-6">
+                      <label class="form-label fw-semibold text-success">Tipo de Identidad</label>
+                      <select class="form-select" formControlName="tipo_identidad">
+                        <option *ngFor="let d of sinDocsIdentidad" [ngValue]="d.codigo">{{ d.descripcion }}</option>
+                      </select>
+                    </div>
+                    <div class="col-md-6">
+                      <label class="form-label fw-semibold text-success">{{ docLabel }}</label>
+                      <div class="input-group">
+                        <input class="form-control" formControlName="ci" [placeholder]="docPlaceholder" />
+                        <button class="btn btn-outline-primary" type="button" (click)="buscarPorCI()">
+                          <i class="bi bi-search"></i>
+                        </button>
+                      </div>
+                    </div>
 
-									<!-- Complemento solo para CI -->
-									<div class="col-md-6" *ngIf="showComplemento">
-										<div class="form-check mb-1">
-											<input class="form-check-input" type="checkbox" id="chkComp" formControlName="complemento_habilitado" />
-											<label class="form-check-label" for="chkComp">Complemento ci</label>
-										</div>
-										<input class="form-control" formControlName="complemento_ci" placeholder="Ej: 1A" />
-									</div>
+                    <!-- Complemento solo para CI -->
+                    <div class="col-md-6" *ngIf="showComplemento">
+                      <div class="form-check mb-1">
+                        <input class="form-check-input" type="checkbox" id="chkComp" formControlName="complemento_habilitado" />
+                        <label class="form-check-label" for="chkComp">Complemento ci</label>
+                      </div>
+                      <input class="form-control" formControlName="complemento_ci" placeholder="Ej: 1A" />
+                    </div>
 
-									<div class="col-md-6">
-										<label class="form-label fw-semibold text-success">Razón Social</label>
-										<div class="input-group">
-											<input class="form-control" formControlName="razon_social" [readonly]="!razonSocialEditable" />
-											<button class="btn btn-outline-secondary" type="button" (click)="editRazonSocial()" [disabled]="razonSocialEditable">
-												<i class="bi bi-pencil"></i>
-											</button>
-										</div>
-									</div>
-								</form>
-							</div>
-						</div>
-					</div>
-				</div>
-				<div class="modal-footer">
-					<button type="button" class="btn btn-primary" (click)="guardarRazonSocial()" [disabled]="loading">
-						<i class="bi bi-check2 me-1"></i> Grabar y Salir
-					</button>
-					<button type="button" class="btn btn-secondary" data-bs-dismiss="modal">Cerrar</button>
-				</div>
-			</div>
-		</div>
-	</div>
+                    <div class="col-md-6">
+                      <label class="form-label fw-semibold text-success">Razón Social</label>
+                      <div class="input-group">
+                        <input class="form-control" formControlName="razon_social" [readonly]="!razonSocialEditable" />
+                        <button class="btn btn-outline-secondary" type="button" (click)="editRazonSocial()" [disabled]="razonSocialEditable">
+                          <i class="bi bi-pencil"></i>
+                        </button>
+                      </div>
+                    </div>
+                  </form>
+                </div>
+              </div>
+            </div>
+          </div>
+          <div class="modal-footer">
+            <button type="button" class="btn btn-primary" (click)="guardarRazonSocial()" [disabled]="loading">
+              <i class="bi bi-check2 me-1"></i> Grabar y Salir
+            </button>
+            <button type="button" class="btn btn-secondary" data-bs-dismiss="modal">Cerrar</button>
+          </div>
+        </div>
+      </div>
+    </div>
 
-	<!-- Modal: Kardex Económico -->
-	<div class="modal fade" id="kardexModal" tabindex="-1" aria-labelledby="kardexModalLabel" aria-hidden="true">
-		<div class="modal-dialog modal-xl modal-dialog-scrollable">
-			<div class="modal-content">
-				<div class="modal-header">
-					<h5 class="modal-title" id="kardexModalLabel">Kardex económico</h5>
-					<button type="button" class="btn-close" data-bs-dismiss="modal" aria-label="Close"></button>
-				</div>
-				<div class="modal-body" *ngIf="resumen as r">
-					<div class="row g-3 mb-3">
-						<div class="col-md-6">
-							<div class="small text-muted">{{ r?.estudiante?.cod_ceta }} - {{ r?.estudiante?.nombre_completo || r?.estudiante?.nombres }}</div>
-							<div class="small">Pensum: {{ r?.inscripcion?.cod_pensum }} | Tipo: {{ r?.inscripcion?.tipo_inscripcion }}</div>
-						</div>
-						<div class="col-md-6">
-							<ul class="list-unstyled mb-0">
-								<li>Monto Semestral: <strong>{{ r?.totales?.monto_semestral | number:'1.2-2' }}</strong></li>
-								<li>Total Pagado: <strong class="text-success">{{ r?.totales?.total_pagado | number:'1.2-2' }}</strong></li>
-								<li>Saldo Mensualidad: <strong class="text-danger">{{ r?.totales?.saldo_mensualidad | number:'1.2-2' }}</strong></li>
-							</ul>
-						</div>
-					</div>
 
-					<h6 class="mb-2">Mensualidades</h6>
-					<div class="table-responsive mb-4">
-						<table class="table table-sm table-bordered align-middle">
-							<thead class="table-light">
-								<tr>
-									<th>Fecha</th>
-									<th>Nro Cobro</th>
-									<th>Cuota</th>
-									<th>Monto</th>
-									<th>Forma</th>
-									<th>Obs.</th>
-								</tr>
-							</thead>
-							<tbody>
-								<tr *ngFor="let m of (r?.cobros?.mensualidad?.items || [])">
-									<td>{{ m?.fecha_cobro | date:'yyyy-MM-dd' }}</td>
-									<td>{{ m?.nro_cobro }}</td>
-									<td>{{ m?.id_cuota ? ('Cuota ' + m?.id_cuota) : '-' }}</td>
-									<td>{{ m?.monto | number:'1.2-2' }}</td>
-									<td>{{ m?.id_forma_cobro }}</td>
-									<td>{{ m?.observaciones }}</td>
-								</tr>
-							</tbody>
-							<tfoot>
-								<tr>
-									<th colspan="3" class="text-end">Total</th>
-									<th>{{ r?.cobros?.mensualidad?.total | number:'1.2-2' }}</th>
-									<th colspan="2"></th>
-								</tr>
-							</tfoot>
-						</table>
-					</div>
-
-					<h6 class="mb-2">Items</h6>
-					<div class="table-responsive">
-						<table class="table table-sm table-bordered align-middle">
-							<thead class="table-light">
-								<tr>
-									<th>Fecha</th>
-									<th>Nro Cobro</th>
-									<th>Item</th>
-									<th>Monto</th>
-									<th>Forma</th>
-									<th>Obs.</th>
-								</tr>
-							</thead>
-							<tbody>
-								<tr *ngFor="let it of (r?.cobros?.items?.items || [])">
-									<td>{{ it?.fecha_cobro | date:'yyyy-MM-dd' }}</td>
-									<td>{{ it?.nro_cobro }}</td>
-									<td>{{ it?.id_item || '-' }}</td>
-									<td>{{ it?.monto | number:'1.2-2' }}</td>
-									<td>{{ it?.id_forma_cobro }}</td>
-									<td>{{ it?.observaciones }}</td>
-								</tr>
-							</tbody>
-							<tfoot>
-								<tr>
-									<th colspan="3" class="text-end">Total</th>
-									<th>{{ r?.cobros?.items?.total | number:'1.2-2' }}</th>
-									<th colspan="2"></th>
-								</tr>
-							</tfoot>
-						</table>
-					</div>
-				</div>
-				<div class="modal-footer">
-					<button type="button" class="btn btn-secondary" data-bs-dismiss="modal">Cerrar</button>
-				</div>
-			</div>
-		</div>
-	</div>
 
     <!-- Modal: Mensualidades / Rezagado / Recuperación (componente) -->
     <app-mensualidad-modal
@@ -587,3 +488,6 @@
       (pageChange)="onBusquedaPageChange($event)"
       (perPageChange)="onBusquedaPerPageChange($event)"
     ></app-busqueda-estudiante-modal>
+
+    <!-- Modal: Kardex económico -->
+    <app-kardex-modal #kardexDlg [resumen]="resumen"></app-kardex-modal>
