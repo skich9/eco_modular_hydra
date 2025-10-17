@@ -4,13 +4,15 @@ import { FormArray, FormBuilder, FormGroup, FormsModule, ReactiveFormsModule, Va
 import { CobrosService } from '../../../services/cobros.service';
 import { AuthService } from '../../../services/auth.service';
 import { MensualidadModalComponent } from './mensualidad-modal/mensualidad-modal.component';
+import { RezagadoModalComponent } from './rezagado-modal/rezagado-modal.component';
+import { RecuperacionModalComponent } from './recuperacion-modal/recuperacion-modal.component';
 import { ItemsModalComponent } from './items-modal/items-modal.component';
 import { environment } from '../../../../environments/environment';
 
 @Component({
   selector: 'app-cobros-page',
   standalone: true,
-  imports: [CommonModule, ReactiveFormsModule, FormsModule, MensualidadModalComponent, ItemsModalComponent],
+  imports: [CommonModule, ReactiveFormsModule, FormsModule, MensualidadModalComponent, ItemsModalComponent, RezagadoModalComponent, RecuperacionModalComponent],
   templateUrl: './cobros.component.html',
   styleUrls: ['./cobros.component.scss']
 })
@@ -54,9 +56,15 @@ export class CobrosComponent implements OnInit {
   private lockedMensualidadCuota: number | null = null;
   // Lista filtrada para el modal según selección en cabecera
   modalFormasCobro: any[] = [];
+  // Costo de Rezagado (desde costo_semestral)
+  rezagadoCosto: number | null = null;
 
   // Ref del modal de items
   @ViewChild('itemsDlg') itemsDlg?: ItemsModalComponent;
+  // Ref del modal de rezagado
+  @ViewChild(RezagadoModalComponent) rezagadoDlg?: RezagadoModalComponent;
+  // Ref del modal de recuperación
+  @ViewChild(RecuperacionModalComponent) recuperacionDlg?: RecuperacionModalComponent;
 
   // Modal de éxito (registro realizado)
   successSummary: {
@@ -125,6 +133,60 @@ export class CobrosComponent implements OnInit {
       costo_total: [{ value: 0, disabled: true }],
       observaciones: ['']
     });
+  }
+
+  private updateRezagadoCosto(): void {
+    try {
+      const pensum = (this.batchForm.get('cabecera.cod_pensum') as any)?.value || this.resumen?.inscripcion?.cod_pensum || '';
+      const gestion = (this.batchForm.get('cabecera.gestion') as any)?.value || this.resumen?.gestion || this.resumen?.inscripcion?.gestion || '';
+      if (!pensum) { this.rezagadoCosto = null; return; }
+      this.cobrosService.getCostoSemestralByPensum(pensum, gestion).subscribe({
+        next: (res) => {
+          if (!res?.success) { this.rezagadoCosto = null; return; }
+          const rows = Array.isArray(res.data) ? res.data : [];
+          // Inferir turno y semestre desde resumen si existen
+          const turnoInferido = (() => {
+            const t1 = (this.identidadForm.get('turno') as any)?.value || this.resumen?.inscripcion?.turno || this.resumen?.estudiante?.turno || '';
+            let t = (t1 || '').toString().trim().toUpperCase();
+            if (!t) {
+              const codCurso = (this.resumen?.inscripcion?.cod_curso || this.resumen?.inscripciones?.[0]?.cod_curso || '').toString().trim().toUpperCase();
+              if (codCurso) {
+                const last = codCurso.slice(-1);
+                if (last === 'M') t = 'MANANA';
+                else if (last === 'T') t = 'TARDE';
+                else if (last === 'N') t = 'NOCHE';
+              }
+            }
+            // Mapear abreviaturas u otros posibles valores
+            if (t === 'M') t = 'MANANA';
+            if (t === 'T') t = 'TARDE';
+            if (t === 'N') t = 'NOCHE';
+            // Normalizar acentos
+            t = t.normalize('NFD').replace(/\p{Diacritic}/gu, '');
+            return t;
+          })();
+          const semestre = Number(this.resumen?.inscripcion?.semestre ?? this.resumen?.estudiante?.semestre ?? 0) || 0;
+          // Filtrar por tipo_costo = 'Rezagado'
+          const candidatos = rows.filter((r: any) => (r?.tipo_costo || '').toString().toUpperCase() === 'REZAGADO');
+          // Preferencia de coincidencia: gestion -> turno -> semestre
+          const byGestion = candidatos.filter((r: any) => !gestion || `${r?.gestion}` === `${gestion}`);
+          const byTurno = (byGestion.length ? byGestion : candidatos).filter((r: any) => {
+            if (!turnoInferido) return true;
+            const rt = (r?.turno || '').toString().trim().toUpperCase().normalize('NFD').replace(/\p{Diacritic}/gu, '');
+            // Aceptar coincidencia exacta MANANA/TARDE/NOCHE y también abreviaturas
+            if (rt === turnoInferido) return true;
+            if (turnoInferido === 'MANANA' && (rt === 'M')) return true;
+            if (turnoInferido === 'TARDE' && (rt === 'T')) return true;
+            if (turnoInferido === 'NOCHE' && (rt === 'N')) return true;
+            return false;
+          });
+          const bySemestre = (byTurno.length ? byTurno : (byGestion.length ? byGestion : candidatos)).filter((r: any) => !semestre || Number(r?.semestre || 0) === Number(semestre));
+          const pick = (bySemestre[0] || byTurno[0] || byGestion[0] || candidatos[0] || null);
+          this.rezagadoCosto = pick ? Number(pick?.monto_semestre || 0) : null;
+        },
+        error: () => { this.rezagadoCosto = null; }
+      });
+    } catch { this.rezagadoCosto = null; }
   }
 
   openMaterialAcademicoModal(): void {
@@ -745,6 +807,8 @@ export class CobrosComponent implements OnInit {
             costo_total: this.mensualidadPU
           }, { emitEvent: false });
           this.recalcMensualidadTotal();
+          // Calcular costo de Rezagado desde costo_semestral
+          this.updateRezagadoCosto();
         } else {
           this.resumen = null;
           this.showOpciones = false;
@@ -1151,13 +1215,11 @@ export class CobrosComponent implements OnInit {
       this.showAlert('Debe consultar primero un estudiante/gestión', 'warning');
       return;
     }
-    if (!this.ensureMetodoPagoPermitido(['EFECTIVO','TARJETA','CHEQUE','DEPOSITO','OTRO'])) return;
+    if (!this.ensureMetodoPagoPermitido(['EFECTIVO','TARJETA','CHEQUE','DEPOSITO','TRANSFERENCIA','QR','OTRO'])) return;
+    // Calcular lista de métodos permitidos en el modal según selección actual
+    this.computeModalFormasFromSelection();
     this.modalTipo = 'rezagado';
-    const modalEl = document.getElementById('mensualidadModal');
-    if (modalEl && (window as any).bootstrap?.Modal) {
-      const modal = new (window as any).bootstrap.Modal(modalEl);
-      modal.show();
-    }
+    try { this.rezagadoDlg?.open(); } catch {}
   }
 
 
@@ -1166,13 +1228,8 @@ export class CobrosComponent implements OnInit {
       this.showAlert('Debe consultar primero un estudiante/gestión', 'warning');
       return;
     }
-    if (!this.ensureMetodoPagoPermitido(['EFECTIVO','TARJETA','CHEQUE','DEPOSITO','OTRO'])) return;
-    this.modalTipo = 'recuperacion';
-    const modalEl = document.getElementById('mensualidadModal');
-    if (modalEl && (window as any).bootstrap?.Modal) {
-      const modal = new (window as any).bootstrap.Modal(modalEl);
-      modal.show();
-    }
+    if (!this.ensureMetodoPagoPermitido(['EFECTIVO','TARJETA','CHEQUE','DEPOSITO','TRANSFERENCIA','QR','OTRO'])) return;
+    try { this.recuperacionDlg?.open(); } catch {}
   }
 
   private recalcMensualidadTotal(): void {
@@ -1290,6 +1347,15 @@ export class CobrosComponent implements OnInit {
     const isArrastre = this.modalTipo === 'arrastre';
     const startCuota = this.getNextMensualidadStartCuota();
     pagos.forEach((p: any, idx: number) => {
+      const resolveFormaId = (val: any): any => {
+        const s = (val === null || val === undefined) ? '' : `${val}`;
+        if (!s) return null;
+        const byId = this.formasCobro.find((f: any) => `${f?.id_forma_cobro}` === s);
+        if (byId) return byId.id_forma_cobro;
+        const byCodigo = this.formasCobro.find((f: any) => `${f?.codigo_sin}` === s);
+        if (byCodigo) return byCodigo.id_forma_cobro;
+        return s; // devolver lo que venga
+      };
       // Regla: si hay bloqueo de cuota por parcial, usarlo; sino usa p.numero_cuota o cálculo incremental
       let numeroCuota: number | null = null;
       if (isMensualidad) {
@@ -1332,7 +1398,7 @@ export class CobrosComponent implements OnInit {
       const tipoDoc: 'F' | 'R' | '' = (p.tipo_documento === 'F' || p.comprobante === 'FACTURA') ? 'F' : (p.tipo_documento === 'R' || p.comprobante === 'RECIBO') ? 'R' : '' as any;
       this.pagos.push(this.fb.group({
         // Backend-required/known fields
-        id_forma_cobro: [p.id_forma_cobro ?? null],
+        id_forma_cobro: [resolveFormaId(p.id_forma_cobro) ?? null],
         nro_cobro: [p.nro_cobro, Validators.required],
         id_cuota: [p.id_cuota ?? null],
         id_asignacion_costo: [p.id_asignacion_costo ?? null],

@@ -1,0 +1,149 @@
+<div class="modal fade" id="rezagadoModal" tabindex="-1" aria-labelledby="rezagadoModalLabel" aria-hidden="true">
+  <div class="modal-dialog modal-lg">
+    <div class="modal-content">
+      <div class="modal-header">
+        <h5 class="modal-title" id="rezagadoModalLabel">Boletas de Rezagados</h5>
+        <button type="button" class="btn-close" data-bs-dismiss="modal" aria-label="Close"></button>
+      </div>
+      <div class="modal-body">
+        <div class="p-3 bg-primary bg-opacity-10 rounded mb-3">
+          <div class="row g-3 align-items-center">
+            <div class="col-md-8">
+              <div class="small fw-semibold">Datos del Estudiante</div>
+              <div class="small text-muted">{{ resumen?.estudiante?.cod_ceta }} - {{ resumen?.estudiante?.nombre_completo || resumen?.estudiante?.nombres }}</div>
+              <div class="small">Pensum: {{ resumen?.inscripcion?.cod_pensum }} | Tipo: {{ resumen?.inscripcion?.tipo_inscripcion }}</div>
+              <div class="small">Gestión: {{ resumen?.gestion }}</div>
+            </div>
+            <div class="col-md-4" [formGroup]="form">
+              <label class="form-label">Método de Pago</label>
+              <select class="form-select" formControlName="metodo_pago">
+                <option value="">-- Seleccione --</option>
+                <option *ngFor="let f of formasCobro" [value]="f.id_forma_cobro">{{ labelForma(f) }}</option>
+              </select>
+            </div>
+          </div>
+        </div>
+
+        <form [formGroup]="form" class="row g-3">
+          <div class="col-md-6">
+            <label class="form-label">Tipo de registro</label>
+            <div class="d-flex align-items-center gap-3">
+              <div class="form-check">
+                <input class="form-check-input" type="radio" id="compu_rz" value="COMPUTARIZADA" formControlName="computarizada" />
+                <label class="form-check-label" for="compu_rz">Computarizada</label>
+              </div>
+              <div class="form-check">
+                <input class="form-check-input" type="radio" id="manual_rz" value="MANUAL" formControlName="computarizada" />
+                <label class="form-check-label" for="manual_rz">Manual</label>
+              </div>
+              <div class="form-check">
+                <input class="form-check-input" type="checkbox" id="just_rz" formControlName="justificativo" />
+                <label class="form-check-label" for="just_rz">Con justificativo</label>
+              </div>
+            </div>
+          </div>
+          <div class="col-md-6">
+            <label class="form-label">Periodo</label>
+            <div class="btn-group" role="group">
+              <input type="radio" class="btn-check" name="periodo" id="p1" [value]="1" formControlName="periodo" />
+              <label class="btn btn-outline-success" for="p1">1er P.</label>
+              <input type="radio" class="btn-check" name="periodo" id="p2" [value]="2" formControlName="periodo" />
+              <label class="btn btn-outline-success" for="p2">2do P.</label>
+              <input type="radio" class="btn-check" name="periodo" id="p3" [value]="3" formControlName="periodo" />
+              <label class="btn btn-outline-success" for="p3">3er P.</label>
+            </div>
+          </div>
+
+          <!-- Datos bancarios / tarjeta -->
+          <ng-container *ngIf="showBancarioBlock">
+            <div class="col-12">
+              <div class="border rounded p-3 mb-2">
+                <div class="row g-3 align-items-end">
+                  <div class="col-md-4">
+                    <label class="form-label">Cuenta destino</label>
+                    <select class="form-select" formControlName="id_cuentas_bancarias">
+                      <option value="">Seleccione cuenta/banco</option>
+                      <option *ngFor="let c of cuentasBancarias" [value]="c.id_cuentas_bancarias">{{ c.banco }} - {{ c.numero_cuenta }}</option>
+                    </select>
+                  </div>
+                  <div class="col-md-4">
+                    <label class="form-label">Fecha depósito</label>
+                    <input type="date" class="form-control" formControlName="fecha_deposito" />
+                  </div>
+                  <div class="col-md-4">
+                    <label class="form-label">Num. depósito</label>
+                    <input type="text" class="form-control" formControlName="nro_deposito" />
+                  </div>
+                  <div class="col-md-4" *ngIf="isTransferencia || isTarjeta">
+                    <label class="form-label">Banco Origen</label>
+                    <input type="text" class="form-control" formControlName="banco_origen" placeholder="Banco origen" />
+                  </div>
+                  <div class="col-md-2" *ngIf="isTarjeta">
+                    <label class="form-label">Tarjeta (4 primeros)</label>
+                    <input class="form-control" maxlength="4" formControlName="tarjeta_first4" placeholder="4" />
+                  </div>
+                  <div class="col-md-2" *ngIf="isTarjeta">
+                    <label class="form-label">Tarjeta (4 últimos)</label>
+                    <input class="form-control" maxlength="4" formControlName="tarjeta_last4" placeholder="4" />
+                  </div>
+                </div>
+              </div>
+            </div>
+          </ng-container>
+
+          <div class="col-12">
+            <div class="table-responsive border rounded">
+              <table class="table table-sm align-middle mb-0">
+                <thead class="table-light">
+                  <tr>
+                    <th style="width: 36px;"></th>
+                    <th>cod. Materia</th>
+                    <th>Materia</th>
+                    <th>Tipo</th>
+                    <th class="text-end">Bs.</th>
+                  </tr>
+                </thead>
+                <tbody>
+                  <tr *ngFor="let m of materias">
+                    <td>
+                      <input type="checkbox" class="form-check-input" [(ngModel)]="m.selected" [ngModelOptions]="{standalone:true}" name="sel_{{m.sigla}}" />
+                    </td>
+                    <td>{{ m.sigla }}</td>
+                    <td>{{ m.nombre }}</td>
+                    <td>{{ m.tipo }}</td>
+                    <td class="text-end">{{ feeRezagado | number:'1.0-0' }}</td>
+                  </tr>
+                </tbody>
+              </table>
+            </div>
+          </div>
+
+          <div class="col-12">
+            <div class="row g-3 align-items-end">
+              <div class="col-md-8">
+                <label class="form-label">Observaciones</label>
+                <textarea class="form-control" rows="2" formControlName="observaciones"></textarea>
+              </div>
+              <div class="col-md-4">
+                <label class="form-label">Comprobante</label>
+                <select class="form-select" formControlName="comprobante">
+                  <option value="RECIBO">Recibo</option>
+                  <option value="FACTURA">Factura</option>
+                </select>
+              </div>
+              <!-- Numeración autogenerada por backend; no se muestran campos de Nro. -->
+            </div>
+          </div>
+
+          <div class="col-12 d-flex justify-content-between align-items-center">
+            <div class="small text-muted">Total: <strong>{{ total | number:'1.2-2' }}</strong></div>
+            <div>
+              <button type="button" class="btn btn-success" (click)="addAndClose()"><i class="bi bi-plus-circle me-1"></i> Adicionar y Salir</button>
+              <button type="button" class="btn btn-secondary" data-bs-dismiss="modal">Cerrar</button>
+            </div>
+          </div>
+        </form>
+      </div>
+    </div>
+  </div>
+</div>

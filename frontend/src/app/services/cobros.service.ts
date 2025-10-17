@@ -212,6 +212,43 @@ export class CobrosService {
 		);
 	}
 
+	// ===================== SGA Recuperación =====================
+	getRecuperacionElegibilidad(params: { cod_ceta: string | number; cod_pensum: string; gestion?: string }): Observable<any> {
+		let httpParams = new HttpParams()
+			.set('cod_ceta', String(params.cod_ceta))
+			.set('cod_pensum', params.cod_pensum);
+		if (params.gestion) httpParams = httpParams.set('gestion', String(params.gestion));
+		const url = `${this.apiUrl}/sga/eco_hydra/Recuperacion/elegibilidad`;
+		return this.http.get<any>(url, { params: httpParams }).pipe(
+			map((res: any) => ({ success: !!res?.success, data: res?.data || res, message: res?.message }))
+		);
+	}
+
+	getRecuperacionAutorizaciones(params: { cod_ceta: string | number; cod_pensum: string }): Observable<any> {
+		const httpParams = new HttpParams()
+			.set('cod_ceta', String(params.cod_ceta))
+			.set('cod_pensum', params.cod_pensum);
+		const url = `${this.apiUrl}/sga/eco_hydra/Recuperacion/autorizaciones`;
+		return this.http.get<any>(url, { params: httpParams }).pipe(
+			map((res: any) => ({ success: !!res?.success, data: res?.data || res, message: res?.message }))
+		);
+	}
+
+	// ===================== Kardex Notas =====================
+	getKardexMaterias(params: { cod_ceta: string | number; cod_pensum: string; cod_inscrip?: string | number; tipo_incripcion?: string; tipo_inscripcion?: string; gestion?: string }): Observable<any> {
+		let httpParams = new HttpParams()
+			.set('cod_ceta', String(params.cod_ceta))
+			.set('cod_pensum', params.cod_pensum);
+		if (params.cod_inscrip != null && params.cod_inscrip !== '') httpParams = httpParams.set('cod_inscrip', String(params.cod_inscrip));
+		// soportar ambas variantes
+		const tipoVal = (params as any).tipo_incripcion ?? (params as any).tipo_inscripcion;
+		if (tipoVal) httpParams = httpParams.set('tipo_incripcion', String(tipoVal));
+		if (params.gestion) httpParams = httpParams.set('gestion', String(params.gestion));
+		return this.http.get<any>(`${this.apiUrl}/kardex-notas/materias`, { params: httpParams }).pipe(
+			map((res: any) => ({ success: !!res?.success, data: res?.data || [], message: res?.message }))
+		);
+	}
+
 	// Razón Social
 	buscarRazonSocial(numero: string, tipoId: number): Observable<any> {
 		let params = new HttpParams().set('numero', numero).set('tipo_id', String(tipoId));

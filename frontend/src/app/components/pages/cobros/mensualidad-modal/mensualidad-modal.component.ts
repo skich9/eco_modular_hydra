@@ -130,31 +130,46 @@ export class MensualidadModalComponent implements OnInit, OnChanges {
 
     // Alternar validadores/estado para pago parcial
     this.form.get('pago_parcial')?.valueChanges.subscribe((on: boolean) => {
-      if (this.tipo === 'mensualidad' || this.tipo === 'arrastre') {
-        if (on) {
-          // bloquear cantidad a 1 y habilitar monto_parcial
-          this.form.get('cantidad')?.setValue(1, { emitEvent: false });
-          this.form.get('cantidad')?.disable({ emitEvent: false });
-          this.form.get('monto_parcial')?.enable({ emitEvent: false });
-          this.form.get('monto_parcial')?.setValidators([Validators.required, Validators.min(0.01), Validators.max(this.pu || Number.MAX_SAFE_INTEGER)]);
-          // Prefijar el monto parcial con el restante sugerido (pu)
-          this.form.get('monto_parcial')?.setValue(this.pu || 0, { emitEvent: false });
-        } else {
-          // restaurar cantidad y deshabilitar monto_parcial
-          this.form.get('cantidad')?.enable({ emitEvent: false });
-          this.form.get('monto_parcial')?.setValue(0, { emitEvent: false });
-          this.form.get('monto_parcial')?.clearValidators();
-          this.form.get('monto_parcial')?.disable({ emitEvent: false });
-        }
+      // Pago parcial solo permitido en tipo 'mensualidad'
+      if (this.tipo !== 'mensualidad') {
+        if (on) this.form.get('pago_parcial')?.setValue(false, { emitEvent: false });
+        // Asegurar estado limpio
+        this.form.get('cantidad')?.enable({ emitEvent: false });
+        this.form.get('monto_parcial')?.setValue(0, { emitEvent: false });
+        this.form.get('monto_parcial')?.clearValidators();
+        this.form.get('monto_parcial')?.disable({ emitEvent: false });
         this.form.get('cantidad')?.updateValueAndValidity({ emitEvent: false });
         this.form.get('monto_parcial')?.updateValueAndValidity({ emitEvent: false });
         this.recalcTotal();
+        return;
       }
+      if (on) {
+        // bloquear cantidad a 1 y habilitar monto_parcial
+        this.form.get('cantidad')?.setValue(1, { emitEvent: false });
+        this.form.get('cantidad')?.disable({ emitEvent: false });
+        this.form.get('monto_parcial')?.enable({ emitEvent: false });
+        this.form.get('monto_parcial')?.setValidators([Validators.required, Validators.min(0.01), Validators.max(this.pu || Number.MAX_SAFE_INTEGER)]);
+        // Prefijar el monto parcial con el restante sugerido (pu)
+        this.form.get('monto_parcial')?.setValue(this.pu || 0, { emitEvent: false });
+      } else {
+        // restaurar cantidad y deshabilitar monto_parcial
+        this.form.get('cantidad')?.enable({ emitEvent: false });
+        this.form.get('monto_parcial')?.setValue(0, { emitEvent: false });
+        this.form.get('monto_parcial')?.clearValidators();
+        this.form.get('monto_parcial')?.disable({ emitEvent: false });
+      }
+      this.form.get('cantidad')?.updateValueAndValidity({ emitEvent: false });
+      this.form.get('monto_parcial')?.updateValueAndValidity({ emitEvent: false });
+      this.recalcTotal();
     });
   }
 
   ngOnChanges(changes: SimpleChanges): void {
     if (changes['pendientes'] || changes['pu'] || changes['tipo'] || changes['resumen']) {
+      // Si cambia a un tipo distinto de mensualidad, forzar pago_parcial=false
+      if (changes['tipo'] && this.tipo !== 'mensualidad') {
+        this.form.patchValue({ pago_parcial: false }, { emitEvent: false });
+      }
       this.configureByTipo();
       this.recalcTotal();
     }

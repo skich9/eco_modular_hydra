@@ -256,14 +256,19 @@
 									</tr>
 									<tr>
 										<td>Rezagado</td>
-										<td>-</td>
+										<td>{{ rezagadoCosto != null ? (rezagadoCosto | number:'1.2-2') : '-' }}</td>
 										<td class="text-center">
 											<button type="button" class="btn btn-sm btn-success" (click)="openRezagadoModal()"><i class="bi bi-plus"></i></button>
 										</td>
 									</tr>
 									<tr>
 										<td>Prueba de Recuperación</td>
-										<td>-</td>
+										<td>
+											<ng-container *ngIf="(resumen?.recuperacion?.monto ?? resumen?.recuperacion_pendiente?.monto) as recMonto; else recNoMonto">
+												{{ recMonto | number:'1.2-2' }}
+											</ng-container>
+											<ng-template #recNoMonto>-</ng-template>
+										</td>
 										<td class="text-center">
 											<button type="button" class="btn btn-sm btn-success" (click)="openRecuperacionModal()"><i class="bi bi-plus"></i></button>
 										</td>
@@ -546,3 +551,25 @@
       [defaultMetodoPago]="modalFormasCobro[0]?.id_forma_cobro || selectedFormaCobroId"
       (addItem)="onAddItem($event)"
     ></app-items-modal>
+
+    <!-- Modal: Rezagado -->
+    <app-rezagado-modal
+      [resumen]="resumen"
+      [formasCobro]="modalFormasCobro"
+      [cuentasBancarias]="cuentasBancarias"
+      [baseNro]="getNextCobroNro()"
+      [defaultMetodoPago]="modalFormasCobro[0]?.id_forma_cobro || selectedFormaCobroId"
+      [costoRezagado]="rezagadoCosto"
+      (addRezagados)="onAddPagosFromModal($event)"
+    ></app-rezagado-modal>
+
+    <!-- Modal: Prueba de Recuperación -->
+    <app-recuperacion-modal
+      [resumen]="resumen"
+      [formasCobro]="modalFormasCobro"
+      [cuentasBancarias]="cuentasBancarias"
+      [baseNro]="getNextCobroNro()"
+      [defaultMetodoPago]="modalFormasCobro[0]?.id_forma_cobro || selectedFormaCobroId"
+      [costoRecuperacion]="(resumen?.recuperacion?.monto ?? resumen?.recuperacion_pendiente?.monto)"
+      (addRecuperacion)="onAddPagosFromModal($event)"
+    ></app-recuperacion-modal>

@@ -271,10 +271,26 @@ class CobroController extends Controller
 			$arrastreInscripcion = $inscripciones->firstWhere('tipo_inscripcion', 'ARRASTRE');
 
 			$costoSemestral = null;
+			$recuperacionRow = null; $recuperacionMonto = null;
 			if ($gestionToUse) {
 				$costoSemestral = CostoSemestral::where('cod_pensum', $codPensumToUse)
 					->where('gestion', $gestionToUse)
 					->first();
+				// Prueba de Recuperación: costo_semestral.tipo_costo = 'instacia'
+				try {
+					$recuperacionRow = DB::table('costo_semestral')
+						->where('cod_pensum', $codPensumToUse)
+						->where('gestion', $gestionToUse)
+						->where('tipo_costo', 'instacia')
+						->first();
+					if ($recuperacionRow) {
+						$recuperacionMonto = isset($recuperacionRow->monto_semestre)
+							? (float)$recuperacionRow->monto_semestre
+							: (isset($recuperacionRow->monto) ? (float)$recuperacionRow->monto : null);
+					}
+				} catch (\Throwable $e) {
+					// no bloquear resumen por error en recuperación
+				}
 			}
 
 			$asignacion = null;
@@ -538,6 +554,15 @@ class CobroController extends Controller
 					'parametros_costos' => [
 						'monto_fijo' => $paramMonto,
 						'nro_cuotas' => $paramNroCuotas,
+					],
+					'recuperacion_pendiente' => [
+						'has' => $recuperacionMonto !== null,
+						'monto' => $recuperacionMonto,
+					],
+					// Compatibilidad: misma información bajo la clave 'recuperacion'
+					'recuperacion' => [
+						'has' => $recuperacionMonto !== null,
+						'monto' => $recuperacionMonto,
 					],
 					'asignacion_costos' => $asignacion,
 					// Exponer todas las cuotas ordenadas con datos clave para el modal
@@ -898,12 +923,22 @@ class CobroController extends Controller
 					}
 
 					// Inserción en notas SGA: después de resolver id_asign/id_cuota para formar el detalle correcto
-
 					// Derivar id_asignacion_costo / id_cuota cuando no vienen en el payload
+					// Nota: si es Rezagado o Prueba de Recuperación, NO asociar a cuotas ni afectar mensualidad/arrastre
+					$isRezagado = false; $isRecuperacion = false; $isSecundario = false;
+					try {
+						$obsCheck = (string)($item['observaciones'] ?? '');
+						if ($obsCheck !== '') {
+							$isRezagado = (preg_match('/\[\s*REZAGADO\s*\]/i', $obsCheck) === 1);
+							// Detectar variantes con o sin acento: [Prueba de recuperación]
+							$isRecuperacion = (preg_match('/\[\s*PRUEBA\s+DE\s+RECUPERACI[OÓ]N\s*\]/i', $obsCheck) === 1);
+						}
+						$isSecundario = ($isRezagado || $isRecuperacion);
+					} catch (\Throwable $e) {}
 					$idAsign = $item['id_asignacion_costo'] ?? null;
 					$idCuota = $item['id_cuota'] ?? null;
 					$asignRow = null;
-					if ((!$idAsign || !$idCuota) && $primaryInscripcion) {
+					if (!$isSecundario && ((!$idAsign || !$idCuota) && $primaryInscripcion)) {
 						if ($idAsign) {
 							$asignRow = AsignacionCostos::find((int)$idAsign);
 						} elseif ($idCuota) {
@@ -930,6 +965,7 @@ class CobroController extends Controller
 							$idCuota = $idCuota ?: ((int) ($asignRow->id_cuota_template ?? 0) ?: null);
 						}
 					}
+					if ($isSecundario) { $idAsign = null; $idCuota = null; }
 					$order = isset($item['order']) ? (int)$item['order'] : ($idx + 1);
 
 					// Construir detalle de cuota para notas: "Mensualidad - Cuota N (Parcial)"
@@ -1050,8 +1086,8 @@ class CobroController extends Controller
 						'nro_factura' => $nroFactura,
 						'nro_recibo' => $nroRecibo,
 						'id_item' => $item['id_item'] ?? null,
-						'id_asignacion_costo' => $idAsign,
-						'id_cuota' => $idCuota,
+						'id_asignacion_costo' => $isSecundario ? null : $idAsign,
+						'id_cuota' => $isSecundario ? null : $idCuota,
 						'tipo_documento' => $tipoDoc,
 						'medio_doc' => $medioDoc,
 						'gestion' => $request->gestion ?? null,
@@ -1061,8 +1097,8 @@ class CobroController extends Controller
 					if ($idCuota) {
 						$batchPaidByTpl[$idCuota] = ($batchPaidByTpl[$idCuota] ?? 0) + (float)$item['monto'];
 					}
-					// Actualizar estado de pago de la asignación si aplica
-					if ($idAsign) {
+					// Actualizar estado de pago de la asignación
+					if (!$isSecundario && $idAsign) {
 						$toUpd = $asignRow ?: AsignacionCostos::find((int)$idAsign);
 						if ($toUpd) {
 							$prevPagado = (float)($toUpd->monto_pagado ?? 0);
@@ -1078,6 +1114,61 @@ class CobroController extends Controller
 							AsignacionCostos::where('id_asignacion_costo', (int)$toUpd->id_asignacion_costo)->update($upd);
 						}
 					}
+					// Rezagados: si el item contiene el marcador, registrar en la tabla 'rezagados'
+					try {
+						$obsVal = (string)($item['observaciones'] ?? '');
+						if ($obsVal !== '' && preg_match('/\[\s*REZAGADO\s*\]\s*Rezagado\s*-\s*([A-Z0-9\-]+)\b.*?-(\s*)([123])er\s*P\.?/i', $obsVal, $mm)) {
+							$siglaMateria = strtoupper(trim((string)$mm[1]));
+							$parcialNum = (string)trim((string)$mm[3]); // '1' | '2' | '3'
+							$fechaPago = (string)($item['fecha_cobro'] ?? date('Y-m-d'));
+							$anioPago = (int) date('Y', strtotime($fechaPago));
+							$codInscrip = $primaryInscripcion ? (int)$primaryInscripcion->cod_inscrip : null;
+							if ($codInscrip) {
+								// Reutilizar num_rezagado para la misma materia/año si existe
+								$rowExist = DB::table('rezagados')
+									->where('cod_inscrip', $codInscrip)
+									->where(DB::raw('YEAR(fecha_pago)'), $anioPago)
+									->where('materia', $siglaMateria)
+									->orderByDesc('num_rezagado')
+									->first();
+								$numRezagado = $rowExist ? (int)$rowExist->num_rezagado : null;
+								if (!$numRezagado) {
+									$maxRow = DB::table('rezagados')
+										->select(DB::raw('MAX(num_rezagado) as mx'))
+										->where('cod_inscrip', $codInscrip)
+										->where(DB::raw('YEAR(fecha_pago)'), $anioPago)
+										->first();
+									$nextSeq = (int)($maxRow->mx ?? 0) + 1;
+									$numRezagado = max(1, $nextSeq);
+								}
+								$numPagoRezagado = (int)$parcialNum; // un pago por parcial
+								$obsClean = trim(preg_replace('/\|?\s*\[\s*REZAGADO\s*\]\s*.+$/i', '', (string)$item['observaciones']));
+								DB::table('rezagados')->updateOrInsert(
+									[
+										'cod_inscrip' => $codInscrip,
+										'num_rezagado' => $numRezagado,
+										'num_pago_rezagado' => $numPagoRezagado,
+									],
+									[
+										'num_factura' => is_numeric($nroFactura) ? (int)$nroFactura : null,
+										'num_recibo' => is_numeric($nroRecibo) ? (int)$nroRecibo : null,
+										'fecha_pago' => $fechaPago,
+										'monto' => (float)$item['monto'],
+										'pago_completo' => true,
+										'observaciones' => $obsClean !== '' ? $obsClean : null,
+										'usuario' => (int)$request->id_usuario,
+										'materia' => $siglaMateria,
+										'parcial' => (string)$parcialNum,
+										'updated_at' => now(),
+										'created_at' => DB::raw('COALESCE(created_at, NOW())'),
+									]
+								);
+							}
+						}
+					} catch (\Throwable $e) {
+						Log::warning('batchStore: rezagados insert failed', [ 'err' => $e->getMessage() ]);
+					}
+
 					$results[] = [
 						'indice' => $idx,
 						'tipo_documento' => $tipoDoc,

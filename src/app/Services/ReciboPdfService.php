@@ -74,8 +74,15 @@ class ReciboPdfService
             $c = (object)$c;
             $obs = trim((string)($c->observaciones ?? ''));
             $isArr = stripos($obs, 'ARRASTRE') !== false;
-            $obsClean = $obs !== '' ? trim(preg_replace('/\[\s*ARRASTRE\s*\]/i', '', $obs)) : '';
+            $obsClean = $obs !== ''
+                ? trim(preg_replace('/\|?\s*\[\s*REZAGADO\s*\]\s*.+$/i', '', preg_replace('/\[\s*ARRASTRE\s*\]/i', '', $obs)))
+                : '';
             if ($obsClean !== '') $observaciones[] = $obsClean;
+            // Rezagado: si hay marcador, usarlo directamente como detalle y continuar
+            if ($obs !== '' && preg_match('/\[\s*REZAGADO\s*\]\s*(.+)$/i', $obs, $m)) {
+                $detalles[] = trim($m[1]);
+                continue;
+            }
             if (!empty($c->id_item)) {
                 try {
                     $it = DB::table('items_cobro')->where('id_item', $c->id_item)->first();
@@ -230,8 +237,35 @@ HTML;
             $c = (object)$c;
             $obs = trim((string)($c->observaciones ?? ''));
             $isArr = stripos($obs, 'ARRASTRE') !== false;
-            $obsClean = $obs !== '' ? trim(preg_replace('/\[\s*ARRASTRE\s*\]/i', '', $obs)) : '';
+            $obsClean = $obs !== ''
+                ? trim(preg_replace('/\|?\s*\[\s*REZAGADO\s*\]\s*.+$/i', '', preg_replace('/\[\s*ARRASTRE\s*\]/i', '', $obs)))
+                : '';
             if ($obsClean !== '') $observaciones[] = $obsClean;
+            if ($obs !== '' && preg_match('/\[\s*REZAGADO\s*\]\s*(.+)$/i', $obs, $m)) {
+                $detalles[] = trim($m[1]);
+            } else {
+                // detectar etiqueta
+                if (!empty($c->id_item)) {
+                    try { $it = DB::table('items_cobro')->where('id_item', $c->id_item)->first(); $detalles[] = ($it && isset($it->nombre_servicio)) ? (string)$it->nombre_servicio : ('Item ' . $c->id_item); }
+                    catch (\Throwable $e) { $detalles[] = 'Item ' . $c->id_item; }
+                } else {
+                    $numCuota = null;
+                    try {
+                        if (!empty($c->id_asignacion_costo)) {
+                            $asig = DB::table('asignacion_costos')->where('id_asignacion_costo', $c->id_asignacion_costo)->first();
+                            if ($asig && isset($asig->numero_cuota)) $numCuota = (int)$asig->numero_cuota;
+                        } elseif (!empty($c->id_cuota)) {
+                            $asig = DB::table('asignacion_costos')->where('id_cuota_template', $c->id_cuota)->first();
+                            if ($asig && isset($asig->numero_cuota)) $numCuota = (int)$asig->numero_cuota;
+                        }
+                    } catch (\Throwable $e) {}
+                    $detalles[] = (($isArr ? 'Mensualidad (Arrastre)' : 'Mensualidad') . ($numCuota ? (' - Cuota ' . $numCuota) : ''));
+                }
+            }
+            if ($obs !== '' && preg_match('/\[\s*REZAGADO\s*\]\s*(.+)$/i', $obs, $m)) {
+                $detalles[] = trim($m[1]);
+                continue;
+            }
             if (!empty($c->id_item)) {
                 try {
                     $it = DB::table('items_cobro')->where('id_item', $c->id_item)->first();
@@ -403,8 +437,14 @@ HTML;
             $c = (object)$c;
             $obs = trim((string)($c->observaciones ?? ''));
             $isArr = stripos($obs, 'ARRASTRE') !== false;
-            $obsClean = $obs !== '' ? trim(preg_replace('/\[\s*ARRASTRE\s*\]/i', '', $obs)) : '';
+            $obsClean = $obs !== ''
+                ? trim(preg_replace('/\|?\s*\[\s*REZAGADO\s*\]\s*.+$/i', '', preg_replace('/\[\s*ARRASTRE\s*\]/i', '', $obs)))
+                : '';
             if ($obsClean !== '') $observaciones[] = $obsClean;
+            if ($obs !== '' && preg_match('/\[\s*REZAGADO\s*\]\s*(.+)$/i', $obs, $m)) {
+                $detalles[] = trim($m[1]);
+                continue;
+            }
             if (!empty($c->id_item)) {
                 try {
                     $it = DB::table('items_cobro')->where('id_item', $c->id_item)->first();
@@ -576,8 +616,12 @@ HTML;
             $c = (object)$c;
             $obs = trim((string)($c->observaciones ?? ''));
             $isArr = stripos($obs, 'ARRASTRE') !== false;
-            $obsClean = $obs !== '' ? trim(preg_replace('/\[\s*ARRASTRE\s*\]/i', '', $obs)) : '';
+            $obsClean = $obs !== '' ? trim(preg_replace('/\|?\s*\[\s*REZAGADO\s*\]\s*.+$/i', '', preg_replace('/\[\s*ARRASTRE\s*\]/i', '', $obs))) : '';
             if ($obsClean !== '') $observaciones[] = $obsClean;
+            if ($obs !== '' && preg_match('/\[\s*REZAGADO\s*\]\s*(.+)$/i', $obs, $m)) {
+                $detalles[] = trim($m[1]);
+                continue;
+            }
             if (!empty($c->id_item)) {
                 try {
                     $it = DB::table('items_cobro')->where('id_item', $c->id_item)->first();
@@ -934,8 +978,12 @@ HTML;
             $c = (object)$c;
             $obs = trim((string)($c->observaciones ?? ''));
             $isArr = stripos($obs, 'ARRASTRE') !== false;
-            $obsClean = $obs !== '' ? trim(preg_replace('/\[\s*ARRASTRE\s*\]/i', '', $obs)) : '';
+            $obsClean = $obs !== '' ? trim(preg_replace('/\|?\s*\[\s*REZAGADO\s*\]\s*.+$/i', '', preg_replace('/\[\s*ARRASTRE\s*\]/i', '', $obs))) : '';
             if ($obsClean !== '') $observaciones[] = $obsClean;
+            if ($obs !== '' && preg_match('/\[\s*REZAGADO\s*\]\s*(.+)$/i', $obs, $m)) {
+                $detalles[] = trim($m[1]);
+                continue;
+            }
             if (!empty($c->id_item)) {
                 try {
                     $it = DB::table('items_cobro')->where('id_item', $c->id_item)->first();
@@ -1095,7 +1143,7 @@ HTML;
             $c = (object)$c;
             $obs = trim((string)($c->observaciones ?? ''));
             $isArr = stripos($obs, 'ARRASTRE') !== false;
-            $obsClean = $obs !== '' ? trim(preg_replace('/\[\s*ARRASTRE\s*\]/i', '', $obs)) : '';
+            $obsClean = $obs !== '' ? trim(preg_replace('/\|?\s*\[\s*REZAGADO\s*\]\s*.+$/i', '', preg_replace('/\[\s*ARRASTRE\s*\]/i', '', $obs))) : '';
             if ($obsClean !== '') $observaciones[] = $obsClean;
             // detectar etiqueta
             if (!empty($c->id_item)) {
@@ -1254,9 +1302,13 @@ HTML;
             // Acumular observaciones si existen
             $obs = trim((string)($c->observaciones ?? ''));
             $isArr = stripos($obs, 'ARRASTRE') !== false;
-            $obsClean = $obs !== '' ? trim(preg_replace('/\[\s*ARRASTRE\s*\]/i', '', $obs)) : '';
+            $obsClean = $obs !== '' ? trim(preg_replace('/\|?\s*\[\s*REZAGADO\s*\]\s*.+$/i', '', preg_replace('/\[\s*ARRASTRE\s*\]/i', '', $obs))) : '';
             if ($obsClean !== '') $observaciones[] = $obsClean;
             // Determinar etiqueta de detalle
+            if ($obs !== '' && preg_match('/\[\s*REZAGADO\s*\]\s*(.+)$/i', $obs, $m)) {
+                $detalles[] = trim($m[1]);
+                continue;
+            }
             if (!empty($c->id_item)) {
                 try {
                     $it = DB::table('items_cobro')->where('id_item', $c->id_item)->first();

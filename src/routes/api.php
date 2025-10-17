@@ -26,6 +26,8 @@ use App\Http\Controllers\Api\ParametroCuotaController;
 use App\Http\Controllers\Api\CostoSemestralController;
 use App\Http\Controllers\Api\CuotaController;
 use App\Http\Controllers\Api\InscripcionesWebhookController;
+use App\Http\Controllers\Api\KardexNotasController;
+use App\Http\Controllers\Api\RezagadoController;
 
 /*
 --------------------------------------------------------------------------
@@ -179,6 +181,9 @@ Route::get('usuarios/rol/{idRol}', [UsuarioController::class, 'usuariosPorRol'])
 Route::patch('usuarios/{id}/toggle-status', [UsuarioController::class, 'cambiarEstado']);
 Route::post('usuarios/{id}/reset-password', [UsuarioController::class, 'resetPassword']);
 
+// ===================== Kardex Notas =====================
+Route::get('kardex-notas/materias', [KardexNotasController::class, 'materias']);
+
 // ===================== Roles =====================
 Route::get('roles/active', [RolController::class, 'rolesActivos']);
 Route::apiResource('roles', RolController::class);
@@ -187,3 +192,13 @@ Route::patch('roles/{id}/toggle-status', [RolController::class, 'cambiarEstado']
 // ===================== Razón Social =====================
 Route::get('razon-social/search', [RazonSocialController::class, 'search']);
 Route::post('razon-social', [RazonSocialController::class, 'store']);
+
+// ===================== Rezagados =====================
+Route::get('rezagados', [RezagadoController::class, 'index']);
+Route::post('rezagados', [RezagadoController::class, 'store']);
+Route::get('rezagados/{cod_inscrip}/{num_rezagado}/{num_pago_rezagado}', [RezagadoController::class, 'show'])
+    ->where(['cod_inscrip' => '\\d+', 'num_rezagado' => '\\d+', 'num_pago_rezagado' => '\\d+']);
+Route::put('rezagados/{cod_inscrip}/{num_rezagado}/{num_pago_rezagado}', [RezagadoController::class, 'update'])
+    ->where(['cod_inscrip' => '\\d+', 'num_rezagado' => '\\d+', 'num_pago_rezagado' => '\\d+']);
+Route::delete('rezagados/{cod_inscrip}/{num_rezagado}/{num_pago_rezagado}', [RezagadoController::class, 'destroy'])
+    ->where(['cod_inscrip' => '\\d+', 'num_rezagado' => '\\d+', 'num_pago_rezagado' => '\\d+']);

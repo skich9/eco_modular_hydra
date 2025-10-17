@@ -157,8 +157,8 @@
           </ng-template>
 
           
-          <!-- Monto parcial visible solo cuando pago_parcial está activo -->
-          <div class="col-md-4" *ngIf="form.get('pago_parcial')?.value">
+          <!-- Monto parcial visible solo en tipo 'mensualidad' y cuando pago_parcial está activo -->
+          <div class="col-md-4" *ngIf="tipo === 'mensualidad' && form.get('pago_parcial')?.value">
             <label class="form-label">Monto parcial</label>
             <input type="number" step="0.01" class="form-control" formControlName="monto_parcial" />
             <div class="form-text">Máximo: {{ pu | number:'1.2-2' }}</div>
