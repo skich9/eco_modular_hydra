@@ -2,6 +2,7 @@
 
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\Route;
+use Illuminate\Support\Facades\Http;
 use App\Http\Controllers\Api\EstudianteController;
 use App\Http\Controllers\Api\ParametrosEconomicosController;
 use App\Http\Controllers\Api\ItemsCobroController;
@@ -29,6 +30,7 @@ use App\Http\Controllers\Api\CuotaController;
 use App\Http\Controllers\Api\InscripcionesWebhookController;
 use App\Http\Controllers\Api\KardexNotasController;
 use App\Http\Controllers\Api\RezagadoController;
+use App\Http\Controllers\Api\SegundaInstanciaController;
 
 // Búsqueda de estudiantes
 Route::get('/estudiantes/search', [EstudianteController::class, 'search']);
@@ -48,6 +50,40 @@ Route::middleware('auth:sanctum')->get('/user', function (Request $request) {
     return $request->user();
 });
 
+// ===================== SGA Proxy (Reincorporación) =====================
+Route::match(['get','post'], 'sga/eco_hydra/Reincorporacion/estado', function (Request $request) {
+    $base = env('SGA_BASE_URL');
+    try {
+        if ($base) {
+            $url = rtrim($base, '/') . '/eco_hydra/Reincorporacion/estado';
+            $req = Http::timeout(10);
+            $payload = [
+                'cod_ceta' => $request->input('cod_ceta', $request->query('cod_ceta')),
+                'cod_pensum' => $request->input('cod_pensum', $request->query('cod_pensum')),
+                'gestion' => $request->input('gestion', $request->query('gestion')),
+            ];
+            $resp = ($request->method() === 'POST') ? $req->post($url, $payload) : $req->get($url, $payload);
+            if ($resp->ok()) { return response()->json($resp->json(), 200); }
+            return response()->json($resp->json(), $resp->status());
+        }
+    } catch (\Throwable $e) {
+        // fallthrough al fallback
+    }
+    return response()->json([
+        'success' => true,
+        'data' => [
+            'parametros' => [ 'activo' => false, 'semestres_requeridos' => 0 ],
+            'ultima_gestion' => null,
+            'gestiones_activas' => [],
+            'gestiones_abandonadas' => [],
+            'debe_reincorporacion_sql' => false,
+            'estudiante_nuevo_1er_semestre_normal' => false,
+            'debe_reincorporacion' => false,
+        ],
+        'message' => 'SGA_BASE_URL no configurado o SGA no disponible. Respuesta local por defecto.'
+    ], 200);
+});
+
 // Rutas de autenticación
 Route::post('/login', [\App\Http\Controllers\Api\AuthController::class, 'login']);
 Route::post('/logout', [\App\Http\Controllers\Api\AuthController::class, 'logout']);
@@ -56,6 +92,8 @@ Route::post('/change-password', [\App\Http\Controllers\Api\AuthController::class
 
 // Ruta de prueba
 Route::get('/test', [\App\Http\Controllers\Api\TestController::class, 'test']);
+// Health check
+Route::get('/health', function() { return response()->json(['status' => 'ok']); });
 
 // Recursos: Parámetros Económicos
 Route::apiResource('parametros-economicos', ParametrosEconomicosController::class);
@@ -188,6 +226,65 @@ Route::post('usuarios/{id}/reset-password', [UsuarioController::class, 'resetPas
 // ===================== Kardex Notas =====================
 Route::get('kardex-notas/materias', [KardexNotasController::class, 'materias']);
 
+// ===================== SGA Proxy (Recuperación) =====================
+// Proxy simple para evitar 404 en frontend y centralizar CORS en Laravel
+Route::get('sga/eco_hydra/Recuperacion/elegibilidad', function (Request $request) {
+    $base = env('SGA_BASE_URL');
+    try {
+        if ($base) {
+            $url = rtrim($base, '/') . '/eco_hydra/Recuperacion/elegibilidad';
+            $resp = Http::timeout(8)->get($url, [
+                'cod_ceta' => $request->query('cod_ceta'),
+                'cod_pensum' => $request->query('cod_pensum'),
+                'gestion' => $request->query('gestion'),
+            ]);
+            if ($resp->ok()) {
+                return response()->json($resp->json(), 200);
+            }
+            return response()->json($resp->json(), $resp->status());
+        }
+    } catch (\Throwable $e) {
+        // fallthrough al fallback
+    }
+    // Fallback amistoso para no romper la UI si SGA no está disponible
+    return response()->json([
+        'success' => true,
+        'data' => [
+            'elegible' => true,
+            'motivo' => null,
+            'materias' => [],
+        ],
+        'message' => 'SGA_BASE_URL no configurado o SGA no disponible. Respuesta local por defecto.'
+    ], 200);
+});
+
+Route::get('sga/eco_hydra/Recuperacion/autorizaciones', function (Request $request) {
+    $base = env('SGA_BASE_URL');
+    try {
+        if ($base) {
+            $url = rtrim($base, '/') . '/eco_hydra/Recuperacion/autorizaciones';
+            $req = Http::timeout(8);
+            $cookie = env('SGA_SESSION_COOKIE');
+            if ($cookie) { $req = $req->withHeaders(['Cookie' => $cookie]); }
+            $resp = $req->get($url, [
+                'cod_ceta' => $request->query('cod_ceta'),
+                'cod_pensum' => $request->query('cod_pensum'),
+            ]);
+            if ($resp->ok()) {
+                return response()->json($resp->json(), 200);
+            }
+            return response()->json($resp->json(), $resp->status());
+        }
+    } catch (\Throwable $e) {
+        // fallthrough al fallback
+    }
+    return response()->json([
+        'success' => true,
+        'data' => [],
+        'message' => 'SGA_BASE_URL no configurado o SGA no disponible. Respuesta local por defecto.'
+    ], 200);
+});
+
 // ===================== Roles =====================
 Route::get('roles/active', [RolController::class, 'rolesActivos']);
 Route::apiResource('roles', RolController::class);
@@ -206,3 +303,8 @@ Route::put('rezagados/{cod_inscrip}/{num_rezagado}/{num_pago_rezagado}', [Rezaga
     ->where(['cod_inscrip' => '\\d+', 'num_rezagado' => '\\d+', 'num_pago_rezagado' => '\\d+']);
 Route::delete('rezagados/{cod_inscrip}/{num_rezagado}/{num_pago_rezagado}', [RezagadoController::class, 'destroy'])
     ->where(['cod_inscrip' => '\\d+', 'num_rezagado' => '\\d+', 'num_pago_rezagado' => '\\d+']);
+
+// ===================== Segunda Instancia =====================
+Route::get('segunda-instancia', [SegundaInstanciaController::class, 'index']);
+Route::post('segunda-instancia', [SegundaInstanciaController::class, 'store']);
+Route::get('segunda-instancia/elegibilidad', [SegundaInstanciaController::class, 'elegibilidad']);

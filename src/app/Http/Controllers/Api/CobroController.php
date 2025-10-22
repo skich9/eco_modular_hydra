@@ -276,17 +276,25 @@ class CobroController extends Controller
 				$costoSemestral = CostoSemestral::where('cod_pensum', $codPensumToUse)
 					->where('gestion', $gestionToUse)
 					->first();
-				// Prueba de Recuperación: costo_semestral.tipo_costo = 'instacia'
+				// Prueba de Recuperación: buscar por varias variantes de tipo_costo con fallback seguro
 				try {
-					$recuperacionRow = DB::table('costo_semestral')
+					$rows = DB::table('costo_semestral')
 						->where('cod_pensum', $codPensumToUse)
 						->where('gestion', $gestionToUse)
-						->where('tipo_costo', 'instacia')
-						->first();
-					if ($recuperacionRow) {
-						$recuperacionMonto = isset($recuperacionRow->monto_semestre)
-							? (float)$recuperacionRow->monto_semestre
-							: (isset($recuperacionRow->monto) ? (float)$recuperacionRow->monto : null);
+						->get();
+					if ($rows && $rows->count()) {
+						$norm = function($s){ $s = (string)$s; $s = @iconv('UTF-8','ASCII//TRANSLIT',$s); return strtoupper(trim($s)); };
+						$pick = $rows->first(function($r) use ($norm){
+							$tc = $norm($r->tipo_costo ?? '');
+							return $tc === 'INSTACIA' || $tc === 'INSTANCIA' || $tc === 'RECUPERACION' || strpos($tc, 'SEGUNDA') !== false;
+						});
+						if (!$pick) {
+							$pick = $rows->first(function($r) use ($norm){ $tc = $norm($r->tipo_costo ?? ''); return (strpos($tc,'RECUP') !== false) || (strpos($tc,'INSTANC') !== false); });
+						}
+						if ($pick) {
+							$recuperacionRow = $pick;
+							$recuperacionMonto = isset($pick->monto_semestre) ? (float)$pick->monto_semestre : (isset($pick->monto) ? (float)$pick->monto : null);
+						}
 					}
 				} catch (\Throwable $e) {
 					// no bloquear resumen por error en recuperación

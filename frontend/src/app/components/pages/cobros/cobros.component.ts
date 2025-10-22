@@ -52,6 +52,7 @@ export class CobrosComponent implements OnInit {
   sinDocsIdentidad: Array<{ codigo: number; descripcion: string }> = [];
   pensums: any[] = [];
   cuentasBancarias: any[] = [];
+  reincorporacion: any = null;
   // Visibilidad del card de Opciones de cobro
   showOpciones = false;
   // Bloqueo de cuota para pagos parciales combinados (EFECTIVO + TARJETA, etc.)
@@ -60,6 +61,8 @@ export class CobrosComponent implements OnInit {
   modalFormasCobro: any[] = [];
   // Costo de Rezagado (desde costo_semestral)
   rezagadoCosto: number | null = null;
+  // Costo de Reincorporación (desde costo_semestral)
+  reincorporacionCosto: number | null = null;
 
   // Ref del modal de items
   @ViewChild('itemsDlg') itemsDlg?: ItemsModalComponent;
@@ -143,6 +146,144 @@ export class CobrosComponent implements OnInit {
       costo_total: [{ value: 0, disabled: true }],
       observaciones: ['']
     });
+  }
+
+  openReincorporacionModal(): void {
+    if (!this.resumen) {
+      this.showAlert('Debe consultar primero un estudiante/gestión', 'warning');
+      return;
+    }
+    if (!this.reincorporacion || this.reincorporacion?.debe_reincorporacion !== true) {
+      this.showAlert('El estudiante no requiere reincorporación', 'warning');
+      return;
+    }
+    const monto = Number(this.reincorporacionCosto || 0);
+    if (!monto || monto <= 0) {
+      this.showAlert('No se encontró el costo de Reincorporación en costo_semestral', 'warning');
+      return;
+    }
+    if (!this.ensureMetodoPagoPermitido(['EFECTIVO','TARJETA','CHEQUE','DEPOSITO','TRANSFERENCIA','QR','OTRO'])) return;
+    // Configurar modal reutilizable
+    this.modalTipo = 'reincorporacion' as any;
+    this.mensualidadPU = monto; // precio bloqueado
+    // Recalcular lista filtrada y escoger default coherente
+    this.computeModalFormasFromSelection();
+    const defaultMetodo = (this.batchForm.get('cabecera.id_forma_cobro') as any)?.value || '';
+    const firstAllowed = (this.modalFormasCobro[0]?.id_forma_cobro || '').toString();
+    this.mensualidadModalForm.patchValue({
+      metodo_pago: firstAllowed || defaultMetodo,
+      cantidad: 1,
+      costo_total: monto,
+      pago_parcial: false,
+      monto_parcial: 0
+    }, { emitEvent: false });
+    // Abrir modal
+    try {
+      const modalEl = document.getElementById('mensualidadModal');
+      const bs = (window as any).bootstrap;
+      if (modalEl && bs?.Modal) {
+        const modal = bs.Modal.getInstance(modalEl) || new bs.Modal(modalEl);
+        modal.show();
+      }
+    } catch {}
+  }
+
+  // Añadir pago de Reincorporación directo al detalle
+  addReincorporacionPago(): void {
+    if (!this.resumen) {
+      this.showAlert('Debe consultar primero un estudiante/gestión', 'warning');
+      return;
+    }
+    if (!this.reincorporacion || this.reincorporacion?.debe_reincorporacion !== true) {
+      this.showAlert('El estudiante no requiere reincorporación', 'warning');
+      return;
+    }
+    const monto = Number(this.reincorporacionCosto || 0);
+    if (!monto || monto <= 0) {
+      this.showAlert('No se encontró el costo de Reincorporación en costo_semestral', 'warning');
+      return;
+    }
+    // Evitar duplicados en el lote actual
+    const exists = (this.pagos.controls || []).some(ctrl => {
+      const d = ((ctrl as FormGroup).get('detalle') as any)?.value || '';
+      return (d || '').toString().toUpperCase().includes('REINCORPORACION');
+    });
+    if (exists) {
+      this.showAlert('Ya agregó Reincorporación al detalle', 'warning');
+      return;
+    }
+    if (!this.ensureMetodoPagoPermitido(['EFECTIVO','TARJETA','CHEQUE','DEPOSITO','TRANSFERENCIA','QR','OTRO'])) return;
+    const hoy = new Date().toISOString().slice(0, 10);
+    const nro = this.getNextCobroNro();
+    this.pagos.push(this.fb.group({
+      nro_cobro: [nro, Validators.required],
+      id_cuota: [null],
+      id_item: [null],
+      monto: [monto, [Validators.required, Validators.min(0)]],
+      fecha_cobro: [hoy, Validators.required],
+      observaciones: ['Reincorporación'],
+      descuento: [0],
+      nro_factura: [null],
+      nro_recibo: [null],
+      pu_mensualidad: [monto],
+      order: [0],
+      id_asignacion_costo: [null],
+      // UI
+      cantidad: [1, [Validators.required, Validators.min(1)]],
+      detalle: ['Reincorporación'],
+      m_marca: [false],
+      d_marca: [false]
+    }));
+    this.showAlert('Reincorporación añadida al lote', 'success');
+  }
+
+  private updateReincorporacionCosto(): void {
+    try {
+      const pensum = (this.batchForm.get('cabecera.cod_pensum') as any)?.value || this.resumen?.inscripcion?.cod_pensum || '';
+      const gestion = (this.batchForm.get('cabecera.gestion') as any)?.value || this.resumen?.gestion || this.resumen?.inscripcion?.gestion || '';
+      if (!pensum) { this.reincorporacionCosto = null; return; }
+      this.cobrosService.getCostoSemestralByPensum(pensum, gestion).subscribe({
+        next: (res) => {
+          if (!res?.success) { this.reincorporacionCosto = null; return; }
+          const rows = Array.isArray(res.data) ? res.data : [];
+          const turnoInferido = (() => {
+            const t1 = (this.identidadForm.get('turno') as any)?.value || this.resumen?.inscripcion?.turno || this.resumen?.estudiante?.turno || '';
+            let t = (t1 || '').toString().trim().toUpperCase();
+            if (!t) {
+              const codCurso = (this.resumen?.inscripcion?.cod_curso || this.resumen?.inscripciones?.[0]?.cod_curso || '').toString().trim().toUpperCase();
+              if (codCurso) {
+                const last = codCurso.slice(-1);
+                if (last === 'M') t = 'MANANA';
+                else if (last === 'T') t = 'TARDE';
+                else if (last === 'N') t = 'NOCHE';
+              }
+            }
+            if (t === 'M') t = 'MANANA';
+            if (t === 'T') t = 'TARDE';
+            if (t === 'N') t = 'NOCHE';
+            t = t.normalize('NFD').replace(/\p{Diacritic}/gu, '');
+            return t;
+          })();
+          const semestre = Number(this.resumen?.inscripcion?.semestre ?? this.resumen?.estudiante?.semestre ?? 0) || 0;
+          // Filtrar por tipo_costo = 'Reincorporacion'
+          const candidatos = rows.filter((r: any) => (r?.tipo_costo || '').toString().toUpperCase() === 'REINCORPORACION');
+          const byGestion = candidatos.filter((r: any) => !gestion || `${r?.gestion}` === `${gestion}`);
+          const byTurno = (byGestion.length ? byGestion : candidatos).filter((r: any) => {
+            if (!turnoInferido) return true;
+            const rt = (r?.turno || '').toString().trim().toUpperCase().normalize('NFD').replace(/\p{Diacritic}/gu, '');
+            if (rt === turnoInferido) return true;
+            if (turnoInferido === 'MANANA' && (rt === 'M')) return true;
+            if (turnoInferido === 'TARDE' && (rt === 'T')) return true;
+            if (turnoInferido === 'NOCHE' && (rt === 'N')) return true;
+            return false;
+          });
+          const bySemestre = (byTurno.length ? byTurno : (byGestion.length ? byGestion : candidatos)).filter((r: any) => !semestre || Number(r?.semestre || 0) === Number(semestre));
+          const pick = (bySemestre[0] || byTurno[0] || byGestion[0] || candidatos[0] || null);
+          this.reincorporacionCosto = pick ? Number(pick?.monto_semestre || 0) : null;
+        },
+        error: () => { this.reincorporacionCosto = null; }
+      });
+    } catch { this.reincorporacionCosto = null; }
   }
 
   private sumCobrosMensualidadByGestionInscripciones(): number {
@@ -730,34 +871,52 @@ export class CobrosComponent implements OnInit {
       },
       error: () => { this.sinDocsIdentidad = []; }
     });
+    this.formasCobro = [];
     this.cobrosService.getFormasCobro().subscribe({
       next: (res) => {
-        if (res.success) {
-          // Orden ascendente por codigo_sin y luego por descripcion/nombre
-          this.formasCobro = (res.data || []).slice().sort((a: any, b: any) => {
-            const ca = Number(a?.codigo_sin ?? 0);
-            const cb = Number(b?.codigo_sin ?? 0);
-            if (ca !== cb) return ca - cb;
-            const la = (a?.descripcion_sin ?? a?.nombre ?? '').toString();
-            const lb = (b?.descripcion_sin ?? b?.nombre ?? '').toString();
-            return la.localeCompare(lb);
-          });
-          // Si ya hay un valor y corresponde a EFECTIVO, limpiar error custom
-          this.clearSoloEfectivoErrorIfMatches();
-          // Sincronizar codigo_sin desde id_forma_cobro si ya hubiese uno seleccionado
-          const cab = this.batchForm.get('cabecera') as FormGroup;
-          const idSel = (cab.get('id_forma_cobro')?.value ?? '').toString();
-          if (idSel) {
-            const match = (this.formasCobro || []).find((f: any) => `${f?.id_forma_cobro}` === idSel);
-            if (match) {
-              cab.patchValue({ codigo_sin: match.codigo_sin }, { emitEvent: false });
-            }
+        if (!res?.success) { this.formasCobro = []; return; }
+        const raw = Array.isArray(res.data) ? res.data : [];
+        // Filtrar solo activas usando únicamente 'activo' y con codigo_sin válido
+        const actives = raw.filter((r: any) => {
+          const codigo = (r?.codigo_sin ?? '').toString().trim();
+          if (!codigo) return false; // sin código no se muestra
+          const vals = [r?.activo, r?.estado, r?.habilitado];
+          const norm = (x: any) => {
+            if (x === null || x === undefined) return '';
+            if (x === true) return 'TRUE';
+            if (x === false) return 'FALSE';
+            const s = String(x).trim().toUpperCase();
+            return s;
+          };
+          const normalized = vals.map(norm);
+          const anyActive = normalized.some(s => s === '1' || s === 'TRUE' || s === 'ACTIVO');
+          const anyInactive = normalized.some(s => s === '0' || s === 'FALSE' || s === 'INACTIVO');
+          return anyActive && !anyInactive;
+        });
+        // Orden ascendente por codigo_sin y luego por descripcion/nombre
+        this.formasCobro = actives.slice().sort((a: any, b: any) => {
+          const ca = Number(a?.codigo_sin ?? 0);
+          const cb = Number(b?.codigo_sin ?? 0);
+          if (ca !== cb) return ca - cb;
+          const la = (a?.descripcion_sin ?? a?.nombre ?? '').toString();
+          const lb = (b?.descripcion_sin ?? b?.nombre ?? '').toString();
+          return la.localeCompare(lb);
+        });
+        // Si ya hay un valor y corresponde a EFECTIVO, limpiar error custom
+        this.clearSoloEfectivoErrorIfMatches();
+        // Sincronizar codigo_sin desde id_forma_cobro si ya hubiese uno seleccionado
+        const cab = this.batchForm.get('cabecera') as FormGroup;
+        const idSel = (cab.get('id_forma_cobro')?.value ?? '').toString();
+        if (idSel) {
+          const match = (this.formasCobro || []).find((f: any) => `${f?.id_forma_cobro}` === idSel);
+          if (match) {
+            cab.patchValue({ codigo_sin: match.codigo_sin }, { emitEvent: false });
           }
-          // Calcular opciones del modal según selección actual
-          this.computeModalFormasFromSelection();
         }
+        // Calcular opciones del modal según selección actual
+        this.computeModalFormasFromSelection();
       },
-      error: () => {}
+      error: () => { this.formasCobro = []; }
     });
     // Cargar cuentas bancarias para métodos de pago como TARJETA/DEPÓSITO
     this.cobrosService.getCuentasBancarias().subscribe({
@@ -768,6 +927,10 @@ export class CobrosComponent implements OnInit {
     // Recalcular costo total de mensualidades cuando cambie la cantidad
     this.mensualidadModalForm.get('cantidad')?.valueChanges.subscribe((v: number) => {
       this.recalcMensualidadTotal();
+      // Calcular costo de Rezagado desde costo_semestral
+      this.updateRezagadoCosto();
+      // Calcular costo de Reincorporación desde costo_semestral
+      this.updateReincorporacionCosto();
     });
 
     // Limpiar error custom cuando el método de pago sea EFECTIVO
@@ -872,6 +1035,11 @@ export class CobrosComponent implements OnInit {
       next: (res) => {
         if (res.success) {
           this.resumen = res.data;
+          try {
+            console.log('[RESUMEN] recuperacion', this.resumen?.recuperacion);
+            console.log('[RESUMEN] recuperacion_pendiente', this.resumen?.recuperacion_pendiente);
+            console.log('[RESUMEN] gestion/pensum', this.resumen?.gestion, this.resumen?.inscripcion?.cod_pensum);
+          } catch {}
           this.showOpciones = true;
           this.showAlert('Resumen cargado', 'success');
           // Mostrar advertencias de backend si existen (fallback de gestión u otros)
@@ -917,6 +1085,20 @@ export class CobrosComponent implements OnInit {
             gestion: this.resumen?.gestion ?? ins.gestion ?? gestion ?? ''
           });
 
+          // Consultar estado de Reincorporación (SGA) para este estudiante
+          try {
+            const codPensum = (ins.cod_pensum ?? est.cod_pensum ?? '').toString();
+            const gestionEval = (this.resumen?.gestion ?? ins.gestion ?? gestion ?? '').toString();
+            if ((est.cod_ceta || cod_ceta) && codPensum) {
+              this.cobrosService.getReincorporacionEstado({ cod_ceta: (est.cod_ceta || cod_ceta), cod_pensum: codPensum, gestion: gestionEval }).subscribe({
+                next: (r) => { this.reincorporacion = r?.data || r || null; },
+                error: () => { this.reincorporacion = null; }
+              });
+            } else {
+              this.reincorporacion = null;
+            }
+          } catch { this.reincorporacion = null; }
+
           // Cargar pensums por carrera desde el pensum del estudiante
           const pensumRel = est?.pensum || {};
           const codigoCarrera = pensumRel?.codigo_carrera;
@@ -945,23 +1127,20 @@ export class CobrosComponent implements OnInit {
           // Inicializar modal de mensualidades
           const defaultMetodo = (this.batchForm.get('cabecera.id_forma_cobro') as any)?.value || '';
           this.mensualidadModalForm.patchValue({
-            metodo_pago: defaultMetodo,
-            cantidad: this.mensualidadesPendientes > 0 ? 1 : 0,
-            costo_total: this.mensualidadPU
           }, { emitEvent: false });
-          this.recalcMensualidadTotal();
-          // Calcular costo de Rezagado desde costo_semestral
+          // Calcular costos contextuales
           this.updateRezagadoCosto();
+          this.updateReincorporacionCosto();
         } else {
-          this.resumen = null;
-          this.showOpciones = false;
-          this.showAlert(res.message || 'No se pudo obtener el resumen', 'warning');
+          // Sin coincidencia: marcar sin información
+          this.identidadForm.patchValue({ ci: 'SIN INFORMACIÓN' }, { emitEvent: false });
         }
         this.loading = false;
       },
       error: (err) => {
         console.error('Resumen error:', err);
         this.resumen = null;
+        this.reincorporacion = null;
         this.showOpciones = false;
         const status = Number(err?.status || 0);
         const backendMsg = (err?.error?.message || err?.message || '').toString();
@@ -1209,8 +1388,10 @@ export class CobrosComponent implements OnInit {
           this.razonSocialEditable = false;
           this.showModalAlert('Razón social encontrada', 'success');
         } else {
-          // No encontrado: habilitar edición de razón social
+          // No encontrado: habilitar edición y limpiar razón social en modal y en la página principal
           this.razonSocialEditable = true;
+          this.modalIdentidadForm.patchValue({ razon_social: '' }, { emitEvent: false });
+          this.identidadForm.patchValue({ razon_social: '' }, { emitEvent: false });
           this.showModalAlert('No existe registro, puede ingresar la razón social y guardar', 'warning');
         }
         this.loading = false;
@@ -1372,7 +1553,18 @@ export class CobrosComponent implements OnInit {
       return;
     }
     if (!this.ensureMetodoPagoPermitido(['EFECTIVO','TARJETA','CHEQUE','DEPOSITO','TRANSFERENCIA','QR','OTRO'])) return;
-    try { this.recuperacionDlg?.open(); } catch {}
+    // Calcular lista de métodos permitidos en el modal según selección actual
+    this.computeModalFormasFromSelection();
+    this.modalTipo = 'recuperacion';
+    try {
+      console.log('[OPEN REC] monto', this.resumen?.recuperacion?.monto, this.resumen?.recuperacion_pendiente?.monto);
+      const el = document.getElementById('recuperacionModal');
+      const bs = (window as any).bootstrap;
+      if (el && bs?.Modal) {
+        const modal = bs.Modal.getInstance(el) || new bs.Modal(el);
+        modal.show();
+      }
+    } catch {}
   }
 
   private recalcMensualidadTotal(): void {

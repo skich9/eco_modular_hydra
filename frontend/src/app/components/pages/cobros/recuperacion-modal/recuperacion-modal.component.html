@@ -6,6 +6,11 @@
         <button type="button" class="btn-close" data-bs-dismiss="modal" aria-label="Close"></button>
       </div>
       <div class="modal-body">
+        <div *ngIf="modalAlertMessage" class="alert" [ngClass]="{
+          'alert-warning': modalAlertType === 'warning',
+          'alert-danger': modalAlertType === 'error',
+          'alert-success': modalAlertType === 'success'
+        }">{{ modalAlertMessage }}</div>
         <div class="p-3 bg-primary bg-opacity-10 rounded mb-3">
           <div class="row g-3 align-items-center" [formGroup]="form">
             <div class="col-md-8">
@@ -77,26 +82,38 @@
                     <th style="width:5%"></th>
                     <th style="width:15%">cod. Materia</th>
                     <th>Materia</th>
+                    <th style="width:10%" class="text-center">Prom.</th>
                     <th style="width:15%">Tipo</th>
                     <th style="width:12%" class="text-end">Bs.</th>
                   </tr>
                 </thead>
                 <tbody>
-                  <tr *ngFor="let m of materias">
-                    <td class="text-center"><input type="checkbox" [(ngModel)]="m.selected" name="sel_{{m.sigla}}" /></td>
+                  <tr *ngFor="let m of materias" [class.table-danger]="m && ((m.elegible === false) || !!m.pagada)" [attr.title]="m && m.elegible === false ? (((m.motivos?.length || 0) > 0 ? (m.motivos || []).join(', ') : 'No elegible')) : (m?.pagada ? 'Ya pagada' : null)">
+                    <td class="text-center"><input type="checkbox" [checked]="m.selected" name="sel_{{m.sigla}}" [disabled]="!m.elegible || !!m.pagada" (change)="onCheckChange(m, $event)" /></td>
                     <td>{{ m.sigla }}</td>
                     <td>{{ m.nombre }}</td>
+                    <td class="text-center">{{ m.prom || 0 }}</td>
                     <td>{{ m.tipo }}</td>
-                    <td class="text-end">{{ feeRecuperacion | number:'1.2-2' }}</td>
+                    <td class="text-end">{{ (m.costo || feeRecuperacion) | number:'1.2-2' }}</td>
                   </tr>
                 </tbody>
                 <tfoot>
                   <tr>
-                    <th colspan="4" class="text-end">Total:</th>
+                    <th colspan="5" class="text-end">Total:</th>
                     <th class="text-end">{{ total | number:'1.2-2' }}</th>
                   </tr>
                 </tfoot>
               </table>
+            </div>
+          </div>
+
+          <!-- Mensajes de bloqueo de elegibilidad -->
+          <div class="col-12" *ngIf="elegibilidad as e">
+            <div *ngIf="e?.excede_dos_normal" class="alert alert-danger mt-2">
+              El estudiante reprobó más de 2 materias, por tanto no podrá adquirir sus boletas de la Prueba de Recuperación. Comuniquese con el Administrador
+            </div>
+            <div *ngIf="!e?.excede_dos_normal && (e?.autorizaciones?.promedio_minimo === false || e?.autorizaciones?.cantidad === false)" class="alert alert-danger mt-2">
+              Existen bloqueos de autorización en SGA para la Prueba de Recuperación.
             </div>
           </div>
 

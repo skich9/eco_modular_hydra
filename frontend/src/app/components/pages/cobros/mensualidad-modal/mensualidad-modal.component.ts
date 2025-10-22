@@ -13,7 +13,8 @@ export class MensualidadModalComponent implements OnInit, OnChanges {
   @Input() resumen: any = null;
   @Input() formasCobro: any[] = [];
   @Input() cuentasBancarias: any[] = [];
-  @Input() tipo: 'mensualidad' | 'rezagado' | 'recuperacion' | 'arrastre' = 'mensualidad';
+  @Input() tipo: 'mensualidad' | 'rezagado' | 'recuperacion' | 'arrastre' | 'reincorporacion' = 'mensualidad';
+  // Nota: también soporta 'reincorporacion' como tipo adicional
   @Input() pendientes = 0;
   @Input() pu = 0; // precio unitario de mensualidad
   @Input() baseNro = 1; // nro_cobro inicial sugerido
@@ -22,6 +23,8 @@ export class MensualidadModalComponent implements OnInit, OnChanges {
   @Output() addPagos = new EventEmitter<any>();
 
   form: FormGroup;
+  modalAlertMessage = '';
+  modalAlertType: 'success' | 'error' | 'warning' = 'warning';
 
   constructor(private fb: FormBuilder) {
     this.form = this.fb.group({
@@ -130,8 +133,8 @@ export class MensualidadModalComponent implements OnInit, OnChanges {
 
     // Alternar validadores/estado para pago parcial
     this.form.get('pago_parcial')?.valueChanges.subscribe((on: boolean) => {
-      // Pago parcial solo permitido en tipo 'mensualidad'
-      if (this.tipo !== 'mensualidad') {
+      // Pago parcial permitido en 'mensualidad' y 'reincorporacion'
+      if (this.tipo !== 'mensualidad' && this.tipo !== 'reincorporacion') {
         if (on) this.form.get('pago_parcial')?.setValue(false, { emitEvent: false });
         // Asegurar estado limpio
         this.form.get('cantidad')?.enable({ emitEvent: false });
@@ -202,6 +205,22 @@ export class MensualidadModalComponent implements OnInit, OnChanges {
         this.form.get('monto_parcial')?.clearValidators();
         this.form.get('monto_parcial')?.disable({ emitEvent: false });
       }
+    } else if (this.tipo === 'reincorporacion') {
+      // Reincorporación: sin cantidad; permitir pago parcial usando pu como tope
+      this.form.get('cantidad')?.clearValidators();
+      this.form.get('cantidad')?.setValue(1, { emitEvent: false });
+      this.form.get('cantidad')?.disable({ emitEvent: false });
+      this.form.get('monto_manual')?.clearValidators();
+      this.form.get('monto_manual')?.setValue(0, { emitEvent: false });
+      if (this.form.get('pago_parcial')?.value) {
+        this.form.get('monto_parcial')?.enable({ emitEvent: false });
+        this.form.get('monto_parcial')?.setValidators([Validators.required, Validators.min(0.01), Validators.max(this.pu || Number.MAX_SAFE_INTEGER)]);
+        this.form.get('monto_parcial')?.setValue(this.pu || 0, { emitEvent: false });
+      } else {
+        this.form.get('monto_parcial')?.setValue(0, { emitEvent: false });
+        this.form.get('monto_parcial')?.clearValidators();
+        this.form.get('monto_parcial')?.disable({ emitEvent: false });
+      }
     } else {
       this.form.get('cantidad')?.clearValidators();
       this.form.get('cantidad')?.setValue(1, { emitEvent: false });
@@ -222,6 +241,7 @@ export class MensualidadModalComponent implements OnInit, OnChanges {
       case 'rezagado': return 'Pago de Rezagado';
       case 'recuperacion': return 'Pago de Prueba de Recuperación';
       case 'arrastre': return 'Pago de Arrastre';
+      case 'reincorporacion': return 'Pago de Reincorporación';
       default: return 'Pago de Mensualidades';
     }
   }
@@ -247,6 +267,13 @@ export class MensualidadModalComponent implements OnInit, OnChanges {
     } else if (this.tipo === 'arrastre') {
       const cant = Math.max(0, Number(this.form.get('cantidad')?.value || 0));
       total = cant * Number(this.pu || 0);
+    } else if (this.tipo === 'reincorporacion') {
+      // Total = monto parcial si aplica, caso contrario = PU (monto de reincorporación)
+      if (this.form.get('pago_parcial')?.value) {
+        total = Number(this.form.get('monto_parcial')?.value || 0);
+      } else {
+        total = Number(this.pu || 0);
+      }
     } else {
       total = Number(this.form.get('monto_manual')?.value || 0);
     }
@@ -443,7 +470,23 @@ export class MensualidadModalComponent implements OnInit, OnChanges {
   }
 
   addAndClose(): void {
-    if (!this.form.valid) return;
+    // Validación explícita de TARJETA: 4 dígitos exactos en ambos campos
+    if (this.isTarjeta) {
+      const f4 = (this.form.get('tarjeta_first4')?.value || '').toString().trim();
+      const l4 = (this.form.get('tarjeta_last4')?.value || '').toString().trim();
+      if (!/^\d{4}$/.test(f4) || !/^\d{4}$/.test(l4)) {
+        this.form.get('tarjeta_first4')?.markAsTouched();
+        this.form.get('tarjeta_last4')?.markAsTouched();
+        this.modalAlertMessage = 'Los números de la tarjeta deben tener exactamente 4 dígitos (primeros y últimos).';
+        this.modalAlertType = 'warning';
+        return;
+      }
+    }
+    if (!this.form.valid) {
+      this.modalAlertMessage = 'Complete los campos obligatorios.';
+      this.modalAlertType = 'warning';
+      return;
+    }
     // Validar comprobante explícitamente
     const compSelRaw = (this.form.get('comprobante')?.value || '').toString().toUpperCase();
     if (compSelRaw !== 'RECIBO' && compSelRaw !== 'FACTURA') {
@@ -611,6 +654,36 @@ export class MensualidadModalComponent implements OnInit, OnChanges {
           }
         }
       }
+    } else if (this.tipo === 'reincorporacion') {
+      // Reincorporación: un único registro, sin asignación de costos, con opción de pago parcial
+      const esParcial = !!this.form.get('pago_parcial')?.value;
+      const monto = esParcial ? Number(this.form.get('monto_parcial')?.value || 0) : Number(this.pu || 0);
+      pagos.push({
+        id_forma_cobro: this.form.get('metodo_pago')?.value || null,
+        nro_cobro: this.baseNro || 1,
+        monto,
+        fecha_cobro: hoy,
+        observaciones: this.composeObservaciones(),
+        pu_mensualidad: this.pu || 0,
+        cantidad: 1,
+        detalle: 'Reincorporación',
+        // doc/medio
+        tipo_documento,
+        medio_doc,
+        comprobante: compSel || 'NINGUNO',
+        computarizada: this.form.get('computarizada')?.value,
+        // bancarias
+        id_cuentas_bancarias: this.form.get('id_cuentas_bancarias')?.value || null,
+        banco_origen: this.form.get('banco_origen')?.value || null,
+        fecha_deposito: this.form.get('fecha_deposito')?.value || null,
+        nro_deposito: this.form.get('nro_deposito')?.value || null,
+        tarjeta_first4: this.form.get('tarjeta_first4')?.value || null,
+        tarjeta_last4: this.form.get('tarjeta_last4')?.value || null,
+        // opcionales
+        descuento: this.form.get('descuento')?.value || null,
+        nro_factura: this.form.get('comprobante')?.value === 'FACTURA' ? (this.form.get('nro_factura')?.value || null) : null,
+        nro_recibo: this.form.get('comprobante')?.value === 'RECIBO' ? (this.form.get('nro_recibo')?.value || null) : null,
+      });
     } else {
       // Rezagado o Recuperación: generamos un único registro
       const monto = Number(this.form.get('monto_manual')?.value || 0);
@@ -653,6 +726,7 @@ export class MensualidadModalComponent implements OnInit, OnChanges {
       const instance = bs.Modal.getInstance(modalEl) || new bs.Modal(modalEl);
       instance.hide();
     }
+    this.modalAlertMessage = '';
   }
 
   private buildObservaciones(): string {
@@ -660,6 +734,7 @@ export class MensualidadModalComponent implements OnInit, OnChanges {
     const flags: string[] = [];
     if (this.tipo === 'rezagado' || this.form.get('rezagado')?.value) flags.push('Rezagado');
     if (this.tipo === 'recuperacion' || this.form.get('recuperacion')?.value) flags.push('Prueba de recuperación');
+    if (this.tipo === 'reincorporacion') flags.push('Reincorporación');
     if (this.tipo === 'arrastre') flags.push('Arrastre');
     const joined = flags.length ? `[${flags.join(', ')}]` : '';
     return [joined, obs].filter(Boolean).join(' ').trim();

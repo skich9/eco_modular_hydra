@@ -17,6 +17,33 @@ export class CobrosService {
 
 	constructor(private http: HttpClient) {}
 
+	// ===================== SGA Reincorporación =====================
+	getReincorporacionEstado(params: { cod_ceta: string | number; cod_pensum: string; gestion?: string }): Observable<any> {
+		let httpParams = new HttpParams()
+			.set('cod_ceta', String(params.cod_ceta))
+			.set('cod_pensum', params.cod_pensum);
+		if (params.gestion) httpParams = httpParams.set('gestion', String(params.gestion));
+		const url = `${this.apiUrl}/sga/eco_hydra/Reincorporacion/estado`;
+		return this.http.get<any>(url, { params: httpParams }).pipe(
+			map((res: any) => ({ success: !!res?.success, data: res?.data || res, message: res?.message }))
+		);
+	}
+
+	// ===================== Segunda Instancia (local) =====================
+	getSegundaInstElegibilidad(params: { cod_inscrip: string | number; materias?: string[] | string }): Observable<any> {
+		let httpParams = new HttpParams().set('cod_inscrip', String(params.cod_inscrip));
+		if (Array.isArray(params.materias)) {
+			const list = params.materias.filter((s) => !!s).join(',');
+			if (list) httpParams = httpParams.set('materias', list);
+		} else if (typeof params.materias === 'string' && params.materias.trim() !== '') {
+			httpParams = httpParams.set('materias', params.materias.trim());
+		}
+		const url = `${this.apiUrl}/segunda-instancia/elegibilidad`;
+		return this.http.get<any>(url, { params: httpParams }).pipe(
+			map((res: any) => ({ success: !!res?.success, data: res?.data || res, message: res?.message }))
+		);
+	}
+
 	getResumen(cod_ceta: string, gestion?: string): Observable<CobroResumenResponse> {
 		let params = new HttpParams().set('cod_ceta', cod_ceta);
 		if (gestion) params = params.set('gestion', gestion);

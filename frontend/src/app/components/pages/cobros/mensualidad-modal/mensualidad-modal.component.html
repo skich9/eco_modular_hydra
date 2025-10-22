@@ -11,7 +11,7 @@
             <div class="col-md-8">
               <div class="d-flex justify-content-between align-items-center">
                 <div class="small fw-semibold">Datos del Estudiante</div>
-                <div class="small fw-semibold text-primary">Mensualidades pendientes : {{ pendientes }}</div>
+                <div class="small fw-semibold text-primary" *ngIf="tipo === 'mensualidad'">Mensualidades pendientes : {{ pendientes }}</div>
               </div>
               <div class="small text-muted">{{ resumen?.estudiante?.cod_ceta }} - {{ resumen?.estudiante?.nombre_completo || resumen?.estudiante?.nombres }}</div>
               <div class="small">Pensum: {{ resumen?.inscripcion?.cod_pensum }} | Tipo: {{ resumen?.inscripcion?.tipo_inscripcion }}</div>
@@ -25,6 +25,13 @@
               </select>
             </div>
           </div>
+        </div>
+        <div *ngIf="modalAlertMessage" class="alert" [ngClass]="{
+          'alert-warning': modalAlertType === 'warning',
+          'alert-danger': modalAlertType === 'error',
+          'alert-success': modalAlertType === 'success'
+        }">
+          {{ modalAlertMessage }}
         </div>
 
         <form [formGroup]="form" class="row g-3">
@@ -79,16 +86,18 @@
               </div>
             </div>
           </div>
-          <div class="col-md-8 d-flex align-items-center gap-4" *ngIf="tipo === 'mensualidad'">
-            <div class="form-check">
-              <input class="form-check-input" type="checkbox" id="chkTotalSem" formControlName="cobro_total_semestre" />
-              <label class="form-check-label" for="chkTotalSem">Cobro total del semestre</label>
+          <ng-container *ngIf="tipo === 'mensualidad'">
+            <div class="col-md-8 d-flex align-items-center gap-4">
+              <div class="form-check">
+                <input class="form-check-input" type="checkbox" id="chkTotalSem" formControlName="cobro_total_semestre" />
+                <label class="form-check-label" for="chkTotalSem">Cobro total del semestre</label>
+              </div>
+              <div class="form-check">
+                <input class="form-check-input" type="checkbox" id="pagoParcial_top" formControlName="pago_parcial" />
+                <label class="form-check-label" for="pagoParcial_top">Pago Mensualidad Parcial</label>
+              </div>
             </div>
-            <div class="form-check">
-              <input class="form-check-input" type="checkbox" id="pagoParcial_top" formControlName="pago_parcial" />
-              <label class="form-check-label" for="pagoParcial_top">Pago Mensualidad Parcial</label>
-            </div>
-          </div>
+          </ng-container>
 
           <!-- Datos de Cheque / Depósito / Transferencia / QR -->
           <ng-container *ngIf="showBancarioBlock">
@@ -119,7 +128,7 @@
             </div>
           </ng-container>
 
-          <ng-container *ngIf="tipo === 'mensualidad' || tipo === 'arrastre'; else noMensualidad">
+          <ng-container *ngIf="tipo === 'mensualidad' || tipo === 'arrastre'; else noMensualidadOrReinc">
             <div class="col-md-4">
               <label class="form-label">Precio Unitario</label>
               <input class="form-control" [value]="pu | number:'1.2-2'" readonly />
@@ -135,7 +144,18 @@
               <input type="number" step="0.01" class="form-control" formControlName="descuento" />
             </div>
           </ng-container>
-          <ng-template #noMensualidad>
+          <ng-template #noMensualidadOrReinc>
+            <ng-container *ngIf="tipo === 'reincorporacion'; else noMensualidad">
+              <div class="col-md-4">
+                <label class="form-label">Precio Reincorporación</label>
+                <input class="form-control" [value]="pu | number:'1.2-2'" readonly />
+              </div>
+              <div class="col-md-4">
+                <label class="form-label">Fecha de cobro</label>
+                <input type="date" class="form-control" formControlName="fecha_cobro" />
+              </div>
+            </ng-container>
+            <ng-template #noMensualidad>
             <div class="col-md-4">
               <label class="form-label">Monto</label>
               <input type="number" step="0.01" class="form-control" formControlName="monto_manual" />
@@ -154,12 +174,19 @@
                 <label class="form-check-label" for="chkRecuperacion">Prueba de recuperación</label>
               </div>
             </div>
+            </ng-template>
           </ng-template>
 
           
-          <!-- Monto parcial visible solo en tipo 'mensualidad' y cuando pago_parcial está activo -->
-          <div class="col-md-4" *ngIf="tipo === 'mensualidad' && form.get('pago_parcial')?.value">
-            <label class="form-label">Monto parcial</label>
+          <!-- Pago parcial: mensualidad o reincorporacion -->
+          <div class="col-md-8 d-flex align-items-center gap-4" *ngIf="tipo === 'reincorporacion'">
+            <div class="form-check">
+              <input class="form-check-input" type="checkbox" id="pagoParcial_reinc" formControlName="pago_parcial" />
+              <label class="form-check-label" for="pagoParcial_reinc">Pago parcial de Reincorporación</label>
+            </div>
+          </div>
+          <div class="col-md-4" *ngIf="(tipo === 'mensualidad' || tipo === 'reincorporacion') && form.get('pago_parcial')?.value">
+            <label class="form-label">{{ tipo === 'reincorporacion' ? 'Saldo a pagar' : 'Monto parcial' }}</label>
             <input type="number" step="0.01" class="form-control" formControlName="monto_parcial" />
             <div class="form-text">Máximo: {{ pu | number:'1.2-2' }}</div>
           </div>

@@ -139,7 +139,7 @@ services:
       - redis
     volumes:
       - ./src:/var/www/html
-    command: php artisan queue:work redis --queue=inscripciones --sleep=3 --max-time=3600 --tries=3
+    command: php artisan queue:work --queue=inscripciones --sleep=3 --max-time=3600 --tries=3
     networks:
       - angular_laravel_network
     restart: unless-stopped
