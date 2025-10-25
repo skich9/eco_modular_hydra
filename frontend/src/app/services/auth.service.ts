@@ -1,4 +1,5 @@
-import { Injectable } from '@angular/core';
+import { Injectable, Inject, PLATFORM_ID } from '@angular/core';
+import { isPlatformBrowser } from '@angular/common';
 import { HttpClient, HttpHeaders } from '@angular/common/http';
 import { BehaviorSubject, Observable, tap } from 'rxjs';
 import { AuthResponse, LoginRequest, Usuario } from '../models/usuario.model';
@@ -8,15 +9,23 @@ import { environment } from '../../environments/environment';
 	providedIn: 'root'
 })
 export class AuthService {
-	private apiUrl = environment.apiUrl;
+	private apiUrl: string;
 	private currentUserSubject = new BehaviorSubject<Usuario | null>(null);
 	public currentUser$ = this.currentUserSubject.asObservable();
 	private tokenKey = 'auth_token';
 	private userKey = 'current_user';
 
-	constructor(private http: HttpClient) {
+	constructor(private http: HttpClient, @Inject(PLATFORM_ID) private platformId: Object) {
 		// Cargar usuario del localStorage al iniciar
 		this.loadUserFromStorage();
+		if (isPlatformBrowser(this.platformId)) {
+			const protocol = typeof window !== 'undefined' && window.location ? (window.location.protocol || 'http:') : 'http:';
+			const host = typeof window !== 'undefined' && window.location ? (window.location.hostname || 'localhost') : 'localhost';
+			const port = environment.apiPort || '8069';
+			this.apiUrl = `${protocol}//${host}:${port}/api`;
+		} else {
+			this.apiUrl = environment.apiUrl;
+		}
 	}
 
 	private loadUserFromStorage() {

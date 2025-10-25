@@ -50,6 +50,7 @@ class CobroController extends Controller
 				'cod_ceta' => 'required|integer',
 				'cod_pensum' => 'required|string|max:50',
 				'tipo_inscripcion' => 'required|string|max:255',
+				'cod_inscrip' => 'nullable|integer',
 				'monto' => 'required|numeric|min:0',
 				'fecha_cobro' => 'required|date',
 				'cobro_completo' => 'nullable|boolean',
@@ -646,6 +647,7 @@ class CobroController extends Controller
 			'cod_ceta' => 'required|integer',
 			'cod_pensum' => 'required|string|max:50',
 			'tipo_inscripcion' => 'required|string|max:255',
+			'cod_inscrip' => 'nullable|integer',
 			'gestion' => 'nullable|string|max:255',
 			'codigo_sucursal' => 'nullable|integer|min:0',
 			'codigo_punto_venta' => 'nullable|integer|min:0',
@@ -1111,8 +1113,31 @@ class CobroController extends Controller
 						'tipo_documento' => $tipoDoc,
 						'medio_doc' => $medioDoc,
 						'gestion' => $request->gestion ?? null,
+						'cod_inscrip' => $primaryInscripcion ? (int)$primaryInscripcion->cod_inscrip : null,
 					]);
 					$created = Cobro::create($payload)->load(['usuario', 'cuota', 'formaCobro', 'cuentaBancaria', 'itemCobro']);
+
+					// Guardar detalle regular por ítem (precio unitario y turno)
+					try {
+						DB::table('cobros_detalle_regular')->updateOrInsert(
+							[
+								'nro_cobro' => (int)$nroCobro,
+							],
+							[
+								'cod_ceta' => (int)$request->cod_ceta,
+								'cod_pensum' => (string)$request->cod_pensum,
+								'tipo_inscripcion' => (string)$request->tipo_inscripcion,
+								'cod_inscrip' => $primaryInscripcion ? (int)$primaryInscripcion->cod_inscrip : 0,
+								'pu_mensualidad' => (float)($item['pu_mensualidad'] ?? 0),
+								'turno' => (string)($primaryInscripcion->turno ?? ''),
+								'updated_at' => now(),
+								'created_at' => DB::raw('COALESCE(created_at, NOW())'),
+							]
+						);
+					} catch (\Throwable $e) {
+						Log::warning('batchStore: detalle_regular insert failed', [ 'err' => $e->getMessage() ]);
+					}
+
 					// Acumular pagos del batch por plantilla de cuota para seguir aplicando a la misma cuota si aún queda saldo
 					if ($idCuota) {
 						$batchPaidByTpl[$idCuota] = ($batchPaidByTpl[$idCuota] ?? 0) + (float)$item['monto'];

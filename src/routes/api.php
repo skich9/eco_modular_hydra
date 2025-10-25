@@ -31,6 +31,7 @@ use App\Http\Controllers\Api\InscripcionesWebhookController;
 use App\Http\Controllers\Api\KardexNotasController;
 use App\Http\Controllers\Api\RezagadoController;
 use App\Http\Controllers\Api\SegundaInstanciaController;
+use App\Http\Controllers\Api\QrController;
 
 // Búsqueda de estudiantes
 Route::get('/estudiantes/search', [EstudianteController::class, 'search']);
@@ -308,3 +309,9 @@ Route::delete('rezagados/{cod_inscrip}/{num_rezagado}/{num_pago_rezagado}', [Rez
 Route::get('segunda-instancia', [SegundaInstanciaController::class, 'index']);
 Route::post('segunda-instancia', [SegundaInstanciaController::class, 'store']);
 Route::get('segunda-instancia/elegibilidad', [SegundaInstanciaController::class, 'elegibilidad']);
+
+// ===================== Pagos QR =====================
+Route::post('qr/initiate', [QrController::class, 'initiate']);
+Route::post('qr/callback', [QrController::class, 'callback']);
+Route::post('qr/disable', [QrController::class, 'disable']);
+Route::post('qr/status', [QrController::class, 'status']);

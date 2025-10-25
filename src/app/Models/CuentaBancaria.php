@@ -20,11 +20,13 @@ class CuentaBancaria extends Model
 		'tipo_cuenta',
 		'titular',
 		'habilitado_QR',
+		'I_R',
 		'estado',
 	];
 
 	protected $casts = [
 		'habilitado_QR' => 'boolean',
+		'I_R' => 'boolean',
 		'estado' => 'boolean',
 	];
 }

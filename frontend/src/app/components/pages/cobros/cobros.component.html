@@ -95,13 +95,20 @@
 								</div>
 								<div class="col-12">
 									<label class="form-label">Método de Pago</label>
-									<select class="form-select" formControlName="codigo_sin" [ngClass]="{'is-invalid': isFormaCobroInvalid}" (change)="onMetodoPagoChange($event)">
-										<option value="">-- Seleccione --</option>
-										<option *ngFor="let f of formasCobro" [value]="f.codigo_sin || f.id_forma_cobro" [attr.id_forma_cobro]="f.id_forma_cobro">{{ f.descripcion_sin || f.nombre }}</option>
-									</select>
-									<div class="invalid-feedback">Seleccione un método de pago.</div>
-								</div>
-							</div>
+							<select class="form-select" formControlName="codigo_sin" [ngClass]="{'is-invalid': isFormaCobroInvalid}" (change)="onMetodoPagoChange($event)">
+								<option value="">-- Seleccione --</option>
+								<option *ngFor="let f of formasCobro" [value]="f.codigo_sin || f.id_forma_cobro" [attr.id_forma_cobro]="f.id_forma_cobro">{{ f.descripcion_sin || f.nombre }}</option>
+							</select>
+							<div class="invalid-feedback">Seleccione un método de pago.</div>
+							<app-qr-panel
+								[cabecera]="batchForm.get('cabecera')"
+								[pagos]="pagos"
+								[totalCobro]="totalCobro"
+								[isSelected]="isQrMetodoSeleccionado()"
+								[cuentasBancarias]="cuentasBancarias">
+							</app-qr-panel>
+						</div>
+					</div>
 						</div>
 
 						<!-- Fin columnas -->

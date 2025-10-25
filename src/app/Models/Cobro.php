@@ -18,6 +18,7 @@ class Cobro extends Model
 		'cod_ceta',
 		'cod_pensum',
 		'tipo_inscripcion',
+		'cod_inscrip',
 		'id_cuota',
 		'gestion',
 		'nro_cobro',
@@ -42,6 +43,7 @@ class Cobro extends Model
 
 	protected $casts = [
 		'cod_ceta' => 'integer',
+		'cod_inscrip' => 'integer',
 		'nro_cobro' => 'integer',
 		'anio_cobro' => 'integer',
 		'monto' => 'decimal:2',

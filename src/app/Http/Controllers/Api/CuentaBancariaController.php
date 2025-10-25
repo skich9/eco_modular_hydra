@@ -20,7 +20,7 @@ class CuentaBancariaController extends Controller
                 $q->where('estado', true);
             }
             $cuentas = $q->orderBy('banco')
-                ->get(['id_cuentas_bancarias','banco','numero_cuenta','tipo_cuenta','habilitado_QR','estado']);
+                ->get(['id_cuentas_bancarias','banco','numero_cuenta','tipo_cuenta','habilitado_QR','I_R','estado']);
 
             return response()->json([
                 'success' => true,

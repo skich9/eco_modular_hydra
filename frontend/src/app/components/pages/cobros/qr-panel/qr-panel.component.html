@@ -1,0 +1,43 @@
+<ng-container *ngIf="isSelected">
+	<div class="d-flex align-items-center gap-2 mt-2">
+		<span class="me-2">Estado QR</span>
+		<span class="badge" [ngClass]="statusClass">{{ statusLabel }}</span>
+		<button type="button" class="btn btn-success btn-sm ms-3" (click)="generar()" [disabled]="loading || totalCobro <= 0">Generar QR</button>
+		<button type="button" class="btn btn-outline-secondary btn-sm" (click)="consultar()" [disabled]="loading || !alias">Consultar</button>
+	</div>
+
+	<div class="modal fade" id="qrPanelModal" tabindex="-1" aria-hidden="true">
+		<div class="modal-dialog">
+			<div class="modal-content">
+				<div class="modal-header">
+					<h5 class="modal-title">Pago QR</h5>
+					<button type="button" class="btn-close" data-bs-dismiss="modal" aria-label="Close"></button>
+				</div>
+				<div class="modal-body">
+					<div class="mb-2 d-flex align-items-center gap-2">
+						<span>Estado:</span>
+						<span class="badge" [ngClass]="statusClass">{{ statusLabel }}</span>
+					</div>
+					<div class="mb-2 d-flex justify-content-between">
+						<span>Monto:</span>
+						<strong>{{ amount | number:'1.2-2' }}</strong>
+					</div>
+					<div class="mb-3 d-flex justify-content-between">
+						<span>Expira:</span>
+						<strong>{{ expiresAt || '-' }}</strong>
+					</div>
+					<div class="text-center" *ngIf="imageBase64; else noqr">
+						<img [src]="'data:image/png;base64,' + imageBase64" alt="QR" class="img-fluid" style="max-width: 280px;" />
+					</div>
+					<ng-template #noqr>
+						<div class="text-muted small text-center">QR no generado</div>
+					</ng-template>
+				</div>
+				<div class="modal-footer">
+					<button type="button" class="btn btn-danger" (click)="anular()" [disabled]="loading || !alias">Anular QR</button>
+					<button type="button" class="btn btn-secondary" data-bs-dismiss="modal">Cerrar</button>
+				</div>
+			</div>
+		</div>
+	</div>
+</ng-container>

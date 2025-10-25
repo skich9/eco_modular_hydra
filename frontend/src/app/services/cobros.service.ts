@@ -1,4 +1,5 @@
-import { Injectable } from '@angular/core';
+import { Injectable, Inject, PLATFORM_ID } from '@angular/core';
+import { isPlatformBrowser } from '@angular/common';
 import { HttpClient, HttpParams } from '@angular/common/http';
 import { Observable } from 'rxjs';
 import { map } from 'rxjs/operators';
@@ -12,10 +13,20 @@ interface CobroResumenResponse {
 
 @Injectable({ providedIn: 'root' })
 export class CobrosService {
-	private baseUrl = `${environment.apiUrl}/cobros`;
-	private apiUrl = environment.apiUrl;
+	private apiUrl: string;
+	private baseUrl: string;
 
-	constructor(private http: HttpClient) {}
+	constructor(private http: HttpClient, @Inject(PLATFORM_ID) private platformId: Object) {
+		if (isPlatformBrowser(this.platformId)) {
+			const protocol = typeof window !== 'undefined' && window.location ? (window.location.protocol || 'http:') : 'http:';
+			const host = typeof window !== 'undefined' && window.location ? (window.location.hostname || 'localhost') : 'localhost';
+			const port = environment.apiPort || '8069';
+			this.apiUrl = `${protocol}//${host}:${port}/api`;
+		} else {
+			this.apiUrl = environment.apiUrl;
+		}
+		this.baseUrl = `${this.apiUrl}/cobros`;
+	}
 
 	// ===================== SGA Reincorporación =====================
 	getReincorporacionEstado(params: { cod_ceta: string | number; cod_pensum: string; gestion?: string }): Observable<any> {
@@ -124,6 +135,36 @@ export class CobrosService {
 	getFormasCobro(): Observable<any> {
 		return this.http.get<any>(`${this.apiUrl}/formas-cobro`).pipe(
 			map((res: any) => ({ success: !!res?.success, data: res?.data || [], message: res?.message }))
+		);
+	}
+
+	initiateQr(payload: {
+		cod_ceta: number | string;
+		cod_pensum: string;
+		tipo_inscripcion: string;
+		id_usuario: number | string;
+		id_cuentas_bancarias: number | string;
+		amount: number;
+		detalle: string;
+		moneda: 'BOB' | 'USD';
+		items?: any[];
+	}): Observable<any> {
+		return this.http.post<any>(`${this.apiUrl}/qr/initiate`, payload).pipe(
+			map((res: any) => ({ success: !!res?.success, data: res?.data || null, message: res?.message, meta: res?.meta }))
+		);
+	}
+
+	statusQr(alias: string): Observable<any> {
+		return this.http.post<any>(`${this.apiUrl}/qr/status`, { alias }).pipe(
+			map((res: any) => ({ success: !!res?.success, data: res?.data || null, message: res?.message }))
+		);
+	}
+
+	disableQr(alias: string, id_usuario?: number | string): Observable<any> {
+		const body: any = { alias };
+		if (id_usuario !== undefined) body.id_usuario = id_usuario;
+		return this.http.post<any>(`${this.apiUrl}/qr/disable`, body).pipe(
+			map((res: any) => ({ success: !!res?.success, data: res?.data || null, message: res?.message, meta: res?.meta }))
 		);
 	}
 

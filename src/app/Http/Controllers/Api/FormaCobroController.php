@@ -13,16 +13,22 @@ class FormaCobroController extends Controller
 	{
 		try {
 			// Unir con tabla SIN para obtener la descripcion oficial (descripcion_sin)
-			$formas = DB::table('formas_cobro as f')
-				->leftJoin('sin_forma_cobro as s', 's.id_forma_cobro', '=', 'f.id_forma_cobro')
+			$formas = DB::table('sin_forma_cobro as s')
+				->leftJoin('formas_cobro as f', 'f.id_forma_cobro', '=', 's.id_forma_cobro')
 				->select(
-					'f.id_forma_cobro',
-					'f.nombre',           // se mantiene para lógica existente (comparaciones "EFECTIVO", etc.)
-					'f.estado as activo',  // por compatibilidad si el modelo lo expone como 'estado'
+					's.id_forma_cobro',
+					'f.nombre',
+					's.activo as activo',
 					's.descripcion_sin',
 					's.codigo_sin'
 				)
-				->orderBy('f.nombre', 'asc')
+				->where(function($q){
+					$q->where('s.activo', 1)
+						->orWhere('s.activo', true)
+						->orWhere('s.activo', '1');
+				})
+				->whereNotNull('s.codigo_sin')
+				->orderBy('s.codigo_sin', 'asc')
 				->get();
 			return response()->json([
 				'success' => true,

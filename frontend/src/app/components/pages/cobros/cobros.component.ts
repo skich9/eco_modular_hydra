@@ -9,12 +9,13 @@ import { RecuperacionModalComponent } from './recuperacion-modal/recuperacion-mo
 import { ItemsModalComponent } from './items-modal/items-modal.component';
 import { KardexModalComponent } from './kardex-modal/kardex-modal.component';
 import { BusquedaEstudianteModalComponent } from './busqueda-estudiante-modal/busqueda-estudiante-modal.component';
+import { QrPanelComponent } from './qr-panel/qr-panel.component';
 import { environment } from '../../../../environments/environment';
 
 @Component({
   selector: 'app-cobros-page',
   standalone: true,
-  imports: [CommonModule, ReactiveFormsModule, FormsModule, MensualidadModalComponent, ItemsModalComponent, RezagadoModalComponent, RecuperacionModalComponent, BusquedaEstudianteModalComponent, KardexModalComponent],
+  imports: [CommonModule, ReactiveFormsModule, FormsModule, MensualidadModalComponent, ItemsModalComponent, RezagadoModalComponent, RecuperacionModalComponent, BusquedaEstudianteModalComponent, KardexModalComponent, QrPanelComponent],
   templateUrl: './cobros.component.html',
   styleUrls: ['./cobros.component.scss']
 })
@@ -1201,6 +1202,20 @@ export class CobrosComponent implements OnInit {
     // Recalcular opciones para el modal (filtradas por selección actual)
     this.computeModalFormasFromSelection();
   }
+
+  isQrMetodoSeleccionado(): boolean {
+    try {
+      const cab = this.batchForm.get('cabecera') as FormGroup;
+      const sel = (cab.get('codigo_sin')?.value ?? '').toString();
+      if (!sel) return false;
+      let match = (this.formasCobro || []).find((f: any) => `${f?.codigo_sin}` === sel);
+      if (!match) match = (this.formasCobro || []).find((f: any) => `${f?.id_forma_cobro}` === sel);
+      if (!match) return false;
+      const raw = (match?.descripcion_sin ?? match?.nombre ?? '').toString().trim().toUpperCase();
+      return raw.includes('QR');
+    } catch { return false; }
+  }
+
 
   openKardexModal(): void {
     const modalEl = document.getElementById('kardexModal');
