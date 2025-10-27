@@ -289,6 +289,52 @@ export class MensualidadModalComponent implements OnInit, OnChanges {
     return Array.from({ length: p }, (_, i) => i + 1);
   }
 
+  getCantidadLabel(n: number): string {
+    const start = this.getStartCuotaFromResumen();
+    const cuota = start + Math.max(0, Number(n || 0)) - 1;
+    const mes = this.getMesNombreByCuota(cuota);
+    return mes ? `${n} - ${mes}` : `${n}`;
+  }
+
+  private getStartCuotaFromResumen(): number {
+    try {
+      const list = this.getOrderedCuotasRestantes();
+      if (list && list.length > 0) {
+        const first = Number(list[0]?.numero || 0);
+        if (first > 0) return first;
+      }
+      const next = Number(this.resumen?.mensualidad_next?.next_cuota?.numero_cuota || 0);
+      return next > 0 ? next : 1;
+    } catch { return 1; }
+  }
+
+  private getMesNombreByCuota(numeroCuota: number): string | null {
+    try {
+      const map = (this.resumen?.mensualidad_meses || []) as Array<any>;
+      const hit = map.find(m => Number(m?.numero_cuota || 0) === Number(numeroCuota));
+      if (hit && hit.mes_nombre) return String(hit.mes_nombre);
+      const gestion = (this.resumen?.gestion || '').toString();
+      const months = this.getGestionMonths(gestion);
+      const idx = Number(numeroCuota) - 1;
+      if (idx >= 0 && idx < months.length) return this.monthName(months[idx]);
+      return null;
+    } catch { return null; }
+  }
+
+  private getGestionMonths(gestion: string): number[] {
+    try {
+      const sem = parseInt((gestion || '').split('/')[0] || '0', 10);
+      if (sem === 1) return [2,3,4,5,6];
+      if (sem === 2) return [7,8,9,10,11];
+      return [];
+    } catch { return []; }
+  }
+
+  private monthName(n: number): string {
+    const names = ['','Enero','Febrero','Marzo','Abril','Mayo','Junio','Julio','Agosto','Septiembre','Octubre','Noviembre','Diciembre'];
+    return names[n] || String(n);
+  }
+
   // Suma los montos restantes de las próximas k cuotas según resumen.asignacion_costos/asignaciones
   private sumNextKCuotasRestantes(k: number): number {
     if (!k) return 0;

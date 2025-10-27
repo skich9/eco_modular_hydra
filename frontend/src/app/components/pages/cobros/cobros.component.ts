@@ -1760,6 +1760,28 @@ export class CobrosComponent implements OnInit {
     return Math.max(backendNext, inFormMax + 1);
   }
 
+  private monthName(n: number): string {
+    const names = ['','Enero','Febrero','Marzo','Abril','Mayo','Junio','Julio','Agosto','Septiembre','Octubre','Noviembre','Diciembre'];
+    return names[n] || String(n);
+  }
+
+  private getMesNombreByCuotaFromResumen(cuota: number | null | undefined): string | null {
+    try {
+      const n = Number(cuota || 0);
+      if (!n) return null;
+      const map = (this.resumen?.mensualidad_meses || []) as Array<any>;
+      const hit = map.find(m => Number(m?.numero_cuota || 0) === n);
+      if (hit && hit.mes_nombre) return String(hit.mes_nombre);
+      // Fallback por gestión si el backend no trajo el mapeo
+      const gestion = (this.resumen?.gestion || '').toString();
+      const sem = parseInt((gestion || '').split('/')[0] || '0', 10);
+      const base = sem === 1 ? [2,3,4,5,6] : sem === 2 ? [7,8,9,10,11] : [];
+      const idx = n - 1;
+      if (idx >= 0 && idx < base.length) return this.monthName(base[idx]);
+      return null;
+    } catch { return null; }
+  }
+
   onAddPagosFromModal(payload: any): void {
     try { console.log('[Cobros] onAddPagosFromModal payload', payload); } catch {}
     const hoy = new Date().toISOString().slice(0, 10);
@@ -1802,10 +1824,12 @@ export class CobrosComponent implements OnInit {
         numeroCuota = fromPayload;
       }
       const esParcial = !!p.pago_parcial;
+      const mesLabel = this.getMesNombreByCuotaFromResumen(numeroCuota);
+      const mesSuffix = mesLabel ? ` (${mesLabel})` : '';
       const baseDetalle = isMensualidad
-        ? `Mensualidad - Cuota ${numeroCuota}`
+        ? `Mensualidad - Cuota ${numeroCuota}${mesSuffix}`
         : (isArrastre
-            ? `Mensualidad (Arrastre) - Cuota ${numeroCuota ?? ''}`.trim()
+            ? `Mensualidad (Arrastre) - Cuota ${numeroCuota ?? ''}${mesSuffix}`.trim()
             : (p.detalle || ''));
       const detalle = esParcial ? `${baseDetalle} (Parcial)` : baseDetalle;
       const pu = Number(p.pu_mensualidad ?? this.mensualidadPU ?? 0);

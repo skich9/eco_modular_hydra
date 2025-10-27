@@ -41,6 +41,36 @@ class CobroController extends Controller
 				'message' => 'Error al obtener cobros: ' . $e->getMessage()
 			], 500);
 		}
+
+	}
+
+	private function calcularMesesPorGestion($gestion)
+	{
+		$map = [];
+		try {
+			$sem = null;
+			if (is_string($gestion) && strpos($gestion, '/') !== false) {
+				$parts = explode('/', $gestion);
+				$sem = (int) trim($parts[0] ?? '');
+			}
+			if ($sem === 1) {
+				$meses = [2,3,4,5,6];
+			} elseif ($sem === 2) {
+				$meses = [7,8,9,10,11];
+			} else {
+				// Fallback: devolver vacío si no se reconoce formato
+				$meses = [];
+			}
+			$names = [
+				1=>'Enero',2=>'Febrero',3=>'Marzo',4=>'Abril',5=>'Mayo',6=>'Junio',
+				7=>'Julio',8=>'Agosto',9=>'Septiembre',10=>'Octubre',11=>'Noviembre',12=>'Diciembre'
+			];
+			foreach ($meses as $idx => $mesNum) {
+				$cuota = $idx + 1; // cuotas 1..5
+				$map[] = [ 'numero_cuota' => $cuota, 'mes_num' => $mesNum, 'mes_nombre' => $names[$mesNum] ?? (string)$mesNum ];
+			}
+		} catch (\Throwable $e) { /* noop */ }
+		return $map;
 	}
 
 	public function store(Request $request)
@@ -564,6 +594,8 @@ class CobroController extends Controller
 				// No bloquear el resumen si falla esta parte; solo agregar warning
 				$warnings[] = 'No se pudo leer documentos presentados: ' . $e->getMessage();
 			}
+			$mensualidadMeses = $this->calcularMesesPorGestion($gestionToUse);
+
 			return response()->json([
 				'success' => true,
 				'data' => [
@@ -625,6 +657,7 @@ class CobroController extends Controller
 						'pu_mensual' => $puMensual,
 						'pu_mensual_nominal' => $puMensualNominal,
 					],
+					'mensualidad_meses' => $mensualidadMeses,
 					'documentos_presentados' => $documentosPresentados,
 					'documento_identidad' => $documentoIdentidad,
 					'warnings' => $warnings,

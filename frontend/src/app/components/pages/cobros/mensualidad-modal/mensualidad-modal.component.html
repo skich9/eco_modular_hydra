@@ -136,7 +136,7 @@
             <div class="col-md-4">
               <label class="form-label">Cant. mensualidades a pagar</label>
               <select class="form-select" formControlName="cantidad">
-                <option *ngFor="let n of getCantidadOptions()" [ngValue]="n">{{ n }}</option>
+                <option *ngFor="let n of getCantidadOptions()" [ngValue]="n">{{ getCantidadLabel(n) }}</option>
               </select>
             </div>
             <div class="col-md-4">
