@@ -65,6 +65,10 @@ export class CobrosComponent implements OnInit {
   // Costo de Reincorporación (desde costo_semestral)
   reincorporacionCosto: number | null = null;
 
+  // Estado QR recibido desde el panel QR
+  private qrPanelStatus: 'pendiente' | 'procesando' | 'completado' | 'expirado' | 'cancelado' | null = null;
+  private qrPanelActive: boolean = false;
+
   // Ref del modal de items
   @ViewChild('itemsDlg') itemsDlg?: ItemsModalComponent;
   // Ref del modal de rezagado
@@ -147,6 +151,58 @@ export class CobrosComponent implements OnInit {
       costo_total: [{ value: 0, disabled: true }],
       observaciones: ['']
     });
+  }
+
+  // ===================== Reglas de bloqueo por QR =====================
+  onQrStatusChange(st: 'pendiente' | 'procesando' | 'completado' | 'expirado' | 'cancelado'): void {
+    this.qrPanelStatus = st;
+    this.qrPanelActive = true;
+    try { console.log('[Cobros] onQrStatusChange', { st, qrPanelActive: this.qrPanelActive }); } catch {}
+  }
+
+  private isFormaIdQR(id: any): boolean {
+    const s = (id ?? '').toString();
+    if (!s) return false;
+    const f = (this.formasCobro || []).find((x: any) => `${x?.id_forma_cobro}` === s || `${x?.codigo_sin}` === s);
+    if (!f) return false;
+    const raw = (f?.descripcion_sin ?? f?.nombre ?? '').toString().trim().toUpperCase();
+    const nombre = raw.normalize('NFD').replace(/\p{Diacritic}/gu, '');
+    const res = nombre.includes('QR');
+    try { console.log('[Cobros] isFormaIdQR', { id: s, label: raw, matchQR: res }); } catch {}
+    return res;
+  }
+
+  private hasQrInPagos(): boolean {
+    try {
+      // Regla 1: si el método seleccionado en cabecera es QR y ya hay filas en la tabla, bloquear
+      if (this.isQrMetodoSeleccionado() && this.pagos.length > 0) {
+        try { console.log('[Cobros] hasQrInPagos: cabecera es QR y hay', this.pagos.length, 'filas'); } catch {}
+        return true;
+      }
+      for (let i = 0; i < this.pagos.length; i++) {
+        const g = this.pagos.at(i) as FormGroup;
+        const idf = g.get('id_forma_cobro')?.value;
+        const isQR = this.isFormaIdQR(idf);
+        try { console.log('[Cobros] scan pago', { index: i, id_forma_cobro: idf, isQR }); } catch {}
+        if (isQR) return true;
+      }
+      return false;
+    } catch { return false; }
+  }
+
+  get qrSaveBlocked(): boolean {
+    // Bloquear si hay pagos con método QR y el estado no está 'completado'
+    // Regla A: si el panel QR está activo y hay filas -> bloquear hasta completado
+    if (this.qrPanelActive && this.pagos.length > 0) {
+      const blockedA = this.qrPanelStatus !== 'completado';
+      try { console.log('[Cobros] qrSaveBlocked (panelActive)', { qrPanelStatus: this.qrPanelStatus, blocked: blockedA, len: this.pagos.length }); } catch {}
+      return blockedA;
+    }
+    // Regla B: detección por filas con forma QR
+    if (!this.hasQrInPagos()) return false;
+    const blocked = this.qrPanelStatus !== 'completado';
+    try { console.log('[Cobros] qrSaveBlocked (byRows)', { qrPanelStatus: this.qrPanelStatus, blocked }); } catch {}
+    return blocked;
   }
 
   openReincorporacionModal(): void {
@@ -1235,6 +1291,7 @@ export class CobrosComponent implements OnInit {
     const target = this.normalizeLabel(name);
     // Preferir entradas "base" (sin guiones) por coincidencia de nombre con scoring
     const prioritized: Record<string, string[]> = {
+      'QR': ['QR', 'QR TRANSFERENCIA', 'QR TRANSFERENCIA BANCARIA', 'CODIGO QR'],
       'EFECTIVO': ['EFECTIVO'],
       'TARJETA': ['TARJETA'],
       'CHEQUE': ['CHEQUE'],
@@ -1304,6 +1361,7 @@ export class CobrosComponent implements OnInit {
       const parts = raw.split(/[\-–—]/).map((p: string) => p.trim()).filter(Boolean);
       const toToken = (s: string): string | null => {
         const n = this.normalizeLabel(s);
+        if (n.includes('QR')) return 'QR';
         if (n.includes('EFECTIVO')) return 'EFECTIVO';
         if (n.includes('TARJETA')) return 'TARJETA';
         if (n.includes('CHEQUE')) return 'CHEQUE';
@@ -1334,6 +1392,19 @@ export class CobrosComponent implements OnInit {
         if (f && !seenCodes.has(codeKey)) { out.push(f); seenCodes.add(codeKey); }
       }
       this.modalFormasCobro = out;
+      try { console.log('[Cobros] computeModalFormasFromSelection parts', { raw, parts, out: out.map(f => ({ id: f?.id_forma_cobro, label: (f?.descripcion_sin ?? f?.nombre ?? '') })) }); } catch {}
+      // Si la selección contiene 'QR', forzar que la forma base 'QR' quede primera en la lista
+      try {
+        const hasQR = this.normalizeLabel(raw).includes('QR');
+        if (hasQR) {
+          const idxQR = this.modalFormasCobro.findIndex(f => this.normalizeLabel((f?.descripcion_sin ?? f?.nombre ?? '')).includes('QR'));
+          if (idxQR > 0) {
+            const qrItem = this.modalFormasCobro[idxQR];
+            this.modalFormasCobro.splice(idxQR, 1);
+            this.modalFormasCobro = [qrItem, ...this.modalFormasCobro];
+          }
+        }
+      } catch {}
     } catch {
       this.modalFormasCobro = [];
     }
@@ -1690,6 +1761,7 @@ export class CobrosComponent implements OnInit {
   }
 
   onAddPagosFromModal(payload: any): void {
+    try { console.log('[Cobros] onAddPagosFromModal payload', payload); } catch {}
     const hoy = new Date().toISOString().slice(0, 10);
     const pagos = Array.isArray(payload) ? payload : (payload?.pagos || []);
     const headerPatch = Array.isArray(payload) ? null : (payload?.cabecera || null);
@@ -1792,6 +1864,15 @@ export class CobrosComponent implements OnInit {
     if (headerPatch && typeof headerPatch === 'object') {
       (this.batchForm.get('cabecera') as FormGroup).patchValue(headerPatch, { emitEvent: false });
     }
+    try {
+      const debug = (this.pagos.controls || []).map((ctrl, i) => ({
+        i,
+        id_forma_cobro: (ctrl as FormGroup).get('id_forma_cobro')?.value,
+        monto: (ctrl as FormGroup).get('monto')?.value,
+        detalle: (ctrl as FormGroup).get('detalle')?.value,
+      }));
+      console.log('[Cobros] pagos after add', debug);
+    } catch {}
     this.showAlert('Pago(s) añadidos al lote', 'success');
   }
 

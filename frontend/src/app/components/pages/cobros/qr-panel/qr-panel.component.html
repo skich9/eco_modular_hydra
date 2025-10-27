@@ -2,8 +2,8 @@
 	<div class="d-flex align-items-center gap-2 mt-2">
 		<span class="me-2">Estado QR</span>
 		<span class="badge" [ngClass]="statusClass">{{ statusLabel }}</span>
-		<button type="button" class="btn btn-success btn-sm ms-3" (click)="generar()" [disabled]="loading || totalCobro <= 0">Generar QR</button>
-		<button type="button" class="btn btn-outline-secondary btn-sm" (click)="consultar()" [disabled]="loading || !alias">Consultar</button>
+		<button type="button" class="btn btn-success btn-sm ms-3" (click)="onClickGenerar()" [disabled]="loading || totalCobro <= 0">Generar QR</button>
+		<button type="button" class="btn btn-outline-secondary btn-sm" (click)="onClickConsultar()" [disabled]="loading || !alias">Consultar</button>
 	</div>
 
 	<div class="modal fade" id="qrPanelModal" tabindex="-1" aria-hidden="true">
@@ -34,10 +34,40 @@
 					</ng-template>
 				</div>
 				<div class="modal-footer">
-					<button type="button" class="btn btn-danger" (click)="anular()" [disabled]="loading || !alias">Anular QR</button>
+					<button type="button" class="btn btn-danger" (click)="onClickAnular()" [disabled]="loading || !alias">Anular QR</button>
 					<button type="button" class="btn btn-secondary" data-bs-dismiss="modal">Cerrar</button>
 				</div>
 			</div>
+		</div>
+	</div>
+
+	<!-- Fallback ligero cuando no hay Bootstrap Modal disponible -->
+	<div *ngIf="localOpen" class="border rounded p-3 mt-3">
+		<div class="d-flex justify-content-between align-items-center mb-2">
+			<h5 class="m-0">Pago QR</h5>
+			<button type="button" class="btn btn-sm btn-outline-secondary" (click)="cerrar()">Cerrar</button>
+		</div>
+		<div class="mb-2 d-flex align-items-center gap-2">
+			<span>Estado:</span>
+			<span class="badge" [ngClass]="statusClass">{{ statusLabel }}</span>
+		</div>
+		<div class="mb-2 d-flex justify-content-between">
+			<span>Monto:</span>
+			<strong>{{ amount | number:'1.2-2' }}</strong>
+		</div>
+		<div class="mb-3 d-flex justify-content-between">
+			<span>Expira:</span>
+			<strong>{{ expiresAt || '-' }}</strong>
+		</div>
+		<div class="text-center" *ngIf="imageBase64; else noqr_local">
+			<img [src]="'data:image/png;base64,' + imageBase64" alt="QR" class="img-fluid" style="max-width: 280px;" />
+		</div>
+		<ng-template #noqr_local>
+			<div class="text-muted small text-center">QR no generado</div>
+		</ng-template>
+		<div class="d-flex justify-content-end gap-2 mt-3">
+			<button type="button" class="btn btn-danger btn-sm" (click)="anular()" [disabled]="loading || !alias">Anular QR</button>
+			<button type="button" class="btn btn-secondary btn-sm" (click)="cerrar()">Cerrar</button>
 		</div>
 	</div>
 </ng-container>

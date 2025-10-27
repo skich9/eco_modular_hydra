@@ -93,6 +93,8 @@ export class MensualidadModalComponent implements OnInit, OnChanges {
 
   // Indica si el método seleccionado corresponde a TRANSFERENCIA
   get isTransferencia(): boolean {
+    // Si es QR, no considerarlo transferencia para efectos de UI/validaciones
+    if (this.isQR) return false;
     const f = this.getSelectedForma();
     const code = this.getSelectedCodigoSin();
     if (code !== null) {
@@ -117,8 +119,9 @@ export class MensualidadModalComponent implements OnInit, OnChanges {
   // Controla visibilidad del bloque bancario (Cheque/Depósito/Transferencia/QR)
   get showBancarioBlock(): boolean {
     if (this.isOtro) return false;
+    if (this.isQR) return false; // QR no muestra bloque bancario
     // Para TARJETA ya existe un bloque específico arriba; evitar duplicar campos
-    return this.isCheque || this.isDeposito || this.isTransferencia || this.isQR;
+    return this.isCheque || this.isDeposito || this.isTransferencia;
   }
 
   ngOnInit(): void {
@@ -429,8 +432,8 @@ export class MensualidadModalComponent implements OnInit, OnChanges {
     const nroDepCtrl = this.form.get('nro_deposito');
     const bancoOrigenCtrl = this.form.get('banco_origen');
 
-    // id de cuenta bancaria requerido para tarjeta o cheque
-    if (enableTarjeta || enableCheque || enableDeposito || enableTransfer || enableQR) {
+    // id de cuenta bancaria requerido para cheque/deposito/transfer/tarjeta (no QR)
+    if (enableTarjeta || enableCheque || enableDeposito || enableTransfer) {
       idCuentaCtrl?.setValidators([Validators.required]);
     } else {
       idCuentaCtrl?.clearValidators();
@@ -445,8 +448,8 @@ export class MensualidadModalComponent implements OnInit, OnChanges {
       last4Ctrl?.clearValidators();
     }
 
-    // Validadores específicos de cheque/deposito/transfer/QR y también TARJETA
-    if (enableCheque || enableDeposito || enableTransfer || enableQR || enableTarjeta) {
+    // Validadores específicos de cheque/deposito/transfer y también TARJETA (EXCLUYE QR)
+    if (enableCheque || enableDeposito || enableTransfer || enableTarjeta) {
       fechaDepCtrl?.setValidators([Validators.required]);
       nroDepCtrl?.setValidators([Validators.required]);
     } else {
@@ -454,11 +457,33 @@ export class MensualidadModalComponent implements OnInit, OnChanges {
       nroDepCtrl?.clearValidators();
     }
 
-    // Banco origen requerido para transferencia y tarjeta
+    // Banco origen requerido para transferencia y tarjeta (EXCLUYE QR)
     if (enableTransfer || enableTarjeta) {
       bancoOrigenCtrl?.setValidators([Validators.required]);
     } else {
       bancoOrigenCtrl?.clearValidators();
+    }
+
+    // Comportamiento específico para QR: deshabilitar fecha/nro/banco y limpiar, autoseleccionar cuenta
+    if (enableQR) {
+      // Autoseleccionar cuenta si está vacía
+      if (!idCuentaCtrl?.value) {
+        const list = (this.cuentasBancarias || []) as any[];
+        const first = list.find((c: any) => c?.habilitado_QR === true) || list[0];
+        if (first) idCuentaCtrl?.setValue(first.id_cuentas_bancarias, { emitEvent: false });
+      }
+      // Deshabilitar y limpiar campos automáticos del QR
+      fechaDepCtrl?.setValue('', { emitEvent: false });
+      nroDepCtrl?.setValue('', { emitEvent: false });
+      bancoOrigenCtrl?.setValue('', { emitEvent: false });
+      fechaDepCtrl?.disable({ emitEvent: false });
+      nroDepCtrl?.disable({ emitEvent: false });
+      bancoOrigenCtrl?.disable({ emitEvent: false });
+    } else {
+      // Asegurar habilitados cuando no es QR
+      fechaDepCtrl?.enable({ emitEvent: false });
+      nroDepCtrl?.enable({ emitEvent: false });
+      bancoOrigenCtrl?.enable({ emitEvent: false });
     }
 
     idCuentaCtrl?.updateValueAndValidity({ emitEvent: false });

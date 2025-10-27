@@ -100,13 +100,6 @@
 								<option *ngFor="let f of formasCobro" [value]="f.codigo_sin || f.id_forma_cobro" [attr.id_forma_cobro]="f.id_forma_cobro">{{ f.descripcion_sin || f.nombre }}</option>
 							</select>
 							<div class="invalid-feedback">Seleccione un método de pago.</div>
-							<app-qr-panel
-								[cabecera]="batchForm.get('cabecera')"
-								[pagos]="pagos"
-								[totalCobro]="totalCobro"
-								[isSelected]="isQrMetodoSeleccionado()"
-								[cuentasBancarias]="cuentasBancarias">
-							</app-qr-panel>
 						</div>
 					</div>
 						</div>
@@ -117,6 +110,23 @@
 						<hr />
 
 
+				</div>
+			</div>
+
+			<!-- Card: Estado y generación QR (exclusivo) -->
+			<div class="card mb-3" *ngIf="isQrMetodoSeleccionado()">
+				<div class="card-header d-flex justify-content-between align-items-center">
+					<strong>Pago QR</strong>
+				</div>
+				<div class="card-body">
+					<app-qr-panel
+						[cabecera]="batchForm.get('cabecera')"
+						[pagos]="pagos"
+						[totalCobro]="totalCobro"
+						[isSelected]="true"
+						[cuentasBancarias]="cuentasBancarias"
+						(statusChange)="onQrStatusChange($event)">
+					</app-qr-panel>
 				</div>
 			</div>
 
@@ -231,11 +241,12 @@
 				</div>
 			</div>
 
-			<div class="d-flex justify-content-end mb-4">
-				<button class="btn btn-success" [disabled]="loading" type="submit">
+			<div class="d-flex justify-content-end mb-1">
+				<button class="btn btn-success" [disabled]="loading || qrSaveBlocked" type="submit">
 					<i class="bi bi-save me-1"></i> Guardar Lote
 				</button>
 			</div>
+			<div *ngIf="qrSaveBlocked" class="text-danger small text-end mb-4">Hay pagos con método QR. Debe completarse el pago QR antes de guardar el lote.</div>
 
 			</form>
 		</div>

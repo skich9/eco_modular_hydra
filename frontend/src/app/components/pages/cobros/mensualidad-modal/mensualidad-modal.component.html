@@ -99,8 +99,8 @@
             </div>
           </ng-container>
 
-          <!-- Datos de Cheque / Depósito / Transferencia / QR -->
-          <ng-container *ngIf="showBancarioBlock">
+          <!-- Datos de Cheque / Depósito / Transferencia (excluye QR) -->
+          <ng-container *ngIf="showBancarioBlock && !isQR">
             <div class="col-12">
               <div class="border rounded p-3 mb-2">
                 <div class="row g-3 align-items-end">
@@ -111,15 +111,15 @@
                       <option *ngFor="let c of cuentasBancarias" [value]="c.id_cuentas_bancarias">{{ c.banco }} - {{ c.numero_cuenta }}</option>
                     </select>
                   </div>
-                  <div class="col-md-4">
+                  <div class="col-md-4" *ngIf="!isQR">
                     <label class="form-label">Fecha depósito</label>
                     <input type="date" class="form-control" formControlName="fecha_deposito" />
                   </div>
-                  <div class="col-md-4">
+                  <div class="col-md-4" *ngIf="!isQR">
                     <label class="form-label">Num. depósito</label>
                     <input type="text" class="form-control" formControlName="nro_deposito" />
                   </div>
-                  <div class="col-md-4" *ngIf="isTransferencia">
+                  <div class="col-md-4" *ngIf="isTransferencia && !isQR">
                     <label class="form-label">Banco Origen</label>
                     <input type="text" class="form-control" formControlName="banco_origen" placeholder="Banco origen" />
                   </div>
