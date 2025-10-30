@@ -86,12 +86,23 @@
               </div>
             </div>
           </div>
-          <ng-container *ngIf="tipo === 'mensualidad'">
-            <div class="col-md-8 d-flex align-items-center gap-4">
+
+          <div class="col-md-4">
+            <label class="form-label">Comprobante</label>
+            <div class="d-flex align-items-center gap-3">
               <div class="form-check">
-                <input class="form-check-input" type="checkbox" id="chkTotalSem" formControlName="cobro_total_semestre" />
-                <label class="form-check-label" for="chkTotalSem">Cobro total del semestre</label>
+                <input class="form-check-input" type="radio" id="comp_recibo_mens" value="RECIBO" formControlName="comprobante" />
+                <label class="form-check-label" for="comp_recibo_mens">Recibo</label>
               </div>
+              <div class="form-check">
+                <input class="form-check-input" type="radio" id="comp_factura_mens" value="FACTURA" formControlName="comprobante" />
+                <label class="form-check-label" for="comp_factura_mens">Factura</label>
+              </div>
+            </div>
+          </div>
+          
+          <ng-container *ngIf="tipo === 'mensualidad'">
+            <div class="col-md-4 d-flex align-items-center gap-4">
               <div class="form-check">
                 <input class="form-check-input" type="checkbox" id="pagoParcial_top" formControlName="pago_parcial" />
                 <label class="form-check-label" for="pagoParcial_top">Pago Mensualidad Parcial</label>
@@ -193,13 +204,6 @@
           <div class="col-md-4">
             <label class="form-label">Costo total</label>
             <input class="form-control" formControlName="costo_total" readonly />
-          </div>
-          <div class="col-md-4">
-            <label class="form-label">Comprobante</label>
-            <select class="form-select" formControlName="comprobante">
-              <option value="RECIBO">Recibo</option>
-              <option value="FACTURA">Factura</option>
-            </select>
           </div>
           <div class="col-12">
             <label class="form-label">Observaciones</label>

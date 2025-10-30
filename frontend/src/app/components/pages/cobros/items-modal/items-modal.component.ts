@@ -126,7 +126,9 @@ export class ItemsModalComponent implements OnInit, OnChanges {
 
 	get showBancarioBlock(): boolean {
 		if (this.isOtro) return false;
-		return this.isTarjeta || this.isCheque || this.isDeposito || this.isTransferencia || this.isQR;
+		// QR no muestra bloque bancario en UI
+		if (this.isQR) return false;
+		return this.isTarjeta || this.isCheque || this.isDeposito || this.isTransferencia;
 	}
 
 	private getSelectedForma(): any | null {
@@ -151,7 +153,8 @@ export class ItemsModalComponent implements OnInit, OnChanges {
 		const nroDepCtrl = this.form.get('nro_deposito');
 		const bancoOrigenCtrl = this.form.get('banco_origen');
 
-		if (enableTarjeta || enableCheque || enableDeposito || enableTransfer || enableQR) {
+		// Validadores generales (excluye QR)
+		if (enableTarjeta || enableCheque || enableDeposito || enableTransfer) {
 			idCuentaCtrl?.setValidators([Validators.required]);
 			fechaDepCtrl?.setValidators([Validators.required]);
 			nroDepCtrl?.setValidators([Validators.required]);
@@ -172,6 +175,31 @@ export class ItemsModalComponent implements OnInit, OnChanges {
 			first4Ctrl?.clearValidators();
 			last4Ctrl?.clearValidators();
 			bancoOrigenCtrl?.clearValidators();
+		}
+
+		// Comportamiento específico para QR: deshabilitar y limpiar campos, autoseleccionar cuenta si está vacía
+		if (enableQR) {
+			if (!idCuentaCtrl?.value) {
+				try {
+					const list = (this.cuentasBancarias || []) as any[];
+					const first = list.find((c: any) => c?.habilitado_QR === true) || list[0];
+					if (first) idCuentaCtrl?.setValue(first.id_cuentas_bancarias, { emitEvent: false });
+				} catch {}
+			}
+			fechaDepCtrl?.setValue('', { emitEvent: false });
+			nroDepCtrl?.setValue('', { emitEvent: false });
+			bancoOrigenCtrl?.setValue('', { emitEvent: false });
+			fechaDepCtrl?.disable({ emitEvent: false });
+			nroDepCtrl?.disable({ emitEvent: false });
+			bancoOrigenCtrl?.disable({ emitEvent: false });
+			first4Ctrl?.disable({ emitEvent: false });
+			last4Ctrl?.disable({ emitEvent: false });
+		} else {
+			fechaDepCtrl?.enable({ emitEvent: false });
+			nroDepCtrl?.enable({ emitEvent: false });
+			bancoOrigenCtrl?.enable({ emitEvent: false });
+			first4Ctrl?.enable({ emitEvent: false });
+			last4Ctrl?.enable({ emitEvent: false });
 		}
 
 		idCuentaCtrl?.updateValueAndValidity({ emitEvent: false });
