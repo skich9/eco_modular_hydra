@@ -1,0 +1,10 @@
+ .qr-img {
+    display: block;
+    margin: 0 auto;
+    max-width: 280px;
+    height: auto;
+    transition: max-width .2s ease;
+  }
+  .qr-zoom {
+    max-width: min(520px, 100%);
+  }

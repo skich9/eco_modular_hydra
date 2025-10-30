@@ -147,6 +147,7 @@ export class CobrosService {
 		amount: number;
 		detalle: string;
 		moneda: 'BOB' | 'USD';
+		gestion?: string;
 		items?: any[];
 	}): Observable<any> {
 		return this.http.post<any>(`${this.apiUrl}/qr/initiate`, payload).pipe(
@@ -156,6 +157,18 @@ export class CobrosService {
 
 	statusQr(alias: string): Observable<any> {
 		return this.http.post<any>(`${this.apiUrl}/qr/status`, { alias }).pipe(
+			map((res: any) => ({ success: !!res?.success, data: res?.data || null, message: res?.message }))
+		);
+	}
+
+	syncQrByCodCeta(payload: { cod_ceta: number | string; id_usuario?: number | string }): Observable<any> {
+		return this.http.post<any>(`${this.apiUrl}/qr/sync-by-codceta`, payload).pipe(
+			map((res: any) => ({ success: !!res?.success, data: res?.data || null, message: res?.message }))
+		);
+	}
+
+	stateQrByCodCeta(payload: { cod_ceta: number | string }): Observable<any> {
+		return this.http.post<any>(`${this.apiUrl}/qr/state-by-codceta`, payload).pipe(
 			map((res: any) => ({ success: !!res?.success, data: res?.data || null, message: res?.message }))
 		);
 	}
@@ -186,6 +199,42 @@ export class CobrosService {
 	getParametrosCostosAll(): Observable<any> {
 		return this.http.get<any>(`${this.apiUrl}/parametros-costos`).pipe(
 			map((res: any) => ({ success: !!res?.success, data: res?.data || [], message: res?.message }))
+		);
+	}
+
+	getQrTransactions(params: { cod_ceta?: string | number; alias?: string; estado?: string; desde?: string; hasta?: string; limit?: number; page?: number } = {}): Observable<any> {
+		let httpParams = new HttpParams();
+		Object.entries(params).forEach(([k, v]) => { if (v !== undefined && v !== null && String(v) !== '') httpParams = httpParams.set(k, String(v)); });
+		return this.http.get<any>(`${this.apiUrl}/qr/transactions`, { params: httpParams }).pipe(
+			map((res: any) => ({ success: !!res?.success, data: res?.data || null, message: res?.message }))
+		);
+	}
+
+	getQrTransactionDetail(id: number | string): Observable<any> {
+		return this.http.get<any>(`${this.apiUrl}/qr/transactions/${id}`).pipe(
+			map((res: any) => ({ success: !!res?.success, data: res?.data || null, message: res?.message }))
+		);
+	}
+
+	getQrRespuestas(params: { id_qr_transaccion?: number | string; alias?: string } = {}): Observable<any> {
+		let httpParams = new HttpParams();
+		Object.entries(params).forEach(([k, v]) => { if (v !== undefined && v !== null && String(v) !== '') httpParams = httpParams.set(k, String(v)); });
+		return this.http.get<any>(`${this.apiUrl}/qr/respuestas`, { params: httpParams }).pipe(
+			map((res: any) => ({ success: !!res?.success, data: res?.data || [], message: res?.message }))
+		);
+	}
+
+	getQrConfig(cod_pensum?: string): Observable<any> {
+		let httpParams = new HttpParams();
+		if (cod_pensum) httpParams = httpParams.set('cod_pensum', cod_pensum);
+		return this.http.get<any>(`${this.apiUrl}/qr/config`, { params: httpParams }).pipe(
+			map((res: any) => ({ success: !!res?.success, data: res?.data || [], message: res?.message }))
+		);
+	}
+
+	upsertQrConfig(payload: { cod_pensum?: string; tiempo_expiracion_minutos?: number; monto_minimo?: number; permite_pago_parcial?: boolean; template_mensaje?: string; estado?: boolean; }): Observable<any> {
+		return this.http.post<any>(`${this.apiUrl}/qr/config`, payload).pipe(
+			map((res: any) => ({ success: !!res?.success, data: res?.data || null, message: res?.message }))
 		);
 	}
 

@@ -734,6 +734,48 @@ class CobroController extends Controller
 
 		try {
 			$results = [];
+			// Guardia temprana SOLO en contexto QR: evita doble registro si hay pago QR reciente por el mismo monto
+			try {
+				$itemsInput = $request->input('items');
+				if (!is_array($itemsInput) || count($itemsInput) === 0) { $itemsInput = $request->input('pagos', []); }
+				$hasQrMarker = false;
+				foreach ((array)$itemsInput as $it) {
+					$obs = isset($it['observaciones']) ? (string)$it['observaciones'] : '';
+					if (stripos($obs, '[QR') !== false) { $hasQrMarker = true; break; }
+				}
+				$isQrContext = (bool)$request->boolean('qr_context', false) || $hasQrMarker;
+				if ($isQrContext) {
+					$totalMonto = 0.0;
+					foreach ($itemsInput as $it) { $totalMonto += (float)($it['monto'] ?? 0); }
+					$codCetaGuard = (int) $request->input('cod_ceta');
+					if ($codCetaGuard > 0 && $totalMonto > 0) {
+						$recentTrx = DB::table('qr_transacciones')
+							->where('cod_ceta', $codCetaGuard)
+							->where('estado', 'completado')
+							->whereBetween('updated_at', [now()->subMinutes(10), now()->addMinutes(1)])
+							->orderByDesc('updated_at')
+							->first();
+						if ($recentTrx && abs(((float)$recentTrx->monto_total) - $totalMonto) < 0.001) {
+							$existsSimilar = DB::table('cobro')
+								->where('cod_ceta', $codCetaGuard)
+								->whereDate('fecha_cobro', date('Y-m-d'))
+								->whereBetween('created_at', [now()->subMinutes(10), now()->addMinutes(1)])
+								->whereRaw('ABS(monto - ?) < 0.001', [$totalMonto])
+								->exists();
+							if ($existsSimilar) {
+								return response()->json([
+									'success' => false,
+									'message' => 'Cobro ya registrado recientemente por pago QR',
+								], 409);
+							}
+							return response()->json([
+								'success' => false,
+								'message' => 'Pago QR reciente detectado por el mismo monto. Evite guardar manualmente.',
+							], 409);
+						}
+					}
+				}
+			} catch (\Throwable $e) { /* guardia best-effort */ }
 			$items = $request->input('items');
 			if (!is_array($items) || count($items) === 0) {
 				$items = $request->input('pagos', []); // compatibilidad
@@ -1255,6 +1297,41 @@ class CobroController extends Controller
 						'nro_factura' => $nroFactura,
 						'cobro' => $created,
 					];
+				}
+
+				// Al finalizar la creación de todos los ítems, sincronizar números de doc a qr_transacciones reciente
+				try {
+					$totalMonto = 0.0; foreach ($items as $it) { $totalMonto += (float)($it['monto'] ?? 0); }
+					$codCetaGuard = (int) $request->input('cod_ceta');
+					if ($codCetaGuard > 0 && $totalMonto > 0) {
+						$recentTrx = DB::table('qr_transacciones')
+							->where('cod_ceta', $codCetaGuard)
+							->where('estado', 'completado')
+							->whereBetween('updated_at', [now()->subMinutes(30), now()->addMinutes(1)])
+							->orderByDesc('updated_at')
+							->first();
+						if ($recentTrx && abs(((float)$recentTrx->monto_total) - $totalMonto) < 0.001) {
+							$docUpd = [];
+							$first = isset($results[0]) ? $results[0] : null;
+							if (is_array($first)) {
+								$tipoDoc = strtoupper((string)($first['tipo_documento'] ?? ''));
+								$nroRec = $first['nro_recibo'] ?? null;
+								$nroFac = $first['nro_factura'] ?? null;
+								$cob = $first['cobro'] ?? [];
+								$fechaCobro = is_array($cob) ? ((string)($cob['fecha_cobro'] ?? '')) : '';
+								$anioDoc = $fechaCobro ? (int)date('Y', strtotime($fechaCobro)) : (int)date('Y');
+								if ($tipoDoc === 'R' && is_numeric($nroRec)) { $docUpd['nro_recibo'] = (int)$nroRec; $docUpd['anio_recibo'] = $anioDoc; }
+								elseif ($tipoDoc === 'F' && is_numeric($nroFac)) { $docUpd['nro_factura'] = (int)$nroFac; $docUpd['anio'] = $anioDoc; }
+							}
+							if (!empty($docUpd)) {
+								$aff = DB::table('qr_transacciones')->where('id_qr_transaccion', (int)$recentTrx->id_qr_transaccion)
+									->update(array_merge(['updated_at' => now()], $docUpd));
+								Log::info('batchStore: synced docnums to qr_transacciones', [ 'trx' => (int)$recentTrx->id_qr_transaccion, 'upd' => $docUpd, 'affected' => $aff ]);
+							}
+						}
+					}
+				} catch (\Throwable $e) {
+					Log::warning('batchStore: sync docnums to qr_transacciones failed', [ 'error' => $e->getMessage() ]);
 				}
 			});
 

@@ -8,6 +8,7 @@ return [
 	'url_auth' => env('QR_URL_AUTH'),
 	'url_transfer' => env('QR_URL_TRANSFER'),
 	'environment' => env('QR_ENVIRONMENT', 'development'),
+	'force_dummy' => env('QR_FORCE_DUMMY', false),
 	'callback_base' => env('QR_CALLBACK_BASE', env('APP_URL')), 
 	'socket_url' => env('QR_SOCKET_URL'),
 	'accounts' => array_filter(array_map('trim', explode(',', env('QR_ACCOUNTS', '')))),

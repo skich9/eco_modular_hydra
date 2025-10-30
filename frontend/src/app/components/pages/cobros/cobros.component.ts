@@ -727,7 +727,7 @@ export class CobrosComponent implements OnInit {
         return {
           cant: Number(g.get('cantidad')?.value || 0),
           detalle: (g.get('detalle')?.value || '').toString(),
-          pu: Number(g.get('pu_mensualidad')?.value || 0),
+          pu: this.calcRowSubtotal(idx),
           descuento: Number(g.get('descuento')?.value || 0),
           subtotal: this.calcRowSubtotal(idx),
           obs: (g.get('observaciones')?.value || '').toString()
@@ -1838,6 +1838,15 @@ export class CobrosComponent implements OnInit {
       // Si es parcial y viene un monto explícito, usarlo respetando un tope máximo de PU
       const montoBase = esParcial ? Number(p.monto || 0) : (cant * pu);
       const monto = Math.max(0, montoBase - (isNaN(desc) ? 0 : Number(desc)));
+      // Inferir turno desde identidad/resumen
+      const turnoVal = (() => {
+        let t = ((this.identidadForm.get('turno') as any)?.value || this.resumen?.inscripcion?.turno || this.resumen?.estudiante?.turno || '').toString().trim().toUpperCase();
+        if (t === 'M') t = 'MANANA';
+        if (t === 'T') t = 'TARDE';
+        if (t === 'N') t = 'NOCHE';
+        return t.normalize('NFD').replace(/\p{Diacritic}/gu, '');
+      })();
+      const saldo = esParcial && pu ? Math.max(0, pu - monto) : 0;
       const obsStr = ((p.observaciones || '') + '').trim();
       // Mapear medio/doc para UI y envío
       const medioDoc: 'C' | 'M' | '' = (p.medio_doc === 'M' || p.computarizada === 'MANUAL') ? 'M' : (p.medio_doc === 'C' || p.computarizada === 'COMPUTARIZADA') ? 'C' : '' as any;
@@ -1858,7 +1867,7 @@ export class CobrosComponent implements OnInit {
         nro_recibo: [p.nro_recibo ?? null],
         tipo_documento: [tipoDoc],
         medio_doc: [medioDoc],
-        pu_mensualidad: [esParcial ? monto : pu],
+        pu_mensualidad: [pu],
         order: [p.order ?? 0],
         // Datos bancarios/tarjeta para nota_bancaria
         id_cuentas_bancarias: [p.id_cuentas_bancarias ?? null],
@@ -1872,7 +1881,11 @@ export class CobrosComponent implements OnInit {
         detalle: [detalle],
         m_marca: [false],
         d_marca: [false],
-        es_parcial: [esParcial]
+        es_parcial: [esParcial],
+        // campos adicionales para QR
+        numero_cuota: [numeroCuota ?? null],
+        turno: [turnoVal || null],
+        monto_saldo: [saldo || null]
       }));
 
       // Actualizar bloqueo: si es parcial, bloquear esa cuota; si no es parcial, liberar bloqueo
@@ -1972,11 +1985,23 @@ export class CobrosComponent implements OnInit {
       this.showAlert('Complete los datos y agregue al menos un pago', 'warning');
       return;
     }
+    const hasQrRows = (this.pagos.controls || []).some(ctrl => this.isFormaIdQR((ctrl as FormGroup).get('id_forma_cobro')?.value));
+    if (hasQrRows && this.qrPanelStatus !== 'completado') {
+      this.showAlert('Hay pagos QR pendientes. Espere a que el QR se complete.', 'warning');
+      return;
+    }
+    const baseCtrls = (hasQrRows && this.qrPanelStatus === 'completado')
+      ? (this.pagos.controls || []).filter(ctrl => !this.isFormaIdQR((ctrl as FormGroup).get('id_forma_cobro')?.value))
+      : (this.pagos.controls || []);
+    if (baseCtrls.length === 0) {
+      this.showAlert('El pago QR se registrará automáticamente. No hay items para guardar.', 'warning');
+      return;
+    }
     this.loading = true;
     const { cabecera } = this.batchForm.value as any;
     // Mapear pagos para enviar solo con 'monto' calculado y fallbacks de nro/fecha
     const hoy = new Date().toISOString().slice(0, 10);
-    const pagos = (this.pagos.controls || []).map((ctrl, idx) => {
+    const pagos = (baseCtrls || []).map((ctrl, idx) => {
       const raw = (ctrl as FormGroup).getRawValue() as any;
       const subtotal = this.calcRowSubtotal(idx);
       const fecha = raw.fecha_cobro || hoy;

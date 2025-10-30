@@ -3,6 +3,7 @@
 namespace App\Services\Qr;
 
 use Illuminate\Support\Facades\Http;
+use Illuminate\Support\Facades\Log;
 
 class QrGatewayService
 {
@@ -26,7 +27,9 @@ class QrGatewayService
         if (config('qr.http_proxy')) { $options['proxy'] = config('qr.http_proxy'); }
         if (!empty($options)) { $http = $http->withOptions($options); }
 
+        Log::info('QRGW authenticate request', ['url' => $url]);
         $resp = $http->post($url, $payload);
+        Log::info('QRGW authenticate response', ['status' => $resp->status(), 'ok' => $resp->ok()]);
         if (!$resp->ok()) { return ['ok' => false, 'token' => null]; }
         $data = $resp->json();
         $token = $data['objeto']['token'] ?? null;
@@ -52,7 +55,9 @@ class QrGatewayService
         if (config('qr.http_proxy')) { $options['proxy'] = config('qr.http_proxy'); }
         if (!empty($options)) { $http = $http->withOptions($options); }
 
+        Log::info('QRGW createPayment request', ['url' => $url]);
         $resp = $http->post($url, $data);
+        Log::info('QRGW createPayment response', ['status' => $resp->status(), 'ok' => $resp->ok()]);
         if (!$resp->ok()) { return ['ok' => false, 'status' => $resp->status(), 'body' => $resp->body()]; }
         $j = $resp->json();
         return ['ok' => true, 'data' => $j];
@@ -77,7 +82,9 @@ class QrGatewayService
         if (config('qr.http_proxy')) { $options['proxy'] = config('qr.http_proxy'); }
         if (!empty($options)) { $http = $http->withOptions($options); }
 
+        Log::info('QRGW disablePayment request', ['url' => $url, 'alias' => $alias]);
         $resp = $http->post($url, ['alias' => $alias]);
+        Log::info('QRGW disablePayment response', ['status' => $resp->status(), 'ok' => $resp->ok()]);
         if (!$resp->ok()) { return ['ok' => false, 'status' => $resp->status(), 'body' => $resp->body()]; }
         $j = $resp->json();
         $code = $j['codigo'] ?? null;
