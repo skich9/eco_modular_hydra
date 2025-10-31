@@ -80,10 +80,57 @@ export class QrPanelComponent implements OnDestroy {
 
 	private ensureCuentaBancaria(): void {
 		const cab = this.cabecera as FormGroup;
-		if (!cab?.get('id_cuentas_bancarias')?.value) {
-			const first = (this.cuentasBancarias || []).find((x: any) => x?.habilitado_QR === true) || (this.cuentasBancarias || [])[0];
-			if (first) cab.patchValue({ id_cuentas_bancarias: first.id_cuentas_bancarias }, { emitEvent: false });
+		const current = cab?.get('id_cuentas_bancarias')?.value;
+		// Detectar tipo de documento predominante en pagos (F o R)
+		const doc = this.getDocTipoFromPagos();
+		// Elegir cuenta preferida por tipo de doc
+		const pick = this.pickCuentaByDocTipo(doc) || (this.cuentasBancarias || []).find((x: any) => x?.habilitado_QR === true) || (this.cuentasBancarias || [])[0];
+		if (pick && `${current}` !== `${pick.id_cuentas_bancarias}`) {
+			cab.patchValue({ id_cuentas_bancarias: pick.id_cuentas_bancarias }, { emitEvent: false });
 		}
+	}
+
+	// Determina doc tipo a partir de los pagos del lote: si hay alguna F -> 'F'; en otro caso si hay R -> 'R'; fallback ''
+	private getDocTipoFromPagos(): 'F' | 'R' | '' {
+		try {
+			let hasF = false, hasR = false;
+			for (let i = 0; i < (this.pagos?.length || 0); i++) {
+				const g = this.pagos.at(i) as FormGroup;
+				const v = (g?.get('tipo_documento')?.value || '').toString().trim().toUpperCase();
+				if (v === 'F') hasF = true; else if (v === 'R') hasR = true;
+			}
+			if (hasF) return 'F';
+			if (hasR) return 'R';
+			return '';
+		} catch { return ''; }
+	}
+
+	// Selecciona cuenta por preferencia de doc tipo. Reglas:
+	// - Filtra cuentas habilitado_QR === true.
+	// - Si doc==='F': prioriza c.doc_tipo_preferido==='F' (case-insensitive) o c.I_R===1 o c.es_factura===true
+	// - Si doc==='R': prioriza c.doc_tipo_preferido==='R' o c.I_R===0 o c.es_recibo===true
+	// - Fallback: null
+	private pickCuentaByDocTipo(doc: 'F' | 'R' | ''): any | null {
+		try {
+			if (!doc) return null;
+			const list = (this.cuentasBancarias || []) as any[];
+			const enabled = list.filter(x => x && (x.habilitado_QR === true || x.habilitado_qr === true));
+			const norm = (s: any) => (s === undefined || s === null) ? '' : (String(s).trim().toUpperCase());
+			const prefer = enabled.filter(c => {
+				const tipoPref = norm(c.doc_tipo_preferido || c.qr_doc_tipo_preferido || c.pref_doc_tipo || '');
+				const ir = (c.I_R !== undefined ? Number(c.I_R) : (c.i_r !== undefined ? Number(c.i_r) : NaN));
+				const esFac = (c.es_factura === true);
+				const esRec = (c.es_recibo === true);
+				if (doc === 'F') {
+					return tipoPref === 'F' || esFac || ir === 1;
+				}
+				if (doc === 'R') {
+					return tipoPref === 'R' || esRec || ir === 0;
+				}
+				return false;
+			});
+			return prefer[0] || null;
+		} catch { return null; }
 	}
 
 	abrir(): void {

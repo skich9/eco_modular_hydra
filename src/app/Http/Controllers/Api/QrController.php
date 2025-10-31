@@ -14,6 +14,30 @@ use Illuminate\Support\Carbon;
 
 class QrController extends Controller
 {
+    private function applyAccountOverrides(int $idCuenta): void
+    {
+        if ($idCuenta <= 0) return;
+        try {
+            $cta = DB::table('cuentas_bancarias')->where('id_cuentas_bancarias', $idCuenta)->first();
+            if (!$cta) return;
+            $set = function(string $key, $val): void { if ($val !== null && $val !== '') { config([$key => $val]); } };
+            $set('qr.url_auth', $cta->qr_url_auth ?? null);
+            $set('qr.api_key', $cta->qr_api_key ?? null);
+            $set('qr.username', $cta->qr_username ?? null);
+            $set('qr.password', $cta->qr_password ?? null);
+            $set('qr.url_transfer', $cta->qr_url_transfer ?? null);
+            $set('qr.api_key_servicio', $cta->qr_api_key_servicio ?? null);
+            if (isset($cta->qr_http_verify_ssl)) { config(['qr.http_verify_ssl' => (bool)$cta->qr_http_verify_ssl]); }
+            if (isset($cta->qr_http_timeout) && is_numeric($cta->qr_http_timeout)) { config(['qr.http_timeout' => (int)$cta->qr_http_timeout]); }
+            if (isset($cta->qr_http_connect_timeout) && is_numeric($cta->qr_http_connect_timeout)) { config(['qr.http_connect_timeout' => (int)$cta->qr_http_connect_timeout]); }
+            Log::info('QR overrides applied (by account)', [
+                'id_cuentas_bancarias' => $idCuenta,
+                'has_overrides' => !!(($cta->qr_url_auth ?? null) || ($cta->qr_api_key ?? null) || ($cta->qr_url_transfer ?? null) || ($cta->qr_api_key_servicio ?? null))
+            ]);
+        } catch (\Throwable $e) {
+            Log::warning('applyAccountOverrides error', ['err' => $e->getMessage(), 'id_cuentas_bancarias' => $idCuenta]);
+        }
+    }
     public function initiate(Request $request, QrGatewayService $gateway)
     {
         $validated = $request->validate([
@@ -28,6 +52,42 @@ class QrController extends Controller
             'items' => 'nullable|array',
             'gestion' => 'nullable|string',
         ]);
+
+        // Overrides de configuración por cuenta bancaria (si aplica) y validación de habilitado_QR
+        try {
+            $cta = \Illuminate\Support\Facades\DB::table('cuentas_bancarias')
+                ->where('id_cuentas_bancarias', (int)$validated['id_cuentas_bancarias'])
+                ->first();
+            if (!$cta) {
+                return response()->json(['success' => false, 'message' => 'Cuenta bancaria no encontrada'], 422);
+            }
+            // Respetar habilitado_QR explícito para evitar confusiones en reportes
+            $habilitadoQr = false;
+            try { $habilitadoQr = !!($cta->habilitado_QR ?? false); } catch (\Throwable $e) { $habilitadoQr = false; }
+            if (!$habilitadoQr) {
+                return response()->json(['success' => false, 'message' => 'La cuenta seleccionada no está habilitada para QR'], 422);
+            }
+            // Aplicar overrides si existen (mantiene compatibilidad con config global)
+            $set = function(string $key, $val): void { if ($val !== null && $val !== '') { config([$key => $val]); } };
+            $set('qr.url_auth', $cta->qr_url_auth ?? null);
+            $set('qr.api_key', $cta->qr_api_key ?? null);
+            $set('qr.username', $cta->qr_username ?? null);
+            $set('qr.password', $cta->qr_password ?? null);
+            $set('qr.url_transfer', $cta->qr_url_transfer ?? null);
+            $set('qr.api_key_servicio', $cta->qr_api_key_servicio ?? null);
+            if (isset($cta->qr_http_verify_ssl)) { config(['qr.http_verify_ssl' => (bool)$cta->qr_http_verify_ssl]); }
+            if (isset($cta->qr_http_timeout) && is_numeric($cta->qr_http_timeout)) { config(['qr.http_timeout' => (int)$cta->qr_http_timeout]); }
+            if (isset($cta->qr_http_connect_timeout) && is_numeric($cta->qr_http_connect_timeout)) { config(['qr.http_connect_timeout' => (int)$cta->qr_http_connect_timeout]); }
+            \Illuminate\Support\Facades\Log::info('QR initiate: applied account overrides if present', [
+                'id_cuentas_bancarias' => (int)$validated['id_cuentas_bancarias'],
+                'has_overrides' => !!(($cta->qr_url_auth ?? null) || ($cta->qr_api_key ?? null) || ($cta->qr_url_transfer ?? null) || ($cta->qr_api_key_servicio ?? null)),
+                'habilitado_QR' => $habilitadoQr,
+                'doc_pref' => $cta->doc_tipo_preferido ?? null,
+                'I_R' => $cta->I_R ?? null,
+            ]);
+        } catch (\Throwable $e) {
+            \Illuminate\Support\Facades\Log::warning('QR initiate: error loading account overrides', ['err' => $e->getMessage()]);
+        }
 
         $alias = $validated['cod_ceta'] . date('HisdmY');
         $callback = rtrim((string)config('qr.callback_base'), '/') . '/api/qr/callback';
@@ -175,7 +235,7 @@ class QrController extends Controller
             'transfer_base' => rtrim((string)config('qr.url_transfer'), '/'),
             'payload' => $provReq,
         ]);
-        $resp = $gateway->createPayment($auth['token'], $provReq);
+        $resp = $gateway->createPayment($auth['token'], $provReq, (string)config('qr.api_key_servicio'));
         if (!$resp['ok']) {
             Log::warning('QR createPayment failed', $resp);
             return response()->json(['success' => false, 'message' => 'QR provider error', 'meta' => $resp], 502);
@@ -672,6 +732,8 @@ class QrController extends Controller
 
         $trx = DB::table('qr_transacciones')->where('alias', $alias)->first();
         if (!$trx) { return response()->json(['success' => false, 'message' => 'Transaction not found'], 404); }
+        // Aplicar overrides por cuenta de la transacción
+        try { $this->applyAccountOverrides((int)($trx->id_cuenta_bancaria ?? 0)); } catch (\Throwable $e) {}
 
         $auth = $gateway->authenticate();
         if (!$auth['ok']) { return response()->json(['success' => false, 'message' => 'QR auth failed'], 500); }
@@ -712,6 +774,8 @@ class QrController extends Controller
 
         $trx = DB::table('qr_transacciones')->where('alias', $alias)->first();
         if (!$trx) { return response()->json(['success' => false, 'message' => 'Transaction not found'], 404); }
+        // Aplicar overrides por cuenta de la transacción
+        try { $this->applyAccountOverrides((int)($trx->id_cuenta_bancaria ?? 0)); } catch (\Throwable $e) {}
 
         $auth = $gateway->authenticate();
         if (!$auth['ok']) { return response()->json(['success' => false, 'message' => 'QR auth failed'], 500); }
@@ -767,6 +831,8 @@ class QrController extends Controller
         if (in_array($estado, ['completado','cancelado','expirado'], true)) {
             return response()->json(['success' => true, 'data' => ['alias' => $alias, 'estado' => $estado]]);
         }
+        // Aplicar overrides por cuenta de la transacción
+        try { $this->applyAccountOverrides((int)($trx->id_cuenta_bancaria ?? 0)); } catch (\Throwable $e) {}
         $auth = $gateway->authenticate();
         if (!$auth['ok']) { return response()->json(['success' => true, 'data' => ['alias' => $alias, 'estado' => $estado]]); }
         $resp = $gateway->getStatus($auth['token'], $alias);
