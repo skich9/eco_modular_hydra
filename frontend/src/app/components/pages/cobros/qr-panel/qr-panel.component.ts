@@ -16,6 +16,7 @@ export class QrPanelComponent implements OnDestroy {
 	@Input() totalCobro: number = 0;
 	@Input() isSelected: boolean = false;
 	@Input() cuentasBancarias: any[] = [];
+	@Input() formasCobro: any[] = [];
 	@Input() identidad: any;
     @Output() statusChange = new EventEmitter<'pendiente' | 'procesando' | 'completado' | 'expirado' | 'cancelado'>();
 
@@ -34,7 +35,7 @@ export class QrPanelComponent implements OnDestroy {
 	constructor(private cobrosService: CobrosService) {}
 
 	// Handlers explícitos para trazar click desde template
-	onClickGenerar(): void {
+	async onClickGenerar(): Promise<void> {
 		console.log('[QR-Panel] boton Generar QR click');
 		// Si ya existe un alias pendiente en esta sesión, reusar y abrir modal sin generar otro
 		const isFinal = this.status === 'completado' || this.status === 'cancelado' || this.status === 'expirado';
@@ -43,6 +44,8 @@ export class QrPanelComponent implements OnDestroy {
 			this.abrir();
 			return;
 		}
+		// Asegurar catálogo de formas de cobro cargado (evita que no detecte filas QR por carrera)
+		await this.ensureFormasCobroLoaded();
 		// Intentar cargar desde sessionStorage por cod_ceta
 		const cod = this.getCodCeta();
 		if (this.loadSession(cod)) {
@@ -51,6 +54,78 @@ export class QrPanelComponent implements OnDestroy {
 			return;
 		}
 		this.generar();
+	}
+
+	private isIdQR(id: any): boolean {
+		try {
+			const s = (id ?? '').toString();
+			if (!s) return false;
+			const list = (this.formasCobro || []) as any[];
+			const match = list.find((f: any) => `${f?.id_forma_cobro}` === s || `${f?.codigo_sin}` === s);
+			const raw = (match?.descripcion_sin ?? match?.nombre ?? match?.name ?? match?.descripcion ?? match?.label ?? '').toString().trim().toUpperCase();
+			const nombre = raw.normalize('NFD').replace(/\p{Diacritic}/gu, '');
+			if (match && nombre.includes('QR')) return true;
+			// 1) Inferencia por catálogo: si existe alguna forma cuyo label empiece por 'QR ' y su segmento base coincide con el nombre actual
+			try {
+				const qrBases = (this.formasCobro || [])
+					.filter((f: any) => {
+						const r = (f?.descripcion_sin ?? f?.nombre ?? f?.name ?? f?.descripcion ?? f?.label ?? '').toString().trim().toUpperCase();
+						return r.includes('QR');
+					})
+					.map((f: any) => {
+						const r = (f?.descripcion_sin ?? f?.nombre ?? f?.name ?? f?.descripcion ?? f?.label ?? '').toString().trim().toUpperCase();
+						const n = r.normalize('NFD').replace(/\p{Diacritic}/gu, '');
+						const parts = n.split(/[\-–—]/).map((p: string) => p.trim()).filter((p: string) => !!p);
+						const first = (parts[0] || '').replace(/^QR\s*/,'').trim();
+						return first;
+					})
+					.filter((b: string) => !!b);
+				if (qrBases.some((b: string) => b.length > 0 && (nombre === b || nombre.includes(b) || b.includes(nombre)))) return true;
+			} catch {}
+			// 2) Fallback por selección en cabecera (cuando la cabecera actual sea un método QR combinado)
+			try {
+				const cab = (this.cabecera as FormGroup);
+				const cabSel = ((cab?.get('codigo_sin')?.value ?? cab?.get('id_forma_cobro')?.value) || '').toString();
+				if (!cabSel) return false;
+				let selMatch = list.find((f: any) => `${f?.codigo_sin}` === cabSel);
+				if (!selMatch) selMatch = list.find((f: any) => `${f?.id_forma_cobro}` === cabSel);
+				if (!selMatch) return false;
+				const selRaw = (selMatch?.descripcion_sin ?? selMatch?.nombre ?? selMatch?.name ?? selMatch?.descripcion ?? selMatch?.label ?? '').toString().trim();
+				const selNorm = selRaw.toUpperCase().normalize('NFD').replace(/\p{Diacritic}/gu, '');
+				if (!selNorm.includes('QR')) return false; // solo inferir si la selección de cabecera es un "QR ..."
+				// Si es combinado con guion, tomar la primera parte como segmento QR y quitar el token 'QR'
+				const parts = selNorm.split(/[\-–—]/).map((p: string) => p.trim()).filter((v: string) => !!v);
+				if (parts.length < 1) return false;
+				const first = parts[0].replace(/^QR\s*/,'').trim();
+				// Comparar el label de la forma actual con ese segmento (permite 'TRANSFERENCIA', 'TRANSFERENCIA BANCARIA', etc.)
+				if (match && (first.length > 0 && (nombre === first || nombre.includes(first) || first.includes(nombre)))) return true;
+				// Si no hubo match por id/codigo de la fila, intentar mapear 'first' a un ítem del catálogo y comparar por id
+				const base = list.find((f: any) => {
+					const r = (f?.descripcion_sin ?? f?.nombre ?? f?.name ?? f?.descripcion ?? f?.label ?? '').toString().trim().toUpperCase();
+					const n = r.normalize('NFD').replace(/\p{Diacritic}/gu, '');
+					return first.length > 0 && (n === first || n.includes(first) || first.includes(n));
+				});
+				if (base && (`${base?.id_forma_cobro}` === s || `${base?.codigo_sin}` === s)) return true;
+				return false;
+			} catch { return false; }
+		} catch { return false; }
+	}
+
+	private ensureFormasCobroLoaded(): Promise<void> {
+		try {
+			if (Array.isArray(this.formasCobro) && this.formasCobro.length > 0) return Promise.resolve();
+			return new Promise((resolve) => {
+				this.cobrosService.getFormasCobro().subscribe({
+					next: (res: any) => {
+						if (res?.success && Array.isArray(res.data)) {
+							this.formasCobro = (res.data || []).filter((r: any) => (!!(r?.codigo_sin || r?.id_forma_cobro)));
+						}
+						resolve();
+					},
+					error: () => resolve()
+				});
+			});
+		} catch { return Promise.resolve(); }
 	}
 
 	onClickConsultar(): void {
@@ -175,39 +250,51 @@ export class QrPanelComponent implements OnDestroy {
 		const detalle = 'COBRO QR';
 		const moneda = 'BOB';
 		const items: any[] = [];
-        let firstPu = 0;
-        for (let i = 0; i < this.pagos.length; i++) {
-            const g = this.pagos.at(i) as FormGroup;
-            const hoy = new Date().toISOString().slice(0,10);
-            const subtotal = Number(g.get('monto')?.value || 0) || 0;
-            const nro = Number(g.get('nro_cobro')?.value || 0) || (i + 1);
-            const det = (g.get('detalle')?.value || '').toString();
-            const pu = Number(g.get('pu_mensualidad')?.value || subtotal);
-            if (!firstPu && pu) firstPu = pu;
-            const obs = (g.get('observaciones')?.value || '').toString();
-            const tipoDoc = (g.get('tipo_documento')?.value || '').toString();
-            const medioDoc = (g.get('medio_doc')?.value || '').toString();
-            const numero_cuota = g.get('numero_cuota')?.value ?? null;
-            const turno = (g.get('turno')?.value || '').toString() || null;
+		let firstPu = 0;
+		let qrAmount = 0;
+		let orderIdx = 0;
+		for (let i = 0; i < this.pagos.length; i++) {
+			const g = this.pagos.at(i) as FormGroup;
+			const idf = g.get('id_forma_cobro')?.value;
+			if (!this.isIdQR(idf)) continue; // solo filas QR
+			const hoy = new Date().toISOString().slice(0,10);
+			const subtotal = Number(g.get('monto')?.value || 0) || 0;
+			qrAmount += subtotal;
+			const nro = Number(g.get('nro_cobro')?.value || 0) || (i + 1);
+			const det = (g.get('detalle')?.value || '').toString();
+			const pu = Number(g.get('pu_mensualidad')?.value || subtotal);
+			if (!firstPu && pu) firstPu = pu;
+			const obs = (g.get('observaciones')?.value || '').toString();
+			const tipoDoc = (g.get('tipo_documento')?.value || '').toString();
+			const medioDoc = (g.get('medio_doc')?.value || '').toString();
+			const numero_cuota = g.get('numero_cuota')?.value ?? null;
+			const turno = (g.get('turno')?.value || '').toString() || null;
 			const monto_saldo = g.get('monto_saldo')?.value ?? null;
 			items.push({
 				monto: subtotal,
 				fecha_cobro: hoy,
-				order: i + 1,
+				order: (++orderIdx),
 				observaciones: obs,
 				nro_cobro: nro,
 				pu_mensualidad: pu,
 				tipo_documento: tipoDoc,
 				medio_doc: medioDoc,
 				detalle: det,
-				id_forma_cobro: cab.get('id_forma_cobro')?.value,
+				id_forma_cobro: idf,
 				numero_cuota,
 				turno,
 				monto_saldo
 			});
 		}
-		        const amount = Number(this.totalCobro || 0);
-        this.unitPriceReal = firstPu || amount;
+		if (!items.length) {
+			console.warn('[QR-Panel] generar(): no hay filas con método QR en el detalle. Abortando.');
+			this.loading = false;
+			this.status = 'pendiente';
+			this.statusChange.emit(this.status);
+			return;
+		}
+		const amount = Number(qrAmount || 0);
+		this.unitPriceReal = firstPu || amount;
         // Abrir modal inmediatamente y marcar estado como procesando para dar feedback visual
         this.status = 'procesando';
         console.log('[QR-Panel] generar() start', { isSelected: this.isSelected, amount, cod_ceta, cod_pensum, id_usuario, id_cuentas_bancarias, pagosLen: this.pagos?.length ?? 0 });

@@ -164,10 +164,10 @@ export class CobrosComponent implements OnInit {
     const s = (id ?? '').toString();
     if (!s) return false;
     const f = (this.formasCobro || []).find((x: any) => `${x?.id_forma_cobro}` === s || `${x?.codigo_sin}` === s);
-    if (!f) return false;
-    const raw = (f?.descripcion_sin ?? f?.nombre ?? '').toString().trim().toUpperCase();
+    const raw = (f?.descripcion_sin ?? f?.descripcion ?? f?.nombre ?? '').toString().trim().toUpperCase();
     const nombre = raw.normalize('NFD').replace(/\p{Diacritic}/gu, '');
-    const res = nombre.includes('QR');
+    // Backend mapea QR a la forma "TRANSFERENCIA BANCARIA"; además, algunas instalaciones pueden nombrarla con "QR" explícito
+    const res = nombre.includes('QR') || nombre.includes('TRANSFERENCIA');
     try { console.log('[Cobros] isFormaIdQR', { id: s, label: raw, matchQR: res }); } catch {}
     return res;
   }
@@ -1990,9 +1990,9 @@ export class CobrosComponent implements OnInit {
       this.showAlert('Hay pagos QR pendientes. Espere a que el QR se complete.', 'warning');
       return;
     }
-    const baseCtrls = (hasQrRows && this.qrPanelStatus === 'completado')
-      ? (this.pagos.controls || []).filter(ctrl => !this.isFormaIdQR((ctrl as FormGroup).get('id_forma_cobro')?.value))
-      : (this.pagos.controls || []);
+    // Enviar todas las filas (incluida la QR) cuando el estado QR es 'completado';
+    // el backend ya no inserta desde callback
+    const baseCtrls = (this.pagos.controls || []);
     if (baseCtrls.length === 0) {
       this.showAlert('El pago QR se registrará automáticamente. No hay items para guardar.', 'warning');
       return;

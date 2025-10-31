@@ -734,7 +734,7 @@ class CobroController extends Controller
 
 		try {
 			$results = [];
-			// Guardia temprana SOLO en contexto QR: evita doble registro si hay pago QR reciente por el mismo monto
+			// Guardia anti-duplicados SOLO para intentos manuales con marcador QR (no bloquear callback QR)
 			try {
 				$itemsInput = $request->input('items');
 				if (!is_array($itemsInput) || count($itemsInput) === 0) { $itemsInput = $request->input('pagos', []); }
@@ -743,8 +743,9 @@ class CobroController extends Controller
 					$obs = isset($it['observaciones']) ? (string)$it['observaciones'] : '';
 					if (stripos($obs, '[QR') !== false) { $hasQrMarker = true; break; }
 				}
-				$isQrContext = (bool)$request->boolean('qr_context', false) || $hasQrMarker;
-				if ($isQrContext) {
+				$qrContext = (bool)$request->boolean('qr_context', false);
+				$manualWithQrMarker = (!$qrContext) && $hasQrMarker;
+				if ($manualWithQrMarker) {
 					$totalMonto = 0.0;
 					foreach ($itemsInput as $it) { $totalMonto += (float)($it['monto'] ?? 0); }
 					$codCetaGuard = (int) $request->input('cod_ceta');
@@ -855,12 +856,16 @@ class CobroController extends Controller
 						$formaNombre = iconv('UTF-8','ASCII//TRANSLIT',$formaNombre);
 						$formaCode = strtoupper(trim((string)($formaRowItem->id_forma_cobro ?? '')));
 					} catch (\Throwable $e) {}
+					try { Log::info('batchStore:forma', [ 'idx' => $idx, 'id_forma_cobro' => $formaIdItem, 'nombre' => $formaNombre ?? null, 'code' => $formaCode ?? null ]); } catch (\Throwable $e) {}
+
+					// Permitir inserción desde submit manual para QR/TRANSFERENCIA; el callback ya no inserta
 
 					$nroRecibo = $item['nro_recibo'] ?? null;
 					$nroFactura = $item['nro_factura'] ?? null;
 					$cliente = $request->input('cliente', []);
+					// Usar el código de tipo de documento (pequeño) y no el número del documento para evitar overflow y respetar semántica
+					$codTipoDocIdentidad = (int)($cliente['tipo_identidad'] ?? 1);
 					$numeroDoc = trim((string) ($cliente['numero'] ?? ''));
-					$codTipoDocIdentidad = $numeroDoc !== '' ? $numeroDoc : '0';
 
 					// Documentos
 					if ($tipoDoc === 'R') {
@@ -1051,22 +1056,26 @@ class CobroController extends Controller
 								->where('id_cuota_template', (int)$idCuota)
 								->first();
 						} else {
-							// Caso mensualidad sin ids: elegir la primera cuota con saldo pendiente considerando pagos de este batch
-							if (empty($item['id_item'])) {
-								$found = null;
-								foreach ($asignPrimarias as $asig) {
-									$tpl = (int)($asig->id_cuota_template ?? 0);
-									if (!$tpl) continue;
-									$alreadyPaid = (float)($asig->monto_pagado ?? 0) + (float)($batchPaidByTpl[$tpl] ?? 0);
-									$remaining = (float)($asig->monto ?? 0) - $alreadyPaid;
-									if ($remaining > 0) { $found = $asig; break; }
-								}
-								if ($found) { $asignRow = $found; }
+							$found = null;
+							foreach ($asignPrimarias as $asig) {
+								$tpl = (int)($asig->id_cuota_template ?? 0);
+								if (!$tpl) continue;
+								$alreadyPaid = (float)($asig->monto_pagado ?? 0) + (float)($batchPaidByTpl[$tpl] ?? 0);
+								$remaining = (float)($asig->monto ?? 0) - $alreadyPaid;
+								if ($remaining > 0) { $found = $asig; break; }
 							}
+							if ($found) { $asignRow = $found; }
 						}
 						if ($asignRow) {
 							$idAsign = $idAsign ?: (int) $asignRow->id_asignacion_costo;
 							$idCuota = $idCuota ?: ((int) ($asignRow->id_cuota_template ?? 0) ?: null);
+							try {
+								$tplSel = (int)($asignRow->id_cuota_template ?? 0);
+								$prev = (float)($asignRow->monto_pagado ?? 0);
+								$total = (float)($asignRow->monto ?? 0);
+								$rem = $total - ($prev + (float)($batchPaidByTpl[$tplSel] ?? 0));
+								Log::info('batchStore:target', [ 'idx' => $idx, 'id_asignacion_costo' => $idAsign, 'id_cuota_template' => $idCuota, 'prev_pagado' => $prev, 'total' => $total, 'remaining_before' => $rem ]);
+							} catch (\Throwable $e) {}
 						}
 					}
 					if ($isSecundario) { $idAsign = null; $idCuota = null; }
@@ -1223,10 +1232,12 @@ class CobroController extends Controller
 					// Acumular pagos del batch por plantilla de cuota para seguir aplicando a la misma cuota si aún queda saldo
 					if ($idCuota) {
 						$batchPaidByTpl[$idCuota] = ($batchPaidByTpl[$idCuota] ?? 0) + (float)$item['monto'];
+						try { Log::info('batchStore:paidByTpl', [ 'idx' => $idx, 'tpl' => $idCuota, 'batch_paid' => $batchPaidByTpl[$idCuota] ]); } catch (\Throwable $e) {}
 					}
 					// Actualizar estado de pago de la asignación
 					if (!$isSecundario && $idAsign) {
-						$toUpd = $asignRow ?: AsignacionCostos::find((int)$idAsign);
+						// Releer siempre desde DB para evitar usar un snapshot desactualizado cuando hay múltiples ítems a la misma cuota
+						$toUpd = AsignacionCostos::find((int)$idAsign);
 						if ($toUpd) {
 							$prevPagado = (float)($toUpd->monto_pagado ?? 0);
 							$newPagado = $prevPagado + (float)$item['monto'];
@@ -1238,8 +1249,13 @@ class CobroController extends Controller
 							} else {
 								$upd['estado_pago'] = 'PARCIAL';
 							}
-							AsignacionCostos::where('id_asignacion_costo', (int)$toUpd->id_asignacion_costo)->update($upd);
+							try { Log::info('batchStore:asign_update', [ 'idx' => $idx, 'id_asignacion_costo' => (int)$toUpd->id_asignacion_costo, 'add_monto' => (float)$item['monto'], 'prev_pagado' => $prevPagado, 'new_pagado' => $newPagado, 'total' => (float)($toUpd->monto ?? 0), 'estado_final' => $upd['estado_pago'] ]); } catch (\Throwable $e) {}
+							$aff = AsignacionCostos::where('id_asignacion_costo', (int)$toUpd->id_asignacion_costo)->update($upd);
+							try { Log::info('batchStore:asign_updated', [ 'idx' => $idx, 'id_asignacion_costo' => (int)$toUpd->id_asignacion_costo, 'affected' => $aff ]); } catch (\Throwable $e) {}
 						}
+					}
+					else {
+						try { Log::info('batchStore:asign_skip', [ 'idx' => $idx, 'reason' => 'missing_id_asign', 'is_secundario' => $isSecundario ]); } catch (\Throwable $e) {}
 					}
 					// Rezagados: si el item contiene el marcador, registrar en la tabla 'rezagados'
 					try {
