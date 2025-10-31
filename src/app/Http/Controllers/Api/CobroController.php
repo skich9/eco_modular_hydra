@@ -1019,18 +1019,25 @@ class CobroController extends Controller
 						}
 					}
 
-					// Inserción en notas SGA: después de resolver id_asign/id_cuota para formar el detalle correcto
-					// Derivar id_asignacion_costo / id_cuota cuando no vienen en el payload
-					// Nota: si es Rezagado o Prueba de Recuperación, NO asociar a cuotas ni afectar mensualidad/arrastre
-					$isRezagado = false; $isRecuperacion = false; $isSecundario = false;
+ 					// Inserción en notas SGA: después de resolver id_asign/id_cuota para formar el detalle correcto
+ 					// Derivar id_asignacion_costo / id_cuota cuando no vienen en el payload
+ 					// Nota: si es Rezagado o Prueba de Recuperación, NO asociar a cuotas ni afectar mensualidad/arrastre
+					$isRezagado = false; $isRecuperacion = false; $isReincorporacion = false; $isSecundario = false;
 					try {
 						$obsCheck = (string)($item['observaciones'] ?? '');
 						if ($obsCheck !== '') {
 							$isRezagado = (preg_match('/\[\s*REZAGADO\s*\]/i', $obsCheck) === 1);
 							// Detectar variantes con o sin acento: [Prueba de recuperación]
 							$isRecuperacion = (preg_match('/\[\s*PRUEBA\s+DE\s+RECUPERACI[OÓ]N\s*\]/i', $obsCheck) === 1);
+							// Reincorporación como servicio aparte
+							$isReincorporacion = (preg_match('/\[\s*REINCORPORACI[OÓ]N\s*\]/i', $obsCheck) === 1);
 						}
-						$isSecundario = ($isRezagado || $isRecuperacion);
+						// Fallback adicional por detalle explícito
+						if (!$isReincorporacion) {
+							$detRaw = strtoupper(trim((string)($item['detalle'] ?? '')));
+							if ($detRaw !== '' && strpos($detRaw, 'REINCORPOR') !== false) { $isReincorporacion = true; }
+						}
+						$isSecundario = ($isRezagado || $isRecuperacion || $isReincorporacion);
 					} catch (\Throwable $e) {}
 					$idAsign = $item['id_asignacion_costo'] ?? null;
 					$idCuota = $item['id_cuota'] ?? null;

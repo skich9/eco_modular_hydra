@@ -38,6 +38,21 @@ class QrController extends Controller
             Log::warning('applyAccountOverrides error', ['err' => $e->getMessage(), 'id_cuentas_bancarias' => $idCuenta]);
         }
     }
+
+    private function classifyTipoConcepto(array $it): string
+    {
+        try {
+            $src = strtoupper(trim((string)($it['detalle'] ?? $it['concepto'] ?? $it['observaciones'] ?? '')));
+            if ($src === '') return 'general';
+            if (strpos($src, 'MENSUALIDAD') !== false) return 'mensualidad';
+            if (strpos($src, 'REZAGADO') !== false) return 'rezagado';
+            if (strpos($src, 'RECUPERACION') !== false) return 'recuperacion';
+            if (strpos($src, 'REINCORPOR') !== false) return 'reincorporacion';
+            if (strpos($src, 'ARRASTRE') !== false) return 'arrastre';
+            if (strpos($src, 'MATERIAL') !== false || strpos($src, 'LIBRO') !== false || strpos($src, 'TEXTO') !== false) return 'material_extra';
+            return 'general';
+        } catch (\Throwable $e) { return 'general'; }
+    }
     public function initiate(Request $request, QrGatewayService $gateway)
     {
         $validated = $request->validate([
@@ -144,16 +159,19 @@ class QrController extends Controller
         foreach ($items as $idx => $it) {
             $monto = (float)($it['monto'] ?? 0);
             $pu = isset($it['pu_mensualidad']) ? (float)$it['pu_mensualidad'] : $monto;
-            $concepto = (string)($it['concepto'] ?? ($validated['detalle'] . ' #' . ($idx+1)));
+            $concepto = (string)($it['concepto'] ?? $it['detalle'] ?? ($validated['detalle'] . ' #' . ($idx+1)));
+            if (mb_strlen($concepto) > 255) { $concepto = mb_substr($concepto, 0, 255); }
             $nroCuota = $it['nro_cuota'] ?? $it['numero_cuota'] ?? null;
             $turno = $it['turno'] ?? null;
             $montoSaldo = $it['monto_saldo'] ?? null;
+            $obsVal = $it['observaciones'] ?? null;
+            if (is_string($obsVal) && mb_strlen($obsVal) > 2000) { $obsVal = mb_substr($obsVal, 0, 2000); }
             DB::table('qr_conceptos_detalle')->insert([
                 'id_qr_transaccion' => $idQr,
-                'tipo_concepto' => (string)($it['tipo_concepto'] ?? 'GENERAL'),
+                'tipo_concepto' => (string)($it['tipo_concepto'] ?? $this->classifyTipoConcepto((array)$it)),
                 'nro_cobro' => $it['nro_cobro'] ?? null,
                 'concepto' => $concepto,
-                'observaciones' => $it['observaciones'] ?? null,
+                'observaciones' => $obsVal,
                 'precio_unitario' => $pu,
                 'subtotal' => $monto,
                 'orden' => (int)($it['order'] ?? ($idx+1)),
@@ -581,7 +599,7 @@ class QrController extends Controller
                     try {
                         $rowPu = DB::table('qr_conceptos_detalle')
                             ->where('id_qr_transaccion', $trx->id_qr_transaccion)
-                            ->orderByDesc('precio_unitario')
+                            ->orderBy('orden')
                             ->value('precio_unitario');
                         if ($rowPu !== null) { $puMensualidad = (float)$rowPu; }
                     } catch (\Throwable $e) {}
