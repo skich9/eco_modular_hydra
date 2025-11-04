@@ -29,7 +29,7 @@
 							<div class="mb-2">
 								<label class="form-label">Código CETA</label>
 								<div class="input-group">
-									<input class="form-control" formControlName="cod_ceta" />
+									<input class="form-control" formControlName="cod_ceta" (keydown.enter)="$event.preventDefault(); buscarPorCodCetaCabecera()" />
 									<button type="button" class="btn btn-outline-secondary" (click)="buscarPorCodCetaCabecera()">
 										<i class="bi bi-search"></i>
 									</button>
