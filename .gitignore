@@ -2,4 +2,6 @@
 # MySQL data
 mysql_data/
 mysql/.env
-
+.log
+build_php.log
+sga_refs_socket/

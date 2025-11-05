@@ -23,6 +23,7 @@ use App\Services\FacturaService;
 use App\Services\Siat\OperationsService;
 use App\Services\Siat\CufGenerator;
 use App\Services\Siat\FacturaPayloadBuilder;
+use App\Services\Qr\QrSocketNotifier;
 
 class CobroController extends Controller
 {
@@ -1356,6 +1357,16 @@ class CobroController extends Controller
 				} catch (\Throwable $e) {
 					Log::warning('batchStore: sync docnums to qr_transacciones failed', [ 'error' => $e->getMessage() ]);
 				}
+
+				// Emitir evento de sockets para multi-sesión: si el batch contiene un ítem QR, notificar factura_generada
+				try {
+					$aliasQr = null;
+					foreach ($items as $it) {
+						$obs = (string)($it['observaciones'] ?? '');
+						if ($obs !== '' && preg_match('/\[\s*QR[^\]]*\]\s*alias:([^\s|]+)/i', $obs, $mm)) { $aliasQr = trim((string)$mm[1]); break; }
+					}
+					if ($aliasQr) { app(\App\Services\Qr\QrSocketNotifier::class)->notifyEvent('factura_generada', [ 'id_pago' => $aliasQr ]); }
+				} catch (\Throwable $e) { /* noop */ }
 			});
 
 			return response()->json([

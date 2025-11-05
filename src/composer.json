@@ -8,9 +8,11 @@
     "require": {
         "php": "^8.2",
         "doctrine/dbal": "^4.3",
+        "dompdf/dompdf": "^2.0",
         "laravel/framework": "^12.0",
         "laravel/tinker": "^2.10.1",
-        "dompdf/dompdf": "^2.0"
+        "textalk/websocket": "^1.5",
+        "workerman/workerman": "^4.1"
     },
     "require-dev": {
         "fakerphp/faker": "^1.23",

@@ -476,6 +476,10 @@ class QrController extends Controller
                     ]);
                 });
                 Log::info('QR callback deferred to manual submit', ['alias' => $alias, 'id_qr_transaccion' => $trx->id_qr_transaccion]);
+                // Notificar a sockets que el pago está en procesamiento de emisión (multi-sesión)
+                try {
+                    $notifier->notifyEvent('procesando_pago', [ 'id_pago' => $alias ]);
+                } catch (\Throwable $e) { }
             } catch (\Throwable $e) {
                 Log::warning('QR callback defer failed', ['alias' => $alias, 'err' => $e->getMessage()]);
             }

@@ -31,7 +31,10 @@ services:
     container_name: angular_laravel_php
     networks:
       - angular_laravel_network
-    
+    ports:
+      - "8068:8068"
+    environment:
+      - WS_ADDRESS=0.0.0.0:8069
   # Nginx
   angular_laravel_server:
     build:
