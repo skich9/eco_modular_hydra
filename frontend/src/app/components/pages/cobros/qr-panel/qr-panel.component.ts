@@ -2,6 +2,8 @@ import { Component, Input, Output, EventEmitter, OnDestroy } from '@angular/core
 import { CommonModule } from '@angular/common';
 import { FormArray, FormGroup } from '@angular/forms';
 import { CobrosService } from '../../../../services/cobros.service';
+import { WsService } from '../../../../services/ws.service';
+import { Subscription } from 'rxjs';
 
 @Component({
 	selector: 'app-qr-panel',
@@ -31,8 +33,10 @@ export class QrPanelComponent implements OnDestroy {
     private pollHandle: any = null;
     private readonly pollMs = 4000;
     unitPriceReal: number = 0;
+    private wsSub: Subscription | null = null;
+    private wsAlias: string | null = null;
 
-	constructor(private cobrosService: CobrosService) {}
+	constructor(private cobrosService: CobrosService, private ws: WsService) {}
 
 	// Handlers explícitos para trazar click desde template
 	async onClickGenerar(): Promise<void> {
@@ -326,6 +330,8 @@ export class QrPanelComponent implements OnDestroy {
 				this.status = 'pendiente';
 				this.statusChange.emit(this.status);
 				this.saveSession(cod_ceta);
+				if (this.alias) { this.tagAliasOnQrRows(this.alias); }
+				if (this.alias) { this.setupWs(this.alias); }
 				this.startPolling();
 			},
 			error: (err: any) => { this.loading = false; console.error('[QR-Panel] initiateQr error', err); }
@@ -364,6 +370,7 @@ export class QrPanelComponent implements OnDestroy {
                         this.expiresAt = '';
                         this.zoomed = false;
                         this.cerrar();
+                        try { this.ws.disconnect(); this.teardownWs(); } catch {}
                     },
                     error: (err: any) => {
                         this.loading = false;
@@ -456,7 +463,7 @@ export class QrPanelComponent implements OnDestroy {
         try { if (this.pollHandle) { clearInterval(this.pollHandle); this.pollHandle = null; } } catch {}
     }
 
-    ngOnDestroy(): void { this.stopPolling(); }
+    ngOnDestroy(): void { this.stopPolling(); try { this.ws.disconnect(); this.teardownWs(); } catch {} }
 
 	private getCodCeta(): string {
 		try { return ((this.cabecera as FormGroup)?.get('cod_ceta')?.value || '').toString(); } catch { return ''; }
@@ -484,6 +491,8 @@ export class QrPanelComponent implements OnDestroy {
 			this.expiresAt = (d?.expiresAt || '').toString();
 			this.status = 'pendiente';
 			this.statusChange.emit(this.status);
+			if (this.alias) { this.tagAliasOnQrRows(this.alias); }
+			if (this.alias) { this.setupWs(this.alias); }
 			return !!this.alias && !!this.imageBase64;
 		} catch { return false; }
 	}
@@ -492,6 +501,54 @@ export class QrPanelComponent implements OnDestroy {
 		if (!cod_ceta) return;
 		try { sessionStorage.removeItem(this.storageKey(cod_ceta)); } catch {}
 	}
+
+	private tagAliasOnQrRows(alias: string): void {
+		try {
+			if (!alias) return;
+			for (let i = 0; i < (this.pagos?.length || 0); i++) {
+				const g = this.pagos.at(i) as FormGroup;
+				const idf = g?.get('id_forma_cobro')?.value;
+				if (!this.isIdQR(idf)) continue;
+				const cur = (g?.get('observaciones')?.value ?? '').toString();
+				const marker = `alias:${alias}`;
+				if (cur.includes(marker)) continue;
+				const base = cur.trim();
+				const val = base ? `[QR] ${marker} | ${base}` : `[QR] ${marker}`;
+				(g.get('observaciones') as any)?.setValue(val, { emitEvent: false });
+			}
+		} catch {}
+	}
+
+	private setupWs(alias: string): void {
+        try {
+            if (!alias) return;
+            if (this.wsAlias === alias && this.wsSub) return;
+            this.teardownWs();
+            this.ws.connect(alias);
+            this.wsAlias = alias;
+            this.wsSub = this.ws.messages$.subscribe((msg: any) => {
+                try {
+                    const ev = (msg?.evento || '').toString();
+                    const id = (msg?.id_pago || msg?.alias || msg?.id || '').toString();
+                    if (id && this.alias && id !== this.alias) return; // ignorar eventos de otros alias
+                    if (ev === 'procesando_pago') {
+                        this.status = 'procesando';
+                        this.statusChange.emit(this.status);
+                    } else if (ev === 'factura_generada') {
+                        this.status = 'completado';
+                        this.statusChange.emit(this.status);
+                        try { this.cerrar(); } catch {}
+                    }
+                } catch {}
+            });
+        } catch {}
+    }
+
+    private teardownWs(): void {
+        try { if (this.wsSub) { this.wsSub.unsubscribe(); } } catch {}
+        this.wsSub = null;
+        this.wsAlias = null;
+    }
 
 	// ============== UI helpers para bloque de identidad y descarga ==============
 	get dataUrl(): string {
