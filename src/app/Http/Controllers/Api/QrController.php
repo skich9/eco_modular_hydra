@@ -237,7 +237,9 @@ class QrController extends Controller
                 'url_auth_set' => !empty(config('qr.url_auth')),
                 'api_key_set' => !empty(config('qr.api_key')),
             ]);
-            return response()->json(['success' => false, 'message' => 'QR auth failed'], 500);
+            // Marcar transacción como error para no dejarla en 'generado'
+            try { DB::table('qr_transacciones')->where('id_qr_transaccion', $idQr)->update(['estado' => 'error', 'updated_at' => now()]); } catch (\Throwable $e) {}
+            return response()->json(['success' => false, 'message' => 'No se pudo autenticar con el proveedor QR. Intente más tarde.'], 500);
         }
         $provReq = [
             'alias' => $alias,
@@ -256,13 +258,20 @@ class QrController extends Controller
         $resp = $gateway->createPayment($auth['token'], $provReq, (string)config('qr.api_key_servicio'));
         if (!$resp['ok']) {
             Log::warning('QR createPayment failed', $resp);
-            return response()->json(['success' => false, 'message' => 'QR provider error', 'meta' => $resp], 502);
+            // Marcar transacción como error
+            try { DB::table('qr_transacciones')->where('id_qr_transaccion', $idQr)->update(['estado' => 'error', 'updated_at' => now()]); } catch (\Throwable $e) {}
+            $errMsg = 'No se pudo generar el QR. Intente más tarde.';
+            if (!empty($resp['data']['mensaje'])) { $errMsg = (string)$resp['data']['mensaje']; }
+            return response()->json(['success' => false, 'message' => $errMsg, 'meta' => $resp], 502);
         }
         $data = $resp['data'] ?? [];
         $codigo = $data['codigo'] ?? null;
         if (!in_array($codigo, ['0000', 'OK'], true)) {
             Log::warning('QR provider returned non-success code', ['codigo' => $codigo, 'data' => $data]);
-            return response()->json(['success' => false, 'message' => 'QR provider non-success', 'meta' => $data], 502);
+            // Marcar transacción como error
+            try { DB::table('qr_transacciones')->where('id_qr_transaccion', $idQr)->update(['estado' => 'error', 'updated_at' => now()]); } catch (\Throwable $e) {}
+            $provMsg = (string)($data['mensaje'] ?? 'No se pudo generar el QR. Intente más tarde.');
+            return response()->json(['success' => false, 'message' => $provMsg, 'meta' => $data], 502);
         }
         $qrBase64 = $data['objeto']['imagenQr'] ?? null;
         if (is_string($qrBase64) && str_starts_with($qrBase64, 'data:image')) {

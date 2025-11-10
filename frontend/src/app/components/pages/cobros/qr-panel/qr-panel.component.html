@@ -16,6 +16,7 @@
 					<button type="button" class="btn-close" data-bs-dismiss="modal" aria-label="Close"></button>
 				</div>
 				<div class="modal-body">
+					<div *ngIf="errorMsg" class="alert alert-danger py-2 px-3 small" role="alert">{{ errorMsg }}</div>
 					<div class="mb-2 d-flex align-items-center gap-2">
 						<span>Estado:</span>
 						<span class="badge" [ngClass]="statusClass">{{ statusLabel }}</span>
@@ -66,6 +67,7 @@
 			<h5 class="m-0">Pago QR</h5>
 			<button type="button" class="btn btn-sm btn-outline-secondary" (click)="cerrar()">Cerrar</button>
 		</div>
+		<div *ngIf="errorMsg" class="alert alert-danger py-2 px-3 small" role="alert">{{ errorMsg }}</div>
 		<div class="mb-2 d-flex align-items-center gap-2">
 			<span>Estado:</span>
 			<span class="badge" [ngClass]="statusClass">{{ statusLabel }}</span>

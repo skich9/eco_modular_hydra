@@ -30,6 +30,7 @@ export class QrPanelComponent implements OnDestroy {
 	status: 'pendiente' | 'procesando' | 'completado' | 'expirado' | 'cancelado' = 'pendiente';
     localOpen = false;
     zoomed = false;
+    errorMsg: string = '';
     private pollHandle: any = null;
     private readonly pollMs = 4000;
     unitPriceReal: number = 0;
@@ -41,6 +42,7 @@ export class QrPanelComponent implements OnDestroy {
 	// Handlers explícitos para trazar click desde template
 	async onClickGenerar(): Promise<void> {
 		console.log('[QR-Panel] boton Generar QR click');
+		this.errorMsg = '';
 		// Si ya existe un alias pendiente en esta sesión, reusar y abrir modal sin generar otro
 		const isFinal = this.status === 'completado' || this.status === 'cancelado' || this.status === 'expirado';
 		if (this.alias && !isFinal) {
@@ -321,7 +323,19 @@ export class QrPanelComponent implements OnDestroy {
 			next: (res: any) => {
 				this.loading = false;
 				console.log('[QR-Panel] iniciar respuesta', res);
-				if (!res?.success) { console.warn('[QR-Panel] initiateQr no-success'); return; }
+				if (!res?.success) {
+					console.warn('[QR-Panel] initiateQr no-success');
+					this.status = 'pendiente';
+					this.statusChange.emit(this.status);
+					this.alias = '';
+					this.imageBase64 = '';
+					this.amount = 0;
+					this.expiresAt = '';
+					this.zoomed = false;
+					this.errorMsg = (res?.message || 'No se pudo generar el QR. Intente más tarde.').toString();
+					try { this.cerrar(); } catch {}
+					return;
+				}
 				const d = res.data || {};
 				this.alias = (d.alias || '').toString();
 				this.imageBase64 = (d.qr_image_base64 || '').toString();
@@ -334,7 +348,21 @@ export class QrPanelComponent implements OnDestroy {
 				if (this.alias) { this.setupWs(this.alias); }
 				this.startPolling();
 			},
-			error: (err: any) => { this.loading = false; console.error('[QR-Panel] initiateQr error', err); }
+			error: (err: any) => {
+				this.loading = false;
+				console.error('[QR-Panel] initiateQr error', err);
+				this.status = 'pendiente';
+				this.statusChange.emit(this.status);
+				this.alias = '';
+				this.imageBase64 = '';
+				this.amount = 0;
+				this.expiresAt = '';
+				this.zoomed = false;
+				const st = Number(err?.status || 0);
+				const msg = (err?.error?.message || err?.message || (st ? `Error ${st}` : '') || '').toString();
+				this.errorMsg = msg ? `No se pudo generar el QR. ${msg}. Intente más tarde.` : 'No se pudo generar el QR. Intente más tarde.';
+				try { this.cerrar(); } catch {}
+			}
 		});
 	}
 

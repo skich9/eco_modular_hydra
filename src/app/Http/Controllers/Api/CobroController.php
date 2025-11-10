@@ -770,10 +770,12 @@ class CobroController extends Controller
 									'message' => 'Cobro ya registrado recientemente por pago QR',
 								], 409);
 							}
-							return response()->json([
-								'success' => false,
-								'message' => 'Pago QR reciente detectado por el mismo monto. Evite guardar manualmente.',
-							], 409);
+							// Hay transacción QR completada reciente con el mismo monto pero aún no hay cobro: permitir continuar
+							\Log::info('batchStore: allowing manual save after QR completion (no existing cobro)', [
+								'cod_ceta' => $codCetaGuard,
+								'monto' => $totalMonto,
+								'id_qr_transaccion' => $recentTrx->id_qr_transaccion ?? null,
+							]);
 						}
 					}
 				}
