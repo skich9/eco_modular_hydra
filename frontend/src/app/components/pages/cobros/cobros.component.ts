@@ -169,11 +169,6 @@ export class CobrosComponent implements OnInit {
   onQrStatusChange(st: 'pendiente' | 'procesando' | 'completado' | 'expirado' | 'cancelado'): void {
     this.qrPanelStatus = st;
     this.qrPanelActive = true;
-    try {
-      const cod = (this.batchForm.get('cabecera.cod_ceta') as any)?.value || '';
-      const k = `qr_session:${cod}:waiting_saved`;
-      this.qrSavedWaiting = !!(cod && sessionStorage.getItem(k) === '1');
-    } catch {}
     try { console.log('[Cobros] onQrStatusChange', { st, qrPanelActive: this.qrPanelActive }); } catch {}
   }
 
@@ -185,15 +180,6 @@ export class CobrosComponent implements OnInit {
     } catch {}
     this.showAlert('Lote guardado en espera. Consulte con administración para la impresión de Recibo/Factura seleccionada cuando el pago QR sea confirmado.', 'success', 10000);
     try { window.scrollTo({ top: 0, behavior: 'smooth' }); } catch {}
-    // Limpiar estado de sesión y refrescar para permitir un nuevo cobro
-    try {
-      const cod = (this.batchForm.get('cabecera.cod_ceta') as any)?.value || '';
-      if (cod) {
-        try { sessionStorage.removeItem(`qr_session:${cod}:waiting_saved`); } catch {}
-        try { sessionStorage.removeItem(`qr_session:${cod}`); } catch {}
-      }
-    } catch {}
-    try { setTimeout(() => { try { window.location.reload(); } catch {} }, 1800); } catch {}
   }
 
   private isFormaIdQR(id: any): boolean {
@@ -865,6 +851,36 @@ export class CobrosComponent implements OnInit {
       instance.hide();
     }
     try { setTimeout(() => { window.location.reload(); }, 150); } catch {}
+  }
+
+  openQrSavedWaitingConfirmModal(): void {
+    try {
+      const modalEl = document.getElementById('qrSavedWaitingConfirmModal');
+      const bs = (window as any).bootstrap;
+      if (modalEl && bs?.Modal) {
+        const instance = bs.Modal.getInstance(modalEl) || new bs.Modal(modalEl, { backdrop: 'static', keyboard: false });
+        instance.show();
+      }
+    } catch {}
+  }
+
+  confirmQrSavedWaitingRefresh(): void {
+    try {
+      const modalEl = document.getElementById('qrSavedWaitingConfirmModal');
+      const bs = (window as any).bootstrap;
+      if (modalEl && bs?.Modal) {
+        const instance = bs.Modal.getInstance(modalEl) || new bs.Modal(modalEl);
+        instance.hide();
+      }
+    } catch {}
+    try {
+      const cod = (this.batchForm.get('cabecera.cod_ceta') as any)?.value || '';
+      if (cod) {
+        try { sessionStorage.removeItem(`qr_session:${cod}:waiting_saved`); } catch {}
+        try { sessionStorage.removeItem(`qr_session:${cod}`); } catch {}
+      }
+    } catch {}
+    try { window.location.reload(); } catch {}
   }
 
   private esFormaEfectivoById(val: any): boolean {
@@ -2028,18 +2044,13 @@ export class CobrosComponent implements OnInit {
     }
     const hasQrRows = (this.pagos.controls || []).some(ctrl => this.isFormaIdQR((ctrl as FormGroup).get('id_forma_cobro')?.value));
     if (hasQrRows && this.qrPanelStatus !== 'completado') {
-      if (this.qrSavedWaiting) {
+      const cod = (this.batchForm.get('cabecera.cod_ceta') as any)?.value || '';
+      const hasWaitingFlag = (() => { try { return !!(cod && sessionStorage.getItem(`qr_session:${cod}:waiting_saved`) === '1'); } catch { return false; } })();
+      if (this.qrSavedWaiting && hasWaitingFlag) {
         this.showAlert('Lote guardado en espera. Consulte con administración para la impresión de Recibo/Factura seleccionada cuando el pago QR sea confirmado.', 'success', 10000);
         try { window.scrollTo({ top: 0, behavior: 'smooth' }); } catch {}
-        // Si ya está guardado en espera, preparar la pantalla para un nuevo cobro
-        try {
-          const cod = (this.batchForm.get('cabecera.cod_ceta') as any)?.value || '';
-          if (cod) {
-            try { sessionStorage.removeItem(`qr_session:${cod}:waiting_saved`); } catch {}
-            try { sessionStorage.removeItem(`qr_session:${cod}`); } catch {}
-          }
-        } catch {}
-        try { setTimeout(() => { try { window.location.reload(); } catch {} }, 1800); } catch {}
+        // Mostrar confirmación para refrescar sólo si el usuario lo aprueba
+        this.openQrSavedWaitingConfirmModal();
       } else {
         this.showAlert('Hay pagos QR pendientes. Espere a que el QR se complete o use "Guardar en espera (QR)".', 'warning');
       }

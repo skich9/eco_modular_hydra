@@ -527,3 +527,21 @@
 
     <!-- Modal: Kardex económico -->
     <app-kardex-modal #kardexDlg [resumen]="resumen"></app-kardex-modal>
+
+    <div class="modal fade" id="qrSavedWaitingConfirmModal" tabindex="-1" aria-hidden="true">
+      <div class="modal-dialog">
+        <div class="modal-content">
+          <div class="modal-header">
+            <h5 class="modal-title">Confirmación</h5>
+            <button type="button" class="btn-close" data-bs-dismiss="modal" aria-label="Close"></button>
+          </div>
+          <div class="modal-body">
+            <p class="mb-0">El lote fue guardado en espera. Luego podrá reimprimir los Recibos o Facturas correspondientes. ¿Desea refrescar la página ahora?</p>
+          </div>
+          <div class="modal-footer">
+            <button type="button" class="btn btn-secondary" data-bs-dismiss="modal">Cancelar</button>
+            <button type="button" class="btn btn-primary" (click)="confirmQrSavedWaitingRefresh()">Confirmar</button>
+          </div>
+        </div>
+      </div>
+    </div>
