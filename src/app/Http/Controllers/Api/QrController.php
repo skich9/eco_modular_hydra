@@ -14,13 +14,13 @@ use Illuminate\Support\Carbon;
 
 class QrController extends Controller
 {
-    private function applyAccountOverrides(int $idCuenta): void
+    private function applyAccountOverrides($idCuenta)
     {
         if ($idCuenta <= 0) return;
         try {
             $cta = DB::table('cuentas_bancarias')->where('id_cuentas_bancarias', $idCuenta)->first();
             if (!$cta) return;
-            $set = function(string $key, $val): void { if ($val !== null && $val !== '') { config([$key => $val]); } };
+            $set = function($key, $val) { if ($val !== null && $val !== '') { config([$key => $val]); } };
             $set('qr.url_auth', $cta->qr_url_auth ?? null);
             $set('qr.api_key', $cta->qr_api_key ?? null);
             $set('qr.username', $cta->qr_username ?? null);
@@ -39,7 +39,91 @@ class QrController extends Controller
         }
     }
 
-    private function classifyTipoConcepto(array $it): string
+    public function saveLote(Request $request)
+    {
+        $validated = $request->validate([
+            'alias' => 'nullable|string|max:100',
+            'cod_ceta' => 'nullable|integer',
+            'id_usuario' => 'nullable|integer',
+            'id_cuentas_bancarias' => 'nullable',
+            'moneda' => 'nullable|string|max:10',
+            'gestion' => 'nullable|string|max:255',
+            'items' => 'required|array|min:1',
+            'items.*.monto' => 'required|numeric|min:0.01',
+            'items.*.detalle' => 'nullable|string',
+            'items.*.observaciones' => 'nullable|string',
+            'items.*.order' => 'nullable|integer',
+            'items.*.pu_mensualidad' => 'nullable|numeric|min:0',
+            'items.*.nro_cuota' => 'nullable|integer',
+            'items.*.turno' => 'nullable|string',
+            'items.*.monto_saldo' => 'nullable|integer',
+            'items.*.id_forma_cobro' => 'nullable',
+        ]);
+
+        $alias = (string)($validated['alias'] ?? '');
+        $trx = null;
+        if ($alias !== '') {
+            $trx = DB::table('qr_transacciones')->where('alias', $alias)->first();
+        } else if (!empty($validated['cod_ceta'])) {
+            $trx = DB::table('qr_transacciones')
+                ->where('cod_ceta', (int)$validated['cod_ceta'])
+                ->whereIn('estado', ['generado','procesando'])
+                ->orderByDesc('created_at')
+                ->first();
+        }
+        if (!$trx) {
+            return response()->json(['success' => false, 'message' => 'QR no encontrado para guardar lote'], 404);
+        }
+
+        try {
+            DB::transaction(function () use ($trx, $validated) {
+                // Reemplazar snapshot
+                DB::table('qr_conceptos_detalle')->where('id_qr_transaccion', $trx->id_qr_transaccion)->delete();
+                $total = 0.0;
+                $items = $validated['items'] ?? [];
+                foreach ($items as $idx => $it) {
+                    $monto = (float)($it['monto'] ?? 0);
+                    $pu = isset($it['pu_mensualidad']) ? (float)$it['pu_mensualidad'] : $monto;
+                    $concepto = (string)($it['detalle'] ?? 'COBRO QR');
+                    if (mb_strlen($concepto) > 255) { $concepto = mb_substr($concepto, 0, 255); }
+                    $obsVal = $it['observaciones'] ?? null;
+                    if (is_string($obsVal) && mb_strlen($obsVal) > 2000) { $obsVal = mb_substr($obsVal, 0, 2000); }
+                    DB::table('qr_conceptos_detalle')->insert([
+                        'id_qr_transaccion' => $trx->id_qr_transaccion,
+                        'tipo_concepto' => (string)($it['tipo_concepto'] ?? 'general'),
+                        'nro_cobro' => $it['nro_cobro'] ?? null,
+                        'concepto' => $concepto,
+                        'observaciones' => $obsVal,
+                        'precio_unitario' => $pu,
+                        'subtotal' => $monto,
+                        'orden' => (int)($it['order'] ?? ($idx+1)),
+                        'nro_cuota' => isset($it['nro_cuota']) ? (int)$it['nro_cuota'] : null,
+                        'turno' => $it['turno'] ?? null,
+                        'monto_saldo' => isset($it['monto_saldo']) ? (int)$it['monto_saldo'] : null,
+                        'created_at' => now(),
+                        'updated_at' => now(),
+                    ]);
+                    $total += $monto;
+                }
+                $update = [
+                    'monto_total' => $total,
+                    'updated_at' => now(),
+                    'saved_by_user' => 1,
+                ];
+                if (!empty($validated['moneda'])) { $update['moneda'] = (string)$validated['moneda']; }
+                if (!empty($validated['gestion'])) { $update['gestion'] = (string)$validated['gestion']; }
+                if (!empty($validated['id_usuario'])) { $update['id_usuario'] = (int)$validated['id_usuario']; }
+                if (!empty($validated['id_cuentas_bancarias'])) { $update['id_cuenta_bancaria'] = (string)$validated['id_cuentas_bancarias']; }
+                DB::table('qr_transacciones')->where('id_qr_transaccion', $trx->id_qr_transaccion)->update($update);
+            });
+        } catch (\Throwable $e) {
+            return response()->json(['success' => false, 'message' => 'Error al guardar lote: ' . $e->getMessage()], 500);
+        }
+
+        return response()->json(['success' => true, 'message' => 'Lote guardado en espera']);
+    }
+
+    private function classifyTipoConcepto($it)
     {
         try {
             $src = strtoupper(trim((string)($it['detalle'] ?? $it['concepto'] ?? $it['observaciones'] ?? '')));
@@ -244,6 +328,8 @@ class QrController extends Controller
         $provReq = [
             'alias' => $alias,
             'callback' => $callback,
+            'callbackUrl' => $callback,
+            'urlCallback' => $callback,
             'detalleGlosa' => $validated['detalle'],
             'monto' => (float)$validated['amount'],
             'moneda' => (string)$validated['moneda'],
@@ -346,8 +432,15 @@ class QrController extends Controller
         ]);
         $cbUser = (string)config('qr.callback_basic_user');
         $cbPass = (string)config('qr.callback_basic_pass');
-        $isProd = (string)config('qr.environment') === 'production';
-        if ($isProd) {
+        $envQr = (string)config('qr.environment', 'development');
+        $hasCreds = (trim($cbUser) !== '') && (trim($cbPass) !== '');
+        $isAppProd = app()->environment('production');
+        $ip = (string)$request->ip();
+        $isLocal = in_array($ip, ['127.0.0.1', '::1'], true)
+            || (preg_match('/^(10\.|192\.168\.|172\.(1[6-9]|2[0-9]|3[0-1])\.)/', $ip) === 1);
+        $requireBasic = $isAppProd && $hasCreds && !$isLocal;
+        try { Log::info('QR callback auth gate', ['env_qr' => $envQr, 'app_env_prod' => $isAppProd, 'require_basic' => $requireBasic, 'has_creds' => $hasCreds, 'ip' => $ip, 'is_local' => $isLocal]); } catch (\Throwable $e) {}
+        if ($requireBasic) {
             $auth = (string)$request->header('Authorization', '');
             if (!str_starts_with($auth, 'Basic ')) {
                 return response()->json(['codigo' => '9999', 'mensaje' => 'Unauthorized'], 401);
@@ -363,8 +456,21 @@ class QrController extends Controller
 
         $alias = trim((string)$request->input('alias'));
         if ($alias === '') {
+            try {
+                $aliasRoute = (string)($request->route('alias') ?? '');
+                if ($aliasRoute !== '') { $alias = trim($aliasRoute); }
+            } catch (\Throwable $e) { /* noop */ }
+        }
+        if ($alias === '') {
+            // 0) Intentar dentro de 'objeto.*' (algunos proveedores encapsulan datos)
+            try {
+                $aliasObj = (string)$request->input('objeto.alias', '');
+                if ($aliasObj !== '') { $alias = trim($aliasObj); }
+            } catch (\Throwable $e) { /* noop */ }
+        }
+        if ($alias === '') {
             // 1) Fallback por idQr (algunos callbacks del proveedor envían solo idQr)
-            $idQrCb = trim((string)$request->input('idQr', ''));
+            $idQrCb = trim((string)($request->input('idQr', $request->input('objeto.idQr', ''))));
             if ($idQrCb !== '') {
                 $byIdQr = DB::table('qr_transacciones')
                     ->where('codigo_qr', $idQrCb)
@@ -372,19 +478,40 @@ class QrController extends Controller
                     ->first();
                 if ($byIdQr) { $alias = (string)$byIdQr->alias; }
             }
-
+        }
+        if ($alias === '') {
+            // 1b) Fallback por idTransaccion -> qr_transacciones.nro_transaccion
+            $idTxCb = trim((string)($request->input('idTransaccion', $request->input('objeto.idTransaccion', ''))));
+            if ($idTxCb !== '' && is_numeric($idTxCb)) {
+                $byTx = DB::table('qr_transacciones')
+                    ->where('nro_transaccion', (int)$idTxCb)
+                    ->orderByDesc('created_at')
+                    ->first();
+                if ($byTx) { $alias = (string)$byTx->alias; }
+            }
+        }
+        if ($alias === '') {
+            // 1c) Fallback por numeroOrdenOriginante -> qr_transacciones.numeroordenoriginante
+            $idOrd = trim((string)($request->input('numeroOrdenOriginante', $request->input('objeto.numeroOrdenOriginante', ''))));
+            if ($idOrd !== '' && is_numeric($idOrd)) {
+                $byOrd = DB::table('qr_transacciones')
+                    ->where('numeroordenoriginante', (int)$idOrd)
+                    ->orderByDesc('created_at')
+                    ->first();
+                if ($byOrd) { $alias = (string)$byOrd->alias; }
+            }
+        }
+        if ($alias === '') {
             // 2) Fallback opcional por cod_ceta en entornos no productivos
-            if ($alias === '') {
-                $allowFallback = (bool)config('qr.allow_alias_fallback', app()->environment('local') || app()->environment('development'));
-                if ($allowFallback) {
-                    $codCetaFallback = $request->input('cod_ceta');
-                    if ($codCetaFallback) {
-                        $rowAlias = DB::table('qr_transacciones')
-                            ->where('cod_ceta', (int)$codCetaFallback)
-                            ->orderByDesc('created_at')
-                            ->first();
-                        if ($rowAlias) { $alias = (string)$rowAlias->alias; }
-                    }
+            $allowFallback = (bool)config('qr.allow_alias_fallback', app()->environment('local') || app()->environment('development'));
+            if ($allowFallback) {
+                $codCetaFallback = $request->input('cod_ceta');
+                if ($codCetaFallback) {
+                    $rowAlias = DB::table('qr_transacciones')
+                        ->where('cod_ceta', (int)$codCetaFallback)
+                        ->orderByDesc('created_at')
+                        ->first();
+                    if ($rowAlias) { $alias = (string)$rowAlias->alias; }
                 }
             }
 
@@ -402,6 +529,8 @@ class QrController extends Controller
         $statusExt = strtoupper((string)$request->input('estado', 'PAGADO'));
         $extId = (string)$request->input('idTransaccion', '');
         $extIdQr = (string)$request->input('idQr', '');
+        // Aplicar overrides por cuenta de la transacción (si existen)
+        try { $this->applyAccountOverrides((int)($trx->id_cuenta_bancaria ?? 0)); } catch (\Throwable $e) {}
         $formaCobro = (string)config('qr.forma_cobro_id', '');
         if ($formaCobro === '') {
             try {
@@ -415,6 +544,24 @@ class QrController extends Controller
                 }
             } catch (\Throwable $e) {}
         }
+        // Verificar existencia de forma de cobro configurada; si no existe, buscar alternativas (QR/TRANSFERENCIA/DEPOSITO/BANCO)
+        try {
+            $fcRow = DB::table('formas_cobro')->where('id_forma_cobro', $formaCobro)->first();
+            if (!$fcRow) {
+                $rowAlt = DB::table('formas_cobro')
+                    ->whereRaw("UPPER(REPLACE(REPLACE(nombre,'Á','A'),'É','E')) LIKE '%QR%'")
+                    ->orWhereRaw("UPPER(REPLACE(REPLACE(descripcion,'Á','A'),'É','E')) LIKE '%QR%'")
+                    ->orWhereRaw("UPPER(REPLACE(REPLACE(nombre,'Á','A'),'É','E')) LIKE '%TRANSFERENCIA%'")
+                    ->orWhereRaw("UPPER(REPLACE(REPLACE(descripcion,'Á','A'),'É','E')) LIKE '%TRANSFERENCIA%'")
+                    ->orWhereRaw("UPPER(REPLACE(REPLACE(nombre,'Á','A'),'É','E')) LIKE '%DEPOSITO%'")
+                    ->orWhereRaw("UPPER(REPLACE(REPLACE(descripcion,'Á','A'),'É','E')) LIKE '%DEPOSITO%'")
+                    ->orWhereRaw("UPPER(REPLACE(REPLACE(nombre,'Á','A'),'É','E')) LIKE '%BANCO%'")
+                    ->orWhereRaw("UPPER(REPLACE(REPLACE(descripcion,'Á','A'),'É','E')) LIKE '%BANCO%'")
+                    ->orderBy('id_forma_cobro')
+                    ->first();
+                if ($rowAlt && isset($rowAlt->id_forma_cobro)) { $formaCobro = (string)$rowAlt->id_forma_cobro; }
+            }
+        } catch (\Throwable $e) {}
         if ($formaCobro === '') { $formaCobro = 'B'; }
 
         $estadoAnterior = (string)$trx->estado;
@@ -462,6 +609,21 @@ class QrController extends Controller
                 'documento_cliente' => $request->input('documentoCliente') ? (int)$request->input('documentoCliente') : $trx->documento_cliente,
                 'updated_at' => now(),
             ]);
+        // Log de cambio de estado (faltante en callback)
+        if ($estadoAnterior !== $estadoNuevo) {
+            try {
+                DB::table('qr_estados_log')->insert([
+                    'id_qr_transaccion' => $trx->id_qr_transaccion,
+                    'estado_anterior' => $estadoAnterior,
+                    'estado_nuevo' => $estadoNuevo,
+                    'motivo_cambio' => 'callback_state_change',
+                    'usuario' => null,
+                    'fecha_cambio' => now(),
+                    'created_at' => now(),
+                    'updated_at' => now(),
+                ]);
+            } catch (\Throwable $e) { /* noop */ }
+        }
 
         // Contar COMPLETADO previo ANTES de insertar el log actual (para idempotencia)
         $prevCompletadoCount = DB::table('qr_estados_log')
@@ -471,26 +633,122 @@ class QrController extends Controller
 
         if ($estadoNuevo === 'completado') {
             try {
-                DB::transaction(function () use ($trx, $alias) {
-                    // Marcar como listo para registro manual (no insertar cobro aquí)
+                // Si ya fue procesado, no duplicar
+                $alreadyProcessed = (bool)($trx->processed ?? false);
+                if (!$alreadyProcessed) {
+                    // Construir payload para batchStore desde snapshot de qr_conceptos_detalle
+                    $itemsSnap = DB::table('qr_conceptos_detalle')
+                        ->where('id_qr_transaccion', $trx->id_qr_transaccion)
+                        ->orderBy('orden')
+                        ->get();
+                    $today = date('Y-m-d');
+                    $items = [];
+                    foreach ($itemsSnap as $row) {
+                        $obsMk = (string)($row->observaciones ?? '');
+                        if (stripos($obsMk, '[QR') === false) {
+                            $obsMk = ($obsMk !== '' ? ($obsMk . ' | ') : '') . '[QR] alias:' . $alias;
+                        }
+                        $items[] = [
+                            'monto' => (float)($row->subtotal ?? 0),
+                            'fecha_cobro' => $today,
+                            'order' => (int)($row->orden ?? 1),
+                            'observaciones' => $obsMk,
+                            'nro_cobro' => null,
+                            'pu_mensualidad' => (float)($row->precio_unitario ?? ($row->subtotal ?? 0)),
+                            'detalle' => (string)($row->concepto ?? ($trx->detalle_glosa ?? 'COBRO QR')),
+                            'id_forma_cobro' => (string)$formaCobro,
+                            'id_asignacion_costo' => null,
+                            'id_cuota' => null,
+                            'nro_cuota' => isset($row->nro_cuota) ? (int)$row->nro_cuota : null,
+                            'turno' => $row->turno ?? null,
+                            'monto_saldo' => isset($row->monto_saldo) ? (int)$row->monto_saldo : null,
+                        ];
+                    }
+                    // Si no hay snapshot (caso borde), crear un item por monto total
+                    if (count($items) === 0) {
+                        $items[] = [
+                            'monto' => (float)$trx->monto_total,
+                            'fecha_cobro' => $today,
+                            'order' => 1,
+                            'observaciones' => '[QR] alias:' . $alias,
+                            'nro_cobro' => null,
+                            'pu_mensualidad' => (float)$trx->monto_total,
+                            'detalle' => (string)($trx->detalle_glosa ?? 'COBRO QR'),
+                            'id_forma_cobro' => (string)$formaCobro,
+                        ];
+                    }
+
+                    $payload = [
+                        'cod_ceta' => (int)$trx->cod_ceta,
+                        'cod_pensum' => (string)$trx->cod_pensum,
+                        'tipo_inscripcion' => (string)$trx->tipo_inscripcion,
+                        'gestion' => (string)($trx->gestion ?? ''),
+                        'id_usuario' => (int)$trx->id_usuario,
+                        'id_cuentas_bancarias' => (string)$trx->id_cuenta_bancaria,
+                        'id_forma_cobro' => (string)$formaCobro,
+                        'emitir_online' => false,
+                        'qr_context' => true,
+                        'items' => $items,
+                        'cliente' => [
+                            'tipo_identidad' => 1,
+                            'numero' => (string)($trx->documento_cliente ?? ''),
+                            'razon_social' => (string)($trx->nombre_cliente ?? ''),
+                        ],
+                    ];
+                    // Ejecutar batchStore vía contenedor para inyección de dependencias
+                    try { Log::info('QR callback: invoking batchStore', ['alias' => $alias, 'items' => count($items), 'cod_ceta' => (int)$trx->cod_ceta, 'forma_cobro' => $formaCobro]); } catch (\Throwable $e) {}
+                    $fakeReq = new \Illuminate\Http\Request($payload);
+                    $ctrl = app(\App\Http\Controllers\Api\CobroController::class);
+                    $response = app()->call([$ctrl, 'batchStore'], ['request' => $fakeReq]);
+                    $respJson = method_exists($response, 'getContent') ? json_decode($response->getContent(), true) : null;
+                    $ok = is_array($respJson) ? (bool)($respJson['success'] ?? false) : false;
+                    try { Log::info('QR callback: batchStore result', ['ok' => $ok, 'resp' => is_array($respJson) ? array_intersect_key($respJson, ['success'=>true,'message'=>true]) : null]); } catch (\Throwable $e) {}
+
+                    DB::table('qr_transacciones')->where('id_qr_transaccion', $trx->id_qr_transaccion)->update([
+                        'processed' => $ok ? 1 : 0,
+                        'processed_at' => $ok ? now() : null,
+                        'saved_by_user' => (bool)($trx->saved_by_user ?? false),
+                        'process_error' => $ok ? null : (is_array($respJson) ? json_encode($respJson) : 'batchStore failed'),
+                        'updated_at' => now(),
+                    ]);
+                    $processedNow = $ok ? 1 : 0;
+
+                    // Log de estado de procesamiento
                     DB::table('qr_estados_log')->insert([
                         'id_qr_transaccion' => $trx->id_qr_transaccion,
                         'estado_anterior' => 'completado',
                         'estado_nuevo' => 'completado',
-                        'motivo_cambio' => 'callback_ready',
+                        'motivo_cambio' => $ok ? 'callback_processed' : 'callback_process_failed',
                         'usuario' => null,
                         'fecha_cambio' => now(),
                         'created_at' => now(),
                         'updated_at' => now(),
                     ]);
-                });
-                Log::info('QR callback deferred to manual submit', ['alias' => $alias, 'id_qr_transaccion' => $trx->id_qr_transaccion]);
-                // Notificar a sockets que el pago está en procesamiento de emisión (multi-sesión)
-                try {
-                    $notifier->notifyEvent('procesando_pago', [ 'id_pago' => $alias ]);
-                } catch (\Throwable $e) { }
+
+                    // Notificar a sockets que el pago está en procesamiento/emisión
+                    try { $notifier->notifyEvent($ok ? 'factura_generada' : 'procesando_pago', [ 'id_pago' => $alias ]); } catch (\Throwable $e) {}
+                }
             } catch (\Throwable $e) {
-                Log::warning('QR callback defer failed', ['alias' => $alias, 'err' => $e->getMessage()]);
+                Log::warning('QR callback process failed', ['alias' => $alias, 'err' => $e->getMessage()]);
+                try {
+                    DB::table('qr_transacciones')->where('id_qr_transaccion', $trx->id_qr_transaccion)->update([
+                        'processed' => 0,
+                        'processed_at' => null,
+                        'process_error' => substr((string)$e->getMessage(), 0, 1000),
+                        'updated_at' => now(),
+                    ]);
+                    $processedNow = 0;
+                    DB::table('qr_estados_log')->insert([
+                        'id_qr_transaccion' => $trx->id_qr_transaccion,
+                        'estado_anterior' => 'completado',
+                        'estado_nuevo' => 'completado',
+                        'motivo_cambio' => 'callback_exception',
+                        'usuario' => null,
+                        'fecha_cambio' => now(),
+                        'created_at' => now(),
+                        'updated_at' => now(),
+                    ]);
+                } catch (\Throwable $e2) { /* noop */ }
             }
         }
 
@@ -501,7 +759,11 @@ class QrController extends Controller
             'amount' => $trx->monto_total,
         ]);
 
-        return response()->json(['codigo' => '0000', 'mensaje' => 'Registro exitoso']);
+        try {
+            $rowNow = DB::table('qr_transacciones')->select('processed')->where('alias', $alias)->first();
+            if (isset($rowNow->processed)) { $processedNow = (int)$rowNow->processed; }
+        } catch (\Throwable $e) {}
+        return response()->json(['codigo' => '0000', 'mensaje' => 'Registro exitoso', 'meta' => ['alias' => $alias, 'processed' => $processedNow ?? null]]);
     }
 
     public function disable(Request $request, QrGatewayService $gateway)

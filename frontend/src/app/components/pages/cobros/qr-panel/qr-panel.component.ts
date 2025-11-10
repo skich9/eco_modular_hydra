@@ -21,6 +21,7 @@ export class QrPanelComponent implements OnDestroy {
 	@Input() formasCobro: any[] = [];
 	@Input() identidad: any;
     @Output() statusChange = new EventEmitter<'pendiente' | 'procesando' | 'completado' | 'expirado' | 'cancelado'>();
+    @Output() savedWaiting = new EventEmitter<void>();
 
 	loading = false;
 	alias = '';
@@ -31,6 +32,7 @@ export class QrPanelComponent implements OnDestroy {
     localOpen = false;
     zoomed = false;
     errorMsg: string = '';
+    saveMsg: string = '';
     private pollHandle: any = null;
     private readonly pollMs = 4000;
     unitPriceReal: number = 0;
@@ -43,6 +45,7 @@ export class QrPanelComponent implements OnDestroy {
 	async onClickGenerar(): Promise<void> {
 		console.log('[QR-Panel] boton Generar QR click');
 		this.errorMsg = '';
+		this.saveMsg = '';
 		// Si ya existe un alias pendiente en esta sesión, reusar y abrir modal sin generar otro
 		const isFinal = this.status === 'completado' || this.status === 'cancelado' || this.status === 'expirado';
 		if (this.alias && !isFinal) {
@@ -60,6 +63,65 @@ export class QrPanelComponent implements OnDestroy {
 			return;
 		}
 		this.generar();
+	}
+
+	onClickGuardarEspera(): void {
+		try {
+			const cab = this.cabecera as FormGroup;
+			const cod_ceta = (cab.get('cod_ceta')?.value || '').toString();
+			let id_usuario = cab.get('id_usuario')?.value;
+			const id_cuentas_bancarias = cab.get('id_cuentas_bancarias')?.value;
+			const gestion = (cab.get('gestion')?.value || '').toString();
+			const moneda = 'BOB';
+			if (!id_usuario && typeof localStorage !== 'undefined') {
+				try { const raw = localStorage.getItem('current_user'); if (raw) { const u = JSON.parse(raw); if (u?.id_usuario) id_usuario = u.id_usuario; } } catch {}
+			}
+			const items: any[] = [];
+			let order = 0;
+			for (let i = 0; i < this.pagos.length; i++) {
+				const g = this.pagos.at(i) as FormGroup;
+				const subtotal = Number(g.get('monto')?.value || 0) || 0;
+				const det = (g.get('detalle')?.value || '').toString();
+				const obs = (g.get('observaciones')?.value || '').toString();
+				const pu = Number(g.get('pu_mensualidad')?.value || subtotal);
+				const idf = g.get('id_forma_cobro')?.value;
+				const nro_cuota = g.get('numero_cuota')?.value ?? g.get('nro_cuota')?.value ?? null;
+				const turno = (g.get('turno')?.value || '').toString() || null;
+				const monto_saldo = g.get('monto_saldo')?.value ?? null;
+				items.push({
+					monto: subtotal,
+					order: (++order),
+					detalle: det,
+					observaciones: obs,
+					pu_mensualidad: pu,
+					id_forma_cobro: idf,
+					nro_cuota,
+					turno,
+					monto_saldo
+				});
+			}
+			if (items.length === 0) { this.errorMsg = 'No hay items en el lote para guardar.'; return; }
+			this.loading = true;
+			this.errorMsg = '';
+			this.saveMsg = '';
+			this.cobrosService.saveQrLote({ alias: this.alias, cod_ceta, id_usuario, id_cuentas_bancarias, moneda, gestion, items }).subscribe({
+				next: (res: any) => {
+					this.loading = false;
+					if (!res?.success) { this.errorMsg = res?.message || 'No se pudo guardar el lote en espera.'; return; }
+					this.saveMsg = 'Lote guardado en espera. Se procesará al confirmar el pago QR.';
+					// Señal al padre para desbloquear "Guardar Lote" mientras el QR está pendiente
+					try {
+						this.savedWaiting.emit();
+						const cod = this.getCodCeta();
+						if (cod) { sessionStorage.setItem(this.storageKey(cod) + ':waiting_saved', '1'); }
+					} catch {}
+				},
+				error: (e: any) => {
+					this.loading = false;
+					this.errorMsg = (e?.error?.message || e?.message || 'No se pudo guardar el lote en espera.').toString();
+				}
+			});
+		} catch (e: any) { this.errorMsg = 'No se pudo guardar el lote en espera.'; this.loading = false; }
 	}
 
 	private isIdQR(id: any): boolean {

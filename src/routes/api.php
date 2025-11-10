@@ -149,6 +149,9 @@ Route::get('cobros/{cod_ceta}/{cod_pensum}/{tipo_inscripcion}/{nro_cobro}', [Cob
 Route::put('cobros/{cod_ceta}/{cod_pensum}/{tipo_inscripcion}/{nro_cobro}', [CobroController::class, 'update']);
 Route::delete('cobros/{cod_ceta}/{cod_pensum}/{tipo_inscripcion}/{nro_cobro}', [CobroController::class, 'destroy']);
 
+// QR: guardar lote en espera y actualizar snapshot
+Route::post('qr/save-lote', [QrController::class, 'saveLote']);
+
 // Recibos: PDF
 Route::get('recibos/{anio}/{nro_recibo}/pdf', [ReciboController::class, 'pdf'])
     ->where(['anio' => '\\d{4}', 'nro_recibo' => '\\d+']);
@@ -338,7 +341,8 @@ Route::get('segunda-instancia/elegibilidad', [SegundaInstanciaController::class,
 
 // ===================== Pagos QR =====================
 Route::post('qr/initiate', [QrController::class, 'initiate']);
-Route::post('qr/callback', [QrController::class, 'callback']);
+Route::match(['get','post','put'], 'qr/callback', [QrController::class, 'callback']);
+Route::match(['get','post','put'], 'qr/callback/{alias}', [QrController::class, 'callback']);
 Route::post('qr/disable', [QrController::class, 'disable']);
 Route::post('qr/status', [QrController::class, 'status']);
 Route::post('qr/sync-by-codceta', [QrController::class, 'syncByCodCeta']);

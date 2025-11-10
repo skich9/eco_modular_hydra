@@ -120,6 +120,7 @@
 				</div>
 				<div class="card-body">
 					<app-qr-panel
+						#qrPanel
 						[cabecera]="batchForm.get('cabecera')"
 						[pagos]="pagos"
 						[totalCobro]="totalCobro"
@@ -127,7 +128,8 @@
 						[cuentasBancarias]="cuentasBancarias"
 						[formasCobro]="formasCobro"
 						[identidad]="identidadForm"
-						(statusChange)="onQrStatusChange($event)">
+						(statusChange)="onQrStatusChange($event)"
+						(savedWaiting)="onQrSavedWaiting()">
 					</app-qr-panel>
 				</div>
 			</div>
@@ -243,12 +245,18 @@
 				</div>
 			</div>
 
-			<div class="d-flex justify-content-end mb-1">
+			<div class="d-flex justify-content-end gap-2 mb-1">
 				<button class="btn btn-success" [disabled]="loading || qrSaveBlocked" type="submit">
 					<i class="bi bi-save me-1"></i> Guardar Lote
 				</button>
+				<button *ngIf="qrSaveBlocked" type="button" class="btn btn-outline-primary" [disabled]="loading || pagos.length===0" (click)="guardarEnEspera()">
+					<i class="bi bi-cloud-arrow-down me-1"></i> Guardar en espera (QR)
+				</button>
 			</div>
-			<div *ngIf="qrSaveBlocked" class="text-danger small text-end mb-4">Hay pagos con método QR. Debe completarse el pago QR antes de guardar el lote.</div>
+			<div *ngIf="isSavedWaiting" class="alert alert-info py-2 mb-3">
+				Se guardó el lote en modo espera. Por favor, consulte con administración para la impresión del Recibo o Factura seleccionada cuando el pago QR sea confirmado.
+			</div>
+			<div *ngIf="qrSaveBlocked" class="text-danger small text-end mb-4">QR pendiente. Use "Guardar en espera (QR)" para conservar el lote. Se procesará al confirmar el pago QR.</div>
 
 			</form>
 		</div>

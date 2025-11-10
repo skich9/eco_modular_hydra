@@ -68,6 +68,7 @@ export class CobrosComponent implements OnInit {
   // Estado QR recibido desde el panel QR
   private qrPanelStatus: 'pendiente' | 'procesando' | 'completado' | 'expirado' | 'cancelado' | null = null;
   private qrPanelActive: boolean = false;
+  private qrSavedWaiting: boolean = false;
 
   // Ref del modal de items
   @ViewChild('itemsDlg') itemsDlg?: ItemsModalComponent;
@@ -76,6 +77,8 @@ export class CobrosComponent implements OnInit {
   // Ref del modal de recuperación
   @ViewChild(RecuperacionModalComponent) recuperacionDlg?: RecuperacionModalComponent;
   @ViewChild(BusquedaEstudianteModalComponent) buscarDlg?: BusquedaEstudianteModalComponent;
+  // Ref del panel QR para delegar acciones (guardar en espera)
+  @ViewChild('qrPanel') qrPanel?: QrPanelComponent;
 
   // Modal de éxito (registro realizado)
   successSummary: {
@@ -153,11 +156,44 @@ export class CobrosComponent implements OnInit {
     });
   }
 
+  // Guardar snapshot del lote mientras el QR está pendiente
+  guardarEnEspera(): void {
+    try {
+      if (this.loading) return;
+      // Delegar al panel QR para reusar su lógica y mensajes
+      this.qrPanel?.onClickGuardarEspera();
+    } catch {}
+  }
+
   // ===================== Reglas de bloqueo por QR =====================
   onQrStatusChange(st: 'pendiente' | 'procesando' | 'completado' | 'expirado' | 'cancelado'): void {
     this.qrPanelStatus = st;
     this.qrPanelActive = true;
+    try {
+      const cod = (this.batchForm.get('cabecera.cod_ceta') as any)?.value || '';
+      const k = `qr_session:${cod}:waiting_saved`;
+      this.qrSavedWaiting = !!(cod && sessionStorage.getItem(k) === '1');
+    } catch {}
     try { console.log('[Cobros] onQrStatusChange', { st, qrPanelActive: this.qrPanelActive }); } catch {}
+  }
+
+  onQrSavedWaiting(): void {
+    this.qrSavedWaiting = true;
+    try {
+      const cod = (this.batchForm.get('cabecera.cod_ceta') as any)?.value || '';
+      if (cod) sessionStorage.setItem(`qr_session:${cod}:waiting_saved`, '1');
+    } catch {}
+    this.showAlert('Lote guardado en espera. Consulte con administración para la impresión de Recibo/Factura seleccionada cuando el pago QR sea confirmado.', 'success', 10000);
+    try { window.scrollTo({ top: 0, behavior: 'smooth' }); } catch {}
+    // Limpiar estado de sesión y refrescar para permitir un nuevo cobro
+    try {
+      const cod = (this.batchForm.get('cabecera.cod_ceta') as any)?.value || '';
+      if (cod) {
+        try { sessionStorage.removeItem(`qr_session:${cod}:waiting_saved`); } catch {}
+        try { sessionStorage.removeItem(`qr_session:${cod}`); } catch {}
+      }
+    } catch {}
+    try { setTimeout(() => { try { window.location.reload(); } catch {} }, 1800); } catch {}
   }
 
   private isFormaIdQR(id: any): boolean {
@@ -191,6 +227,7 @@ export class CobrosComponent implements OnInit {
   }
 
   get qrSaveBlocked(): boolean {
+    if (this.qrSavedWaiting) return false;
     // Bloquear si hay pagos con método QR y el estado no está 'completado'
     // Regla A: si el panel QR está activo y hay filas -> bloquear hasta completado
     if (this.qrPanelActive && this.pagos.length > 0) {
@@ -203,6 +240,10 @@ export class CobrosComponent implements OnInit {
     const blocked = this.qrPanelStatus !== 'completado';
     try { console.log('[Cobros] qrSaveBlocked (byRows)', { qrPanelStatus: this.qrPanelStatus, blocked }); } catch {}
     return blocked;
+  }
+
+  get isSavedWaiting(): boolean {
+    return this.qrSavedWaiting === true;
   }
 
   openReincorporacionModal(): void {
@@ -1987,7 +2028,21 @@ export class CobrosComponent implements OnInit {
     }
     const hasQrRows = (this.pagos.controls || []).some(ctrl => this.isFormaIdQR((ctrl as FormGroup).get('id_forma_cobro')?.value));
     if (hasQrRows && this.qrPanelStatus !== 'completado') {
-      this.showAlert('Hay pagos QR pendientes. Espere a que el QR se complete.', 'warning');
+      if (this.qrSavedWaiting) {
+        this.showAlert('Lote guardado en espera. Consulte con administración para la impresión de Recibo/Factura seleccionada cuando el pago QR sea confirmado.', 'success', 10000);
+        try { window.scrollTo({ top: 0, behavior: 'smooth' }); } catch {}
+        // Si ya está guardado en espera, preparar la pantalla para un nuevo cobro
+        try {
+          const cod = (this.batchForm.get('cabecera.cod_ceta') as any)?.value || '';
+          if (cod) {
+            try { sessionStorage.removeItem(`qr_session:${cod}:waiting_saved`); } catch {}
+            try { sessionStorage.removeItem(`qr_session:${cod}`); } catch {}
+          }
+        } catch {}
+        try { setTimeout(() => { try { window.location.reload(); } catch {} }, 1800); } catch {}
+      } else {
+        this.showAlert('Hay pagos QR pendientes. Espere a que el QR se complete o use "Guardar en espera (QR)".', 'warning');
+      }
       return;
     }
     // Enviar todas las filas (incluida la QR) cuando el estado QR es 'completado';
@@ -2293,9 +2348,11 @@ export class CobrosComponent implements OnInit {
     this.showAlert('Cuota de arrastre añadida al lote', 'success');
   }
 
-  private showAlert(message: string, type: 'success' | 'error' | 'warning'): void {
+  private showAlert(message: string, type: 'success' | 'error' | 'warning', durationMs: number = 4000): void {
     this.alertMessage = message;
     this.alertType = type;
-    setTimeout(() => (this.alertMessage = ''), 4000);
+    if (durationMs > 0) {
+      setTimeout(() => (this.alertMessage = ''), durationMs);
+    }
   }
 }

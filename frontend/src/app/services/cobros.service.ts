@@ -181,6 +181,20 @@ export class CobrosService {
 		);
 	}
 
+	saveQrLote(payload: {
+		alias?: string;
+		cod_ceta?: number | string;
+		id_usuario?: number | string;
+		id_cuentas_bancarias?: number | string;
+		moneda?: string;
+		gestion?: string;
+		items: any[];
+	}): Observable<any> {
+		return this.http.post<any>(`${this.apiUrl}/qr/save-lote`, payload).pipe(
+			map((res: any) => ({ success: !!res?.success, data: res?.data || null, message: res?.message }))
+		);
+	}
+
 	getCuentasBancarias(onlyEnabled: boolean = true): Observable<any> {
 		const params = new HttpParams().set('only_enabled', String(onlyEnabled));
 		return this.http.get<any>(`${this.apiUrl}/cuentas-bancarias`, { params }).pipe(
