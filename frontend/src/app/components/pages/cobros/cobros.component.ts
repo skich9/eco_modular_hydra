@@ -156,6 +156,42 @@ export class CobrosComponent implements OnInit {
     });
   }
 
+  private checkQrPendiente(): void {
+    try {
+      const cod = (this.batchForm.get('cabecera.cod_ceta') as any)?.value || '';
+      if (!cod) return;
+      this.cobrosService.stateQrByCodCeta({ cod_ceta: cod }).subscribe({
+        next: (res: any) => {
+          const d = res?.data || null;
+          if (!d || !d.id_qr_transaccion) return;
+          const est = (d.estado || '').toString().toLowerCase();
+          if (['completado','cancelado','expirado'].includes(est)) return;
+          this.cobrosService.getQrTransactionDetail(d.id_qr_transaccion).subscribe({
+            next: (det: any) => {
+              const tr = det?.data?.transaccion || null;
+              if (!tr) return;
+              const est2 = (tr.estado || '').toString().toLowerCase();
+              if (['completado','cancelado','expirado'].includes(est2)) return;
+              const ex = (tr.fecha_expiracion || '').toString();
+              let valid = true;
+              try { const dt = new Date(ex.replace(' ', 'T')); if (isFinite(dt.getTime())) { valid = dt.getTime() > Date.now(); } } catch {}
+              if (!valid) return;
+              const base64 = (tr.qr_image_base64 || '').toString();
+              if (!base64) return;
+              const amt = Number(tr.monto_total || 0);
+              const exp = (tr.fecha_expiracion || '').toString();
+              const alias = (tr.alias || d.alias || '').toString();
+              try { this.qrPanel?.setWarning('El estudiante tiene un QR pendiente. Debe anularlo o pagarlo para generar otro.'); } catch {}
+              try { this.qrPanel?.showExisting(alias, base64, amt, exp, tr.estado); } catch {}
+            },
+            error: () => {}
+          });
+        },
+        error: () => {}
+      });
+    } catch {}
+  }
+
   // Guardar snapshot del lote mientras el QR está pendiente
   guardarEnEspera(): void {
     try {
@@ -230,6 +266,10 @@ export class CobrosComponent implements OnInit {
 
   get isSavedWaiting(): boolean {
     return this.qrSavedWaiting === true;
+  }
+
+  get isQrCancelled(): boolean {
+    return this.qrPanelStatus === 'cancelado';
   }
 
   openReincorporacionModal(): void {
@@ -1314,6 +1354,7 @@ export class CobrosComponent implements OnInit {
     this.clearSoloEfectivoErrorIfMatches();
     // Recalcular opciones para el modal (filtradas por selección actual)
     this.computeModalFormasFromSelection();
+    if (this.isQrMetodoSeleccionado()) { this.checkQrPendiente(); }
   }
 
   isQrMetodoSeleccionado(): boolean {

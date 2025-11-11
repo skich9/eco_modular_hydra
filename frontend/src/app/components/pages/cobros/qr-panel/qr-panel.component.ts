@@ -31,8 +31,10 @@ export class QrPanelComponent implements OnDestroy {
 	status: 'pendiente' | 'procesando' | 'completado' | 'expirado' | 'cancelado' = 'pendiente';
     localOpen = false;
     zoomed = false;
+    isCancelling: boolean = false;
     errorMsg: string = '';
     saveMsg: string = '';
+    warnMsg: string = '';
     private pollHandle: any = null;
     private readonly pollMs = 4000;
     unitPriceReal: number = 0;
@@ -294,6 +296,28 @@ export class QrPanelComponent implements OnDestroy {
         } catch (e) { console.error('[QR-Panel] abrir() error', e); }
     }
 
+    setWarning(msg: string): void {
+        try { this.warnMsg = (msg || '').toString(); } catch { this.warnMsg = ''; }
+    }
+
+    showExisting(alias: string, base64: string, amount: number, expiresAt: string, estado?: string): void {
+        try {
+            this.alias = (alias || '').toString();
+            this.imageBase64 = (base64 || '').toString();
+            this.amount = Number(amount || 0);
+            this.expiresAt = (expiresAt || '').toString();
+            const map: any = { generado: 'pendiente', procesando: 'procesando', completado: 'completado', cancelado: 'cancelado', expirado: 'expirado' };
+            const estNorm = (estado || '').toString().toLowerCase();
+            const next: any = map[estNorm] || 'pendiente';
+            this.status = next;
+            this.statusChange.emit(this.status);
+            const cod = this.getCodCeta();
+            if (cod) { this.saveSession(cod); }
+            if (this.alias) { this.tagAliasOnQrRows(this.alias); }
+            this.abrir();
+        } catch (e) { console.error('[QR-Panel] showExisting() error', e); }
+    }
+
 	cerrar(): void {
         try {
             const el = document.getElementById('qrPanelModal');
@@ -433,22 +457,35 @@ export class QrPanelComponent implements OnDestroy {
         const id_usuario = (this.cabecera as FormGroup).get('id_usuario')?.value;
         const cod = this.getCodCeta();
         this.loading = true;
+        this.isCancelling = true;
+        this.errorMsg = '';
+        this.saveMsg = '';
+        this.warnMsg = '';
+        this.imageBase64 = '';
+        this.status = 'procesando';
+        this.statusChange.emit(this.status);
         // Pre-check: sincronizar estado real por cod_ceta para evitar 502 si ya está pagado/cancelado
         this.cobrosService.syncQrByCodCeta({ cod_ceta: cod, id_usuario }).subscribe({
             next: (pre: any) => {
                 const d = pre?.data || null;
                 if (d && d.estado && ['completado','cancelado','expirado'].includes(d.estado)) {
                     this.loading = false;
+                    this.isCancelling = false;
                     this.status = d.estado;
                     this.statusChange.emit(this.status);
                     this.clearSession(cod);
-                    this.cerrar();
+                    if (d.estado === 'cancelado') {
+                        this.saveMsg = 'QR anulado.';
+                        this.alias = '';
+                        this.imageBase64 = '';
+                    }
                     return;
                 }
                 // Si no es final, intentar anular en proveedor
                 this.cobrosService.disableQr(this.alias, id_usuario).subscribe({
                     next: (res: any) => {
                         this.loading = false;
+                        this.isCancelling = false;
                         console.log('[QR-Panel] disable respuesta', res);
                         if (!res?.success) return;
                         this.status = 'cancelado';
@@ -459,11 +496,12 @@ export class QrPanelComponent implements OnDestroy {
                         this.amount = 0;
                         this.expiresAt = '';
                         this.zoomed = false;
-                        this.cerrar();
+                        this.saveMsg = 'QR anulado.';
                         try { this.ws.disconnect(); this.teardownWs(); } catch {}
                     },
                     error: (err: any) => {
                         this.loading = false;
+                        this.isCancelling = false;
                         console.error('[QR-Panel] disable error', err);
                         // Si el proveedor devuelve 502/500, re-sincronizar por cod_ceta para reflejar estado final
                         const st = Number(err?.status || 0);
@@ -476,7 +514,12 @@ export class QrPanelComponent implements OnDestroy {
                                         this.statusChange.emit(this.status);
                                         if (['completado','cancelado','expirado'].includes(sd.estado)) {
                                             this.clearSession(cod);
-                                            this.cerrar();
+                                            if (sd.estado === 'cancelado') {
+                                                this.saveMsg = 'QR anulado.';
+                                                this.alias = '';
+                                                this.imageBase64 = '';
+                                            }
+                                            this.isCancelling = false;
                                         }
                                     }
                                 },
@@ -486,7 +529,7 @@ export class QrPanelComponent implements OnDestroy {
                     }
                 });
             },
-            error: (e: any) => { this.loading = false; console.error('[QR-Panel] pre-sync error', e); }
+            error: (e: any) => { this.loading = false; this.isCancelling = false; console.error('[QR-Panel] pre-sync error', e); }
         });
     }
 

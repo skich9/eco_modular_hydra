@@ -1,10 +1,40 @@
  .qr-img {
-    display: block;
-    margin: 0 auto;
-    max-width: 280px;
-    height: auto;
-    transition: max-width .2s ease;
+	  display: block;
+	  margin: 0 auto;
+	  max-width: 280px;
+	  height: auto;
+	  transition: max-width .2s ease;
   }
   .qr-zoom {
-    max-width: min(520px, 100%);
+	  max-width: min(520px, 100%);
   }
+
+	.engine-loader {
+		width: 56px;
+		height: 56px;
+		border-radius: 50%;
+		background:
+			radial-gradient(circle at 50% 50%, #6c757d 0 6px, transparent 7px 100%),
+			radial-gradient(closest-side, transparent 70%, rgba(108,117,125,.25) 72% 100%),
+			repeating-conic-gradient(from 0deg, #6c757d 0 10deg, transparent 10deg 20deg);
+		animation: engine-spin 1.9s linear infinite;
+		position: relative;
+	}
+
+	.engine-loader::after {
+		content: "";
+		position: absolute;
+		top: 50%;
+		left: 50%;
+		width: 10px;
+		height: 10px;
+		margin-left: -5px;
+		margin-top: -5px;
+		border-radius: 50%;
+		background: #343a40;
+		box-shadow: 0 0 0 2px rgba(0,0,0,.05) inset;
+	}
+
+	@keyframes engine-spin {
+		to { transform: rotate(360deg); }
+	}

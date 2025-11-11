@@ -249,7 +249,7 @@
 				<button class="btn btn-success" [disabled]="loading || qrSaveBlocked" type="submit">
 					<i class="bi bi-save me-1"></i> Guardar Lote
 				</button>
-				<button *ngIf="qrSaveBlocked" type="button" class="btn btn-outline-primary" [disabled]="loading || pagos.length===0" (click)="guardarEnEspera()">
+				<button *ngIf="qrSaveBlocked" type="button" class="btn btn-outline-primary" [disabled]="loading || pagos.length===0 || isQrCancelled" (click)="guardarEnEspera()">
 					<i class="bi bi-cloud-arrow-down me-1"></i> Guardar en espera (QR)
 				</button>
 			</div>
