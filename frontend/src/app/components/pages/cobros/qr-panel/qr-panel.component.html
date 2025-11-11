@@ -23,15 +23,7 @@
 						<span>Estado:</span>
 						<span class="badge" [ngClass]="statusClass">{{ statusLabel }}</span>
 					</div>
-					<div class="mb-2 d-flex justify-content-between">
-						<span>Monto:</span>
-						<strong>{{ amount | number:'1.2-2' }}</strong>
-					</div>
-					<div class="mb-3 d-flex justify-content-between">
-						<span>Expira:</span>
-						<strong>{{ expiresAt || '-' }}</strong>
-					</div>
- 					<div class="text-center" *ngIf="imageBase64; else noqr">
+					<div class="text-center" *ngIf="imageBase64; else noqr">
 						<img [src]="'data:image/png;base64,' + imageBase64" alt="QR" class="img-fluid qr-img" [class.qr-zoom]="zoomed" />
 					</div>
 					<div class="d-flex justify-content-center gap-2 mt-2" *ngIf="imageBase64">
@@ -49,6 +41,10 @@
 							<div class="col-4 text-end">
 								<div><span class="fw-semibold">Pago Único:</span> Si</div>
 							</div>
+						</div>
+						<div class="mb-3 d-flex justify-content-between">
+							<span>Expira:</span>
+							<strong>{{ expiresAt || '-' }}</strong>
 						</div>
 					</div>
 					<ng-template #noqr>
@@ -86,10 +82,6 @@
 			<span>Monto:</span>
 			<strong>{{ amount | number:'1.2-2' }}</strong>
 		</div>
-		<div class="mb-3 d-flex justify-content-between">
-			<span>Expira:</span>
-			<strong>{{ expiresAt || '-' }}</strong>
-		</div>
 		<div class="text-center" *ngIf="imageBase64; else noqr_local">
 			<img [src]="'data:image/png;base64,' + imageBase64" alt="QR" class="img-fluid qr-img" [class.qr-zoom]="zoomed" />
 		</div>
@@ -108,6 +100,10 @@
 				<div class="col-4 text-end">
 					<div><span class="fw-semibold">Pago Único:</span> Si</div>
 				</div>
+			</div>
+			<div class="mb-3 d-flex justify-content-between">
+				<span>Expira:</span>
+				<strong>{{ expiresAt || '-' }}</strong>
 			</div>
 		</div>
 		<ng-template #noqr_local>

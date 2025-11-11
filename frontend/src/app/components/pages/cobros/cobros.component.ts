@@ -206,6 +206,17 @@ export class CobrosComponent implements OnInit {
     this.qrPanelStatus = st;
     this.qrPanelActive = true;
     try { console.log('[Cobros] onQrStatusChange', { st, qrPanelActive: this.qrPanelActive }); } catch {}
+    if (st === 'completado') {
+      try {
+        this.showAlert('Pago QR confirmado y lote procesado.', 'success', 8000);
+        const cod = (this.batchForm.get('cabecera.cod_ceta') as any)?.value || '';
+        if (cod) { try { sessionStorage.removeItem(`qr_session:${cod}:waiting_saved`); } catch {} }
+        this.qrSavedWaiting = false;
+        // Construir y mostrar el modal de éxito reutilizando las filas actuales del lote
+        this.successSummary = this.buildSuccessSummary([]);
+        this.openSuccessModal();
+      } catch {}
+    }
   }
 
   onQrSavedWaiting(): void {

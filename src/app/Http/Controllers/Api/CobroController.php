@@ -1045,7 +1045,8 @@ class CobroController extends Controller
 							$detRaw = strtoupper(trim((string)($item['detalle'] ?? '')));
 							if ($detRaw !== '' && strpos($detRaw, 'REINCORPOR') !== false) { $isReincorporacion = true; }
 						}
-						$isSecundario = ($isRezagado || $isRecuperacion || $isReincorporacion);
+						$hasItem = isset($item['id_item']) && !empty($item['id_item']);
+						$isSecundario = ($isRezagado || $isRecuperacion || $isReincorporacion || $hasItem);
 					} catch (\Throwable $e) {}
 					$idAsign = $item['id_asignacion_costo'] ?? null;
 					$idCuota = $item['id_cuota'] ?? null;
@@ -1101,6 +1102,11 @@ class CobroController extends Controller
 							$totalCuota = (float)($cuotaRow->monto ?? 0);
 							$parcial = ($prevPag + (float)$item['monto']) < $totalCuota;
 							$detalle = 'Mensualidad - Cuota ' . ($numeroCuota ?: $idCuota) . ($parcial ? ' (Parcial)' : '');
+						}
+					} else {
+						if (!empty($item['id_item'] ?? null)) {
+							$detFromItem = (string)($item['detalle'] ?? '');
+							$detalle = $detFromItem !== '' ? $detFromItem : ($detalle !== '' ? $detalle : 'Item');
 						}
 					}
 
@@ -1211,25 +1217,26 @@ class CobroController extends Controller
 					]);
 					$created = Cobro::create($payload)->load(['usuario', 'cuota', 'formaCobro', 'cuentaBancaria', 'itemCobro']);
 
-					// Guardar detalle regular por ítem (precio unitario y turno)
-					try {
-						DB::table('cobros_detalle_regular')->updateOrInsert(
-							[
-								'nro_cobro' => (int)$nroCobro,
-							],
-							[
-								'cod_ceta' => (int)$request->cod_ceta,
-								'cod_pensum' => (string)$request->cod_pensum,
-								'tipo_inscripcion' => (string)$request->tipo_inscripcion,
-								'cod_inscrip' => $primaryInscripcion ? (int)$primaryInscripcion->cod_inscrip : 0,
-								'pu_mensualidad' => (float)($item['pu_mensualidad'] ?? 0),
-								'turno' => (string)($primaryInscripcion->turno ?? ''),
-								'updated_at' => now(),
-								'created_at' => DB::raw('COALESCE(created_at, NOW())'),
-							]
-						);
-					} catch (\Throwable $e) {
-						Log::warning('batchStore: detalle_regular insert failed', [ 'err' => $e->getMessage() ]);
+					if (!$isSecundario) {
+						try {
+							DB::table('cobros_detalle_regular')->updateOrInsert(
+								[
+									'nro_cobro' => (int)$nroCobro,
+								],
+								[
+									'cod_ceta' => (int)$request->cod_ceta,
+									'cod_pensum' => (string)$request->cod_pensum,
+									'tipo_inscripcion' => (string)$request->tipo_inscripcion,
+									'cod_inscrip' => $primaryInscripcion ? (int)$primaryInscripcion->cod_inscrip : 0,
+									'pu_mensualidad' => (float)($item['pu_mensualidad'] ?? 0),
+									'turno' => (string)($primaryInscripcion->turno ?? ''),
+									'updated_at' => now(),
+									'created_at' => DB::raw('COALESCE(created_at, NOW())'),
+								]
+							);
+						} catch (\Throwable $e) {
+							Log::warning('batchStore: detalle_regular insert failed', [ 'err' => $e->getMessage() ]);
+						}
 					}
 
 					// Acumular pagos del batch por plantilla de cuota para seguir aplicando a la misma cuota si aún queda saldo
