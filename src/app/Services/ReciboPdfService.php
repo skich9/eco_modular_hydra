@@ -297,6 +297,16 @@ HTML;
         $bancoDest = $dest ? ((string)($dest->banco ?? '')) : '';
         $fechaTrans = $nb ? ((string)($nb->fecha_deposito ?? '')) : '';
         $nroTrans = $nb ? ((string)($nb->nro_transaccion ?? '')) : '';
+        try {
+            $qrRow = DB::table('qr_transacciones')
+                ->where('anio_recibo', (int)$recibo->anio)
+                ->where('nro_recibo', (int)$recibo->nro_recibo)
+                ->orderByDesc('updated_at')
+                ->first();
+            if ($qrRow && isset($qrRow->numeroordenoriginante) && $qrRow->numeroordenoriginante !== null && $qrRow->numeroordenoriginante !== '') {
+                $nroTrans = (string)$qrRow->numeroordenoriginante;
+            }
+        } catch (\Throwable $e) {}
         $fechaTransFmt = $fechaTrans !== '' ? $fechaTrans : $fechaDT->format('d/m/Y');
         $docLine = 'Doc.: F- ' . ((string)($recibo->nro_factura ?? '0')) . ', R- ' . ((string)($recibo->nro_recibo ?? ''));
 
@@ -834,7 +844,7 @@ HTML;
                     if (strpos($norm, 'TARJETA') !== false) { $isTarjeta = true; }
                     if (strpos($norm, 'CHEQUE') !== false) { $isCheque = true; }
                     if (strpos($norm, 'DEPOSITO') !== false) { $isDeposito = true; }
-                    if (strpos($norm, 'TRANSFER') !== false) { $isTransferencia = true; }
+                    if (strpos($norm, 'TRANSFER') !== false || strpos($norm, 'TRANSACCION') !== false || strpos($norm, ' QR ') !== false || str_starts_with($norm, 'QR ')) { $isTransferencia = true; }
                     // Tratar como 'OTRO' cualquier forma especial o código interno 'O'
                     if (
                         strpos($norm, 'OTRO') !== false ||

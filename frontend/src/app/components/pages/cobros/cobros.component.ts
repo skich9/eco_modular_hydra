@@ -215,6 +215,8 @@ export class CobrosComponent implements OnInit {
         // Construir y mostrar el modal de éxito reutilizando las filas actuales del lote
         this.successSummary = this.buildSuccessSummary([]);
         this.openSuccessModal();
+        // Descargar documentos generados por el callback (recibo/factura) si existen
+        this.downloadQrGeneratedDocs();
       } catch {}
     }
   }
@@ -812,11 +814,18 @@ export class CobrosComponent implements OnInit {
         };
       });
       const total = rows.reduce((acc, r) => acc + Number(r.subtotal || 0), 0);
-      const docs = (createdItems || []).filter((it: any) => (it?.tipo_documento === 'R' && it?.medio_doc === 'C' && it?.nro_recibo)).map((it: any) => {
-        const fecha = it?.cobro?.fecha_cobro || new Date().toISOString().slice(0,10);
-        const anio = new Date(fecha).getFullYear();
-        return { anio, nro_recibo: it?.nro_recibo };
-      });
+      const docs: any[] = [];
+      for (const it of (createdItems || [])) {
+        try {
+          const fecha = it?.cobro?.fecha_cobro || new Date().toISOString().slice(0,10);
+          const anio = new Date(fecha).getFullYear();
+          if ((it?.tipo_documento === 'R') && (it?.medio_doc === 'C') && it?.nro_recibo) {
+            docs.push({ tipo: 'R', anio, nro_recibo: it?.nro_recibo });
+          } else if ((it?.tipo_documento === 'F') && (it?.medio_doc === 'C') && it?.nro_factura) {
+            docs.push({ tipo: 'F', anio, nro_factura: it?.nro_factura });
+          }
+        } catch {}
+      }
       return { cod_ceta, estudiante: nombre, carrera, pensum, gestion, rows, total, docs };
     } catch {
       return { rows: [] };
@@ -866,17 +875,97 @@ export class CobrosComponent implements OnInit {
 
   onSuccessPrint(): void {
     try {
-      const docs = this.successSummary?.docs || [];
+      const docs: any[] = (this.successSummary?.docs || []) as any[];
       if (docs.length) {
-        for (const d of docs) {
-          if (d?.nro_recibo && d?.anio) {
-            this.cobrosService.downloadReciboPdf(d.anio, d.nro_recibo).subscribe({ next: () => {}, error: () => {} });
-          }
+        const firstFactura = docs.find((x: any) => x?.nro_factura && x?.anio);
+        const firstRecibo = docs.find((x: any) => x?.nro_recibo && x?.anio);
+        const d: any = firstFactura || firstRecibo || null;
+        if (d) {
+          try {
+            const base = this.apiBase();
+            const url = firstFactura
+              ? `${base}/facturas/${d.anio}/${d.nro_factura}/pdf`
+              : `${base}/recibos/${d.anio}/${d.nro_recibo}/pdf`;
+            const a = document.createElement('a');
+            a.href = url;
+            a.target = '_blank';
+            document.body.appendChild(a);
+            a.click();
+            a.remove();
+            return;
+          } catch {}
         }
-        return;
       }
     } catch {}
     try { window.print(); } catch {}
+  }
+
+  private apiBase(): string {
+    try {
+      const protocol = typeof window !== 'undefined' && window.location ? (window.location.protocol || 'http:') : 'http:';
+      const host = typeof window !== 'undefined' && window.location ? (window.location.hostname || 'localhost') : 'localhost';
+      const port = environment.apiPort || '8069';
+      return `${protocol}//${host}:${port}/api`;
+    } catch {
+      return environment.apiUrl;
+    }
+  }
+
+  private downloadQrGeneratedDocs(): void {
+    try {
+      const cod = (this.batchForm.get('cabecera.cod_ceta') as any)?.value || '';
+      if (!cod) return;
+      this.cobrosService.stateQrByCodCeta({ cod_ceta: cod }).subscribe({
+        next: (res: any) => {
+          const d = res?.data || null;
+          const id = d?.id_qr_transaccion || null;
+          if (!id) return;
+          this.cobrosService.getQrTransactionDetail(id).subscribe({
+            next: (det: any) => {
+              try {
+                const tr = det?.data?.transaccion || null;
+                const anio = Number(tr?.anio_recibo || 0);
+                const nro = Number(tr?.nro_recibo || 0);
+                if (anio && nro) {
+                  try {
+                    if (this.successSummary) {
+                      const docs = Array.isArray(this.successSummary.docs) ? this.successSummary.docs : [];
+                      if (!docs.some((x: any) => Number(x?.anio) === anio && Number(x?.nro_recibo) === nro)) {
+                        docs.push({ anio, nro_recibo: nro });
+                        this.successSummary.docs = docs as any;
+                      }
+                    }
+                  } catch {}
+                  this.cobrosService.downloadReciboPdf(anio, nro).subscribe({
+                    next: (blob) => {
+                      try {
+                        const fileName = `recibo_${anio}_${nro}.pdf`;
+                        const url = URL.createObjectURL(blob);
+                        const a = document.createElement('a');
+                        a.href = url;
+                        a.download = fileName;
+                        document.body.appendChild(a);
+                        a.click();
+                        a.remove();
+                        URL.revokeObjectURL(url);
+                      } catch {}
+                    },
+                    error: () => {
+                      try {
+                        const url = `${environment.apiUrl}/recibos/${anio}/${nro}/pdf`;
+                        window.open(url, '_blank');
+                      } catch {}
+                    }
+                  });
+                }
+              } catch {}
+            },
+            error: () => {}
+          });
+        },
+        error: () => {}
+      });
+    } catch {}
   }
 
   onSuccessClose(): void {

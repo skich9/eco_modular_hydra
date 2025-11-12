@@ -725,8 +725,35 @@ class QrController extends Controller
                         'updated_at' => now(),
                     ]);
 
-                    // Notificar a sockets que el pago está en procesamiento/emisión
-                    try { $notifier->notifyEvent($ok ? 'factura_generada' : 'procesando_pago', [ 'id_pago' => $alias ]); } catch (\Throwable $e) {}
+                    try {
+                        $docTipo = null; $anioDoc = null; $nroDoc = null; $payloadDoc = [];
+                        if (is_array($respJson ?? null)) {
+                            $itemsResp = $respJson['data']['items'] ?? [];
+                            if (is_array($itemsResp)) {
+                                foreach ($itemsResp as $it) {
+                                    $tipo = isset($it['tipo_documento']) ? (string)$it['tipo_documento'] : '';
+                                    $medio = isset($it['medio_doc']) ? (string)$it['medio_doc'] : '';
+                                    $fecha = (string)($it['cobro']['fecha_cobro'] ?? date('Y-m-d'));
+                                    $anioTry = (int)date('Y', strtotime($fecha));
+                                    if ($tipo === 'R' && $medio === 'C' && !empty($it['nro_recibo'] ?? null)) {
+                                        $docTipo = 'R'; $anioDoc = $anioTry; $nroDoc = (int)$it['nro_recibo'];
+                                        $payloadDoc = ['documento_tipo' => 'R', 'anio_recibo' => $anioDoc, 'nro_recibo' => $nroDoc];
+                                        break;
+                                    }
+                                    if ($tipo === 'F' && $medio === 'C' && !empty($it['nro_factura'] ?? null)) {
+                                        $docTipo = 'F'; $anioDoc = $anioTry; $nroDoc = (int)$it['nro_factura'];
+                                        $payloadDoc = ['documento_tipo' => 'F', 'anio_factura' => $anioDoc, 'nro_factura' => $nroDoc];
+                                        break;
+                                    }
+                                }
+                            }
+                        }
+                        if ($ok && $docTipo) {
+                            $notifier->notifyEvent('documento_generado', array_merge(['id_pago' => $alias], $payloadDoc));
+                        } else {
+                            $notifier->notifyEvent($ok ? 'factura_generada' : 'procesando_pago', [ 'id_pago' => $alias ]);
+                        }
+                    } catch (\Throwable $e) {}
                 }
             } catch (\Throwable $e) {
                 Log::warning('QR callback process failed', ['alias' => $alias, 'err' => $e->getMessage()]);

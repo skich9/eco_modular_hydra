@@ -113,6 +113,12 @@ export class CobrosService {
 		return this.http.get(url, { responseType: 'blob' });
 	}
 
+	// Descarga de factura computarizada (si backend expone el endpoint)
+	downloadFacturaPdf(anio: number, nroFactura: number): Observable<Blob> {
+		const url = `${this.apiUrl}/facturas/${anio}/${nroFactura}/pdf`;
+		return this.http.get(url, { responseType: 'blob' });
+	}
+
 	// Catálogos
 	getGestionesActivas(): Observable<any> {
 		return this.http.get<any>(`${this.apiUrl}/gestiones/estado/activas`).pipe(

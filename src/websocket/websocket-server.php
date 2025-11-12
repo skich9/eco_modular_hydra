@@ -85,12 +85,60 @@ $ws->onMessage = function($connection, $data) use (&$clientes, &$clientesPorPago
 			break;
 		case 'factura_generada':
 			$idp = (string)($payload['id_pago'] ?? '');
-			$msg = json_encode(['evento' => 'factura_generada', 'id_pago' => $idp, 'nombre_pdf' => $payload['nombre_pdf'] ?? null]);
+			$msg = json_encode([
+				'evento' => 'factura_generada',
+				'id_pago' => $idp,
+				'nombre_pdf' => $payload['nombre_pdf'] ?? null,
+				'documento_tipo' => 'F',
+				'anio_factura' => $payload['anio_factura'] ?? null,
+				'nro_factura' => $payload['nro_factura'] ?? null,
+			]);
 			if (isset($clientesPorPago[$idp])) {
 				foreach ($clientesPorPago[$idp] as $cli) { $cli->send($msg); }
 				unset($clientesPorPago[$idp]);
 			}
 			wslog('info', 'broadcast factura_generada', ['id_pago' => $idp]);
+			break;
+		case 'recibo_generado':
+			$idp = (string)($payload['id_pago'] ?? '');
+			$msg = json_encode([
+				'evento' => 'recibo_generado',
+				'id_pago' => $idp,
+				'documento_tipo' => 'R',
+				'anio_recibo' => $payload['anio_recibo'] ?? null,
+				'nro_recibo' => $payload['nro_recibo'] ?? null,
+			]);
+			if (isset($clientesPorPago[$idp])) {
+				foreach ($clientesPorPago[$idp] as $cli) { $cli->send($msg); }
+				unset($clientesPorPago[$idp]);
+			}
+			wslog('info', 'broadcast recibo_generado', ['id_pago' => $idp]);
+			break;
+		case 'documento_generado':
+			$idp = (string)($payload['id_pago'] ?? '');
+			$tipo = (string)($payload['documento_tipo'] ?? '');
+			if ($tipo === 'R') {
+				$msg = json_encode([
+					'evento' => 'recibo_generado',
+					'id_pago' => $idp,
+					'documento_tipo' => 'R',
+					'anio_recibo' => $payload['anio_recibo'] ?? null,
+					'nro_recibo' => $payload['nro_recibo'] ?? null,
+				]);
+			} else {
+				$msg = json_encode([
+					'evento' => 'factura_generada',
+					'id_pago' => $idp,
+					'documento_tipo' => 'F',
+					'anio_factura' => $payload['anio_factura'] ?? null,
+					'nro_factura' => $payload['nro_factura'] ?? null,
+				]);
+			}
+			if (isset($clientesPorPago[$idp])) {
+				foreach ($clientesPorPago[$idp] as $cli) { $cli->send($msg); }
+				unset($clientesPorPago[$idp]);
+			}
+			wslog('info', 'broadcast documento_generado', ['id_pago' => $idp, 'tipo' => $tipo]);
 			break;
 		case 'status':
 			// Compatibilidad: QrSocketNotifier::notify() envía evento 'status' con campos 'alias' y 'status'
@@ -98,12 +146,33 @@ $ws->onMessage = function($connection, $data) use (&$clientes, &$clientesPorPago
 			if ($idp === '') break;
 			$st = strtolower((string)($payload['status'] ?? ''));
 			if ($st === 'completado') {
-				$msg = json_encode(['evento' => 'factura_generada', 'id_pago' => $idp, 'nombre_pdf' => $payload['nombre_pdf'] ?? null]);
+				if (isset($payload['documento_tipo'])) {
+					$tipo = (string)$payload['documento_tipo'];
+					if ($tipo === 'R') {
+						$msg = json_encode([
+							'evento' => 'recibo_generado',
+							'id_pago' => $idp,
+							'documento_tipo' => 'R',
+							'anio_recibo' => $payload['anio_recibo'] ?? null,
+							'nro_recibo' => $payload['nro_recibo'] ?? null,
+						]);
+					} else {
+						$msg = json_encode([
+							'evento' => 'factura_generada',
+							'id_pago' => $idp,
+							'documento_tipo' => 'F',
+							'anio_factura' => $payload['anio_factura'] ?? null,
+							'nro_factura' => $payload['nro_factura'] ?? null,
+						]);
+					}
+				} else {
+					$msg = json_encode(['evento' => 'factura_generada', 'id_pago' => $idp, 'nombre_pdf' => $payload['nombre_pdf'] ?? null]);
+				}
 				if (isset($clientesPorPago[$idp])) {
 					foreach ($clientesPorPago[$idp] as $cli) { $cli->send($msg); }
 					unset($clientesPorPago[$idp]);
 				}
-				wslog('info', 'broadcast status->factura_generada', ['id_pago' => $idp]);
+				wslog('info', 'broadcast status->documento_generado', ['id_pago' => $idp]);
 			} elseif ($st === 'procesando' || $st === 'pendiente') {
 				if (isset($clientesPorPago[$idp])) {
 					$msg = json_encode(['evento' => 'procesando_pago', 'id_pago' => $idp, 'estado_factura' => $st]);

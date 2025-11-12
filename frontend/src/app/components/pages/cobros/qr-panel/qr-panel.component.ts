@@ -57,13 +57,41 @@ export class QrPanelComponent implements OnDestroy {
 		}
 		// Asegurar catálogo de formas de cobro cargado (evita que no detecte filas QR por carrera)
 		await this.ensureFormasCobroLoaded();
-		// Intentar cargar desde sessionStorage por cod_ceta
+		// Intentar cargar desde sessionStorage por cod_ceta, pero validar estado real
 		const cod = this.getCodCeta();
-		if (this.loadSession(cod)) {
-			console.log('[QR-Panel] cargado desde sessionStorage por cod_ceta', { cod_ceta: cod, alias: this.alias });
-			this.abrir();
-			return;
-		}
+		try {
+			const hasSession = !!sessionStorage.getItem(this.storageKey(cod));
+			if (hasSession) {
+				this.loading = true;
+				this.cobrosService.stateQrByCodCeta({ cod_ceta: cod }).subscribe({
+					next: (res: any) => {
+						this.loading = false;
+						const est = (res?.data?.estado || '').toString();
+						if (['completado','cancelado','expirado'].includes(est)) {
+							this.clearSession(cod);
+							this.alias = '';
+							this.imageBase64 = '';
+							this.amount = 0;
+							this.expiresAt = '';
+							this.generar();
+							return;
+						}
+						if (this.loadSession(cod)) {
+							console.log('[QR-Panel] cargado desde sessionStorage por cod_ceta', { cod_ceta: cod, alias: this.alias });
+							this.abrir();
+							return;
+						}
+						this.generar();
+					},
+					error: () => {
+						this.loading = false;
+						// Si falla la consulta, proceder a generar uno nuevo para evitar mostrar uno viejo
+						this.generar();
+					}
+				});
+				return;
+			}
+		} catch {}
 		this.generar();
 	}
 
@@ -668,6 +696,10 @@ export class QrPanelComponent implements OnDestroy {
                         this.status = 'procesando';
                         this.statusChange.emit(this.status);
                     } else if (ev === 'factura_generada') {
+                        this.status = 'completado';
+                        this.statusChange.emit(this.status);
+                        try { this.cerrar(); } catch {}
+                    } else if (ev === 'recibo_generado' || ev === 'documento_generado') {
                         this.status = 'completado';
                         this.statusChange.emit(this.status);
                         try { this.cerrar(); } catch {}
