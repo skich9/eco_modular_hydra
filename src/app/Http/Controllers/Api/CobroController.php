@@ -785,6 +785,22 @@ class CobroController extends Controller
 				$items = $request->input('pagos', []); // compatibilidad
 			}
 			Log::info('batchStore: start', [ 'count' => count($items) ]);
+			// Validación: no mezclar FACTURA (F) y RECIBO (R) en el mismo lote
+			try {
+				$hasF = false; $hasR = false;
+				foreach ((array)$items as $it) {
+					$raw = isset($it['tipo_documento']) ? strtoupper(trim((string)$it['tipo_documento'])) : '';
+					if ($raw === 'F') { $hasF = true; }
+					if ($raw === 'R') { $hasR = true; }
+					if ($hasF && $hasR) { break; }
+				}
+				if ($hasF && $hasR) {
+					return response()->json([
+						'success' => false,
+						'message' => 'No se puede mezclar FACTURA y RECIBO en el mismo registro. Use un único tipo de documento en el lote.',
+					], 422);
+				}
+			} catch (\Throwable $e) { /* no bloquear si la inspección falla */ }
 			DB::transaction(function () use ($request, $items, $reciboService, $facturaService, $cufdRepo, $ops, $cufGen, $payloadBuilder, $cuisRepo, & $results) {
 				$pv = (int) ($request->input('codigo_punto_venta', 0));
 				$sucursal = (int) ($request->input('codigo_sucursal', config('sin.sucursal')));

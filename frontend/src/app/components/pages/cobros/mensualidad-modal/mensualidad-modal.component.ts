@@ -553,6 +553,17 @@ export class MensualidadModalComponent implements OnInit, OnChanges {
         return;
       }
     }
+    const esParcial = !!this.form.get('pago_parcial')?.value;
+    if (esParcial) {
+      const mp = this.form.get('monto_parcial');
+      mp?.updateValueAndValidity({ emitEvent: false });
+      if (mp?.hasError('max')) {
+        mp.markAsTouched();
+        this.modalAlertMessage = 'El monto que está ingresando excede el saldo.';
+        this.modalAlertType = 'warning';
+        return;
+      }
+    }
     if (!this.form.valid) {
       this.modalAlertMessage = 'Complete los campos obligatorios.';
       this.modalAlertType = 'warning';

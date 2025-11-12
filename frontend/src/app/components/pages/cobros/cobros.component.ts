@@ -631,6 +631,27 @@ export class CobrosComponent implements OnInit {
       this.showAlert('No se pudo agregar el item (payload vacío)', 'warning');
       return;
     }
+    const existingDoc = this.getCurrentDocTipoInForm();
+    if (existingDoc === 'MIXED') {
+      this.showAlert('El detalle ya contiene FACTURA y RECIBO. Elimine o unifique antes de agregar más.', 'warning');
+      return;
+    }
+    const incomingDocs = this.collectDocTiposFromArray(pagos);
+    const incomingDoc = this.resolveUniformDocTipo(incomingDocs);
+    if (incomingDoc === null) {
+      this.showAlert('No se puede mezclar FACTURA y RECIBO en el mismo agregado. Seleccione un único tipo.', 'warning');
+      return;
+    }
+    if ((existingDoc === 'F' || existingDoc === 'R') && incomingDoc && incomingDoc !== existingDoc) {
+      const label = existingDoc === 'F' ? 'FACTURA' : 'RECIBO';
+      this.showAlert(`Ya hay líneas con ${label}. Debe ingresar el mismo tipo de documento (${label}).`, 'warning');
+      return;
+    }
+    if ((existingDoc === 'F' || existingDoc === 'R') && !incomingDoc) {
+      const label = existingDoc === 'F' ? 'FACTURA' : 'RECIBO';
+      this.showAlert(`Debe seleccionar tipo de documento ${label} para continuar.`, 'warning');
+      return;
+    }
     pagos.forEach((p: any) => {
       const detalle = (p.detalle || '').toString();
       const pu = Number(p.pu_mensualidad || 0);
@@ -1987,6 +2008,28 @@ export class CobrosComponent implements OnInit {
     const headerPatch = Array.isArray(payload) ? null : (payload?.cabecera || null);
     const isMensualidad = this.modalTipo === 'mensualidad';
     const isArrastre = this.modalTipo === 'arrastre';
+    // Enforce un único tipo de documento en el detalle
+    const existingDoc = this.getCurrentDocTipoInForm(); // 'F' | 'R' | '' | 'MIXED'
+    if (existingDoc === 'MIXED') {
+      this.showAlert('El detalle ya contiene FACTURA y RECIBO. Elimine o unifique antes de agregar más.', 'warning');
+      return;
+    }
+    const incomingDocs = this.collectDocTiposFromArray(pagos);
+    const incomingDoc = this.resolveUniformDocTipo(incomingDocs); // 'F' | 'R' | '' | null (mixto)
+    if (incomingDoc === null) {
+      this.showAlert('No se puede mezclar FACTURA y RECIBO en el mismo agregado. Seleccione un único tipo.', 'warning');
+      return;
+    }
+    if ((existingDoc === 'F' || existingDoc === 'R') && incomingDoc && incomingDoc !== existingDoc) {
+      const label = existingDoc === 'F' ? 'FACTURA' : 'RECIBO';
+      this.showAlert(`Ya hay líneas con ${label}. Debe ingresar el mismo tipo de documento (${label}).`, 'warning');
+      return;
+    }
+    if ((existingDoc === 'F' || existingDoc === 'R') && !incomingDoc) {
+      const label = existingDoc === 'F' ? 'FACTURA' : 'RECIBO';
+      this.showAlert(`Debe seleccionar tipo de documento ${label} para continuar.`, 'warning');
+      return;
+    }
     const startCuota = this.getNextMensualidadStartCuota();
     pagos.forEach((p: any, idx: number) => {
       const resolveFormaId = (val: any): any => {
@@ -2498,6 +2541,45 @@ export class CobrosComponent implements OnInit {
       d_marca: [false]
     }));
     this.showAlert('Cuota de arrastre añadida al lote', 'success');
+  }
+
+  private getCurrentDocTipoInForm(): 'F' | 'R' | '' | 'MIXED' {
+    try {
+      let hasF = false, hasR = false;
+      for (let i = 0; i < (this.pagos?.length || 0); i++) {
+        const g = this.pagos.at(i) as FormGroup;
+        const v = (g?.get('tipo_documento')?.value || '').toString().trim().toUpperCase();
+        if (v === 'F') hasF = true; else if (v === 'R') hasR = true;
+        if (hasF && hasR) return 'MIXED';
+      }
+      if (hasF) return 'F';
+      if (hasR) return 'R';
+      return '';
+    } catch { return ''; }
+  }
+
+  private normalizeDocFromPayload(p: any): 'F' | 'R' | '' {
+    try {
+      const raw = ((p?.tipo_documento || p?.comprobante || '') + '').trim().toUpperCase();
+      if (raw === 'F' || raw === 'FACTURA') return 'F';
+      if (raw === 'R' || raw === 'RECIBO') return 'R';
+      return '';
+    } catch { return ''; }
+  }
+
+  private collectDocTiposFromArray(arr: any[]): Array<'F' | 'R' | ''> {
+    try { return (arr || []).map(p => this.normalizeDocFromPayload(p)); } catch { return []; }
+  }
+
+  private resolveUniformDocTipo(docs: Array<'F' | 'R' | ''>): 'F' | 'R' | '' | null {
+    try {
+      const hasF = docs.some(d => d === 'F');
+      const hasR = docs.some(d => d === 'R');
+      if (hasF && hasR) return null;
+      if (hasF) return 'F';
+      if (hasR) return 'R';
+      return '';
+    } catch { return null; }
   }
 
   private showAlert(message: string, type: 'success' | 'error' | 'warning', durationMs: number = 4000): void {

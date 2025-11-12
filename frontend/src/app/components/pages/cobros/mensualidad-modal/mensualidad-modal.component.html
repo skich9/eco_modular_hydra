@@ -198,7 +198,12 @@
           </div>
           <div class="col-md-4" *ngIf="(tipo === 'mensualidad' || tipo === 'reincorporacion') && form.get('pago_parcial')?.value">
             <label class="form-label">{{ tipo === 'reincorporacion' ? 'Saldo a pagar' : 'Monto parcial' }}</label>
-            <input type="number" step="0.01" class="form-control" formControlName="monto_parcial" />
+            <input type="number" step="0.01" class="form-control"
+                   [ngClass]="{ 'is-invalid': form.get('monto_parcial')?.hasError('max') && form.get('monto_parcial')?.touched }"
+                   formControlName="monto_parcial" />
+            <div class="invalid-feedback" *ngIf="form.get('monto_parcial')?.hasError('max') && form.get('monto_parcial')?.touched">
+              El monto ingresado excede el saldo.
+            </div>
             <div class="form-text">Máximo: {{ pu | number:'1.2-2' }}</div>
           </div>
           <div class="col-md-4">
