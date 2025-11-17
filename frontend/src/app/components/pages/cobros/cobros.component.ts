@@ -165,7 +165,14 @@ export class CobrosComponent implements OnInit {
           const d = res?.data || null;
           if (!d || !d.id_qr_transaccion) return;
           const est = (d.estado || '').toString().toLowerCase();
+          const saved = !!(d.saved_by_user);
           if (['completado','cancelado','expirado'].includes(est)) return;
+          if (['generado','procesando','pendiente'].includes(est)) {
+            if (saved) {
+              try { this.qrPanel?.setSavedByUser(true, 'Hay un QR en espera. No se puede generar más códigos QR hasta que se complete el que está en espera.'); } catch {}
+              return;
+            }
+          }
           this.cobrosService.getQrTransactionDetail(d.id_qr_transaccion).subscribe({
             next: (det: any) => {
               const tr = det?.data?.transaccion || null;
@@ -628,28 +635,28 @@ export class CobrosComponent implements OnInit {
     const pagos = Array.isArray(evt) ? evt : (evt?.pagos || []);
     const headerPatch = Array.isArray(evt) ? null : (evt?.cabecera || null);
     if (!Array.isArray(pagos) || pagos.length === 0) {
-      this.showAlert('No se pudo agregar el item (payload vacío)', 'warning');
+      this.showAlert('No se pudo agregar el item (payload vacío)', 'error');
       return;
     }
     const existingDoc = this.getCurrentDocTipoInForm();
     if (existingDoc === 'MIXED') {
-      this.showAlert('El detalle ya contiene FACTURA y RECIBO. Elimine o unifique antes de agregar más.', 'warning');
+      this.showAlert('El detalle ya contiene FACTURA y RECIBO. Elimine o unifique antes de agregar más.', 'error');
       return;
     }
     const incomingDocs = this.collectDocTiposFromArray(pagos);
     const incomingDoc = this.resolveUniformDocTipo(incomingDocs);
     if (incomingDoc === null) {
-      this.showAlert('No se puede mezclar FACTURA y RECIBO en el mismo agregado. Seleccione un único tipo.', 'warning');
+      this.showAlert('No se puede mezclar FACTURA y RECIBO en el mismo agregado. Seleccione un único tipo.', 'error');
       return;
     }
     if ((existingDoc === 'F' || existingDoc === 'R') && incomingDoc && incomingDoc !== existingDoc) {
       const label = existingDoc === 'F' ? 'FACTURA' : 'RECIBO';
-      this.showAlert(`Ya hay líneas con ${label}. Debe ingresar el mismo tipo de documento (${label}).`, 'warning');
+      this.showAlert(`Ya hay líneas con ${label}. Debe ingresar el mismo tipo de documento (${label}).`, 'error');
       return;
     }
     if ((existingDoc === 'F' || existingDoc === 'R') && !incomingDoc) {
       const label = existingDoc === 'F' ? 'FACTURA' : 'RECIBO';
-      this.showAlert(`Debe seleccionar tipo de documento ${label} para continuar.`, 'warning');
+      this.showAlert(`Debe seleccionar tipo de documento ${label} para continuar.`, 'error');
       return;
     }
     pagos.forEach((p: any) => {
@@ -2011,23 +2018,23 @@ export class CobrosComponent implements OnInit {
     // Enforce un único tipo de documento en el detalle
     const existingDoc = this.getCurrentDocTipoInForm(); // 'F' | 'R' | '' | 'MIXED'
     if (existingDoc === 'MIXED') {
-      this.showAlert('El detalle ya contiene FACTURA y RECIBO. Elimine o unifique antes de agregar más.', 'warning');
+      this.showAlert('El detalle ya contiene FACTURA y RECIBO. Elimine o unifique antes de agregar más.', 'error');
       return;
     }
     const incomingDocs = this.collectDocTiposFromArray(pagos);
     const incomingDoc = this.resolveUniformDocTipo(incomingDocs); // 'F' | 'R' | '' | null (mixto)
     if (incomingDoc === null) {
-      this.showAlert('No se puede mezclar FACTURA y RECIBO en el mismo agregado. Seleccione un único tipo.', 'warning');
+      this.showAlert('No se puede mezclar FACTURA y RECIBO en el mismo agregado. Seleccione un único tipo.', 'error');
       return;
     }
     if ((existingDoc === 'F' || existingDoc === 'R') && incomingDoc && incomingDoc !== existingDoc) {
       const label = existingDoc === 'F' ? 'FACTURA' : 'RECIBO';
-      this.showAlert(`Ya hay líneas con ${label}. Debe ingresar el mismo tipo de documento (${label}).`, 'warning');
+      this.showAlert(`Ya hay líneas con ${label}. Debe ingresar el mismo tipo de documento (${label}).`, 'error');
       return;
     }
     if ((existingDoc === 'F' || existingDoc === 'R') && !incomingDoc) {
       const label = existingDoc === 'F' ? 'FACTURA' : 'RECIBO';
-      this.showAlert(`Debe seleccionar tipo de documento ${label} para continuar.`, 'warning');
+      this.showAlert(`Debe seleccionar tipo de documento ${label} para continuar.`, 'error');
       return;
     }
     const startCuota = this.getNextMensualidadStartCuota();

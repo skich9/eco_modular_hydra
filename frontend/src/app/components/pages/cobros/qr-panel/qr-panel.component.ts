@@ -35,6 +35,7 @@ export class QrPanelComponent implements OnDestroy {
     errorMsg: string = '';
     saveMsg: string = '';
     warnMsg: string = '';
+    savedByUser: boolean = false;
     private pollHandle: any = null;
     private readonly pollMs = 4000;
     unitPriceReal: number = 0;
@@ -48,51 +49,88 @@ export class QrPanelComponent implements OnDestroy {
 		console.log('[QR-Panel] boton Generar QR click');
 		this.errorMsg = '';
 		this.saveMsg = '';
-		// Si ya existe un alias pendiente en esta sesión, reusar y abrir modal sin generar otro
 		const isFinal = this.status === 'completado' || this.status === 'cancelado' || this.status === 'expirado';
-		if (this.alias && !isFinal) {
-			console.log('[QR-Panel] reusar QR existente', { alias: this.alias, status: this.status });
-			this.abrir();
-			return;
-		}
-		// Asegurar catálogo de formas de cobro cargado (evita que no detecte filas QR por carrera)
 		await this.ensureFormasCobroLoaded();
-		// Intentar cargar desde sessionStorage por cod_ceta, pero validar estado real
 		const cod = this.getCodCeta();
-		try {
-			const hasSession = !!sessionStorage.getItem(this.storageKey(cod));
-			if (hasSession) {
-				this.loading = true;
-				this.cobrosService.stateQrByCodCeta({ cod_ceta: cod }).subscribe({
-					next: (res: any) => {
-						this.loading = false;
-						const est = (res?.data?.estado || '').toString();
-						if (['completado','cancelado','expirado'].includes(est)) {
-							this.clearSession(cod);
-							this.alias = '';
-							this.imageBase64 = '';
-							this.amount = 0;
-							this.expiresAt = '';
-							this.generar();
-							return;
-						}
-						if (this.loadSession(cod)) {
-							console.log('[QR-Panel] cargado desde sessionStorage por cod_ceta', { cod_ceta: cod, alias: this.alias });
-							this.abrir();
-							return;
-						}
-						this.generar();
-					},
-					error: () => {
-						this.loading = false;
-						// Si falla la consulta, proceder a generar uno nuevo para evitar mostrar uno viejo
-						this.generar();
+		this.loading = true;
+		this.cobrosService.stateQrByCodCeta({ cod_ceta: cod }).subscribe({
+			next: (res: any) => {
+				this.loading = false;
+				const data = res?.data || null;
+				const est = (data?.estado || '').toString();
+				const saved = !!(data?.saved_by_user);
+				const alias = (data?.alias || '').toString();
+				if (['generado','procesando'].includes(est)) {
+					if (saved) {
+						this.warnMsg = 'QR guardado en espera. No se mostrará hasta su procesamiento.';
+						this.status = 'pendiente';
+						this.alias = '';
+						this.imageBase64 = '';
+						this.savedByUser = true;
+						try { this.cerrar(); } catch {}
+						return;
 					}
-				});
-				return;
+					// Confirmar con sync antes de abrir modal para evitar parpadeo si saved_by_user cambia
+					try {
+						const id_usuario = (this.cabecera as FormGroup).get('id_usuario')?.value;
+						this.cobrosService.syncQrByCodCeta({ cod_ceta: cod, id_usuario }).subscribe({
+							next: (sx: any) => {
+								const sd = sx?.data || null;
+								const est2 = (sd?.estado || est).toString();
+								const saved2 = !!(sd?.saved_by_user);
+								if (saved2) {
+									this.warnMsg = 'QR guardado en espera. No se mostrará hasta su procesamiento.';
+									this.status = 'pendiente';
+									this.alias = '';
+									this.imageBase64 = '';
+									this.savedByUser = true;
+									try { this.cerrar(); } catch {}
+									return;
+								}
+								this.alias = (sd?.alias || alias);
+								this.savedByUser = false;
+								this.showExisting(this.alias, '', 0, '', est2);
+							},
+							error: () => {
+								this.alias = alias;
+								this.savedByUser = false;
+								this.showExisting(this.alias, '', 0, '', est);
+							}
+						});
+						return;
+					} catch {
+						this.alias = alias;
+						this.savedByUser = false;
+						this.showExisting(this.alias, '', 0, '', est);
+						return;
+					}
+				}
+				if (['completado','cancelado','expirado'].includes(est)) {
+					this.clearSession(cod);
+					this.generar();
+					return;
+				}
+				try {
+					const hasSession = !!sessionStorage.getItem(this.storageKey(cod));
+					if (hasSession && this.loadSession(cod)) {
+						if (this.savedByUser) {
+							this.warnMsg = 'QR guardado en espera. No se mostrará hasta su procesamiento.';
+							try { this.cerrar(); } catch {}
+							this.status = 'pendiente';
+							this.statusChange.emit(this.status);
+							return;
+						}
+						this.abrir();
+						return;
+					}
+				} catch {}
+				this.generar();
+			},
+			error: () => {
+				this.loading = false;
+				this.generar();
 			}
-		} catch {}
-		this.generar();
+		});
 	}
 
 	onClickGuardarEspera(): void {
@@ -144,6 +182,7 @@ export class QrPanelComponent implements OnDestroy {
 						this.savedWaiting.emit();
 						const cod = this.getCodCeta();
 						if (cod) { sessionStorage.setItem(this.storageKey(cod) + ':waiting_saved', '1'); }
+						this.savedByUser = true;
 					} catch {}
 				},
 				error: (e: any) => {
@@ -233,6 +272,10 @@ export class QrPanelComponent implements OnDestroy {
 
 	onClickAnular(): void {
 		console.log('[QR-Panel] boton Anular click', { alias: this.alias });
+		if (this.savedByUser) {
+			this.errorMsg = 'No se puede anular el QR porque ya fue guardado en espera.';
+			return;
+		}
 		this.anular();
 	}
 
@@ -328,6 +371,28 @@ export class QrPanelComponent implements OnDestroy {
         try { this.warnMsg = (msg || '').toString(); } catch { this.warnMsg = ''; }
     }
 
+    setSavedByUser(saved: boolean, msg?: string): void {
+        try {
+            this.savedByUser = !!saved;
+            if (this.savedByUser) {
+                this.warnMsg = (msg || 'Hay un QR en espera. No se puede generar más códigos QR hasta que se complete o se anule el que está en espera.').toString();
+                try { this.cerrar(); } catch {}
+                this.status = 'pendiente';
+                this.statusChange.emit(this.status);
+                try {
+                    const cod = this.getCodCeta();
+                    if (cod) { sessionStorage.setItem(this.storageKey(cod) + ':waiting_saved', '1'); }
+                } catch {}
+            } else {
+                this.warnMsg = '';
+                try {
+                    const cod = this.getCodCeta();
+                    if (cod) { sessionStorage.removeItem(this.storageKey(cod) + ':waiting_saved'); }
+                } catch {}
+            }
+        } catch {}
+    }
+
     showExisting(alias: string, base64: string, amount: number, expiresAt: string, estado?: string): void {
         try {
             this.alias = (alias || '').toString();
@@ -341,6 +406,7 @@ export class QrPanelComponent implements OnDestroy {
             this.statusChange.emit(this.status);
             const cod = this.getCodCeta();
             if (cod) { this.saveSession(cod); }
+            try { if (cod) { const f = sessionStorage.getItem(this.storageKey(cod) + ':waiting_saved'); this.savedByUser = (f === '1'); } } catch {}
             if (this.alias) { this.tagAliasOnQrRows(this.alias); }
             this.abrir();
         } catch (e) { console.error('[QR-Panel] showExisting() error', e); }
@@ -420,6 +486,7 @@ export class QrPanelComponent implements OnDestroy {
         console.log('[QR-Panel] generar() start', { isSelected: this.isSelected, amount, cod_ceta, cod_pensum, id_usuario, id_cuentas_bancarias, pagosLen: this.pagos?.length ?? 0 });
         this.statusChange.emit(this.status);
         this.loading = true;
+        this.savedByUser = false;
         this.abrir();
 		// Fallback de id_usuario desde localStorage si no está en cabecera
 		if (!id_usuario && typeof localStorage !== 'undefined') {
@@ -481,148 +548,141 @@ export class QrPanelComponent implements OnDestroy {
 	}
 
 	anular(): void {
-        if (!this.alias) return;
-        const id_usuario = (this.cabecera as FormGroup).get('id_usuario')?.value;
-        const cod = this.getCodCeta();
-        this.loading = true;
-        this.isCancelling = true;
-        this.errorMsg = '';
+		if (this.savedByUser) { this.errorMsg = 'No se puede anular el QR porque ya fue guardado en espera.'; return; }
+		if (!this.alias) return;
+		const id_usuario = (this.cabecera as FormGroup).get('id_usuario')?.value;
+		const cod = this.getCodCeta();
+		this.loading = true;
+		this.isCancelling = true;
+		this.errorMsg = '';
         this.saveMsg = '';
         this.warnMsg = '';
         this.imageBase64 = '';
         this.status = 'procesando';
         this.statusChange.emit(this.status);
-        // Pre-check: sincronizar estado real por cod_ceta para evitar 502 si ya está pagado/cancelado
-        this.cobrosService.syncQrByCodCeta({ cod_ceta: cod, id_usuario }).subscribe({
-            next: (pre: any) => {
-                const d = pre?.data || null;
-                if (d && d.estado && ['completado','cancelado','expirado'].includes(d.estado)) {
-                    this.loading = false;
-                    this.isCancelling = false;
-                    this.status = d.estado;
-                    this.statusChange.emit(this.status);
-                    this.clearSession(cod);
-                    if (d.estado === 'cancelado') {
-                        this.saveMsg = 'QR anulado.';
-                        this.alias = '';
-                        this.imageBase64 = '';
-                    }
-                    return;
-                }
-                // Si no es final, intentar anular en proveedor
-                this.cobrosService.disableQr(this.alias, id_usuario).subscribe({
-                    next: (res: any) => {
-                        this.loading = false;
-                        this.isCancelling = false;
-                        console.log('[QR-Panel] disable respuesta', res);
-                        if (!res?.success) return;
-                        this.status = 'cancelado';
-                        this.statusChange.emit(this.status);
-                        this.clearSession(cod);
-                        this.alias = '';
-                        this.imageBase64 = '';
-                        this.amount = 0;
-                        this.expiresAt = '';
-                        this.zoomed = false;
-                        this.saveMsg = 'QR anulado.';
-                        try { this.ws.disconnect(); this.teardownWs(); } catch {}
-                    },
-                    error: (err: any) => {
-                        this.loading = false;
-                        this.isCancelling = false;
-                        console.error('[QR-Panel] disable error', err);
-                        // Si el proveedor devuelve 502/500, re-sincronizar por cod_ceta para reflejar estado final
-                        const st = Number(err?.status || 0);
-                        if (st === 502 || st === 500) {
-                            this.cobrosService.syncQrByCodCeta({ cod_ceta: cod, id_usuario }).subscribe({
-                                next: (sx: any) => {
-                                    const sd = sx?.data || null;
-                                    if (sd && sd.estado) {
-                                        this.status = sd.estado;
-                                        this.statusChange.emit(this.status);
-                                        if (['completado','cancelado','expirado'].includes(sd.estado)) {
-                                            this.clearSession(cod);
-                                            if (sd.estado === 'cancelado') {
-                                                this.saveMsg = 'QR anulado.';
-                                                this.alias = '';
-                                                this.imageBase64 = '';
-                                            }
-                                            this.isCancelling = false;
-                                        }
-                                    }
-                                },
-                                error: () => {}
-                            });
-                        }
-                    }
-                });
-            },
-            error: (e: any) => { this.loading = false; this.isCancelling = false; console.error('[QR-Panel] pre-sync error', e); }
-        });
-    }
+		// Pre-check: sincronizar estado real por cod_ceta para evitar 502 si ya está pagado/cancelado
+		this.cobrosService.syncQrByCodCeta({ cod_ceta: cod, id_usuario }).subscribe({
+			next: (pre: any) => {
+				const d = pre?.data || null;
+				try { this.savedByUser = !!(d?.saved_by_user); } catch {}
+				if (d && d.estado && ['completado','cancelado','expirado'].includes(d.estado)) {
+					this.loading = false;
+					this.isCancelling = false;
+					this.status = d.estado;
+					this.statusChange.emit(this.status);
+					this.clearSession(cod);
+					if (d.estado === 'cancelado') {
+						this.saveMsg = 'QR anulado.';
+						this.alias = '';
+						this.imageBase64 = '';
+					}
+					return;
+				}
+				// Si no es final, intentar anular en proveedor
+				this.cobrosService.disableQr(this.alias, id_usuario).subscribe({
+					next: (res: any) => {
+						this.loading = false;
+						this.isCancelling = false;
+						console.log('[QR-Panel] disable respuesta', res);
+						if (!res?.success) return;
+						this.status = 'cancelado';
+						this.statusChange.emit(this.status);
+						this.clearSession(cod);
+						this.alias = '';
+						this.imageBase64 = '';
+						this.amount = 0;
+						this.expiresAt = '';
+						this.zoomed = false;
+						this.saveMsg = 'QR anulado.';
+						try { this.ws.disconnect(); this.teardownWs(); } catch {}
+					},
+					error: (err: any) => {
+						this.loading = false;
+						this.isCancelling = false;
+						console.error('[QR-Panel] disable error', err);
+						// Si el proveedor devuelve 502/500, re-sincronizar por cod_ceta para reflejar estado final
+						const st = Number(err?.status || 0);
+						if (st === 502 || st === 500) {
+							this.cobrosService.syncQrByCodCeta({ cod_ceta: cod, id_usuario }).subscribe({
+								next: (sx: any) => {
+									const sd = sx?.data || null;
+									if (sd && sd.estado) {
+										this.status = sd.estado;
+										this.statusChange.emit(this.status);
+										if (['completado','cancelado','expirado'].includes(sd.estado)) {
+											this.clearSession(cod);
+											if (sd.estado === 'cancelado') {
+												this.saveMsg = 'QR anulado.';
+												this.alias = '';
+												this.imageBase64 = '';
+											}
+											this.isCancelling = false;
+										}
+									}
+								},
+								error: () => {}
+							});
+						}
+					}
+				});
+			},
+			error: (e: any) => { this.loading = false; this.isCancelling = false; console.error('[QR-Panel] pre-sync error', e); }
+		});
+	}
 
 	consultar(): void {
-        const cod = this.getCodCeta();
-        if (!cod) return;
-        this.loading = true;
-        this.cobrosService.stateQrByCodCeta({ cod_ceta: cod }).subscribe({
-            next: (res: any) => {
-                this.loading = false;
-                console.log('[QR-Panel] state-by-codceta', res);
-                if (!res?.success) return;
-                const data = res?.data || null;
-                if (data && data.estado) {
-                    this.status = (data.estado || '').toString() as any;
-                    this.statusChange.emit(this.status);
-                    if (!this.alias && data.alias) { this.alias = (data.alias || '').toString(); }
-                    if (this.isFinalStatus) { this.clearSession(cod); this.stopPolling(); }
-                }
-            },
-            error: (e: any) => { this.loading = false; console.error('[QR-Panel] state-by-codceta error', e); }
-        });
-    }
+		try {
+			const cod = this.getCodCeta();
+			const id_usuario = (this.cabecera as FormGroup).get('id_usuario')?.value;
+			if (!cod) return;
+			this.cobrosService.syncQrByCodCeta({ cod_ceta: cod, id_usuario }).subscribe({
+				next: (res: any) => {
+					const d = res?.data || null;
+					if (!d) return;
+					const est = (d.estado || '').toString();
+					this.savedByUser = !!(d?.saved_by_user);
+					if (['generado','procesando'].includes(est)) {
+						if (this.savedByUser) {
+							this.warnMsg = 'QR guardado en espera. No se mostrará hasta su procesamiento.';
+							this.stopPolling();
+							try { this.cerrar(); } catch {}
+							this.status = 'pendiente';
+							this.statusChange.emit(this.status);
+							return;
+						}
+						this.status = (est === 'generado') ? 'pendiente' : 'procesando';
+						this.statusChange.emit(this.status);
+						return;
+					}
+					if (['completado','cancelado','expirado'].includes(est)) {
+						this.status = est as any;
+						this.statusChange.emit(this.status);
+						this.clearSession(cod);
+						try { this.cerrar(); } catch {}
+						this.stopPolling();
+						if (est === 'cancelado') {
+							this.saveMsg = 'QR anulado.';
+							this.alias = '';
+							this.imageBase64 = '';
+						}
+					}
+				},
+				error: () => {}
+			});
+		} catch {}
+	}
 
-    private updateStatusFromPayload(payload: any): void {
-        const estadoExt = ((payload?.objeto?.estadoActual) || '').toString().trim().toUpperCase();
-        let nuevo: 'pendiente' | 'procesando' | 'completado' | 'expirado' | 'cancelado' = this.status;
-        if (estadoExt === 'PAGADO') nuevo = 'completado';
-        else if (estadoExt === 'INHABILITADO' || estadoExt === 'ERROR') nuevo = 'cancelado';
-        else if (estadoExt === 'EXPIRADO') nuevo = 'expirado';
-        else if (estadoExt === 'PENDIENTE') nuevo = 'procesando';
-        this.status = nuevo;
-        this.statusChange.emit(this.status);
-        if (this.isFinalStatus) { this.stopPolling(); if (this.status === 'completado') { try { this.cerrar(); } catch {} } }
-    }
+	private startPolling(): void {
+		try {
+			if (this.pollHandle) { clearInterval(this.pollHandle); this.pollHandle = null; }
+			this.pollHandle = setInterval(() => { try { this.consultar(); } catch {} }, this.pollMs);
+			this.consultar();
+		} catch {}
+	}
 
-    private startPolling(): void {
-        this.stopPolling();
-        try {
-            const cod = this.getCodCeta();
-            if (!cod) return;
-            this.pollHandle = setInterval(() => {
-                // Consulta local por cod_ceta (no golpea al proveedor)
-                this.cobrosService.stateQrByCodCeta({ cod_ceta: cod }).subscribe({
-                    next: (res: any) => {
-                        if (!res?.success) return;
-                        const data = res?.data || null;
-                        if (!data) return;
-                        const est = (data.estado || '').toString();
-                        if (est) {
-                            this.status = est as any;
-                            this.statusChange.emit(this.status);
-                            if (!this.alias && data.alias) { this.alias = (data.alias || '').toString(); }
-                            if (this.isFinalStatus) { this.clearSession(cod); this.stopPolling(); if (this.status === 'completado') { try { this.cerrar(); } catch {} } }
-                        }
-                    },
-                    error: () => {}
-                });
-            }, this.pollMs);
-        } catch {}
-    }
-
-    private stopPolling(): void {
-        try { if (this.pollHandle) { clearInterval(this.pollHandle); this.pollHandle = null; } } catch {}
-    }
+	private stopPolling(): void {
+		try { if (this.pollHandle) { clearInterval(this.pollHandle); this.pollHandle = null; } } catch {}
+	}
 
     ngOnDestroy(): void { this.stopPolling(); try { this.ws.disconnect(); this.teardownWs(); } catch {} }
 
@@ -652,6 +712,7 @@ export class QrPanelComponent implements OnDestroy {
 			this.expiresAt = (d?.expiresAt || '').toString();
 			this.status = 'pendiente';
 			this.statusChange.emit(this.status);
+			try { const f = sessionStorage.getItem(this.storageKey(cod_ceta) + ':waiting_saved'); this.savedByUser = (f === '1'); } catch {}
 			if (this.alias) { this.tagAliasOnQrRows(this.alias); }
 			if (this.alias) { this.setupWs(this.alias); }
 			return !!this.alias && !!this.imageBase64;
@@ -661,6 +722,8 @@ export class QrPanelComponent implements OnDestroy {
 	private clearSession(cod_ceta: string): void {
 		if (!cod_ceta) return;
 		try { sessionStorage.removeItem(this.storageKey(cod_ceta)); } catch {}
+		try { sessionStorage.removeItem(this.storageKey(cod_ceta) + ':waiting_saved'); } catch {}
+		try { this.savedByUser = false; } catch {}
 	}
 
 	private tagAliasOnQrRows(alias: string): void {

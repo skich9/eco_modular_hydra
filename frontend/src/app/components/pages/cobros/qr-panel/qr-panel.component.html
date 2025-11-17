@@ -2,10 +2,14 @@
 	<div class="d-flex align-items-center gap-2 mt-2">
 		<span class="me-2">Estado QR</span>
 		<span class="badge" [ngClass]="statusClass">{{ statusLabel }}</span>
-		<button type="button" class="btn btn-success btn-sm ms-3" (click)="onClickGenerar()" [disabled]="loading || status==='completado' || (totalCobro <= 0 && !alias)">
+		<button type="button" class="btn btn-success btn-sm ms-3" (click)="onClickGenerar()" [disabled]="loading || status==='completado' || (totalCobro <= 0 && !alias) || savedByUser">
 			{{ (alias && !isFinalStatus) ? 'Mostrar QR' : 'Generar QR' }}
 		</button>
 		<button type="button" class="btn btn-outline-secondary btn-sm" (click)="onClickConsultar()" [disabled]="loading || !alias">Consultar</button>
+	</div>
+
+	<div *ngIf="savedByUser" class="alert alert-danger py-2 px-3 small mt-2">
+		Hay un QR en espera. No se puede generar más códigos QR hasta que se complete el que está en espera.
 	</div>
 
 	<div class="modal fade" id="qrPanelModal" tabindex="-1" aria-hidden="true">
@@ -59,7 +63,7 @@
 				</div>
 				<div class="modal-footer">
 					<button type="button" class="btn btn-outline-primary" (click)="onClickGuardarEspera()" [disabled]="loading || pagos.length === 0 || status==='cancelado'">Guardar en espera</button>
-					<button type="button" class="btn btn-danger" (click)="onClickAnular()" [disabled]="loading || !alias">Anular QR</button>
+					<button type="button" class="btn btn-danger" (click)="onClickAnular()" [disabled]="loading || !alias || savedByUser">Anular QR</button>
 					<button type="button" class="btn btn-secondary" data-bs-dismiss="modal">Cerrar</button>
 				</div>
 			</div>
@@ -117,7 +121,7 @@
 		</ng-template>
 		<div class="d-flex justify-content-end gap-2 mt-3">
 			<button type="button" class="btn btn-outline-primary btn-sm" (click)="onClickGuardarEspera()" [disabled]="loading || pagos.length === 0 || status==='cancelado'">Guardar en espera</button>
-			<button type="button" class="btn btn-danger btn-sm" (click)="anular()" [disabled]="loading || !alias">Anular QR</button>
+			<button type="button" class="btn btn-danger btn-sm" (click)="anular()" [disabled]="loading || !alias || savedByUser">Anular QR</button>
 			<button type="button" class="btn btn-secondary btn-sm" (click)="cerrar()">Cerrar</button>
 		</div>
 	</div>

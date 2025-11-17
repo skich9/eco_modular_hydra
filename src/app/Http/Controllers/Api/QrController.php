@@ -800,6 +800,13 @@ class QrController extends Controller
 
         $trx = DB::table('qr_transacciones')->where('alias', $alias)->first();
         if (!$trx) { return response()->json(['success' => false, 'message' => 'Transaction not found'], 404); }
+        try {
+            $isSaved = (bool)($trx->saved_by_user ?? false);
+            $est = (string)($trx->estado ?? '');
+            if ($isSaved && !in_array($est, ['completado','cancelado','expirado'], true)) {
+                return response()->json(['success' => false, 'message' => 'No se puede anular un QR guardado en espera.'], 422);
+            }
+        } catch (\Throwable $e) {}
         // Aplicar overrides por cuenta de la transacción
         try { $this->applyAccountOverrides((int)($trx->id_cuenta_bancaria ?? 0)); } catch (\Throwable $e) {}
 
@@ -931,7 +938,7 @@ class QrController extends Controller
                 'updated_at' => now(),
             ]);
         }
-        return response()->json(['success' => true, 'data' => ['alias' => $alias, 'estado' => $nuevo, 'payload' => $payload]]);
+        return response()->json(['success' => true, 'data' => ['alias' => $alias, 'estado' => $nuevo, 'payload' => $payload, 'saved_by_user' => (bool)($trx->saved_by_user ?? false)]]);
     }
 
     public function stateByCodCeta(Request $request)
@@ -949,6 +956,7 @@ class QrController extends Controller
             'estado' => (string)$trx->estado,
             'id_qr_transaccion' => (int)$trx->id_qr_transaccion,
             'updated_at' => (string)$trx->updated_at,
+            'saved_by_user' => (bool)($trx->saved_by_user ?? false),
         ]]);
     }
 
