@@ -2,6 +2,7 @@ import { Component, OnInit, ViewChild } from '@angular/core';
 import { CommonModule } from '@angular/common';
 import { FormArray, FormBuilder, FormGroup, FormsModule, ReactiveFormsModule, Validators } from '@angular/forms';
 import { CobrosService } from '../../../services/cobros.service';
+import { GestionService } from '../../../services/gestion.service';
 import { AuthService } from '../../../services/auth.service';
 import { MensualidadModalComponent } from './mensualidad-modal/mensualidad-modal.component';
 import { RezagadoModalComponent } from './rezagado-modal/rezagado-modal.component';
@@ -102,7 +103,8 @@ export class CobrosComponent implements OnInit {
   constructor(
     private fb: FormBuilder,
     private cobrosService: CobrosService,
-    private auth: AuthService
+    private auth: AuthService,
+    private gestionService: GestionService
   ) {
     this.searchForm = this.fb.group({
       cod_ceta: ['', Validators.required],
@@ -154,6 +156,23 @@ export class CobrosComponent implements OnInit {
       costo_total: [{ value: 0, disabled: true }],
       observaciones: ['']
     });
+  }
+
+  private loadGestiones(): void {
+    try {
+      this.gestionService.getAll().subscribe({
+        next: (res) => {
+          const arr = Array.isArray((res as any)?.data) ? (res as any).data : (Array.isArray(res) ? res : []);
+          this.gestiones = arr.slice().sort((a: any, b: any) => `${b?.gestion}`.localeCompare(`${a?.gestion}`));
+        },
+        error: () => {
+          this.gestionService.getActivas().subscribe({
+            next: (r) => { this.gestiones = Array.isArray((r as any)?.data) ? (r as any).data : []; },
+            error: () => { this.gestiones = []; }
+          });
+        }
+      });
+    } catch { this.gestiones = []; }
   }
 
   private checkQrPendiente(): void {
@@ -1131,11 +1150,7 @@ export class CobrosComponent implements OnInit {
       if (v) ctrl?.enable(); else ctrl?.disable();
     });
 
-    // Cargar catálogos
-    this.cobrosService.getGestionesActivas().subscribe({
-      next: (res) => { if (res.success) this.gestiones = res.data; },
-      error: () => {}
-    });
+    this.loadGestiones();
     // Documentos de identidad desde SIN
     this.cobrosService.getSinDocumentosIdentidad().subscribe({
       next: (res) => {

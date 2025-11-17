@@ -67,7 +67,10 @@
 								</div>
 								<div class="col-12">
 									<label class="form-label">Gestión</label>
-									<input class="form-control" formControlName="gestion" [readonly]="true" />
+									<select class="form-select" formControlName="gestion">
+										<option value="">-- Seleccione gestión --</option>
+										<option *ngFor="let g of gestiones" [ngValue]="g?.gestion">{{ g?.gestion }}</option>
+									</select>
 								</div>
 								<div class="col-12">
 									<label class="form-label">Grupo</label>
