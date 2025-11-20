@@ -8,7 +8,7 @@ class CufGenerator
 {
 	public function generate(
 		int $nit,
-		string $fechaEmision, // ISO date string
+		string $fechaEmision, // fecha de emisión (puede venir en 'Y-m-d H:i:s.u' o 'Y-m-d\TH:i:s.000')
 		int $codigoSucursal,
 		int $codigoModalidad,
 		int $codigoTipoEmision,
@@ -18,11 +18,28 @@ class CufGenerator
 		int $codigoPuntoVenta
 	): array {
 		$nitStr = $this->leftPad((string) $nit, 13);
-		$fecha = Carbon::parse($fechaEmision);
+		// Normalizar fecha a zona America/La_Paz y construir YmdHis000
+		try {
+			if (strpos($fechaEmision, 'T') !== false) {
+				// Posible formato 'Y-m-d\\TH:i:s.000'
+				if (preg_match('/^\\d{4}-\\d{2}-\\d{2}T\\d{2}:\\d{2}:\\d{2}\\.000$/', $fechaEmision)) {
+					$fecha = Carbon::createFromFormat('Y-m-d\\TH:i:s.000', $fechaEmision, 'America/La_Paz');
+				} else {
+					$fecha = Carbon::parse($fechaEmision, 'America/La_Paz');
+				}
+			} else {
+				// Posible formato 'Y-m-d H:i:s.u'
+				if (preg_match('/^\\d{4}-\\d{2}-\\d{2} \\d{2}:\\d{2}:\\d{2}\\.\\d+$/', $fechaEmision)) {
+					$fecha = Carbon::createFromFormat('Y-m-d H:i:s.u', $fechaEmision, 'America/La_Paz');
+				} else {
+					$fecha = Carbon::parse($fechaEmision, 'America/La_Paz');
+				}
+			}
+		} catch (\Throwable $e) {
+			$fecha = Carbon::now('America/La_Paz');
+		}
 		$baseFecha = $fecha->format('YmdHis');
-		$millis = (int) floor(((int) $fecha->format('u')) / 1000);
-		$fechaStr = $baseFecha . str_pad((string)$millis, 3, '0', STR_PAD_LEFT); // 17
-		$fechaStr = substr($fechaStr, 0, 17);
+		$fechaStr = $baseFecha . '000'; // 17
 
 		$sucursalStr = $this->leftPad((string) $codigoSucursal, 4);
 		$modalidadStr = $this->leftPad((string) $codigoModalidad, 1);
@@ -34,7 +51,8 @@ class CufGenerator
 
 		$cadena53 = $nitStr . $fechaStr . $sucursalStr . $modalidadStr . $tipoEmisionStr . $tipoFacturaStr . $docSectorStr . $nroFactStr . $pvStr;
 		$dv = $this->mod11($cadena53);
-		$cadena54 = $cadena53 . (string) $dv;
+		$cadena54 = $cadena53 . (string) $dv; // 54 dígitos con DV
+		// Estándar SIAT/SGA: HEX de los 54 dígitos (incluye DV)
 		$cufHex = $this->decStringToHex($cadena54);
 
 		return [
@@ -75,7 +93,7 @@ class CufGenerator
 			$wIdx = ($wIdx + 1) % count($weights);
 		}
 		$mod = $sum % 11;
-		$dv = 11 - $mod;
+		$dv = $mod;
 		if ($dv === 10) return 1;
 		if ($dv === 11) return 0;
 		return $dv;

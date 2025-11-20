@@ -132,7 +132,7 @@ class FacturaPayloadBuilder
             'cufd' => (string) ($args['cufd'] ?? ''),
             'cuf' => (string) ($args['cuf'] ?? ''),
             'fechaEnvio' => $fechaEnvioIso,
-            // Importante: pasar bytes crudos al SoapClient; él se encarga del base64
+            // Importante: el SoapClient PHP espera bytes para base64Binary y realiza el encoding internamente
             'archivo' => $archivoBytesForSoap,
             'hashArchivo' => $hashArchivo,
         ];

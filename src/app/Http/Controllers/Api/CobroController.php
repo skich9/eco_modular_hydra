@@ -24,6 +24,7 @@ use App\Services\Siat\OperationsService;
 use App\Services\Siat\CufGenerator;
 use App\Services\Siat\FacturaPayloadBuilder;
 use App\Services\Qr\QrSocketNotifier;
+use Carbon\Carbon;
 
 class CobroController extends Controller
 {
@@ -938,10 +939,14 @@ class CobroController extends Controller
 								: $facturaService->nextFactura($anio, $sucursal, (string)$pv);
 							Log::info('batchStore: factura C', [ 'idx' => $idx, 'anio' => $anio, 'sucursal' => $sucursal, 'pv' => $pv, 'nro' => $nroFactura ]);
 							// Generar CUF según especificación SIAT
-							$fechaEmision = date('Y-m-d H:i:s.u');
+							// Usar una sola instancia de tiempo (La Paz) para CUF y XML, evitando desfaces
+							$tEmision = Carbon::now('America/La_Paz');
+							$fechaEmision = $tEmision->format('Y-m-d H:i:s.u');
+							$fechaEmisionIso = $tEmision->format('Y-m-d\\TH:i:s.000');
+							// Usar la MISMA fecha que irá en el XML (ISO con 'T') para generar el CUF
 							$cufData = $cufGen->generate(
 								(int) config('sin.nit'),
-								$fechaEmision,
+								$fechaEmisionIso,
 								$sucursal,
 								(int) config('sin.modalidad'),
 								1, // tipo_emision: en línea
@@ -950,11 +955,21 @@ class CobroController extends Controller
 								(int) $nroFactura,
 								(int) $pv
 							);
-							$cuf = $cufData['cuf'];
+							// CUF final = hex(53+DV) + codigo_control del CUFD (como en SGA)
+							$cuf = ($cufData['cuf'] ?? '') . (string)($cufd['codigo_control'] ?? '');
+							Log::debug('batchStore:cuf_debug', [
+								'componentes' => $cufData['componentes'] ?? [],
+								'decimal' => $cufData['decimal'] ?? null,
+								'dv' => $cufData['dv'] ?? null,
+								'cuf_hex' => $cufData['cuf'] ?? null,
+								'cuf_final' => $cuf,
+								'codigo_control' => $cufd['codigo_control'] ?? null,
+								'fecha_emision_iso' => $fechaEmisionIso,
+							]);
 							$facturaService->createComputarizada($anio, $nroFactura, [
 								'codigo_sucursal' => $sucursal,
 								'codigo_punto_venta' => (string)$pv,
-								'fecha_emision' => $item['fecha_cobro'],
+								'fecha_emision' => $fechaEmisionIso,
 								'cod_ceta' => (int)$request->cod_ceta,
 								'id_usuario' => (int)$request->id_usuario,
 								'id_forma_cobro' => $formaIdItem,
@@ -971,6 +986,27 @@ class CobroController extends Controller
 										// Obtener CUIS vigente requerido por recepcionFactura
 										$cuisRow = $cuisRepo->getVigenteOrCreate($pv);
 										$cuisCode = $cuisRow['codigo_cuis'] ?? '';
+										// Mapear cliente a las claves esperadas por el builder
+										$cliIn = (array) $request->input('cliente', []);
+										$cliente = [
+											'tipo_doc' => isset($cliIn['tipo_doc']) ? (int)$cliIn['tipo_doc'] : (int)($cliIn['tipo_identidad'] ?? 5),
+											'numero' => (string)($cliIn['numero'] ?? ''),
+											'razon' => (string)($cliIn['razon'] ?? ($cliIn['razon_social'] ?? 'S/N')),
+											'complemento' => $cliIn['complemento'] ?? null,
+											'codigo' => (string)($cliIn['codigo'] ?? ($cliIn['numero'] ?? '0')),
+										];
+										// Detalle por defecto sector educativo (docSector 11): producto SIN 99100 y unidad 58
+										$detalle = [
+											'codigo_sin' => 99100,
+											'codigo' => 'ITEM-' . (int)$nroCobro,
+											'descripcion' => $item['observaciones'] ?? 'Cobro',
+											'cantidad' => 1,
+											'unidad_medida' => 58,
+											'precio_unitario' => (float)$item['monto'],
+											'descuento' => 0,
+											'subtotal' => (float)$item['monto'],
+										];
+
 										$payloadArgs = [
 											'nit' => (int) config('sin.nit'),
 											'cod_sistema' => (string) config('sin.cod_sistema'),
@@ -984,21 +1020,12 @@ class CobroController extends Controller
 											'cuis' => $cuisCode,
 											'cufd' => $cufd['codigo_cufd'] ?? '',
 											'cuf' => $cuf,
-											'fecha_emision' => $fechaEmision,
+											'fecha_emision' => $fechaEmisionIso,
 											'monto_total' => (float) $item['monto'],
 											'numero_factura' => (int) $nroFactura,
 											'id_forma_cobro' => $formaIdItem,
-											'cliente' => $request->input('cliente', []),
-											'detalle' => [
-												'codigo_sin' => 0,
-												'codigo' => 'ITEM-' . (int)$nroCobro,
-												'descripcion' => $item['observaciones'] ?? 'Cobro',
-												'cantidad' => 1,
-												'unidad_medida' => 1,
-												'precio_unitario' => (float)$item['monto'],
-												'descuento' => 0,
-												'subtotal' => (float)$item['monto'],
-											],
+											'cliente' => $cliente,
+											'detalle' => $detalle,
 										];
 										Log::debug('batchStore: factura build payload args', [
 											'anio' => $anio,

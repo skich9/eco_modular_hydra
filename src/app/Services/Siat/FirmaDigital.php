@@ -43,8 +43,9 @@ class FirmaDigital
 			file_put_contents($origenPath, $xml);
 
 			$doc = new DOMDocument();
-			$doc->preserveWhiteSpace = false;
-			$doc->formatOutput = true;
+			// Preservar whitespace y evitar re-formateo para no introducir variaciones antes de la canonicalización
+			$doc->preserveWhiteSpace = true;
+			$doc->formatOutput = false;
 			$doc->load($origenPath);
 
 			// 2) Rutas a llaves y certificados
@@ -53,8 +54,32 @@ class FirmaDigital
 			$privateKeyPath = $rutaKeys . DIRECTORY_SEPARATOR . 'private.pem';
 			$certPath = $rutaKeys . DIRECTORY_SEPARATOR . 'mycertificado.pem';
 
+			// 2.a) Verificar que private.pem y mycertificado.pem correspondan (mismo par)
+			try {
+				$privPem = @file_get_contents($privateKeyPath);
+				$certPem = @file_get_contents($certPath);
+				if ($privPem !== false && $certPem !== false) {
+					$privRes = @openssl_pkey_get_private($privPem);
+					$x509 = @openssl_x509_read($certPem);
+					$pubRes = $x509 ? @openssl_pkey_get_public($x509) : null;
+					if ($privRes && $pubRes) {
+						$privDet = @openssl_pkey_get_details($privRes);
+						$pubDet = @openssl_pkey_get_details($pubRes);
+						$privN = isset($privDet['rsa']['n']) ? $privDet['rsa']['n'] : null;
+						$pubN  = isset($pubDet['rsa']['n']) ? $pubDet['rsa']['n'] : null;
+						if ($privN && $pubN && $privN !== $pubN) {
+							Log::error('FirmaDigital.keyCertMismatch', [ 'private' => $privateKeyPath, 'cert' => $certPath ]);
+							throw new \RuntimeException('La llave privada y el certificado no corresponden (módulos RSA diferentes).');
+						}
+					}
+				}
+			} catch (\Throwable $e) {
+				Log::warning('FirmaDigital.keyCertCheck.error', [ 'error' => $e->getMessage() ]);
+				// continuar; la firma puede fallar después si realmente no corresponden
+			}
+
 			// 3) Crear objeto de firma
-			$objDSig = new XMLSecurityDSig("");
+			$objDSig = new XMLSecurityDSig();
 			$objDSig->setCanonicalMethod(XMLSecurityDSig::EXC_C14N);
 
 			// 4) Agregar referencia al documento completo
