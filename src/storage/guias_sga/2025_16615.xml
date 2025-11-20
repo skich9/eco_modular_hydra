@@ -1,0 +1,59 @@
+<?xml version="1.0" encoding="UTF-8" standalone="yes"?>
+<facturaElectronicaSectorEducativo xsi:noNamespaceSchemaLocation="facturaElectronicaSectorEducativo.xsd" xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance">
+  <cabecera>
+    <nitEmisor>388386029</nitEmisor>
+    <razonSocialEmisor>INSTITUTO TECNOLOGICO DE ENSEÑANZA AUTOMOTRIZ "CETA" S.R.L.</razonSocialEmisor>
+    <municipio>COCHABAMBA</municipio>
+    <telefono>4581736</telefono>
+    <numeroFactura>16615</numeroFactura>
+    <cuf>1A930F30287685650B6E5DB2CCE37FB7CD2A65FA623490F39C1942F74</cuf>
+    <cufd>BQXxDKCxtQUE=NzzE5MkEzRUIzNUU=Qm9vd1lSVUxaVUFI1QzQxMDNDMTlFN</cufd>
+    <codigoSucursal>0</codigoSucursal>
+    <direccion>ZONA: NOROESTE, CALLE: AVAROA, TIPO DE ESTABLECIMIENTO: EDIFICIO SIN NOMBRE, NRO.: 142, NRO DPTO/LOCAL/OF/PUESTO: 0, TELEFONO: 4581736-4581736</direccion>
+    <codigoPuntoVenta>0</codigoPuntoVenta>
+    <fechaEmision>2025-11-19T17:24:48.420</fechaEmision>
+    <nombreRazonSocial>BRETON</nombreRazonSocial>
+    <codigoTipoDocumentoIdentidad>1</codigoTipoDocumentoIdentidad>
+    <numeroDocumento>15062701</numeroDocumento>
+    <complemento xsi:nil="true"/>
+    <codigoCliente>15062701</codigoCliente>
+    <nombreEstudiante>Breton Huanca Jhustin Miguel</nombreEstudiante>
+    <periodoFacturado>2/2025</periodoFacturado>
+    <codigoMetodoPago>1</codigoMetodoPago>
+    <numeroTarjeta xsi:nil="true"/>
+    <montoTotal>884</montoTotal>
+    <montoTotalSujetoIva>884</montoTotalSujetoIva>
+    <codigoMoneda>1</codigoMoneda>
+    <tipoCambio>1</tipoCambio>
+    <montoTotalMoneda>884</montoTotalMoneda>
+    <montoGiftCard>0</montoGiftCard>
+    <descuentoAdicional xsi:nil="true"/>
+    <codigoExcepcion>0</codigoExcepcion>
+    <cafc xsi:nil="true"/>
+    <leyenda>Ley N° 453: Tienes derecho a un trato equitativo sin discriminación en la oferta de servicios.</leyenda>
+    <usuario>HerlandV</usuario>
+    <codigoDocumentoSector>11</codigoDocumentoSector>
+  </cabecera>
+  <detalle>
+    <actividadEconomica>853000</actividadEconomica>
+    <codigoProductoSin>99100</codigoProductoSin>
+    <codigoProducto>120100</codigoProducto>
+    <descripcion>Mens. Parcial  Agosto</descripcion>
+    <cantidad>1</cantidad>
+    <unidadMedida>58</unidadMedida>
+    <precioUnitario>790.00</precioUnitario>
+    <montoDescuento>0.00</montoDescuento>
+    <subTotal>790.00</subTotal>
+  </detalle>
+  <detalle>
+    <actividadEconomica>853000</actividadEconomica>
+    <codigoProductoSin>99100</codigoProductoSin>
+    <codigoProducto>120101</codigoProducto>
+    <descripcion>Mens. Agosto Niv</descripcion>
+    <cantidad>1</cantidad>
+    <unidadMedida>58</unidadMedida>
+    <precioUnitario>94.00</precioUnitario>
+    <montoDescuento>0.00</montoDescuento>
+    <subTotal>94.00</subTotal>
+  </detalle>
+</facturaElectronicaSectorEducativo>

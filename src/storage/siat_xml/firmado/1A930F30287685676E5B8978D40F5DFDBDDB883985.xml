@@ -1,0 +1,53 @@
+<?xml version="1.0" encoding="UTF-8" standalone="yes"?>
+<facturaElectronicaSectorEducativo xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance" xsi:noNamespaceSchemaLocation="facturaElectronicaSectorEducativo.xsd">
+  <cabecera>
+    <nitEmisor>388386029</nitEmisor>
+    <razonSocialEmisor>EMISOR</razonSocialEmisor>
+    <municipio>La Paz</municipio>
+    <telefono xsi:nil="true"/>
+    <numeroFactura>28</numeroFactura>
+    <cuf>1A930F30287685676E5B8978D40F5DFDBDDB883985</cuf>
+    <cufd>BQXxDKCxtQUE=NzzE5MkEzRUIzNUU=QmVqU0tLVUxaVUFI1QzQxMDNDMTlFN</cufd>
+    <codigoSucursal>0</codigoSucursal>
+    <direccion>S/D</direccion>
+    <codigoPuntoVenta>0</codigoPuntoVenta>
+    <fechaEmision>2025-11-19T22:08:51.000</fechaEmision>
+    <nombreRazonSocial>S/N</nombreRazonSocial>
+    <codigoTipoDocumentoIdentidad>5</codigoTipoDocumentoIdentidad>
+    <numeroDocumento>0</numeroDocumento>
+    <complemento xsi:nil="true"/>
+    <codigoCliente>0</codigoCliente>
+    <nombreEstudiante>S/N</nombreEstudiante>
+    <periodoFacturado>SIN PERIODO</periodoFacturado>
+    <codigoMetodoPago>1</codigoMetodoPago>
+    <numeroTarjeta xsi:nil="true"/>
+    <montoTotal>150.00</montoTotal>
+    <montoTotalSujetoIva>150.00</montoTotalSujetoIva>
+    <codigoMoneda>1</codigoMoneda>
+    <tipoCambio>1</tipoCambio>
+    <montoTotalMoneda>150.00</montoTotalMoneda>
+    <montoGiftCard xsi:nil="true"/>
+    <descuentoAdicional xsi:nil="true"/>
+    <codigoExcepcion xsi:nil="true"/>
+    <cafc xsi:nil="true"/>
+    <leyenda>Ley N° 453: El proveedor de servicios debe habilitar medios e instrumentos para efectuar consultas y reclamaciones.</leyenda>
+    <usuario>system</usuario>
+    <codigoDocumentoSector>11</codigoDocumentoSector>
+  </cabecera>
+  <detalle>
+    <actividadEconomica>853000</actividadEconomica>
+    <codigoProductoSin>49111</codigoProductoSin>
+    <codigoProducto>ITEM-292</codigoProducto>
+    <descripcion>PRUEBA FACTURA ONLINE SIATe</descripcion>
+    <cantidad>1.00</cantidad>
+    <unidadMedida>1</unidadMedida>
+    <precioUnitario>150.00</precioUnitario>
+    <montoDescuento xsi:nil="true"/>
+    <subTotal>150.00</subTotal>
+  </detalle>
+  <Signature xmlns="http://www.w3.org/2000/09/xmldsig#">
+  <SignedInfo><CanonicalizationMethod Algorithm="http://www.w3.org/2001/10/xml-exc-c14n#"/>
+    <SignatureMethod Algorithm="http://www.w3.org/2001/04/xmldsig-more#rsa-sha256"/>
+  <Reference URI=""><Transforms><Transform Algorithm="http://www.w3.org/2000/09/xmldsig#enveloped-signature"/></Transforms><DigestMethod Algorithm="http://www.w3.org/2001/04/xmlenc#sha256"/><DigestValue>N0bEl3WXsCzCvHvmkLiECrSeLmBK5RFB8OS2rn0x0RY=</DigestValue></Reference></SignedInfo><SignatureValue>ljufvqPLzEInFn17msDoH7ISoE8+8Y2qP4zu6If5X8J/IUEyJZm9/3ZR0nwg39ifiESA2s36fDKxacj70mzO3Aj+BXZf0mFArbn11rWidB06xXoBKa5JIf2cwq0v98OkQPb3tBLCUPXH+eN0cb9IZX9DO22ymU31kZ37Rt3LwMC0yRMCkZRu+WKPjdx/X/bQrsHTg4I8auKv5MP6Njx1S1IeTTuCfNsm/1n52wqQ9m5wRdLfWGD6WI2IRiD+lWXsEUat952zs1HgtLhxanZmOScXe8/e5aLDfj6yvg9aIfUN2maXIjOqhHbV4YSCgFbI0zGdUCnX3IC0MbpYYgScEg==</SignatureValue>
+<KeyInfo><X509Data><X509Certificate>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</X509Certificate></X509Data></KeyInfo></Signature>
+</facturaElectronicaSectorEducativo>

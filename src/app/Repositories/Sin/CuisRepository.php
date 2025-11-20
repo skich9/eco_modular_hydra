@@ -5,6 +5,7 @@ namespace App\Repositories\Sin;
 use App\Services\Siat\CodesService;
 use Illuminate\Support\Facades\DB;
 use Exception;
+use Carbon\Carbon;
 
 class CuisRepository
 {
@@ -14,10 +15,11 @@ class CuisRepository
 	{
 		$sucursal = (int) config('sin.sucursal');
 
+		$nowLaPaz = Carbon::now('America/La_Paz');
 		$row = DB::table('sin_cuis')
 			->where('codigo_punto_venta', (string) $puntoVenta)
 			->where('codigo_sucursal', $sucursal)
-			->where('fecha_vigencia', '>', now())
+			->where('fecha_vigencia', '>', $nowLaPaz)
 			->orderByDesc('fecha_vigencia')
 			->first();
 

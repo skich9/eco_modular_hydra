@@ -5,6 +5,7 @@ namespace App\Repositories\Sin;
 use App\Services\Siat\CodesService;
 use Illuminate\Support\Facades\DB;
 use Exception;
+use Carbon\Carbon;
 
 class CufdRepository
 {
@@ -20,11 +21,12 @@ class CufdRepository
 		$cuisData = $this->cuisRepo->getVigenteOrCreate($puntoVenta);
 		$cuis = $cuisData['codigo_cuis'];
 
+		$nowLaPaz = Carbon::now('America/La_Paz');
 		$row = DB::table('sin_cufd')
 			->where('codigo_cuis', $cuis)
 			->where('codigo_punto_venta', (string) $puntoVenta)
 			->where('codigo_sucursal', $sucursal)
-			->where('fecha_vigencia', '>', now())
+			->where('fecha_vigencia', '>', $nowLaPaz)
 			->orderByDesc('fecha_vigencia')
 			->first();
 

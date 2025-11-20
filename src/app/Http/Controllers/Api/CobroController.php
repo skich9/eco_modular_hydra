@@ -971,7 +971,7 @@ class CobroController extends Controller
 										// Obtener CUIS vigente requerido por recepcionFactura
 										$cuisRow = $cuisRepo->getVigenteOrCreate($pv);
 										$cuisCode = $cuisRow['codigo_cuis'] ?? '';
-										$payload = $payloadBuilder->buildRecepcionFacturaPayload([
+										$payloadArgs = [
 											'nit' => (int) config('sin.nit'),
 											'cod_sistema' => (string) config('sin.cod_sistema'),
 											'ambiente' => (int) config('sin.ambiente'),
@@ -998,6 +998,32 @@ class CobroController extends Controller
 												'precio_unitario' => (float)$item['monto'],
 												'descuento' => 0,
 												'subtotal' => (float)$item['monto'],
+											],
+										];
+										Log::debug('batchStore: factura build payload args', [
+											'anio' => $anio,
+											'nro_factura' => $nroFactura,
+											'sucursal' => $sucursal,
+											'pv' => $pv,
+											'cuf' => $cuf,
+											'cufd' => $cufd['codigo_cufd'] ?? null,
+											'cuis' => $cuisCode,
+											'monto_total' => (float) $item['monto'],
+											'cliente' => $cliente,
+										]);
+										$payload = $payloadBuilder->buildRecepcionFacturaPayload($payloadArgs);
+										Log::debug('batchStore: calling recepcionFactura', [
+											'anio' => $anio,
+											'nro_factura' => $nroFactura,
+											'punto_venta' => $pv,
+											'sucursal' => $sucursal,
+											'payload_meta' => [
+												'codigoAmbiente' => $payload['codigoAmbiente'] ?? null,
+												'codigoModalidad' => $payload['codigoModalidad'] ?? null,
+												'codigoDocumentoSector' => $payload['codigoDocumentoSector'] ?? null,
+												'tipoFacturaDocumento' => $payload['tipoFacturaDocumento'] ?? null,
+												'len_archivo' => isset($payload['archivo']) ? strlen($payload['archivo']) : null,
+												'hashArchivo' => $payload['hashArchivo'] ?? null,
 											],
 										]);
 										$resp = $ops->recepcionFactura($payload);

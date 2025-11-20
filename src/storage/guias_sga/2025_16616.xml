@@ -1,0 +1,59 @@
+<?xml version="1.0" encoding="UTF-8" standalone="yes"?>
+<facturaElectronicaSectorEducativo xsi:noNamespaceSchemaLocation="facturaElectronicaSectorEducativo.xsd" xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance">
+  <cabecera>
+    <nitEmisor>388386029</nitEmisor>
+    <razonSocialEmisor>INSTITUTO TECNOLOGICO DE ENSEÑANZA AUTOMOTRIZ "CETA" S.R.L.</razonSocialEmisor>
+    <municipio>COCHABAMBA</municipio>
+    <telefono>4581736</telefono>
+    <numeroFactura>16616</numeroFactura>
+    <cuf>1A930F30287685658FAAE4126704951445FB6781083490F39C1942F74</cuf>
+    <cufd>BQXxDKCxtQUE=NzzE5MkEzRUIzNUU=Qm9vd1lSVUxaVUFI1QzQxMDNDMTlFN</cufd>
+    <codigoSucursal>0</codigoSucursal>
+    <direccion>ZONA: NOROESTE, CALLE: AVAROA, TIPO DE ESTABLECIMIENTO: EDIFICIO SIN NOMBRE, NRO.: 142, NRO DPTO/LOCAL/OF/PUESTO: 0, TELEFONO: 4581736-4581736</direccion>
+    <codigoPuntoVenta>0</codigoPuntoVenta>
+    <fechaEmision>2025-11-19T18:29:25.269</fechaEmision>
+    <nombreRazonSocial>MAMANI</nombreRazonSocial>
+    <codigoTipoDocumentoIdentidad>1</codigoTipoDocumentoIdentidad>
+    <numeroDocumento>10542071</numeroDocumento>
+    <complemento xsi:nil="true"/>
+    <codigoCliente>10542071</codigoCliente>
+    <nombreEstudiante>Mamani Apaza Erick Josue</nombreEstudiante>
+    <periodoFacturado>2/2025</periodoFacturado>
+    <codigoMetodoPago>1</codigoMetodoPago>
+    <numeroTarjeta xsi:nil="true"/>
+    <montoTotal>787</montoTotal>
+    <montoTotalSujetoIva>787</montoTotalSujetoIva>
+    <codigoMoneda>1</codigoMoneda>
+    <tipoCambio>1</tipoCambio>
+    <montoTotalMoneda>787</montoTotalMoneda>
+    <montoGiftCard>0</montoGiftCard>
+    <descuentoAdicional xsi:nil="true"/>
+    <codigoExcepcion>0</codigoExcepcion>
+    <cafc xsi:nil="true"/>
+    <leyenda>Ley N° 453: El proveedor de servicios debe habilitar medios e instrumentos para efectuar consultas y reclamaciones.</leyenda>
+    <usuario>HerlandV</usuario>
+    <codigoDocumentoSector>11</codigoDocumentoSector>
+  </cabecera>
+  <detalle>
+    <actividadEconomica>853000</actividadEconomica>
+    <codigoProductoSin>99100</codigoProductoSin>
+    <codigoProducto>120100</codigoProducto>
+    <descripcion>Mens. Parcial  Julio</descripcion>
+    <cantidad>1</cantidad>
+    <unidadMedida>58</unidadMedida>
+    <precioUnitario>660.00</precioUnitario>
+    <montoDescuento>0.00</montoDescuento>
+    <subTotal>660.00</subTotal>
+  </detalle>
+  <detalle>
+    <actividadEconomica>853000</actividadEconomica>
+    <codigoProductoSin>99100</codigoProductoSin>
+    <codigoProducto>120101</codigoProducto>
+    <descripcion>Mens. Julio Niv</descripcion>
+    <cantidad>1</cantidad>
+    <unidadMedida>58</unidadMedida>
+    <precioUnitario>127.00</precioUnitario>
+    <montoDescuento>0.00</montoDescuento>
+    <subTotal>127.00</subTotal>
+  </detalle>
+</facturaElectronicaSectorEducativo>

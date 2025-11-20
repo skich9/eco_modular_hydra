@@ -18,6 +18,7 @@ return [
 	// Facturación
 	'cod_doc_sector' => (int) env('SIN_DOC_SECTOR', 11),
 	'tipo_factura' => (int) env('SIN_TIPO_FACTURA', 1),
+	'archivo_plain' => filter_var(env('SIN_ARCHIVO_PLAIN', false), FILTER_VALIDATE_BOOL),
 
 	// Operación
 	'offline' => filter_var(env('SIN_OFFLINE', false), FILTER_VALIDATE_BOOL),
