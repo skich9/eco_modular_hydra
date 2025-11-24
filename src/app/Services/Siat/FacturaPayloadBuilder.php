@@ -307,13 +307,16 @@ class FacturaPayloadBuilder
             }
         }
 
-        // Leyenda: tomar cualquiera existente
-        $leyenda = DB::table('sin_list_leyenda_factura')->value('descripcion_leyenda');
-        if (!$leyenda) $leyenda = 'Ley N° 453: Esta factura contribuye al desarrollo del país.';
-
-        // Actividad económica: tomar la primera
-        $actividad = DB::table('sin_actividades')->value('codigo_caeb');
-        if (!$actividad) $actividad = '00000';
+        // Actividad económica y leyenda asociada (aleatoria por actividad)
+        $actividad = DB::table('sin_actividades')->value('codigo_caeb') ?: '00000';
+        $leyenda = DB::table('sin_list_leyenda_factura')
+            ->where('codigo_actividad', $actividad)
+            ->inRandomOrder()
+            ->value('descripcion_leyenda');
+        if (!$leyenda) {
+            $leyenda = DB::table('sin_list_leyenda_factura')->value('descripcion_leyenda')
+                ?: 'Ley N° 453: Esta factura contribuye al desarrollo del país.';
+        }
 
         $cabecera = [
             'nitEmisor' => (int) ($args['nit'] ?? 0),
@@ -344,17 +347,35 @@ class FacturaPayloadBuilder
             'codigoDocumentoSector' => $docSector,
         ];
 
-        $detalle = [[
-            'actividadEconomica' => (string) $actividad,
-            'codigoProductoSin' => (int) ($args['detalle']['codigo_sin'] ?? 0),
-            'codigoProducto' => (string) ($args['detalle']['codigo'] ?? 'ITEM'),
-            'descripcion' => (string) ($args['detalle']['descripcion'] ?? 'Servicio/Item'),
-            'cantidad' => (float) ($args['detalle']['cantidad'] ?? 1),
-            'unidadMedida' => (int) ($args['detalle']['unidad_medida'] ?? 1),
-            'precioUnitario' => (float) ($args['detalle']['precio_unitario'] ?? ($args['monto_total'] ?? 0)),
-            'montoDescuento' => (float) ($args['detalle']['descuento'] ?? 0),
-            'subTotal' => (float) ($args['detalle']['subtotal'] ?? ($args['monto_total'] ?? 0)),
-        ]];
+        // Detalle(s) para JSON: si viene 'detalles' usar lista; si no, usar 'detalle' único
+        $detalle = [];
+        if (!empty($args['detalles']) && is_array($args['detalles'])) {
+            foreach ($args['detalles'] as $d) {
+                $detalle[] = [
+                    'actividadEconomica' => (string) $actividad,
+                    'codigoProductoSin' => (int) ($d['codigo_sin'] ?? ($args['detalle']['codigo_sin'] ?? 0)),
+                    'codigoProducto' => (string) ($d['codigo'] ?? ($args['detalle']['codigo'] ?? 'ITEM')),
+                    'descripcion' => (string) ($d['descripcion'] ?? ($args['detalle']['descripcion'] ?? 'Servicio/Item')),
+                    'cantidad' => (float) ($d['cantidad'] ?? ($args['detalle']['cantidad'] ?? 1)),
+                    'unidadMedida' => (int) ($d['unidad_medida'] ?? ($args['detalle']['unidad_medida'] ?? 1)),
+                    'precioUnitario' => (float) ($d['precio_unitario'] ?? ($args['detalle']['precio_unitario'] ?? ($args['monto_total'] ?? 0))),
+                    'montoDescuento' => (float) ($d['descuento'] ?? ($args['detalle']['descuento'] ?? 0)),
+                    'subTotal' => (float) ($d['subtotal'] ?? ($args['detalle']['subtotal'] ?? ($args['monto_total'] ?? 0))),
+                ];
+            }
+        } else {
+            $detalle = [[
+                'actividadEconomica' => (string) $actividad,
+                'codigoProductoSin' => (int) ($args['detalle']['codigo_sin'] ?? 0),
+                'codigoProducto' => (string) ($args['detalle']['codigo'] ?? 'ITEM'),
+                'descripcion' => (string) ($args['detalle']['descripcion'] ?? 'Servicio/Item'),
+                'cantidad' => (float) ($args['detalle']['cantidad'] ?? 1),
+                'unidadMedida' => (int) ($args['detalle']['unidad_medida'] ?? 1),
+                'precioUnitario' => (float) ($args['detalle']['precio_unitario'] ?? ($args['monto_total'] ?? 0)),
+                'montoDescuento' => (float) ($args['detalle']['descuento'] ?? 0),
+                'subTotal' => (float) ($args['detalle']['subtotal'] ?? ($args['monto_total'] ?? 0)),
+            ]];
+        }
 
         return [
             'cabecera' => $cabecera,
@@ -374,8 +395,13 @@ class FacturaPayloadBuilder
                 $codigoMetodoPago = (int) $m->codigo_sin;
             }
         }
-        $leyenda = DB::table('sin_list_leyenda_factura')->value('descripcion_leyenda') ?: 'Ley N° 453: Esta factura contribuye al desarrollo del país.';
         $actividad = DB::table('sin_actividades')->value('codigo_caeb') ?: '00000';
+        $leyenda = DB::table('sin_list_leyenda_factura')
+            ->where('codigo_actividad', $actividad)
+            ->inRandomOrder()
+            ->value('descripcion_leyenda')
+            ?: (DB::table('sin_list_leyenda_factura')->value('descripcion_leyenda')
+                ?: 'Ley N° 453: Esta factura contribuye al desarrollo del país.');
 
         // Cliente
         $cli = $args['cliente'] ?? [];
@@ -442,17 +468,34 @@ class FacturaPayloadBuilder
         $xml .= '<usuario>' . htmlspecialchars((string)($args['usuario'] ?? 'system'), ENT_QUOTES | ENT_SUBSTITUTE, 'UTF-8') . '</usuario>';
         $xml .= '<codigoDocumentoSector>' . (int)$docSector . '</codigoDocumentoSector>';
         $xml .= '</cabecera>';
-        $xml .= '<detalle>';
-        $xml .= '<actividadEconomica>' . htmlspecialchars((string)$actividad, ENT_QUOTES | ENT_SUBSTITUTE, 'UTF-8') . '</actividadEconomica>';
-        $xml .= '<codigoProductoSin>' . (int)$codigoProductoSin . '</codigoProductoSin>';
-        $xml .= '<codigoProducto>' . htmlspecialchars($codigoProducto, ENT_QUOTES | ENT_SUBSTITUTE, 'UTF-8') . '</codigoProducto>';
-        $xml .= '<descripcion>' . htmlspecialchars($descripcion, ENT_QUOTES | ENT_SUBSTITUTE, 'UTF-8') . '</descripcion>';
-        $xml .= '<cantidad>' . number_format($cantidad, 2, '.', '') . '</cantidad>';
-        $xml .= '<unidadMedida>' . (int)$unidadMedida . '</unidadMedida>';
-        $xml .= '<precioUnitario>' . number_format($precioUnitario, 2, '.', '') . '</precioUnitario>';
-        $xml .= '<montoDescuento xsi:nil="true"/>';
-        $xml .= '<subTotal>' . number_format($subTotal, 2, '.', '') . '</subTotal>';
-        $xml .= '</detalle>';
+        // Detalle(s) para XML: si viene 'detalles' usar lista repetida <detalle>...
+        if (!empty($args['detalles']) && is_array($args['detalles'])) {
+            foreach ($args['detalles'] as $d) {
+                $xml .= '<detalle>';
+                $xml .= '<actividadEconomica>' . htmlspecialchars((string)$actividad, ENT_QUOTES | ENT_SUBSTITUTE, 'UTF-8') . '</actividadEconomica>';
+                $xml .= '<codigoProductoSin>' . (int)($d['codigo_sin'] ?? $codigoProductoSin) . '</codigoProductoSin>';
+                $xml .= '<codigoProducto>' . htmlspecialchars((string)($d['codigo'] ?? $codigoProducto), ENT_QUOTES | ENT_SUBSTITUTE, 'UTF-8') . '</codigoProducto>';
+                $xml .= '<descripcion>' . htmlspecialchars((string)($d['descripcion'] ?? $descripcion), ENT_QUOTES | ENT_SUBSTITUTE, 'UTF-8') . '</descripcion>';
+                $xml .= '<cantidad>' . number_format((float)($d['cantidad'] ?? $cantidad), 2, '.', '') . '</cantidad>';
+                $xml .= '<unidadMedida>' . (int)($d['unidad_medida'] ?? $unidadMedida) . '</unidadMedida>';
+                $xml .= '<precioUnitario>' . number_format((float)($d['precio_unitario'] ?? $precioUnitario), 2, '.', '') . '</precioUnitario>';
+                $xml .= '<montoDescuento xsi:nil="true"/>';
+                $xml .= '<subTotal>' . number_format((float)($d['subtotal'] ?? $subTotal), 2, '.', '') . '</subTotal>';
+                $xml .= '</detalle>';
+            }
+        } else {
+            $xml .= '<detalle>';
+            $xml .= '<actividadEconomica>' . htmlspecialchars((string)$actividad, ENT_QUOTES | ENT_SUBSTITUTE, 'UTF-8') . '</actividadEconomica>';
+            $xml .= '<codigoProductoSin>' . (int)$codigoProductoSin . '</codigoProductoSin>';
+            $xml .= '<codigoProducto>' . htmlspecialchars($codigoProducto, ENT_QUOTES | ENT_SUBSTITUTE, 'UTF-8') . '</codigoProducto>';
+            $xml .= '<descripcion>' . htmlspecialchars($descripcion, ENT_QUOTES | ENT_SUBSTITUTE, 'UTF-8') . '</descripcion>';
+            $xml .= '<cantidad>' . number_format($cantidad, 2, '.', '') . '</cantidad>';
+            $xml .= '<unidadMedida>' . (int)$unidadMedida . '</unidadMedida>';
+            $xml .= '<precioUnitario>' . number_format($precioUnitario, 2, '.', '') . '</precioUnitario>';
+            $xml .= '<montoDescuento xsi:nil="true"/>';
+            $xml .= '<subTotal>' . number_format($subTotal, 2, '.', '') . '</subTotal>';
+            $xml .= '</detalle>';
+        }
         $xml .= '</facturaElectronicaSectorEducativo>';
         return $xml;
     }

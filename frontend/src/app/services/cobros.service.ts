@@ -119,6 +119,12 @@ export class CobrosService {
 		return this.http.get(url, { responseType: 'blob' });
 	}
 
+	// Obtener metadatos de factura (incluye CUF)
+	getFacturaMeta(anio: number, nroFactura: number): Observable<any> {
+		const url = `${this.apiUrl}/facturas/${anio}/${nroFactura}/meta`;
+		return this.http.get(url);
+	}
+
 	// Catálogos
 	getGestionesActivas(): Observable<any> {
 		return this.http.get<any>(`${this.apiUrl}/gestiones/estado/activas`).pipe(

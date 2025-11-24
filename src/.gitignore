@@ -21,6 +21,7 @@
 /storage/pail
 /vendor
 /sga_refs
+/storage/siat_xml
 /certificados
 Homestead.json
 Homestead.yaml

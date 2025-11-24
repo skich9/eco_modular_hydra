@@ -156,6 +156,10 @@ Route::post('qr/save-lote', [QrController::class, 'saveLote']);
 Route::get('recibos/{anio}/{nro_recibo}/pdf', [ReciboController::class, 'pdf'])
     ->where(['anio' => '\\d{4}', 'nro_recibo' => '\\d+']);
 
+// Facturas: meta (incluye CUF) para fallback del frontend
+Route::get('facturas/{anio}/{nro}/meta', [CobroController::class, 'facturaMeta'])
+    ->where(['anio' => '\\d{4}', 'nro' => '\\d+']);
+
 // Parámetros de costos
 Route::get('parametros-costos', [ParametroCostoController::class, 'index']);
 Route::get('parametros-costos/activos', [ParametroCostoController::class, 'activos']);

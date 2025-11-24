@@ -272,6 +272,66 @@ class CobroController extends Controller
 						'message' => 'El estudiante no tiene inscripción en la gestión solicitada',
 					], 404);
 				}
+
+				// Emisión online única para la factura agrupada
+				if ($hasFacturaGroup && $emitirOnline) {
+					if (config('sin.offline')) {
+						Log::warning('batchStore: skip recepcionFactura (OFFLINE, grupo)');
+					} else {
+						try {
+							$cuisRow = $cuisRepo->getVigenteOrCreate($pv);
+							$cuisCode = $cuisRow['codigo_cuis'] ?? '';
+							$cliIn = (array) $request->input('cliente', []);
+							$cliente = [
+								'tipo_doc' => isset($cliIn['tipo_doc']) ? (int)$cliIn['tipo_doc'] : (int)($cliIn['tipo_identidad'] ?? 5),
+								'numero' => (string)($cliIn['numero'] ?? ''),
+								'razon' => (string)($cliIn['razon'] ?? ($cliIn['razon_social'] ?? 'S/N')),
+								'complemento' => $cliIn['complemento'] ?? null,
+								'codigo' => (string)($cliIn['codigo'] ?? ($cliIn['numero'] ?? '0')),
+							];
+							$payloadArgs = [
+								'nit' => (int) config('sin.nit'),
+								'cod_sistema' => (string) config('sin.cod_sistema'),
+								'ambiente' => (int) config('sin.ambiente'),
+								'modalidad' => (int) config('sin.modalidad'),
+								'tipo_factura' => (int) config('sin.tipo_factura'),
+								'doc_sector' => (int) config('sin.cod_doc_sector'),
+								'tipo_emision' => 1,
+								'sucursal' => $sucursal,
+								'punto_venta' => $pv,
+								'cuis' => $cuisCode,
+								'cufd' => (string)($cufdGroup ?? ''),
+								'cuf' => (string)$cufGroup,
+								'fecha_emision' => (string)$fechaEmisionIsoGroup,
+								'monto_total' => (float)$factMontoTotal,
+								'numero_factura' => (int)$nroFacturaGroup,
+								'id_forma_cobro' => (string)($request->id_forma_cobro ?? ''),
+								'cliente' => $cliente,
+								'detalles' => $factDetalles,
+							];
+							$payload = $payloadBuilder->buildRecepcionFacturaPayload($payloadArgs);
+							Log::warning('batchStore: calling recepcionFactura (grupo)', [ 'anio' => (int)$anioFacturaGroup, 'nro_factura' => (int)$nroFacturaGroup, 'punto_venta' => $pv, 'sucursal' => $sucursal, 'payload_meta' => [ 'len_archivo' => isset($payload['archivo']) ? strlen($payload['archivo']) : null, 'hashArchivo' => $payload['hashArchivo'] ?? null ]]);
+							$resp = $ops->recepcionFactura($payload);
+							$root = $resp['RespuestaServicioFacturacion'] ?? ($resp['RespuestaRecepcionFactura'] ?? (is_array($resp) ? reset($resp) : null));
+							$codRecep = is_array($root) ? ($root['codigoRecepcion'] ?? null) : null;
+							if ($codRecep) {
+								\DB::table('factura')
+									->where('anio', (int)$anioFacturaGroup)
+									->where('nro_factura', (int)$nroFacturaGroup)
+									->where('codigo_sucursal', (int)$sucursal)
+									->where('codigo_punto_venta', (string)$pv)
+									->update(['codigo_recepcion' => $codRecep]);
+								Log::warning('batchStore: recepcionFactura ok (grupo)', [ 'codigo_recepcion' => $codRecep ]);
+								// Propagar el código de recepción al arreglo de resultados
+								foreach ($results as &$r) { if (is_array($r) && strtoupper((string)($r['tipo_documento'] ?? '')) === 'F') { $r['codigo_recepcion'] = $codRecep; } }
+							} else {
+								Log::warning('batchStore: recepcionFactura sin codigoRecepcion (grupo)', [ 'resp' => $resp ]);
+							}
+						} catch (\Throwable $e) {
+							Log::error('batchStore: recepcionFactura exception (grupo)', [ 'error' => $e->getMessage() ]);
+						}
+					}
+				}
 				// Fallback automático: usar la última inscripción disponible
 				$ultima = Inscripcion::where('cod_ceta', $codCeta)
 					->orderByDesc('fecha_inscripcion')
@@ -316,11 +376,84 @@ class CobroController extends Controller
 						->where('gestion', $gestionToUse)
 						->get();
 					if ($rows && $rows->count()) {
-						$norm = function($s){ $s = (string)$s; $s = @iconv('UTF-8','ASCII//TRANSLIT',$s); return strtoupper(trim($s)); };
+						$norm = function($s){
+							$str = (string) $s;
+							$converted = @iconv('UTF-8','ASCII//TRANSLIT', $str);
+							if ($converted !== false && $converted !== null) {
+								$str = (string) $converted;
+							}
+							return strtoupper(trim($str));
+						};
 						$pick = $rows->first(function($r) use ($norm){
 							$tc = $norm($r->tipo_costo ?? '');
 							return $tc === 'INSTACIA' || $tc === 'INSTANCIA' || $tc === 'RECUPERACION' || strpos($tc, 'SEGUNDA') !== false;
 						});
+
+			// Post-commit: emisión única del grupo si aplica y no se emitió aún
+			try {
+				if (is_array($emitGroupMeta) && !empty($emitGroupMeta['detalles'])) {
+					$anioG = (int)($emitGroupMeta['anio'] ?? 0);
+					$nroG = (int)($emitGroupMeta['nro'] ?? 0);
+					$sucG = (int)($emitGroupMeta['sucursal'] ?? 0);
+					$pvG = (int)($emitGroupMeta['pv'] ?? 0);
+					$row = DB::table('factura')
+						->select('codigo_recepcion')
+						->where('anio', $anioG)
+						->where('nro_factura', $nroG)
+						->where('codigo_sucursal', $sucG)
+						->where('codigo_punto_venta', (string)$pvG)
+						->first();
+					$already = $row && !empty($row->codigo_recepcion);
+					if (!$already) {
+						$cuisRow = app(\App\Repositories\CuisRepository::class)->getVigenteOrCreate($pvG);
+						$cuisCode = $cuisRow['codigo_cuis'] ?? '';
+						$cliIn = (array) $request->input('cliente', []);
+						$cliente = [
+							'tipo_doc' => isset($cliIn['tipo_doc']) ? (int)$cliIn['tipo_doc'] : (int)($cliIn['tipo_identidad'] ?? 5),
+							'numero' => (string)($cliIn['numero'] ?? ''),
+							'razon' => (string)($cliIn['razon'] ?? ($cliIn['razon_social'] ?? 'S/N')),
+							'complemento' => $cliIn['complemento'] ?? null,
+							'codigo' => (string)($cliIn['codigo'] ?? ($cliIn['numero'] ?? '0')),
+						];
+						$payloadArgs = [
+							'nit' => (int) config('sin.nit'),
+							'cod_sistema' => (string) config('sin.cod_sistema'),
+							'ambiente' => (int) config('sin.ambiente'),
+							'modalidad' => (int) config('sin.modalidad'),
+							'tipo_factura' => (int) config('sin.tipo_factura'),
+							'doc_sector' => (int) config('sin.cod_doc_sector'),
+							'tipo_emision' => 1,
+							'sucursal' => $sucG,
+							'punto_venta' => $pvG,
+							'cuis' => $cuisCode,
+							'cufd' => (string)($emitGroupMeta['cufd'] ?? ''),
+							'cuf' => (string)($emitGroupMeta['cuf'] ?? ''),
+							'fecha_emision' => (string)($emitGroupMeta['fecha_iso'] ?? ''),
+							'monto_total' => (float)($emitGroupMeta['monto_total'] ?? 0),
+							'numero_factura' => (int)$nroG,
+							'id_forma_cobro' => (string)($request->id_forma_cobro ?? ''),
+							'cliente' => $cliente,
+							'detalles' => (array)($emitGroupMeta['detalles'] ?? []),
+						];
+						$payload = app(\App\Services\Siat\FacturaPayloadBuilder::class)->buildRecepcionFacturaPayload($payloadArgs);
+						Log::warning('batchStore: calling recepcionFactura (grupo, post-commit)', [ 'anio' => $anioG, 'nro_factura' => $nroG, 'punto_venta' => $pvG, 'sucursal' => $sucG ]);
+						$resp = app(\App\Services\Siat\OperationsService::class)->recepcionFactura($payload);
+						$root = $resp['RespuestaServicioFacturacion'] ?? ($resp['RespuestaRecepcionFactura'] ?? (is_array($resp) ? reset($resp) : null));
+						$codRecep = is_array($root) ? ($root['codigoRecepcion'] ?? null) : null;
+						if ($codRecep) {
+							DB::table('factura')
+								->where('anio', $anioG)
+								->where('nro_factura', $nroG)
+								->where('codigo_sucursal', $sucG)
+								->where('codigo_punto_venta', (string)$pvG)
+								->update(['codigo_recepcion' => $codRecep]);
+							Log::warning('batchStore: recepcionFactura ok (grupo, post-commit)', [ 'codigo_recepcion' => $codRecep ]);
+						}
+					}
+				}
+			} catch (\Throwable $e) {
+				Log::error('batchStore: post-commit recepcionFactura exception (grupo)', [ 'error' => $e->getMessage() ]);
+			}
 						if (!$pick) {
 							$pick = $rows->first(function($r) use ($norm){ $tc = $norm($r->tipo_costo ?? ''); return (strpos($tc,'RECUP') !== false) || (strpos($tc,'INSTANC') !== false); });
 						}
@@ -568,14 +701,19 @@ class CobroController extends Controller
 						],
 					];
 					$upperDocs = $documentosPresentados->map(function($d){
-						$d->nombre_doc_upper = mb_strtoupper((string)($d->nombre_doc ?? ''));
+						$src = (string)($d->nombre_doc ?? '');
+						if (function_exists('mb_strtoupper')) {
+							$d->nombre_doc_upper = mb_strtoupper($src, 'UTF-8');
+						} else {
+							$d->nombre_doc_upper = strtoupper($src);
+						}
 						return $d;
 					});
 					foreach ($mapOrder as $m) {
 						$match = $upperDocs->first(function($d) use ($m){
 							$hay = false;
 							foreach ($m['aliases'] as $alias) {
-								$aliasU = mb_strtoupper($alias);
+								$aliasU = function_exists('mb_strtoupper') ? mb_strtoupper($alias, 'UTF-8') : strtoupper($alias);
 								if (str_starts_with($d->nombre_doc_upper, $aliasU) || str_contains($d->nombre_doc_upper, $aliasU)) {
 									$hay = true; break;
 								}
@@ -689,7 +827,6 @@ class CobroController extends Controller
 			'id_usuario' => 'required|integer|exists:usuarios,id_usuario',
 			'id_forma_cobro' => 'required|string|exists:formas_cobro,id_forma_cobro',
 			'id_cuentas_bancarias' => 'nullable|integer|exists:cuentas_bancarias,id_cuentas_bancarias',
-			'emitir_online' => 'sometimes|boolean',
 			// Aceptar esquema antiguo 'pagos' o nuevo 'items'
 			'pagos' => 'sometimes|array|min:1',
 			'items' => 'sometimes|array|min:1',
@@ -802,10 +939,29 @@ class CobroController extends Controller
 					], 422);
 				}
 			} catch (\Throwable $e) { /* no bloquear si la inspección falla */ }
-			DB::transaction(function () use ($request, $items, $reciboService, $facturaService, $cufdRepo, $ops, $cufGen, $payloadBuilder, $cuisRepo, & $results) {
+			$emitGroupMeta = null; // meta para emisión agrupada post-commit
+			DB::transaction(function () use ($request, $items, $reciboService, $facturaService, $cufdRepo, $ops, $cufGen, $payloadBuilder, $cuisRepo, &$results, &$emitGroupMeta) {
 				$pv = (int) ($request->input('codigo_punto_venta', 0));
 				$sucursal = (int) ($request->input('codigo_sucursal', config('sin.sucursal')));
 				$emitirOnline = (bool) $request->boolean('emitir_online', false);
+				$emitirOnlineAuto = false;
+				try {
+					foreach ((array)$items as $autoIt) {
+						$td = strtoupper((string)($autoIt['tipo_documento'] ?? ''));
+						$md = strtoupper((string)($autoIt['medio_doc'] ?? ''));
+						if ($td === 'F' && $md === 'C') { $emitirOnlineAuto = true; break; }
+					}
+				} catch (\Throwable $e) {}
+				if (!$emitirOnline) { $emitirOnline = $emitirOnlineAuto; }
+				try {
+					Log::warning('batchStore: emitir_online decision', [
+						'request_flag' => (bool)$request->boolean('emitir_online', false),
+						'auto_flag' => $emitirOnlineAuto,
+						'final' => $emitirOnline,
+						'offline' => (bool) config('sin.offline'),
+					]);
+				} catch (\Throwable $e) {}
+
 				// Contexto de inscripción principal del estudiante (para derivar asignación de costos)
 				$codCetaCtx = (int) $request->cod_ceta;
 				$codPensumCtx = (string) $request->cod_pensum;
@@ -843,6 +999,56 @@ class CobroController extends Controller
 				$formaNombre = iconv('UTF-8','ASCII//TRANSLIT',$formaNombre);
 				$formaCode = strtoupper(trim((string)($formaRow->id_forma_cobro ?? '')));
 
+				// Agrupación de FACTURA computarizada por lote: preparar variables del grupo
+				$factGroupIdx = [];
+				$factMontoTotal = 0.0;
+				foreach ((array)$items as $gi => $gIt) {
+					$td = strtoupper((string)($gIt['tipo_documento'] ?? ''));
+					$md = strtoupper((string)($gIt['medio_doc'] ?? ''));
+					if ($td === 'F' && $md === 'C') { $factGroupIdx[] = (int)$gi; $factMontoTotal += (float)($gIt['monto'] ?? 0); }
+				}
+				$hasFacturaGroup = count($factGroupIdx) > 0;
+				$nroFacturaGroup = null; $anioFacturaGroup = null; $cufGroup = null; $cufdGroup = null; $fechaEmisionIsoGroup = null; $factDetalles = [];
+				if ($hasFacturaGroup) {
+					// Preparar CUFD, correlativo y CUF una sola vez
+					$cufd = $cufdRepo->getVigenteOrCreate($pv);
+					$anioFacturaGroup = (int) date('Y');
+					$nroFacturaGroup = method_exists($facturaService, 'nextFacturaAtomic')
+						? $facturaService->nextFacturaAtomic($anioFacturaGroup, $sucursal, (string)$pv)
+						: $facturaService->nextFactura($anioFacturaGroup, $sucursal, (string)$pv);
+					// Usar misma hora para CUF y XML
+					$tEmision = \Carbon\Carbon::now('America/La_Paz');
+					$fechaEmisionIsoGroup = $tEmision->format('Y-m-d\\TH:i:s.000');
+					$cufData = $cufGen->generate((int) config('sin.nit'), $fechaEmisionIsoGroup, $sucursal, (int) config('sin.modalidad'), 1, (int) config('sin.tipo_factura'), (int) config('sin.cod_doc_sector'), (int) $nroFacturaGroup, (int) $pv);
+					$cufGroup = ($cufData['cuf'] ?? '') . (string)($cufd['codigo_control'] ?? '');
+					$cufdGroup = $cufd['codigo_cufd'] ?? null;
+					// Crear una sola factura local con el total del lote
+					$facturaService->createComputarizada($anioFacturaGroup, (int)$nroFacturaGroup, [
+						'codigo_sucursal' => $sucursal,
+						'codigo_punto_venta' => (string)$pv,
+						'fecha_emision' => $fechaEmisionIsoGroup,
+						'cod_ceta' => (int)$request->cod_ceta,
+						'id_usuario' => (int)$request->id_usuario,
+						'id_forma_cobro' => (string)($request->id_forma_cobro ?? ''),
+						'monto_total' => (float)$factMontoTotal,
+						'codigo_cufd' => $cufdGroup,
+						'cuf' => $cufGroup,
+					]);
+					try { \Log::warning('batchStore: factura C creada (local, grupo)', [ 'anio' => $anioFacturaGroup, 'nro_factura' => (int)$nroFacturaGroup, 'monto_total' => (float)$factMontoTotal ]); } catch (\Throwable $e) {}
+					// Inicializar contenedor para emisión post-commit
+					$emitGroupMeta = [
+						'anio' => (int)$anioFacturaGroup,
+						'nro' => (int)$nroFacturaGroup,
+						'sucursal' => (int)$sucursal,
+						'pv' => (int)$pv,
+						'cuf' => (string)$cufGroup,
+						'cufd' => (string)($cufdGroup ?? ''),
+						'fecha_iso' => (string)$fechaEmisionIsoGroup,
+						'monto_total' => (float)$factMontoTotal,
+						'detalles' => [],
+					];
+				}
+
 				// Control para agrupar Recibos computarizados en un único nro_recibo por transacción
 				$nroReciboBatch = null; $anioReciboBatch = null;
 				foreach ($items as $idx => $item) {
@@ -868,6 +1074,7 @@ class CobroController extends Controller
 					$tipoDoc = strtoupper((string)($item['tipo_documento'] ?? 'R'));
 					$medioDoc = strtoupper((string)($item['medio_doc'] ?? 'C'));
 					Log::info('batchStore:item', [ 'idx' => $idx, 'tipo' => $tipoDoc, 'medio' => $medioDoc ]);
+					$codigoRecepcionLocal = null; $cufLocal = null;
 
 					$formaIdItem = (string)($item['id_forma_cobro'] ?? $request->id_forma_cobro);
 					try {
@@ -932,55 +1139,42 @@ class CobroController extends Controller
 					} elseif ($tipoDoc === 'F') {
 						$anio = (int) date('Y', strtotime($item['fecha_cobro']));
 						if ($medioDoc === 'C') {
-							// Computarizada: asegurar CUFD, generar correlativo, generar CUF e insertar factura
-							$cufd = $cufdRepo->getVigenteOrCreate($pv);
-							$nroFactura = method_exists($facturaService, 'nextFacturaAtomic')
-								? $facturaService->nextFacturaAtomic($anio, $sucursal, (string)$pv)
-								: $facturaService->nextFactura($anio, $sucursal, (string)$pv);
-							Log::info('batchStore: factura C', [ 'idx' => $idx, 'anio' => $anio, 'sucursal' => $sucursal, 'pv' => $pv, 'nro' => $nroFactura ]);
-							// Generar CUF según especificación SIAT
-							// Usar una sola instancia de tiempo (La Paz) para CUF y XML, evitando desfaces
-							$tEmision = Carbon::now('America/La_Paz');
-							$fechaEmision = $tEmision->format('Y-m-d H:i:s.u');
-							$fechaEmisionIso = $tEmision->format('Y-m-d\\TH:i:s.000');
-							// Usar la MISMA fecha que irá en el XML (ISO con 'T') para generar el CUF
-							$cufData = $cufGen->generate(
-								(int) config('sin.nit'),
-								$fechaEmisionIso,
-								$sucursal,
-								(int) config('sin.modalidad'),
-								1, // tipo_emision: en línea
-								(int) config('sin.tipo_factura'),
-								(int) config('sin.cod_doc_sector'),
-								(int) $nroFactura,
-								(int) $pv
-							);
-							// CUF final = hex(53+DV) + codigo_control del CUFD (como en SGA)
-							$cuf = ($cufData['cuf'] ?? '') . (string)($cufd['codigo_control'] ?? '');
-							Log::debug('batchStore:cuf_debug', [
-								'componentes' => $cufData['componentes'] ?? [],
-								'decimal' => $cufData['decimal'] ?? null,
-								'dv' => $cufData['dv'] ?? null,
-								'cuf_hex' => $cufData['cuf'] ?? null,
-								'cuf_final' => $cuf,
-								'codigo_control' => $cufd['codigo_control'] ?? null,
-								'fecha_emision_iso' => $fechaEmisionIso,
-							]);
-							$facturaService->createComputarizada($anio, $nroFactura, [
-								'codigo_sucursal' => $sucursal,
-								'codigo_punto_venta' => (string)$pv,
-								'fecha_emision' => $fechaEmisionIso,
-								'cod_ceta' => (int)$request->cod_ceta,
-								'id_usuario' => (int)$request->id_usuario,
-								'id_forma_cobro' => $formaIdItem,
-								'monto_total' => (float)$item['monto'],
-								'codigo_cufd' => $cufd['codigo_cufd'] ?? null,
-								'cuf' => $cuf,
-							]);
-							// Paso 3: emisión online (opcional, solo si emitir_online=true y SIN_OFFLINE=false)
-							if ($emitirOnline) {
+							if ($hasFacturaGroup) {
+								// Reusar la factura del grupo
+								$nroFactura = (int)$nroFacturaGroup;
+								$cufLocal = $cufGroup;
+								$fechaEmisionIso = $fechaEmisionIsoGroup;
+							} else {
+								// Modo antiguo: una factura por ítem
+								$cufd = $cufdRepo->getVigenteOrCreate($pv);
+								$nroFactura = method_exists($facturaService, 'nextFacturaAtomic')
+									? $facturaService->nextFacturaAtomic($anio, $sucursal, (string)$pv)
+									: $facturaService->nextFactura($anio, $sucursal, (string)$pv);
+								Log::info('batchStore: factura C', [ 'idx' => $idx, 'anio' => $anio, 'sucursal' => $sucursal, 'pv' => $pv, 'nro' => $nroFactura ]);
+								$tEmision = Carbon::now('America/La_Paz');
+								$fechaEmision = $tEmision->format('Y-m-d H:i:s.u');
+								$fechaEmisionIso = $tEmision->format('Y-m-d\\TH:i:s.000');
+								$cufData = $cufGen->generate((int) config('sin.nit'), $fechaEmisionIso, $sucursal, (int) config('sin.modalidad'), 1, (int) config('sin.tipo_factura'), (int) config('sin.cod_doc_sector'), (int) $nroFactura, (int) $pv);
+								$cuf = ($cufData['cuf'] ?? '') . (string)($cufd['codigo_control'] ?? '');
+								$cufLocal = $cuf;
+								Log::debug('batchStore:cuf_debug', [ 'componentes' => $cufData['componentes'] ?? [], 'decimal' => $cufData['decimal'] ?? null, 'dv' => $cufData['dv'] ?? null, 'cuf_hex' => $cufData['cuf'] ?? null, 'cuf_final' => $cuf, 'codigo_control' => $cufd['codigo_control'] ?? null, 'fecha_emision_iso' => $fechaEmisionIso ]);
+								$facturaService->createComputarizada($anio, $nroFactura, [
+									'codigo_sucursal' => $sucursal,
+									'codigo_punto_venta' => (string)$pv,
+									'fecha_emision' => $fechaEmisionIso,
+									'cod_ceta' => (int)$request->cod_ceta,
+									'id_usuario' => (int)$request->id_usuario,
+									'id_forma_cobro' => $formaIdItem,
+									'monto_total' => (float)$item['monto'],
+									'codigo_cufd' => $cufd['codigo_cufd'] ?? null,
+									'cuf' => $cuf,
+								]);
+								try { Log::warning('batchStore: factura C creada (local)', [ 'anio' => $anio, 'nro_factura' => (int)$nroFactura, 'sucursal' => $sucursal, 'pv' => $pv, 'cuf' => $cuf, 'cufd' => $cufd['codigo_cufd'] ?? null, 'monto_total' => (float)$item['monto'] ]); } catch (\Throwable $e) {}
+							}
+							// Paso 3: emisión online (opcional). Si hay agrupación, se difiere al final del loop.
+							if ($emitirOnline && !$hasFacturaGroup) {
 								if (config('sin.offline')) {
-									Log::info('batchStore: skip recepcionFactura (OFFLINE)');
+									Log::warning('batchStore: skip recepcionFactura (OFFLINE)');
 								} else {
 									try {
 										// Obtener CUIS vigente requerido por recepcionFactura
@@ -1039,7 +1233,7 @@ class CobroController extends Controller
 											'cliente' => $cliente,
 										]);
 										$payload = $payloadBuilder->buildRecepcionFacturaPayload($payloadArgs);
-										Log::debug('batchStore: calling recepcionFactura', [
+										Log::warning('batchStore: calling recepcionFactura', [
 											'anio' => $anio,
 											'nro_factura' => $nroFactura,
 											'punto_venta' => $pv,
@@ -1054,15 +1248,28 @@ class CobroController extends Controller
 											],
 										]);
 										$resp = $ops->recepcionFactura($payload);
-										$codRecep = $resp['RespuestaRecepcionFactura']['codigoRecepcion'] ?? null;
+										$root = $resp['RespuestaServicioFacturacion'] ?? ($resp['RespuestaRecepcionFactura'] ?? (is_array($resp) ? reset($resp) : null));
+										$codRecep = is_array($root) ? ($root['codigoRecepcion'] ?? null) : null;
+										try {
+											$estado = is_array($root) && isset($root['codigoEstado']) ? (int)$root['codigoEstado'] : null;
+											$mensajes = is_array($root) ? ($root['mensajesList'] ?? null) : null;
+											Log::warning('batchStore: recepcionFactura response meta', [
+												'anio' => $anio,
+												'nro_factura' => (int)$nroFactura,
+												'estado' => $estado,
+												'codigo_recepcion' => $codRecep,
+												'mensajes' => $mensajes,
+											]);
+										} catch (\Throwable $e) {}
 										if ($codRecep) {
+											$codigoRecepcionLocal = $codRecep;
 											\DB::table('factura')
 												->where('anio', $anio)
 												->where('nro_factura', $nroFactura)
 												->where('codigo_sucursal', $sucursal)
 												->where('codigo_punto_venta', (string)$pv)
 												->update(['codigo_recepcion' => $codRecep]);
-											Log::info('batchStore: recepcionFactura ok', [ 'codigo_recepcion' => $codRecep ]);
+											Log::warning('batchStore: recepcionFactura ok', [ 'codigo_recepcion' => $codRecep ]);
 										} else {
 											Log::warning('batchStore: recepcionFactura sin codigoRecepcion', [ 'resp' => $resp ]);
 										}
@@ -1070,19 +1277,32 @@ class CobroController extends Controller
 										Log::error('batchStore: recepcionFactura exception', [ 'error' => $e->getMessage() ]);
 									}
 								}
+							} elseif (!$emitirOnline) {
+								// emitir_online = false: registrar causa (sin emisión manual aquí)
+								try { Log::warning('batchStore: emitir_online=false, no se invoca recepcionFactura'); } catch (\Throwable $e) {}
+							} else {
+								// Hay agrupación y la emisión se realizará una sola vez al final
+								try { Log::info('batchStore: recepcionFactura diferida (grupo)'); } catch (\Throwable $e) {}
 							}
-						} else { // Manual
+						} else { // medio_doc !== 'C' => Manual con CAFC
 							if (!is_numeric($nroFactura)) {
 								$nroFactura = $item['nro_factura'] ?? null;
-							}
-							if (!is_numeric($nroFactura)) {
-								throw new \InvalidArgumentException('nro_factura requerido para factura manual');
 							}
 							$range = $facturaService->withinCafcRange((int)$nroFactura);
 							if (!$range) {
 								throw new \RuntimeException('nro_factura fuera de rango CAFC');
 							}
-							Log::info('batchStore: factura M', [ 'idx' => $idx, 'anio' => $anio, 'sucursal' => $sucursal, 'pv' => $pv, 'nro' => (int)$nroFactura ]);
+							try {
+								Log::warning('batchStore: factura M', [
+									'idx' => $idx,
+									'anio' => $anio,
+									'sucursal' => $sucursal,
+									'pv' => $pv,
+									'nro' => (int)$nroFactura,
+									'cafc' => $range['cafc'] ?? null,
+									'range' => [ 'desde' => $range['desde'] ?? null, 'hasta' => $range['hasta'] ?? null ],
+								]);
+							} catch (\Throwable $e) {}
 							$facturaService->createManual($anio, (int)$nroFactura, [
 								'codigo_sucursal' => $sucursal,
 								'codigo_punto_venta' => (string)$pv,
@@ -1093,10 +1313,10 @@ class CobroController extends Controller
 								'monto_total' => (float)$item['monto'],
 								'codigo_cafc' => $range['cafc'] ?? null,
 							]);
+							try { Log::warning('batchStore: factura M creada (local)', [ 'anio' => $anio, 'nro_factura' => (int)$nroFactura, 'cafc' => $range['cafc'] ?? null ]); } catch (\Throwable $e) {}
 						}
 					}
-
- 					// Inserción en notas SGA: después de resolver id_asign/id_cuota para formar el detalle correcto
+					// Inserción en notas SGA: después de resolver id_asign/id_cuota para formar el detalle correcto
  					// Derivar id_asignacion_costo / id_cuota cuando no vienen en el payload
  					// Nota: si es Rezagado o Prueba de Recuperación, NO asociar a cuotas ni afectar mensualidad/arrastre
 					$isRezagado = false; $isRecuperacion = false; $isReincorporacion = false; $isSecundario = false;
@@ -1263,6 +1483,23 @@ class CobroController extends Controller
 						\Log::warning('batchStore: nota insert failed', [ 'err' => $e->getMessage() ]);
 					}
 
+					// Si hay agrupación de factura, acumular el detalle formateado para el envío único
+					if ($hasFacturaGroup && $tipoDoc === 'F' && $medioDoc === 'C') {
+						$detalleDesc = isset($detalle) && $detalle !== '' ? (string)$detalle : ((string)($item['observaciones'] ?? 'Cobro'));
+						$factDetalles[] = [
+							'codigo_sin' => 99100,
+							'codigo' => 'ITEM-' . (int)$nroCobro,
+							'descripcion' => $detalleDesc,
+							'cantidad' => 1,
+							'unidad_medida' => 58,
+							'precio_unitario' => (float)$item['monto'],
+							'descuento' => 0,
+							'subtotal' => (float)$item['monto'],
+						];
+						// También acumular en meta para post-commit
+						if (is_array($emitGroupMeta)) { $emitGroupMeta['detalles'][] = end($factDetalles); }
+					}
+
 					$payload = array_merge($composite, [
 						'monto' => $item['monto'],
 						'fecha_cobro' => $item['fecha_cobro'],
@@ -1398,11 +1635,73 @@ class CobroController extends Controller
 						'nro_recibo' => $nroRecibo,
 						'nro_factura' => $nroFactura,
 						'cobro' => $created,
+						'codigo_recepcion' => $codigoRecepcionLocal,
+						'cuf' => $cufLocal,
 					];
+				}
+
+				// Emisión online única para la factura agrupada (punto correcto: después del foreach)
+				if ($hasFacturaGroup && $emitirOnline) {
+					if (config('sin.offline')) {
+						Log::warning('batchStore: skip recepcionFactura (OFFLINE, grupo)');
+					} else {
+						try {
+							$cuisRow = $cuisRepo->getVigenteOrCreate($pv);
+							$cuisCode = $cuisRow['codigo_cuis'] ?? '';
+							$cliIn = (array) $request->input('cliente', []);
+							$cliente = [
+								'tipo_doc' => isset($cliIn['tipo_doc']) ? (int)$cliIn['tipo_doc'] : (int)($cliIn['tipo_identidad'] ?? 5),
+								'numero' => (string)($cliIn['numero'] ?? ''),
+								'razon' => (string)($cliIn['razon'] ?? ($cliIn['razon_social'] ?? 'S/N')),
+								'complemento' => $cliIn['complemento'] ?? null,
+								'codigo' => (string)($cliIn['codigo'] ?? ($cliIn['numero'] ?? '0')),
+							];
+							$payloadArgs = [
+								'nit' => (int) config('sin.nit'),
+								'cod_sistema' => (string) config('sin.cod_sistema'),
+								'ambiente' => (int) config('sin.ambiente'),
+								'modalidad' => (int) config('sin.modalidad'),
+								'tipo_factura' => (int) config('sin.tipo_factura'),
+								'doc_sector' => (int) config('sin.cod_doc_sector'),
+								'tipo_emision' => 1,
+								'sucursal' => $sucursal,
+								'punto_venta' => $pv,
+								'cuis' => $cuisCode,
+								'cufd' => (string)($cufdGroup ?? ''),
+								'cuf' => (string)$cufGroup,
+								'fecha_emision' => (string)$fechaEmisionIsoGroup,
+								'monto_total' => (float)$factMontoTotal,
+								'numero_factura' => (int)$nroFacturaGroup,
+								'id_forma_cobro' => (string)($request->id_forma_cobro ?? ''),
+								'cliente' => $cliente,
+								'detalles' => $factDetalles,
+							];
+							$payload = $payloadBuilder->buildRecepcionFacturaPayload($payloadArgs);
+							Log::warning('batchStore: calling recepcionFactura (grupo)', [ 'anio' => (int)$anioFacturaGroup, 'nro_factura' => (int)$nroFacturaGroup, 'punto_venta' => $pv, 'sucursal' => $sucursal, 'payload_meta' => [ 'len_archivo' => isset($payload['archivo']) ? strlen($payload['archivo']) : null, 'hashArchivo' => $payload['hashArchivo'] ?? null ]]);
+							$resp = $ops->recepcionFactura($payload);
+							$root = $resp['RespuestaServicioFacturacion'] ?? ($resp['RespuestaRecepcionFactura'] ?? (is_array($resp) ? reset($resp) : null));
+							$codRecep = is_array($root) ? ($root['codigoRecepcion'] ?? null) : null;
+							if ($codRecep) {
+								\DB::table('factura')
+									->where('anio', (int)$anioFacturaGroup)
+									->where('nro_factura', (int)$nroFacturaGroup)
+									->where('codigo_sucursal', (int)$sucursal)
+									->where('codigo_punto_venta', (string)$pv)
+									->update(['codigo_recepcion' => $codRecep]);
+								Log::warning('batchStore: recepcionFactura ok (grupo)', [ 'codigo_recepcion' => $codRecep ]);
+								foreach ($results as &$r) { if (is_array($r) && strtoupper((string)($r['tipo_documento'] ?? '')) === 'F') { $r['codigo_recepcion'] = $codRecep; } }
+							} else {
+								Log::warning('batchStore: recepcionFactura sin codigoRecepcion (grupo)', [ 'resp' => $resp ]);
+							}
+						} catch (\Throwable $e) {
+							Log::error('batchStore: recepcionFactura exception (grupo)', [ 'error' => $e->getMessage() ]);
+						}
+					}
 				}
 
 				// Al finalizar la creación de todos los ítems, sincronizar números de doc a qr_transacciones reciente
 				try {
+					// Calcular monto total del lote y cod_ceta locales
 					$totalMonto = 0.0; foreach ($items as $it) { $totalMonto += (float)($it['monto'] ?? 0); }
 					$codCetaGuard = (int) $request->input('cod_ceta');
 					if ($codCetaGuard > 0 && $totalMonto > 0) {
@@ -1447,6 +1746,7 @@ class CobroController extends Controller
 				} catch (\Throwable $e) { /* noop */ }
 			});
 
+			// Respuesta de éxito (fuera de la transacción) con el arreglo de items creado
 			return response()->json([
 				'success' => true,
 				'message' => 'Cobros creados correctamente',
@@ -1458,6 +1758,39 @@ class CobroController extends Controller
 				'success' => false,
 				'message' => 'Error al crear cobros por lote: ' . $e->getMessage(),
 			], 500);
+		}
+	}
+
+	public function facturaMeta(int $anio, int $nro)
+	{
+		try {
+			$row = DB::table('factura')
+				->select('anio','nro_factura','codigo_sucursal','codigo_punto_venta','fecha_emision','cuf','codigo_recepcion','monto_total')
+				->where('anio', (int)$anio)
+				->where('nro_factura', (int)$nro)
+				->first();
+			if (!$row) {
+				return response()->json([ 'success' => false, 'message' => 'Factura no encontrada' ], 404);
+			}
+			// Leyenda: seleccionar aleatoriamente por actividad económica (caeb)
+			$actividad = DB::table('sin_actividades')->value('codigo_caeb');
+			$leyenda = null;
+			if ($actividad) {
+				$leyenda = DB::table('sin_list_leyenda_factura')
+					->where('codigo_actividad', $actividad)
+					->inRandomOrder()
+					->value('descripcion_leyenda');
+			}
+			if (!$leyenda) {
+				$leyenda = DB::table('sin_list_leyenda_factura')->value('descripcion_leyenda');
+			}
+			$leyenda2 = '“Este documento es la Representación Gráfica de un Documento Fiscal Digital emitido en una modalidad de facturación en línea”';
+			$payload = (array)$row;
+			$payload['leyenda'] = $leyenda;
+			$payload['leyenda2'] = $leyenda2;
+			return response()->json([ 'success' => true, 'data' => $payload ]);
+		} catch (\Throwable $e) {
+			return response()->json([ 'success' => false, 'message' => $e->getMessage() ], 500);
 		}
 	}
 

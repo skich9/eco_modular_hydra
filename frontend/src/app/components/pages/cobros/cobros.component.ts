@@ -12,6 +12,8 @@ import { KardexModalComponent } from './kardex-modal/kardex-modal.component';
 import { BusquedaEstudianteModalComponent } from './busqueda-estudiante-modal/busqueda-estudiante-modal.component';
 import { QrPanelComponent } from './qr-panel/qr-panel.component';
 import { environment } from '../../../../environments/environment';
+import { saveBlobAsFile, generateQuickReciboPdf, generateQuickFacturaPdf } from '../../../utils/pdf.helpers';
+import * as QRCode from 'qrcode';
 
 @Component({
   selector: 'app-cobros-page',
@@ -117,9 +119,7 @@ export class CobrosComponent implements OnInit {
         cod_pensum: [''],
         tipo_inscripcion: [''],
         gestion: [''],
-        // UI value (como SGA): codigo SIN del método
         codigo_sin: [''],
-        // Valor requerido para backend: id interno
         id_forma_cobro: ['', Validators.required],
         id_cuentas_bancarias: [''],
         id_usuario: ['', Validators.required]
@@ -156,6 +156,190 @@ export class CobrosComponent implements OnInit {
       costo_total: [{ value: 0, disabled: true }],
       observaciones: ['']
     });
+  }
+
+  private downloadReciboPdfWithFallback(anio: number, nro: number): void {
+    this.cobrosService.downloadReciboPdf(anio, nro).subscribe({
+      next: (blob) => saveBlobAsFile(blob, `recibo_${anio}_${nro}.pdf`),
+      error: () => {
+        const cod = (this.batchForm.get('cabecera.cod_ceta') as any)?.value || (this.resumen?.estudiante?.cod_ceta || '');
+        const total = this.totalCobro || 0;
+        generateQuickReciboPdf({ anio, nro, codCeta: cod, total });
+      }
+    });
+  }
+
+  private downloadFacturaPdfWithFallback(anio: number, nro: number, item?: any): void {
+    this.cobrosService.downloadFacturaPdf(anio, nro).subscribe({
+      next: (blob) => saveBlobAsFile(blob, `factura_${anio}_${nro}.pdf`),
+      error: () => {
+        // Construir PDF rápido con datos disponibles
+        try {
+          const est = this.resumen?.estudiante || {};
+          const razon = (this.identidadForm.get('razon_social')?.value || est.ap_paterno || '').toString();
+          const numero = (this.identidadForm.get('ci')?.value || '').toString();
+          const complemento = (this.identidadForm.get('complemento_ci')?.value || '').toString();
+          const fecha = (item?.cobro?.fecha_cobro || new Date().toISOString()).toString();
+          const periodo = (this.resumen?.gestion || '').toString();
+          const detalle = (item?.detalle || item?.observaciones || 'Servicio educativo').toString();
+          const cant = Number(item?.cantidad || 1);
+          const pu = Number(item?.pu_mensualidad || item?.monto || 0);
+          const total = Number(item?.monto || 0);
+          const pad = (n: number) => String(n).padStart(2, '0');
+          const now = new Date();
+          const ts = `${now.getFullYear()}-${pad(now.getMonth() + 1)}-${pad(now.getDate())} ${pad(now.getHours())}:${pad(now.getMinutes())}:${pad(now.getSeconds())}`;
+          const nick = this.auth?.getCurrentUser()?.nickname || 'Operador';
+          const usuario = `Usuario-Hora: ${nick} - ${ts}`;
+          const textoSucursal = this.computeTextoSucursal(est);
+          const puntoVentaVar = this.computePuntoVenta();
+          const direccionVar = this.computeDireccion();
+          const municipioVar = this.computeMunicipio();
+          const cufGuess = (item?.cuf || item?.cuf_factura || item?.cuf_final || item?.cuf_siat || undefined) as any;
+          // Armar detalle desde las filas del modal si existen; caso contrario, un solo ítem
+          let items: Array<{ codigoProducto: string; descripcion: string; nombreUnidadMedida: string; cantidad: number; precioUnitario: number; montoDescuento: number; subTotal: number; }> = [];
+          try {
+            const rows: Array<any> = Array.isArray(this.successSummary?.rows) ? (this.successSummary as any).rows : [];
+            if (rows.length) {
+              items = rows.map((r: any, idx: number) => {
+                const c = Number(r?.cant ?? 1) || 1;
+                const sub = Number(r?.subtotal ?? r?.pu ?? 0) || 0;
+                const puCalc = Number(r?.pu ?? (sub / c)) || 0;
+                const desc = Number(r?.descuento ?? 0) || 0;
+                const descStr = typeof r?.detalle === 'string' ? r.detalle : '';
+                return {
+                  // Dejar vacío para no mostrar código en el PDF por ahora
+                  codigoProducto: '',
+                  descripcion: descStr || 'Servicio educativo',
+                  nombreUnidadMedida: 'UNIDAD (SERVICIOS)',
+                  cantidad: c,
+                  precioUnitario: puCalc,
+                  montoDescuento: desc,
+                  subTotal: sub
+                };
+              });
+            }
+          } catch {}
+          if (!items.length) {
+            items = [
+              {
+                // Dejar vacío para no mostrar código en el PDF por ahora
+                codigoProducto: '',
+                descripcion: detalle,
+                nombreUnidadMedida: 'UNIDAD (SERVICIOS)',
+                cantidad: cant,
+                precioUnitario: pu,
+                montoDescuento: 0,
+                subTotal: total
+              }
+            ];
+          }
+          const build = async (meta?: { cuf?: string; leyenda?: string; leyenda2?: string }) => {
+            // Generar QR si hay CUF
+            let qrBase64: string | null = null;
+            if (meta?.cuf) {
+              try {
+                const nit = '388386029';
+                const cuf = meta.cuf;
+                const numero = nro;
+                const t = 1; // 1 para roll80, 2 para A4/carta
+                const qrBaseUrl = environment.qrSinUrl || 'https://pilotosiat.impuestos.gob.bo/consulta/QR?';
+                const qrUrl = `${qrBaseUrl}?nit=${nit}&cuf=${cuf}&numero=${numero}&t=${t}`;
+                qrBase64 = await QRCode.toDataURL(qrUrl, {
+                  errorCorrectionLevel: 'H',
+                  type: 'image/png',
+                  width: 200,
+                  margin: 1
+                });
+              } catch (err) {
+                console.error('Error generando QR:', err);
+              }
+            }
+            
+            generateQuickFacturaPdf({
+            anio,
+            nro,
+            razon,
+            nit: '388386029',
+            codigoCliente: numero || (est?.ci ? String(est.ci) : ''),
+            fechaEmision: new Date(fecha.replace(' ', 'T')).toLocaleString(),
+            periodo,
+            nombreEstudiante: [est.nombres, est.ap_paterno, est.ap_materno].filter(Boolean).join(' '),
+            detalle,
+            cantidad: cant,
+            pu,
+            descuento: 0,
+            montoGift: 0,
+            total,
+            importeBase: total,
+            usuarioHora: usuario,
+            qrBase64: qrBase64,
+            sucursal: '1',
+            puntoVenta: puntoVentaVar,
+            direccion: direccionVar,
+            telefono: '4581736',
+            ciudad: municipioVar,
+            codAutorizacion: undefined,
+            // adicionales para respetar orden backend
+            numeroFactura: nro,
+            cuf: (meta?.cuf || cufGuess) as any,
+            codigoSucursal: '1',
+            codigoPuntoVenta: '2',
+            complemento,
+            periodoFacturado: periodo,
+            descuentoAdicional: 0,
+            montoGiftCard: 0,
+            montoTotal: total,
+            montoTotalSujetoIva: total,
+            items,
+            leyenda: meta?.leyenda,
+            leyenda2: meta?.leyenda2 || '“Este documento es la Representación Gráfica de un Documento Fiscal Digital emitido en una modalidad de facturación en línea”',
+            totalTexto: undefined,
+            codCeta: (this.batchForm.get('cabecera.cod_ceta') as any)?.value || (this.resumen?.estudiante?.cod_ceta || ''),
+            formato: 'roll80',
+            textoSucursal,
+            municipioNombre: municipioVar
+            });
+          };
+          // Obtener meta de factura SIEMPRE para traer leyendas y CUF real
+          this.cobrosService.getFacturaMeta(anio, nro).subscribe({
+            next: (res: any) => {
+              const data = res?.data || {};
+              const meta = {
+                cuf: (data?.cuf || '').toString() || undefined,
+                leyenda: data?.leyenda || undefined,
+                leyenda2: data?.leyenda2 || undefined
+              };
+              build(meta);
+            },
+            error: () => build(undefined)
+          });
+        } catch {}
+      }
+    });
+  }
+
+  private computeTextoSucursal(est: any): string {
+    try {
+      const pensum = (this.resumen as any)?.pensum || '';
+      const carrera = ((pensum || '').toString() || '').toUpperCase();
+      if (carrera.includes('ELECTRONICA')) return 'CASA MATRIZ';
+    } catch {}
+    return 'SUCURSAL N. 1';
+  }
+
+  private computePuntoVenta(): string {
+    try { const pv = (this.resumen as any)?.punto_venta; if (pv !== undefined && pv !== null) return String(pv); } catch {}
+    return '0';
+  }
+
+  private computeDireccion(): string {
+    try { const dir = (this.resumen as any)?.direccion_sucursal; if (dir) return String(dir); } catch {}
+    return 'CALLE SAN ALBERTO NRO. 124';
+  }
+
+  private computeMunicipio(): string {
+    try { const m = (this.resumen as any)?.municipio; if (m) return String(m); } catch {}
+    return 'COCHABAMBA';
   }
 
   private loadGestiones(): void {
@@ -782,6 +966,19 @@ export class CobrosComponent implements OnInit {
       </tr>`).join('');
     const totalFmt = Number(s.total||0).toLocaleString(undefined,{minimumFractionDigits:2, maximumFractionDigits:2});
     const pensumStr = s.pensum ? ` (${s.pensum})` : '';
+    const docs: any[] = Array.isArray(s.docs) ? s.docs : [];
+    const facturasHtml = docs.filter((d: any) => d && d.nro_factura)
+      .map((d: any) => {
+        const anio = d.anio ?? '';
+        const nro = d.nro_factura ?? '';
+        const cod = (d.codigo_recepcion ?? '').toString();
+        const codShort = cod ? `${cod.substring(0, 8)}...${cod.substring(cod.length - 6)}` : '';
+        return `
+          <div class="small py-1">
+            <strong>Factura:</strong> ${anio}-${nro}
+            ${cod ? ` | <strong>Código Recepción:</strong> <span title="${cod}">${codShort}</span>` : ''}
+          </div>`;
+      }).join('');
     return `
       <div class="modal-dialog modal-lg">
         <div class="modal-content success-modal">
@@ -829,6 +1026,7 @@ export class CobrosComponent implements OnInit {
                     </tfoot>
                   </table>
                 </div>
+                ${facturasHtml ? `<div class="mt-2"><div class="panel-header">Comprobantes emitidos</div>${facturasHtml}</div>` : ''}
               </div>
             </div>
           </div>
@@ -861,15 +1059,18 @@ export class CobrosComponent implements OnInit {
         };
       });
       const total = rows.reduce((acc, r) => acc + Number(r.subtotal || 0), 0);
+      const seen = new Set<string>();
       const docs: any[] = [];
       for (const it of (createdItems || [])) {
         try {
           const fecha = it?.cobro?.fecha_cobro || new Date().toISOString().slice(0,10);
           const anio = new Date(fecha).getFullYear();
           if ((it?.tipo_documento === 'R') && (it?.medio_doc === 'C') && it?.nro_recibo) {
-            docs.push({ tipo: 'R', anio, nro_recibo: it?.nro_recibo });
+            const key = `R:${anio}:${it?.nro_recibo}`;
+            if (!seen.has(key)) { docs.push({ tipo: 'R', anio, nro_recibo: it?.nro_recibo }); seen.add(key); }
           } else if ((it?.tipo_documento === 'F') && (it?.medio_doc === 'C') && it?.nro_factura) {
-            docs.push({ tipo: 'F', anio, nro_factura: it?.nro_factura });
+            const key = `F:${anio}:${it?.nro_factura}`;
+            if (!seen.has(key)) { docs.push({ tipo: 'F', anio, nro_factura: it?.nro_factura, codigo_recepcion: it?.codigo_recepcion }); seen.add(key); }
           }
         } catch {}
       }
@@ -983,27 +1184,7 @@ export class CobrosComponent implements OnInit {
                       }
                     }
                   } catch {}
-                  this.cobrosService.downloadReciboPdf(anio, nro).subscribe({
-                    next: (blob) => {
-                      try {
-                        const fileName = `recibo_${anio}_${nro}.pdf`;
-                        const url = URL.createObjectURL(blob);
-                        const a = document.createElement('a');
-                        a.href = url;
-                        a.download = fileName;
-                        document.body.appendChild(a);
-                        a.click();
-                        a.remove();
-                        URL.revokeObjectURL(url);
-                      } catch {}
-                    },
-                    error: () => {
-                      try {
-                        const url = `${environment.apiUrl}/recibos/${anio}/${nro}/pdf`;
-                        window.open(url, '_blank');
-                      } catch {}
-                    }
-                  });
+                  this.downloadReciboPdfWithFallback(anio, nro);
                 }
               } catch {}
             },
@@ -2273,7 +2454,7 @@ export class CobrosComponent implements OnInit {
     const { cabecera } = this.batchForm.value as any;
     // Mapear pagos para enviar solo con 'monto' calculado y fallbacks de nro/fecha
     const hoy = new Date().toISOString().slice(0, 10);
-    const pagos = (baseCtrls || []).map((ctrl, idx) => {
+    const pagosRaw = (baseCtrls || []).map((ctrl, idx) => {
       const raw = (ctrl as FormGroup).getRawValue() as any;
       const subtotal = this.calcRowSubtotal(idx);
       const fecha = raw.fecha_cobro || hoy;
@@ -2282,6 +2463,18 @@ export class CobrosComponent implements OnInit {
         item.nro_cobro = this.getNextCobroNro();
       }
       return item;
+    });
+    // Normalizar tipo_documento y medio_doc para todos los items
+    const pagos = pagosRaw.map((it: any) => {
+      const tipo = this.normalizeDocFromPayload(it);
+      const medio = (() => {
+        const md = ((it?.medio_doc || '') + '').trim().toUpperCase();
+        const comp = ((it?.computarizada || '') + '').trim().toUpperCase();
+        if (md === 'M' || comp === 'MANUAL') return 'M';
+        if (md === 'C' || comp === 'COMPUTARIZADA') return 'C';
+        return 'C';
+      })();
+      return { ...it, tipo_documento: tipo || 'R', medio_doc: medio || 'C' };
     });
     const payload = {
       ...cabecera,
@@ -2295,6 +2488,11 @@ export class CobrosComponent implements OnInit {
         razon_social: (this.identidadForm.get('razon_social')?.value || '').toString()
       }
     } as any;
+    // Forzar bandera emitir_online si hay al menos una Factura Computarizada
+    try {
+      const shouldEmitOnline = pagos.some((p: any) => (p?.tipo_documento === 'F') && (p?.medio_doc === 'C'));
+      if (shouldEmitOnline) (payload as any).emitir_online = true;
+    } catch {}
     this.cobrosService.batchStore(payload).subscribe({
       next: (res) => {
         if (res.success) {
@@ -2304,29 +2502,22 @@ export class CobrosComponent implements OnInit {
             this.successSummary = this.buildSuccessSummary(items);
             // Mostrar modal de éxito
             this.openSuccessModal();
+            const seen = new Set<string>();
             for (const it of items) {
+              // Recibo computarizado
               if ((it?.tipo_documento === 'R') && (it?.medio_doc === 'C') && it?.nro_recibo) {
                 const fecha = it?.cobro?.fecha_cobro || hoy;
                 const anio = new Date(fecha).getFullYear();
-                // Descargar PDF sin abrir nueva pestaña
-                this.cobrosService.downloadReciboPdf(anio, it.nro_recibo).subscribe({
-                  next: (blob) => {
-                    const fileName = `recibo_${anio}_${it.nro_recibo}.pdf`;
-                    const url = URL.createObjectURL(blob);
-                    const a = document.createElement('a');
-                    a.href = url;
-                    a.download = fileName;
-                    document.body.appendChild(a);
-                    a.click();
-                    a.remove();
-                    URL.revokeObjectURL(url);
-                  },
-                  error: () => {
-                    // Fallback: intentar abrir en nueva pestaña si falla descarga
-                    const url = `${environment.apiUrl}/recibos/${anio}/${it.nro_recibo}/pdf`;
-                    try { window.open(url, '_blank'); } catch {}
-                  }
-                });
+                this.downloadReciboPdfWithFallback(anio, it.nro_recibo);
+              }
+              // Factura computarizada
+              if ((it?.tipo_documento === 'F') && (it?.medio_doc === 'C') && it?.nro_factura) {
+                const fechaF = it?.cobro?.fecha_cobro || hoy;
+                const anioF = new Date(fechaF).getFullYear();
+                const key = `${anioF}:${it.nro_factura}`;
+                if (seen.has(key)) continue;
+                seen.add(key);
+                this.downloadFacturaPdfWithFallback(anioF, it.nro_factura, it);
               }
             }
           } catch {}
