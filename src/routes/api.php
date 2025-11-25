@@ -33,6 +33,7 @@ use App\Http\Controllers\Api\RezagadoController;
 use App\Http\Controllers\Api\SegundaInstanciaController;
 use App\Http\Controllers\Api\QrController;
 use App\Http\Controllers\Api\SocketController;
+use App\Http\Controllers\Api\FacturaEstadoController;
 
 // Búsqueda de estudiantes
 Route::get('/estudiantes/search', [EstudianteController::class, 'search']);
@@ -159,6 +160,13 @@ Route::get('recibos/{anio}/{nro_recibo}/pdf', [ReciboController::class, 'pdf'])
 // Facturas: meta (incluye CUF) para fallback del frontend
 Route::get('facturas/{anio}/{nro}/meta', [CobroController::class, 'facturaMeta'])
     ->where(['anio' => '\\d{4}', 'nro' => '\\d+']);
+
+// Facturas: verificación de estado en SIN
+Route::get('facturas/{anio}/{nro}/estado', [FacturaEstadoController::class, 'estado'])
+    ->where(['anio' => '\\d{4}', 'nro' => '\\d+']);
+
+// SIN: URL base para QR 
+Route::get('sin/qr-url', [\App\Http\Controllers\Api\SinAdminController::class, 'qrUrl']);
 
 // Parámetros de costos
 Route::get('parametros-costos', [ParametroCostoController::class, 'index']);

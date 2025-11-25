@@ -19,6 +19,7 @@ return [
 	'cod_doc_sector' => (int) env('SIN_DOC_SECTOR', 11),
 	'tipo_factura' => (int) env('SIN_TIPO_FACTURA', 1),
 	'archivo_plain' => filter_var(env('SIN_ARCHIVO_PLAIN', false), FILTER_VALIDATE_BOOL),
+	'qr_url' => env('SIN_QR_URL', 'https://pilotosiat.impuestos.gob.bo/consulta/QR'),
 
 	// Operación
 	'offline' => filter_var(env('SIN_OFFLINE', false), FILTER_VALIDATE_BOOL),

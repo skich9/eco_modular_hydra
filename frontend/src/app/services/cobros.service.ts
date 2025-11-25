@@ -125,6 +125,17 @@ export class CobrosService {
 		return this.http.get(url);
 	}
 
+	// SIN: URL base del QR (centralizada en backend .env)
+	getSinQrUrl(): Observable<string> {
+		const url = `${this.apiUrl}/sin/qr-url`;
+		return this.http.get<any>(url).pipe(
+			map((res: any) => {
+				const u = res && res.data ? (res.data.url || '') : '';
+				return String(u || '');
+			})
+		);
+	}
+
 	// Catálogos
 	getGestionesActivas(): Observable<any> {
 		return this.http.get<any>(`${this.apiUrl}/gestiones/estado/activas`).pipe(

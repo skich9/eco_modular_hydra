@@ -109,4 +109,21 @@ class SinAdminController extends Controller
 			], Response::HTTP_INTERNAL_SERVER_ERROR);
 		}
 	}
+
+	// Exponer URL base del QR del SIN desde backend (.env)
+	public function qrUrl(Request $request)
+	{
+		try {
+			$url = (string) config('sin.qr_url');
+			return response()->json([
+				'success' => true,
+				'data' => [ 'url' => $url ],
+			]);
+		} catch (\Throwable $e) {
+			return response()->json([
+				'success' => false,
+				'message' => $e->getMessage(),
+			], 500);
+		}
+	}
 }

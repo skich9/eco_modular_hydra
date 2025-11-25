@@ -72,6 +72,7 @@ export class CobrosComponent implements OnInit {
   private qrPanelStatus: 'pendiente' | 'procesando' | 'completado' | 'expirado' | 'cancelado' | null = null;
   private qrPanelActive: boolean = false;
   private qrSavedWaiting: boolean = false;
+  private sinQrBaseUrl: string | null = null;
 
   // Ref del modal de items
   @ViewChild('itemsDlg') itemsDlg?: ItemsModalComponent;
@@ -242,8 +243,11 @@ export class CobrosComponent implements OnInit {
                 const cuf = meta.cuf;
                 const numero = nro;
                 const t = 1; // 1 para roll80, 2 para A4/carta
-                const qrBaseUrl = environment.qrSinUrl || 'https://pilotosiat.impuestos.gob.bo/consulta/QR?';
-                const qrUrl = `${qrBaseUrl}?nit=${nit}&cuf=${cuf}&numero=${numero}&t=${t}`;
+                const backendUrl = (this.sinQrBaseUrl || '').trim();
+                const envUrl = (environment as any)?.qrSinUrl || '';
+                const base = backendUrl || envUrl || 'https://pilotosiat.impuestos.gob.bo/consulta/QR';
+                const sep = base.includes('?') ? '&' : '?';
+                const qrUrl = `${base}${sep}nit=${nit}&cuf=${cuf}&numero=${numero}&t=${t}`;
                 qrBase64 = await QRCode.toDataURL(qrUrl, {
                   errorCorrectionLevel: 'H',
                   type: 'image/png',
