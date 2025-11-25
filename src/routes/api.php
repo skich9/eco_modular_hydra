@@ -34,6 +34,8 @@ use App\Http\Controllers\Api\SegundaInstanciaController;
 use App\Http\Controllers\Api\QrController;
 use App\Http\Controllers\Api\SocketController;
 use App\Http\Controllers\Api\FacturaEstadoController;
+use App\Http\Controllers\Api\FacturaAnulacionController;
+use App\Http\Controllers\Api\FacturaPdfController;
 
 // Búsqueda de estudiantes
 Route::get('/estudiantes/search', [EstudianteController::class, 'search']);
@@ -161,9 +163,23 @@ Route::get('recibos/{anio}/{nro_recibo}/pdf', [ReciboController::class, 'pdf'])
 Route::get('facturas/{anio}/{nro}/meta', [CobroController::class, 'facturaMeta'])
     ->where(['anio' => '\\d{4}', 'nro' => '\\d+']);
 
+// Facturas: listado paginado para UI SIN (anio opcional)
+Route::get('facturas', [FacturaEstadoController::class, 'lista']);
+
 // Facturas: verificación de estado en SIN
 Route::get('facturas/{anio}/{nro}/estado', [FacturaEstadoController::class, 'estado'])
     ->where(['anio' => '\\d{4}', 'nro' => '\\d+']);
+
+// Facturas: anulación (verifica estado y luego anula)
+Route::post('facturas/{anio}/{nro}/anular', [FacturaAnulacionController::class, 'anular'])
+    ->where(['anio' => '\\d{4}', 'nro' => '\\d+']);
+
+// Facturas: PDF (si está ANULADA, se devuelve con marca de agua)
+Route::get('facturas/{anio}/{nro}/pdf', [FacturaPdfController::class, 'pdf'])
+    ->where(['anio' => '\\d{4}', 'nro' => '\\d+']);
+
+// SIN: motivos de anulacion
+Route::get('sin/motivos-anulacion', [SinCatalogoController::class, 'motivosAnulacion']);
 
 // SIN: URL base para QR 
 Route::get('sin/qr-url', [\App\Http\Controllers\Api\SinAdminController::class, 'qrUrl']);

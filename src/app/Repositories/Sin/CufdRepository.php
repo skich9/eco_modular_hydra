@@ -6,13 +6,20 @@ use App\Services\Siat\CodesService;
 use Illuminate\Support\Facades\DB;
 use Exception;
 use Carbon\Carbon;
+use Illuminate\Support\Facades\Log;
 
 class CufdRepository
 {
-	public function __construct(
-		private CodesService $codes,
-		private CuisRepository $cuisRepo,
-	) {}
+	/** @var CodesService */
+	private $codes;
+	/** @var CuisRepository */
+	private $cuisRepo;
+
+	public function __construct(CodesService $codes, CuisRepository $cuisRepo)
+	{
+		$this->codes = $codes;
+		$this->cuisRepo = $cuisRepo;
+	}
 
 	public function getVigenteOrCreate(int $puntoVenta = 0): array
 	{
@@ -22,6 +29,10 @@ class CufdRepository
 		$cuis = $cuisData['codigo_cuis'];
 
 		$nowLaPaz = Carbon::now('America/La_Paz');
+		// Log similar al SGA para rastrear consulta de CUFD vigente
+		Log::error('SGA-LIKE CUFD SELECT', [
+			'sql' => "SELECT codigo_cufd, codigo_control, direccion, fecha_vigencia, codigo_cuis, codigo_punto_venta, codigo_sucursal, diferencia_tiempo FROM sin_cufd WHERE codigo_cuis='".$cuis."' AND codigo_punto_venta='".$puntoVenta."' AND codigo_sucursal='".$sucursal."' AND fecha_vigencia > NOW() ORDER BY fecha_vigencia DESC LIMIT 1",
+		]);
 		$row = DB::table('sin_cufd')
 			->where('codigo_cuis', $cuis)
 			->where('codigo_punto_venta', (string) $puntoVenta)
@@ -65,6 +76,9 @@ class CufdRepository
 			'fecha_inicio' => $fechaInicio,
 			'fecha_fin' => $fechaFin,
 		];
+
+		// Log creación CUFD similar al SGA
+		Log::error('SGA-LIKE Create CUFD', $data);
 
 		// Cerrar el CUFD anterior si se superpone
 		$this->closePreviousIfOverlap($puntoVenta, $sucursal, $fechaInicio);

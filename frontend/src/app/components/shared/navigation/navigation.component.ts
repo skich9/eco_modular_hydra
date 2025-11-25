@@ -56,6 +56,13 @@ export class NavigationComponent implements OnInit {
             submenu: []
         },
         {
+			name: 'SIN',
+			icon: 'fas fa-file-invoice',
+			submenu: [
+				{ name: 'Estado de Factura / Anulación', icon: 'fa-file-signature', route: '/sin/estado-factura' }
+			]
+		},
+		{
 			name: 'Configuración',
 			icon: 'fas fa-cog',
 			submenu: [

@@ -1,0 +1,143 @@
+<div class="container py-3">
+    <h2 class="mb-3">SIN - Estado de Factura / Anulación</h2>
+
+    <div class="mt-4" *ngIf="errorMsg">
+        <div class="alert alert-danger">{{ errorMsg }}</div>
+    </div>
+
+    <!-- Filtro y tabla paginada -->
+    <div class="d-flex flex-wrap justify-content-between align-items-center mt-4 mb-2 gap-2">
+        <div class="d-flex align-items-center gap-2">
+            <label class="form-label m-0">Año</label>
+            <input type="number" class="form-control form-control-sm" style="width:120px" [(ngModel)]="filterAnio" name="filterAnio">
+            <button class="btn btn-sm btn-outline-primary" (click)="buscarPorAnio()">Filtrar</button>
+        </div>
+        <div class="d-flex align-items-center gap-2">
+            <label class="form-label m-0">Filas</label>
+            <select class="form-select form-select-sm" style="width:90px" [(ngModel)]="meta.per_page" name="perPage" (change)="setPerPage(meta.per_page)">
+                <option *ngFor="let n of pageOptions" [ngValue]="n">{{n}}</option>
+            </select>
+        </div>
+    </div>
+
+    <div class="table-responsive border rounded">
+        <table class="table table-sm align-middle mb-0">
+            <thead class="table-light">
+                <tr>
+                    <th style="width:160px">Nro Factura</th>
+                    <th style="min-width:220px">Cliente / Razón Social</th>
+                    <th style="width:120px">Detalle</th>
+                    <th style="width:140px">Horas Restantes</th>
+                    <th style="width:180px">Fecha</th>
+                    <th style="width:130px">Estado</th>
+                    <th style="width:160px" class="text-end">Acciones</th>
+                </tr>
+            </thead>
+            <tbody>
+                <tr *ngIf="loadingList">
+                    <td colspan="6" class="text-center py-3"><span class="spinner-border spinner-border-sm me-2"></span>Cargando...</td>
+                </tr>
+                <tr *ngFor="let r of rows">
+                    <td class="fw-semibold">{{ r.nro_factura }}</td>
+                    <td>{{ r.cliente || '—' }}</td>
+                    <td>Enviado</td>
+                    <td [class]="horasClass(r.horas_restantes)">{{ r.horas_restantes }} h</td>
+                    <td>{{ r.fecha_emision }}</td>
+                    <td><span [class]="stateBadgeClass(r.estado)">{{ r.estado || '—' }}</span></td>
+                    <td class="text-end">
+                        <div class="btn-group btn-group-sm" role="group" *ngIf="!esAnulada(r.estado)">
+                            <button type="button" class="btn btn-outline-secondary" (click)="openDetalles(r)" title="Ver detalles">
+                                <i class="fas fa-eye"></i>
+                            </button>
+                            <button type="button" class="btn btn-primary" [disabled]="r.__updating" (click)="refreshEstado(r)">
+                                <span class="spinner-border spinner-border-sm me-1" *ngIf="r.__updating"></span>
+                                Estado
+                            </button>
+                        </div>
+                        <span class="text-muted small" *ngIf="esAnulada(r.estado)">Factura anulada</span>
+                    </td>
+                </tr>
+                <tr *ngIf="!loadingList && rows.length === 0">
+                    <td colspan="6" class="text-center py-3 text-muted">Sin registros</td>
+                </tr>
+            </tbody>
+        </table>
+    </div>
+
+    <!-- Paginación simple -->
+    <div class="d-flex justify-content-between align-items-center mt-2">
+        <div class="small text-muted">Mostrando página {{meta.page}} de {{meta.last_page}} ({{meta.total}} registros)</div>
+        <div class="btn-group btn-group-sm" role="group">
+            <button class="btn btn-outline-secondary" (click)="setPage(meta.page-1)" [disabled]="meta.page<=1">Anterior</button>
+            <button class="btn btn-outline-secondary" (click)="setPage(meta.page+1)" [disabled]="meta.page>=meta.last_page">Siguiente</button>
+        </div>
+    </div>
+
+    <!-- Modal Detalles -->
+    <div class="modal fade" id="detalleFacturaModal" tabindex="-1" aria-hidden="true">
+        <div class="modal-dialog modal-lg">
+            <div class="modal-content">
+                <div class="modal-header">
+                    <h5 class="modal-title">Detalles de Factura #{{ detailRow?.nro_factura }}</h5>
+                    <button type="button" class="btn-close" data-bs-dismiss="modal" aria-label="Close"></button>
+                </div>
+                <div class="modal-body">
+                    <div class="mb-2"><strong>CUF:</strong> <code class="small">{{ detailRow?.cuf || '—' }}</code></div>
+                    <div class="mb-2"><strong>Código Recepción:</strong> <code class="small">{{ detailRow?.codigo_recepcion || '—' }}</code></div>
+                    <div class="mb-2"><strong>Fecha Emisión:</strong> {{ detailRow?.fecha_emision }}</div>
+                    <div class="mb-2"><strong>Estado Actual:</strong> <span [class]="stateBadgeClass(detailRow?.estado)">{{ detailRow?.estado || '—' }}</span></div>
+                </div>
+                <div class="modal-footer">
+                    <button type="button" class="btn btn-outline-secondary" data-bs-dismiss="modal">Cerrar</button>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <!-- Modal Estado (respuesta de impuestos) -->
+    <div class="modal fade" id="estadoFacturaModal" tabindex="-1" aria-hidden="true">
+        <div class="modal-dialog">
+            <div class="modal-content">
+                <div class="modal-header">
+                    <h5 class="modal-title">Estado SIN – Factura #{{ statusRow?.nro_factura }}</h5>
+                    <button type="button" class="btn-close" data-bs-dismiss="modal" aria-label="Close"></button>
+                </div>
+                <div class="modal-body">
+                    <div *ngIf="statusLoading" class="d-flex align-items-center gap-2">
+                        <span class="spinner-border spinner-border-sm"></span>
+                        <span>Consultando estado...</span>
+                    </div>
+                    <div *ngIf="!statusLoading && statusError" class="alert alert-danger">{{ statusError }}</div>
+                    <div *ngIf="!statusLoading && !statusError">
+                        <div class="d-flex align-items-center gap-2 mb-2">
+                            <span class="fw-semibold">Estado:</span>
+                            <span [class]="badgeClass">{{ statusData?.estado || 'SIN DATOS' }}</span>
+                        </div>
+                        <ul class="list-unstyled small mb-0">
+                            <li>Código estado: <strong>{{ statusCodigoEstado || '—' }}</strong></li>
+                            <li>Descripción: <strong>{{ statusDescripcion || '—' }}</strong></li>
+                            <li>Código recepción: <strong>{{ statusCodigoRecepcion || '—' }}</strong></li>
+                        </ul>
+                        <div class="mt-3" *ngIf="puedeAnular(statusData?.estado)">
+                            <label class="form-label small">Motivo de anulación</label>
+                            <select class="form-select form-select-sm" [(ngModel)]="codigoMotivo" name="codigoMotivo">
+                                <option *ngFor="let m of motivos" [ngValue]="m.codigo">{{ m.codigo }} - {{ m.descripcion }}</option>
+                            </select>
+                            <div class="form-text">Seleccione el motivo requerido por el SIN antes de anular.</div>
+                        </div>
+                        <div class="alert alert-warning mt-3" *ngIf="!puedeAnular(statusData?.estado) && mensajeBloqueoAnulacion(statusData?.estado)">
+                            <i class="fas fa-exclamation-triangle me-2"></i>{{ mensajeBloqueoAnulacion(statusData?.estado) }}
+                        </div>
+                    </div>
+                </div>
+                <div class="modal-footer">
+                    <button type="button" class="btn btn-outline-secondary" data-bs-dismiss="modal">Cerrar</button>
+                    <button type="button" class="btn btn-danger" *ngIf="puedeAnular(statusData?.estado)" [disabled]="anulando" (click)="anularDesdeModal()">
+                        <span class="spinner-border spinner-border-sm me-2" *ngIf="anulando"></span>
+                        Anular factura
+                    </button>
+                </div>
+            </div>
+        </div>
+    </div>
+</div>

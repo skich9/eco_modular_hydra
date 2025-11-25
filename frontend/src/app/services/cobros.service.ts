@@ -136,6 +136,31 @@ export class CobrosService {
 		);
 	}
 
+	// Facturas: estado en SIN
+	getFacturaEstado(anio: number, nroFactura: number): Observable<any> {
+		const url = `${this.apiUrl}/facturas/${anio}/${nroFactura}/estado`;
+		return this.http.get<any>(url);
+	}
+
+	// Facturas: anulación en SIN
+	anularFactura(anio: number, nroFactura: number, codigoMotivo: number = 1): Observable<any> {
+		const url = `${this.apiUrl}/facturas/${anio}/${nroFactura}/anular`;
+		return this.http.post<any>(url, { codigo_motivo: codigoMotivo });
+	}
+
+	// SIN: motivos de anulacion
+	getMotivosAnulacion(): Observable<Array<{ codigo: number|string; descripcion: string }>> {
+		const url = `${this.apiUrl}/sin/motivos-anulacion`;
+		return this.http.get<any>(url).pipe(map((res: any) => (Array.isArray(res?.data) ? res.data : [])));
+	}
+
+	// Facturas: listado paginado para UI SIN
+	getFacturasLista(params: { page?: number; per_page?: number; anio?: number | string } = {}): Observable<any> {
+		let httpParams = new HttpParams();
+		Object.entries(params).forEach(([k,v]) => { if (v !== undefined && v !== null && String(v) !== '') httpParams = httpParams.set(k, String(v)); });
+		return this.http.get<any>(`${this.apiUrl}/facturas`, { params: httpParams });
+	}
+
 	// Catálogos
 	getGestionesActivas(): Observable<any> {
 		return this.http.get<any>(`${this.apiUrl}/gestiones/estado/activas`).pipe(
