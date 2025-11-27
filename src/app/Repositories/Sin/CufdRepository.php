@@ -21,28 +21,33 @@ class CufdRepository
 		$this->cuisRepo = $cuisRepo;
 	}
 
-	public function getVigenteOrCreate(int $puntoVenta = 0): array
+	public function getVigenteOrCreate(int $puntoVenta = 0, bool $forceNew = false): array
 	{
 		$sucursal = (int) config('sin.sucursal');
 		// Asegurar CUIS vigente
 		$cuisData = $this->cuisRepo->getVigenteOrCreate($puntoVenta);
 		$cuis = $cuisData['codigo_cuis'];
 
-		$nowLaPaz = Carbon::now('America/La_Paz');
-		// Log similar al SGA para rastrear consulta de CUFD vigente
-		Log::error('SGA-LIKE CUFD SELECT', [
-			'sql' => "SELECT codigo_cufd, codigo_control, direccion, fecha_vigencia, codigo_cuis, codigo_punto_venta, codigo_sucursal, diferencia_tiempo FROM sin_cufd WHERE codigo_cuis='".$cuis."' AND codigo_punto_venta='".$puntoVenta."' AND codigo_sucursal='".$sucursal."' AND fecha_vigencia > NOW() ORDER BY fecha_vigencia DESC LIMIT 1",
-		]);
-		$row = DB::table('sin_cufd')
-			->where('codigo_cuis', $cuis)
-			->where('codigo_punto_venta', (string) $puntoVenta)
-			->where('codigo_sucursal', $sucursal)
-			->where('fecha_vigencia', '>', $nowLaPaz)
-			->orderByDesc('fecha_vigencia')
-			->first();
+		// Si forceNew es true, siempre solicitar uno nuevo al SIN
+		if (!$forceNew) {
+			$nowLaPaz = Carbon::now('America/La_Paz');
+			// Log similar al SGA para rastrear consulta de CUFD vigente
+			Log::error('SGA-LIKE CUFD SELECT', [
+				'sql' => "SELECT codigo_cufd, codigo_control, direccion, fecha_vigencia, codigo_cuis, codigo_punto_venta, codigo_sucursal, diferencia_tiempo FROM sin_cufd WHERE codigo_cuis='".$cuis."' AND codigo_punto_venta='".$puntoVenta."' AND codigo_sucursal='".$sucursal."' AND fecha_vigencia > NOW() ORDER BY fecha_vigencia DESC LIMIT 1",
+			]);
+			$row = DB::table('sin_cufd')
+				->where('codigo_cuis', $cuis)
+				->where('codigo_punto_venta', (string) $puntoVenta)
+				->where('codigo_sucursal', $sucursal)
+				->where('fecha_vigencia', '>', $nowLaPaz)
+				->orderByDesc('fecha_vigencia')
+				->first();
 
-		if ($row) {
-			return (array) $row;
+			if ($row) {
+				return (array) $row;
+			}
+		} else {
+			Log::warning('CufdRepository: forceNew=true, solicitando CUFD fresco al SIN');
 		}
 
 		// Solicitar CUFD al SIAT

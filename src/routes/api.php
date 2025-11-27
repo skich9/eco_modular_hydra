@@ -174,7 +174,11 @@ Route::get('facturas/{anio}/{nro}/estado', [FacturaEstadoController::class, 'est
 Route::post('facturas/{anio}/{nro}/anular', [FacturaAnulacionController::class, 'anular'])
     ->where(['anio' => '\\d{4}', 'nro' => '\\d+']);
 
-// Facturas: PDF (si está ANULADA, se devuelve con marca de agua)
+// Facturas: Datos en JSON para generar PDF en frontend
+Route::get('facturas/{anio}/{nro}/datos', [FacturaPdfController::class, 'datos'])
+    ->where(['anio' => '\\d{4}', 'nro' => '\\d+']);
+
+// Facturas: PDF (si está ANULADA, se devuelve con marca de agua) - DEPRECATED: usar /datos y generar en frontend
 Route::get('facturas/{anio}/{nro}/pdf', [FacturaPdfController::class, 'pdf'])
     ->where(['anio' => '\\d{4}', 'nro' => '\\d+']);
 
@@ -183,6 +187,16 @@ Route::get('sin/motivos-anulacion', [SinCatalogoController::class, 'motivosAnula
 
 // SIN: URL base para QR 
 Route::get('sin/qr-url', [\App\Http\Controllers\Api\SinAdminController::class, 'qrUrl']);
+
+// Contingencias: gestión de facturas en contingencia
+Route::get('contingencias', [\App\Http\Controllers\Api\ContingenciaController::class, 'lista']);
+Route::post('contingencias/regularizar', [\App\Http\Controllers\Api\ContingenciaController::class, 'regularizar']);
+Route::get('contingencias/estadisticas', [\App\Http\Controllers\Api\ContingenciaController::class, 'estadisticas']);
+
+// Eventos significativos
+Route::get('eventos-significativos', [\App\Http\Controllers\Api\EventoSignificativoController::class, 'lista']);
+Route::post('eventos-significativos', [\App\Http\Controllers\Api\EventoSignificativoController::class, 'crear']);
+Route::get('eventos-significativos/buscar', [\App\Http\Controllers\Api\EventoSignificativoController::class, 'buscar']);
 
 // Parámetros de costos
 Route::get('parametros-costos', [ParametroCostoController::class, 'index']);

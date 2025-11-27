@@ -13,7 +13,8 @@
         "laravel/tinker": "^2.10.1",
         "textalk/websocket": "^1.5",
         "workerman/workerman": "^4.1",
-        "robrichards/xmlseclibs": "^3.1"
+        "robrichards/xmlseclibs": "^3.1",
+        "endroid/qr-code": "^5.0"
     },
     "require-dev": {
         "fakerphp/faker": "^1.23",

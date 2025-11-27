@@ -379,6 +379,11 @@ class CobroController extends Controller
 
 			// Próxima mensualidad a pagar con prioridad a PARCIAL; exponer 'parcial_count'
 			$mensualidadNext = null; $mensualidadPendingCount = 0; $mensualidadTotalCuotas = $asignacionesPrimarias->count();
+			Log::debug('CobroController.resumen: asignaciones', [
+				'cod_ceta' => $codCeta,
+				'total_cuotas' => $mensualidadTotalCuotas,
+				'asignaciones' => $asignacionesPrimarias->toArray()
+			]);
 			$parciales = $asignacionesPrimarias->filter(function($a){ return (string)($a->estado_pago ?? '') === 'PARCIAL'; })->sortBy('numero_cuota')->values();
 			$parcialCount = $parciales->count();
 			if ($mensualidadTotalCuotas > 0) {
@@ -912,6 +917,7 @@ class CobroController extends Controller
 						'cliente' => $cliNameGroup,
 						'codigo_cufd' => $cufdGroup,
 						'cuf' => $cufGroup,
+						'periodo_facturado' => $gestionCtx,
 					]);
 					try { \Log::warning('batchStore: factura C creada (local, grupo)', [ 'anio' => $anioFacturaGroup, 'nro_factura' => (int)$nroFacturaGroup, 'monto_total' => (float)$factMontoTotal ]); } catch (\Throwable $e) {}
 					// Inicializar contenedor para emisión post-commit
@@ -1416,15 +1422,56 @@ class CobroController extends Controller
 					// Si hay agrupación de factura, acumular el detalle formateado para el envío único
 					if ($hasFacturaGroup && $tipoDoc === 'F' && $medioDoc === 'C') {
 						$detalleDesc = isset($detalle) && $detalle !== '' ? (string)$detalle : ((string)($item['observaciones'] ?? 'Cobro'));
+						
+						
+						$codigoSin = 99100; // Default para SIN
+						$codigoInterno = null; // Default para PDF
+						$actividadEconomica = 853000; // Default
+						$unidadMedida = 58; // Default
+						
+						// Mapeo de palabras clave a nombre_servicio en items_cobro
+						$textoDetalle = strtolower($detalleDesc);
+						$nombreServicio = null;
+						
+						if (strpos($textoDetalle, 'mensualidad') !== false) {
+							$nombreServicio = 'mensualidad_factura';
+						} elseif (strpos($textoDetalle, 'rezagado') !== false || strpos($textoDetalle, '[rezagado]') !== false) {
+							$nombreServicio = 'rezagado';
+						} elseif (strpos($textoDetalle, 'arrastre') !== false) {
+							$nombreServicio = 'arrastre';
+						} elseif (strpos($textoDetalle, 'multa') !== false) {
+							$nombreServicio = 'multa';
+						} elseif (strpos($textoDetalle, 'reincorporacion') !== false || strpos($textoDetalle, 'reincorporación') !== false) {
+							$nombreServicio = 'reincorporacion';
+						} elseif (strpos($textoDetalle, 'carnet') !== false) {
+							$nombreServicio = 'E9';
+						}
+						
+						// Buscar en items_cobro por nombre_servicio
+						if ($nombreServicio) {
+							$itemCobro = DB::table('items_cobro')
+								->where('nombre_servicio', $nombreServicio)
+								->first();
+							
+							if ($itemCobro) {
+								$codigoSin = (int)($itemCobro->codigo_producto_impuestos ?? 99100);
+								$codigoInternoRaw = isset($itemCobro->codigo_producto_interno) ? (int)$itemCobro->codigo_producto_interno : 0;
+								$codigoInterno = ($codigoInternoRaw > 0) ? $codigoInternoRaw : null;
+								$actividadEconomica = (int)($itemCobro->actividad_economica ?? 853000);
+								$unidadMedida = (int)($itemCobro->unidad_medida ?? 58);
+							}
+						}
 						$factDetalles[] = [
-							'codigo_sin' => 99100,
+							'codigo_sin' => $codigoSin, // Para enviar al SIN
+							'codigo_interno' => $codigoInterno, // Para mostrar en PDF
 							'codigo' => 'ITEM-' . (int)$nroCobro,
 							'descripcion' => $detalleDesc,
 							'cantidad' => 1,
-							'unidad_medida' => 58,
+							'unidad_medida' => $unidadMedida,
 							'precio_unitario' => (float)$item['monto'],
 							'descuento' => 0,
 							'subtotal' => (float)$item['monto'],
+							'actividad_economica' => $actividadEconomica,
 						];
 						// También acumular en meta para post-commit
 						if (is_array($emitGroupMeta)) { $emitGroupMeta['detalles'][] = end($factDetalles); }
@@ -1579,14 +1626,39 @@ class CobroController extends Controller
 					$results[] = $resultItem;
 				}
 
+				// Insertar detalles de la factura en factura_detalle (SIEMPRE, incluso si no se emite online)
+			if ($hasFacturaGroup && !empty($factDetalles)) {
+					foreach ($factDetalles as $detIdx => $det) {
+						try {
+							DB::table('factura_detalle')->insert([
+								'anio' => (int)$anioFacturaGroup,
+								'nro_factura' => (int)$nroFacturaGroup,
+								'id_detalle' => $detIdx + 1,
+								'codigo_sin' => (int)($det['codigo_sin'] ?? 99100),
+								'codigo_interno' => isset($det['codigo_interno']) ? (int)$det['codigo_interno'] : null,
+								'codigo' => (string)($det['codigo'] ?? ''),
+								'descripcion' => (string)($det['descripcion'] ?? ''),
+								'cantidad' => (float)($det['cantidad'] ?? 1),
+								'unidad_medida' => (int)($det['unidad_medida'] ?? 58),
+								'precio_unitario' => (float)($det['precio_unitario'] ?? 0),
+								'descuento' => (float)($det['descuento'] ?? 0),
+								'subtotal' => (float)($det['subtotal'] ?? 0),
+							]);
+						} catch (\Throwable $e) {
+							Log::error('batchStore: error insertando detalle factura', ['error' => $e->getMessage(), 'detalle' => $det]);
+						}
+					}
+					Log::info('batchStore: detalles insertados en factura_detalle', ['anio' => $anioFacturaGroup, 'nro_factura' => $nroFacturaGroup, 'count' => count($factDetalles)]);
+				}
+
 				// Emisión online única para la factura agrupada (punto correcto: después del foreach)
 				if ($hasFacturaGroup && $emitirOnline) {
 					if (config('sin.offline')) {
 						Log::warning('batchStore: skip recepcionFactura (OFFLINE, grupo)');
 					} else {
 						try {
-							// Obtener CUFD vigente (usa cache si está vigente, sino solicita uno nuevo al SIN)
-							$cufdNow = $cufdRepo->getVigenteOrCreate($pv);
+							// Obtener CUFD NUEVO del SIN (forceNew=true para evitar problemas de sincronización)
+							$cufdNow = $cufdRepo->getVigenteOrCreate($pv, true);
 							$cufdOld = $cufdGroup;
 							$cufdGroup = (string)($cufdNow['codigo_cufd'] ?? '');
 							$cuisGroup = $cufdNow['codigo_cuis'] ?? $cuisGroup;

@@ -5,3 +5,5 @@ mysql/.env
 .log
 build_php.log
 sga_refs_socket/
+/seguimiento
+/vistas_old

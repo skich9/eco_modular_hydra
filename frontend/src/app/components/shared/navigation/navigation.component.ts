@@ -59,7 +59,8 @@ export class NavigationComponent implements OnInit {
 			name: 'SIN',
 			icon: 'fas fa-file-invoice',
 			submenu: [
-				{ name: 'Estado de Factura / Anulación', icon: 'fa-file-signature', route: '/sin/estado-factura' }
+				{ name: 'Estado de Factura / Anulación', icon: 'fa-file-signature', route: '/sin/estado-factura' },
+				{ name: 'Contingencias', icon: 'fa-exclamation-triangle', route: '/sin/contingencias' }
 			]
 		},
 		{

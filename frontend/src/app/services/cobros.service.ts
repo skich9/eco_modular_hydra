@@ -186,6 +186,28 @@ export class CobrosService {
 		);
 	}
 
+	// ===================== Contingencias (SIN) =====================
+	getContingencias(params: { sucursal?: number|string; punto_venta?: number|string } = {}): Observable<any> {
+		let httpParams = new HttpParams();
+		Object.entries(params).forEach(([k,v]) => { if (v !== undefined && v !== null && String(v) !== '') httpParams = httpParams.set(k, String(v)); });
+		return this.http.get<any>(`${this.apiUrl}/contingencias`, { params: httpParams }).pipe(
+			map((res: any) => ({ success: !!res?.success, data: res?.facturas || [], total: res?.total ?? (res?.facturas ? res.facturas.length : 0) }))
+		);
+	}
+
+	getContingenciasEstadisticas(): Observable<any> {
+		return this.http.get<any>(`${this.apiUrl}/contingencias/estadisticas`).pipe(
+			map((res: any) => ({ success: !!res?.success, data: res?.estadisticas || {} }))
+		);
+	}
+
+	regularizarContingencias(facturas: Array<{ nro_factura: number|string; anio: number|string }>): Observable<any> {
+		const payload = { facturas: facturas || [] };
+		return this.http.post<any>(`${this.apiUrl}/contingencias/regularizar`, payload).pipe(
+			map((res: any) => ({ success: !!res?.success, data: res || res?.data }))
+		);
+	}
+
 	initiateQr(payload: {
 		cod_ceta: number | string;
 		cod_pensum: string;

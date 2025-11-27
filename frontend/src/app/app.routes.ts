@@ -88,6 +88,11 @@ export const routes: Routes = [
                 path: 'sin/estado-factura',
                 loadComponent: () => import('./components/pages/sin/estado-factura/estado-factura.component').then(m => m.EstadoFacturaComponent)
             },
+            // SIN: Contingencias
+            {
+                path: 'sin/contingencias',
+                loadComponent: () => import('./components/pages/sin/contingencias/contingencias.component').then(m => m.ContingenciasComponent)
+            },
 			
 			// Ruta por defecto
 			{ path: '', redirectTo: 'dashboard', pathMatch: 'full' }
