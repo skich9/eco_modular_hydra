@@ -18,7 +18,7 @@
 					<strong>Datos del estudiante</strong>
 					<button type="button" class="btn btn-sm btn-success" (click)="openBusquedaModal()">Búsqueda por nombre</button>
 				</div>
-				
+
 				<div class="card-body">
 					<div class="row g-3 cobros-cabecera" formGroupName="cabecera">
 						<!-- Mantener en el modelo pero oculto en UI -->
@@ -31,7 +31,7 @@
 								<div class="input-group">
 									<input class="form-control" formControlName="cod_ceta" (keydown.enter)="$event.preventDefault(); buscarPorCodCetaCabecera()" />
 									<button type="button" class="btn btn-outline-secondary" (click)="buscarPorCodCetaCabecera()">
-										<i class="bi bi-search"></i>
+                    <i class="fas fa-search"></i>
 									</button>
 								</div>
 							</div>
@@ -167,37 +167,37 @@
 										<td class="text-end">
 											<span class="d-block">{{ pg.get('cantidad')?.value }}</span>
 										</td>
-								
+
 										<!-- Detalle -->
 										<td>
 											<span class="d-block">{{ pg.get('detalle')?.value }}</span>
 										</td>
-								
+
 										<!-- P/U -->
 										<td class="text-end">
 											<span class="d-block">{{ calcRowSubtotal(i) | number:'1.2-2' }}</span>
 										</td>
-								
+
 										<!-- Descuento -->
 										<td class="text-end">
 											<span class="d-block">{{ (pg.get('descuento')?.value || 0) | number:'1.2-2' }}</span>
 										</td>
-								
+
 										<!-- Sub total (solo lectura) -->
 										<td class="text-end">
 											<strong>{{ calcRowSubtotal(i) | number:'1.2-2' }}</strong>
 										</td>
-								
+
 										<!-- M (Computarizada/Manual) -->
 										<td class="text-center">
 											<span>{{ pg.get('medio_doc')?.value || '' }}</span>
 										</td>
-								
+
 										<!-- D (Factura/Recibo) -->
 										<td class="text-center">
 											<span>{{ pg.get('tipo_documento')?.value || '' }}</span>
 										</td>
-								
+
 										<!-- Obs. -->
 										<td>
 											<ng-container *ngIf="pg.get('observaciones')?.value as obs; else _obsVacias">
@@ -213,7 +213,7 @@
 												<span class="text-muted">—</span>
 											</ng-template>
 										</td>
-								
+
 										<!-- Acciones -->
 										<td class="text-center">
 											<button
@@ -252,7 +252,7 @@
 
 			<div class="d-flex justify-content-end gap-2 mb-1">
 				<button class="btn btn-success" *ngIf="!isQrMetodoSeleccionado()" [disabled]="loading || qrSaveBlocked" type="submit">
-					<i class="bi bi-save me-1"></i> Guardar Lote
+					<i class="bi bi-save me-1"></i> Registrar Cobro
 				</button>
 				<button *ngIf="qrSaveBlocked" type="button" class="btn btn-outline-primary" [disabled]="loading || pagos.length===0 || isQrCancelled" (click)="guardarEnEspera()">
 					<i class="bi bi-cloud-arrow-down me-1"></i> Guardar en espera (QR)
@@ -266,7 +266,7 @@
 			</form>
 		</div>
 		<div class="col-12 col-lg-4">
-			
+
 			<div class="card mb-4 shadow-sm">
 				<div class="card-header d-flex justify-content-between align-items-center">
 					<strong>Opciones de cobro</strong>
