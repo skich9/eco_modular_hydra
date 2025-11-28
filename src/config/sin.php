@@ -41,4 +41,6 @@ return [
 
 	// Operación
 	'offline' => filter_var(env('SIN_OFFLINE', false), FILTER_VALIDATE_BOOL),
+	// Verbosidad de logs SIAT/CFUD/PDF (request/response, SQL simulado, HTML preview)
+	'verbose_log' => filter_var(env('SIN_VERBOSE_LOG', false), FILTER_VALIDATE_BOOL),
 ];

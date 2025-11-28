@@ -412,7 +412,11 @@ class FacturaPdfService
 		</tr>';
 		}
 		
-		$water = $anulado ? '<div style="position:fixed; top:5%; left:15%; margin-left:25%; width:15px;"><p style="color:red; font-size:74px;">ANULADO</p></div>' : '';
+		$water = $anulado 
+			? '<div class="watermark-anulado">ANULADO</div>'
+			  . '<div class="watermark-sinlegal top">SIN VALOR LEGAL</div>'
+			  . '<div class="watermark-sinlegal bottom">SIN VALOR LEGAL</div>'
+			: '';
 		
 		$texto_sucursal = ($sucursal == 0) ? 'CASA MATRIZ' : 'SUCURSAL N. ' . $sucursal;
 		
@@ -499,7 +503,30 @@ class FacturaPdfService
 		.qr-img {
 			image-rendering: pixelated;
 		}
-	</style>
+		.watermark-anulado {
+			position: fixed;
+			top: 40%;
+			left: 0;
+			right: 0;
+			text-align: center;
+			font-size: 48pt;
+			color: #d00000;
+			opacity: 0.18;
+			transform: rotate(-45deg);
+			transform-origin: center;
+		}
+		.watermark-sinlegal {
+			position: fixed;
+			left: 0;
+			right: 0;
+			text-align: center;
+			font-size: 18pt;
+			color: #bfbfbf;
+			opacity: 0.35;
+		}
+		.watermark-sinlegal.top { top: 18%; }
+		.watermark-sinlegal.bottom { top: 78%; }
+		</style>
 	<title>FACTURA ' . $nro . '/' . $anio . '</title>
 </head>
 <body>
@@ -620,7 +647,7 @@ class FacturaPdfService
 ';
 
 		try {
-			Log::info('FacturaPdfService.generate.html', [
+			Log::debug('FacturaPdfService.generate.html', [
 				'anio' => $anio,
 				'nro' => $nro,
 				'html_length' => strlen($html),
@@ -629,7 +656,8 @@ class FacturaPdfService
 			
 			$dompdf = new Dompdf([ 'isRemoteEnabled' => true ]);
 			$dompdf->loadHtml($html, 'UTF-8');
-			$dompdf->setPaper('A4', 'portrait');
+			// Forzar tamaño rollo 75mm x 279mm en puntos (ancho, alto)
+			$dompdf->setPaper([75*2.83464567, 279*2.83464567]);
 			$dompdf->render();
 			$pdf = $dompdf->output();
 			
@@ -652,7 +680,7 @@ class FacturaPdfService
 				throw new \RuntimeException('No se pudo escribir archivo PDF: ' . $path);
 			}
 			
-			Log::info('FacturaPdfService.generate.success', [
+			Log::debug('FacturaPdfService.generate.success', [
 				'anio' => $anio,
 				'nro' => $nro,
 				'anulado' => $anulado,
@@ -671,5 +699,15 @@ class FacturaPdfService
 			]);
 			throw $e;
 		}
+	}
+
+	public function generateAnulada($anio, $nro)
+	{
+		return $this->generate($anio, $nro, true);
+	}
+
+	public function generateAnuladaStrict($anio, $nro)
+	{
+		return $this->generate($anio, $nro, true);
 	}
 }

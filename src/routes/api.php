@@ -178,6 +178,10 @@ Route::post('facturas/{anio}/{nro}/anular', [FacturaAnulacionController::class, 
 Route::get('facturas/{anio}/{nro}/datos', [FacturaPdfController::class, 'datos'])
     ->where(['anio' => '\\d{4}', 'nro' => '\\d+']);
 
+// Facturas: PDF ANULADO (endpoint dedicado, tamaño ticket)
+Route::get('facturas/{anio}/{nro}/pdf-anulado', [FacturaPdfController::class, 'pdfAnulado'])
+    ->where(['anio' => '\\d{4}', 'nro' => '\\d+']);
+
 // Facturas: PDF (si está ANULADA, se devuelve con marca de agua) - DEPRECATED: usar /datos y generar en frontend
 Route::get('facturas/{anio}/{nro}/pdf', [FacturaPdfController::class, 'pdf'])
     ->where(['anio' => '\\d{4}', 'nro' => '\\d+']);

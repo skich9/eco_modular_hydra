@@ -40,8 +40,8 @@ class FacturaEstadoController extends Controller
                 $cliente = isset($r->cliente) ? trim((string)$r->cliente) : '';
                 try {
                     if ($cliente === '') {
-                    $anioVal = (int) ($r->anio ?? 0);
-                    $nroVal = (int) ($r->nro_factura ?? 0);
+                    $anioVal = (int) (isset($r->anio) ? $r->anio : 0);
+                    $nroVal = (int) (isset($r->nro_factura) ? $r->nro_factura : 0);
                     $cufVal = isset($r->cuf) ? (string)$r->cuf : '';
                     $safeCuf = $cufVal !== '' ? preg_replace('/[^A-Za-z0-9]/', '', $cufVal) : '';
 
@@ -68,13 +68,18 @@ class FacturaEstadoController extends Controller
                     }
 
                     if ($cliente === '' && $paths) {
-                        usort($paths, function ($a, $b) { return filemtime($b) <=> filemtime($a); });
+                        usort($paths, function ($a, $b) {
+                            $mb = @filemtime($b);
+                            $ma = @filemtime($a);
+                            if ($mb == $ma) { return 0; }
+                            return ($mb < $ma) ? -1 : 1;
+                        });
                         foreach ($paths as $p) {
                             $xml = @file_get_contents($p);
                             if (!$xml) { continue; }
                             $sx = @simplexml_load_string($xml);
                             if (!$sx) { continue; }
-                            $ns = $sx->cabecera->nombreRazonSocial ?? null;
+                            $ns = (isset($sx->cabecera) && isset($sx->cabecera->nombreRazonSocial)) ? (string)$sx->cabecera->nombreRazonSocial : null;
                             if ($ns) { $cliente = trim((string)$ns); break; }
                         }
                     }
@@ -109,7 +114,7 @@ class FacturaEstadoController extends Controller
     {
         try {
             $row = DB::table('factura')
-                ->select('anio','nro_factura','codigo_sucursal','codigo_punto_venta','cuf')
+                ->select('anio','nro_factura','codigo_sucursal','codigo_punto_venta','cuf','codigo_recepcion','estado')
                 ->where('anio', (int)$anio)
                 ->where('nro_factura', (int)$nro)
                 ->first();
@@ -122,6 +127,25 @@ class FacturaEstadoController extends Controller
             $cuf = isset($row->cuf) ? (string)$row->cuf : '';
 
             $resp = $estadoSvc->verificacionEstadoFactura($cuf, $pv, $suc);
+            $estadoNorm = is_array($resp) && isset($resp['estado']) ? (string)$resp['estado'] : null;
+            $codigoEstadoNorm = is_array($resp) && isset($resp['codigoEstado']) ? $resp['codigoEstado'] : null;
+            $descripcionNorm = is_array($resp) && isset($resp['descripcion']) ? $resp['descripcion'] : null;
+            // Fallback a estado local en BD si el servicio no devuelve datos
+            $codigoRecep = isset($row->codigo_recepcion) ? (string)$row->codigo_recepcion : '';
+            if ($estadoNorm === null || $estadoNorm === '' || empty($resp['success'])) {
+                $estadoLocal = isset($row->estado) ? strtoupper(trim((string)$row->estado)) : '';
+                // Normalizar estados locales para UI
+                if ($estadoLocal === 'VIGENTE') { $estadoLocal = 'ACEPTADA'; if ($codigoEstadoNorm === null) { $codigoEstadoNorm = 690; } }
+                if ($estadoLocal === 'CONTINGENC' || $estadoLocal === 'CONTINGENCIA') { $estadoLocal = 'EN_PROCESO'; }
+                // Derivar estado si BD no tiene valor explícito
+                if ($estadoLocal === '' && $codigoRecep !== '') { $estadoLocal = 'ACEPTADA'; if ($codigoEstadoNorm === null) { $codigoEstadoNorm = 690; } }
+                if ($estadoLocal === '' && $codigoRecep === '' && $cuf !== '') { $estadoLocal = 'ENVIADA'; }
+                if ($estadoLocal === '') { $estadoLocal = 'DESCONOCIDO'; }
+                if ($estadoLocal === 'ACEPTADA' && $codigoEstadoNorm === null) { $codigoEstadoNorm = 690; }
+
+                $estadoNorm = $estadoNorm ?: $estadoLocal;
+                if ($descripcionNorm === null) { $descripcionNorm = 'Estado derivado localmente'; }
+            }
 
             // Persistir estado simple en tabla factura (opcional)
             try {
@@ -139,7 +163,7 @@ class FacturaEstadoController extends Controller
             // Log SOAP si existe tabla
             try {
                 DB::table('sin_soap_logs')->insert([
-                    'service' => (string) config('sin.operations_service', 'ServicioFacturacionElectronica'),
+                    'service' => isset($resp['service']) ? (string)$resp['service'] : (string) config('sin.operations_service', 'ServicioFacturacionElectronica'),
                     'method' => 'verificacionEstadoFactura',
                     'request_xml' => isset($resp['last_request']) ? $resp['last_request'] : null,
                     'response_xml' => isset($resp['last_response']) ? $resp['last_response'] : null,
@@ -149,7 +173,24 @@ class FacturaEstadoController extends Controller
                 ]);
             } catch (\Throwable $e) { /* best-effort */ }
 
-            return response()->json([ 'success' => !empty($resp['success']), 'data' => $resp ]);
+            $respData = is_array($resp) ? $resp : [];
+            $respData['estado'] = $estadoNorm;
+            $respData['codigoEstado'] = $codigoEstadoNorm;
+            $respData['descripcion'] = $descripcionNorm;
+            $respData['codigo_recepcion'] = $codigoRecep;
+
+            $ok = (!empty($resp['success']) || !empty($estadoNorm));
+            $respData['success'] = $ok;
+            if ($ok && empty($resp['success'])) { $respData['message'] = null; }
+
+            return response()->json([
+                'success' => $ok,
+                'estado' => $estadoNorm,
+                'codigoEstado' => $codigoEstadoNorm,
+                'descripcion' => $descripcionNorm,
+                'codigo_recepcion' => $codigoRecep,
+                'data' => $respData,
+            ]);
         } catch (\Throwable $e) {
             return response()->json([ 'success' => false, 'message' => $e->getMessage() ], 500);
         }

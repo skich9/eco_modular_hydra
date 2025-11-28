@@ -85,6 +85,19 @@ class FacturaAnulacionController extends Controller
 				'success' => !empty($anu['success']),
 			]);
 
+			// Log SOAP anulacion si existe tabla
+			try {
+				DB::table('sin_soap_logs')->insert([
+					'service' => isset($anu['service']) ? (string)$anu['service'] : (string) config('sin.operations_service', 'ServicioFacturacionElectronica'),
+					'method' => 'anulacionFactura',
+					'request_xml' => isset($anu['last_request']) ? $anu['last_request'] : null,
+					'response_xml' => isset($anu['last_response']) ? $anu['last_response'] : null,
+					'success' => (int) (!empty($anu['success'])),
+					'error' => isset($anu['message']) ? $anu['message'] : null,
+					'created_at' => now(),
+				]);
+			} catch (\Throwable $e) { /* best-effort */ }
+
 			// 3) Verificar nuevamente estado
 			$post = $this->estadoSvc->verificacionEstadoFactura($cuf, $pv, $sucursal);
 			$postEstado = (is_array($post) && isset($post['estado'])) ? $post['estado'] : null;
@@ -114,15 +127,19 @@ class FacturaAnulacionController extends Controller
 				// Generar y reemplazar PDF ANULADO
 				try {
 					$pdf = new FacturaPdfService();
-					$pdfPath = $pdf->generate($anio, $nro, true);
+					$pdfPath = $pdf->generateAnulada($anio, $nro);
 				} catch (\Throwable $e) {
 					Log::warning('FacturaAnulacionController.pdfAnulado.fail', [ 'error' => $e->getMessage() ]);
 					$pdfPath = null;
 				}
 			}
 
+			$ok = ($postEstado === 'ANULADA') || (!empty($anu['success']));
+			$baseUrl = url('/api/facturas/' . (int)$anio . '/' . (int)$nro);
+			$pdfUrl = $baseUrl . '/pdf';
+			$pdfUrlAnulado = $baseUrl . '/pdf-anulado';
 			return response()->json([
-				'success' => true,
+				'success' => $ok,
 				'pre_estado' => $preEstado,
 				'post_estado' => $postEstado,
 				'motivo' => $codigoMotivo,
@@ -132,6 +149,8 @@ class FacturaAnulacionController extends Controller
 				'intentos' => $intentos,
 				'historial' => $hist,
 				'pdf_anulado' => isset($pdfPath) ? $pdfPath : null,
+				'pdf_url' => $pdfUrl,
+				'pdf_url_anulado' => $pdfUrlAnulado,
 			]);
 		} catch (\Throwable $e) {
 			Log::error('FacturaAnulacionController.anular', [ 'error' => $e->getMessage() ]);

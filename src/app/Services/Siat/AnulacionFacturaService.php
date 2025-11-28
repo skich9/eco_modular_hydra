@@ -30,7 +30,10 @@ class AnulacionFacturaService
 			return [ 'success' => false, 'message' => 'CUF vacío' ];
 		}
 
-		$svc = (string) config('sin.operations_service', 'ServicioFacturacionElectronica');
+		$services = [
+			(string) config('sin.servicio_operaciones', 'FacturacionOperaciones'),
+			(string) config('sin.servicio_facturacion_electronica', 'ServicioFacturacionElectronica'),
+		];
 
 		try {
 			// CUIS/CUFD vigentes
@@ -57,8 +60,8 @@ class AnulacionFacturaService
 			];
 
 			// Log de solicitud antes de invocar
-			Log::info('AnulacionFacturaService.request', [
-				'service' => $svc,
+			Log::debug('AnulacionFacturaService.request', [
+				'candidate_services' => $services,
 				'payload' => $payload,
 				'punto_venta' => (int)$puntoVenta,
 				'sucursal' => (int)$sucursal,
@@ -67,33 +70,42 @@ class AnulacionFacturaService
 				'cufd' => $cufd,
 			]);
 
-			$client = SoapClientFactory::build($svc);
-			$wrappers = ['SolicitudServicioAnulacionFactura', 'SolicitudAnulacionFactura'];
-			$lastWrapperError = null;
-			foreach ($wrappers as $wrap) {
+			$lastError = null;
+			foreach ($services as $svc) {
 				try {
-					$arg = new \stdClass();
-					$arg->{$wrap} = (object) $payload;
-					$result = $client->__soapCall('anulacionFactura', [ $arg ]);
-					$arr = json_decode(json_encode($result), true);
-					$root = is_array($arr) ? reset($arr) : null;
-					$codigoEstado = is_array($root) && isset($root['codigoEstado']) ? (int)$root['codigoEstado'] : null;
-					$lastReq = method_exists($client, '__getLastRequest') ? (string)$client->__getLastRequest() : null;
-					$lastResp = method_exists($client, '__getLastResponse') ? (string)$client->__getLastResponse() : null;
-					Log::info('AnulacionFacturaService.response', [
-						'wrapper' => $wrap,
-						'codigoEstado' => $codigoEstado,
-						'raw' => $arr,
-					]);
-					return [ 'success' => true, 'codigoEstado' => $codigoEstado, 'raw' => $arr, 'payload' => $payload, 'last_request' => $lastReq, 'last_response' => $lastResp ];
-				} catch (SoapFault $we) {
-					$lastWrapperError = $we; continue;
+					$client = SoapClientFactory::build($svc);
+					$wrappers = ['SolicitudServicioAnulacionFactura', 'SolicitudAnulacionFactura'];
+					$lastWrapperError = null;
+					foreach ($wrappers as $wrap) {
+						try {
+							$arg = new \stdClass();
+							$arg->{$wrap} = (object) $payload;
+							$result = $client->__soapCall('anulacionFactura', [ $arg ]);
+							$arr = json_decode(json_encode($result), true);
+							$root = is_array($arr) ? reset($arr) : null;
+							$codigoEstado = is_array($root) && isset($root['codigoEstado']) ? (int)$root['codigoEstado'] : null;
+							$lastReq = method_exists($client, '__getLastRequest') ? (string)$client->__getLastRequest() : null;
+							$lastResp = method_exists($client, '__getLastResponse') ? (string)$client->__getLastResponse() : null;
+							Log::debug('AnulacionFacturaService.response', [
+								'service' => $svc,
+								'wrapper' => $wrap,
+								'codigoEstado' => $codigoEstado,
+								'raw' => $arr,
+							]);
+							return [ 'success' => true, 'codigoEstado' => $codigoEstado, 'raw' => $arr, 'payload' => $payload, 'last_request' => $lastReq, 'last_response' => $lastResp, 'service' => $svc ];
+						} catch (SoapFault $we) {
+							$lastWrapperError = $we; continue;
+						}
+					}
+					if ($lastWrapperError) { $lastError = $lastWrapperError; continue; }
+				} catch (\Throwable $se) {
+					$lastError = $se; continue;
 				}
 			}
-			if ($lastWrapperError) throw $lastWrapperError;
-			return [ 'success' => false, 'message' => 'No se pudo invocar anulacionFactura' ];
+			if ($lastError) throw $lastError;
+			return [ 'success' => false, 'message' => 'No se pudo invocar anulacionFactura en ninguno de los servicios' ];
 		} catch (\Throwable $e) {
-			Log::error('AnulacionFacturaService.anular', [ 'service' => $svc, 'error' => $e->getMessage(), 'cuf' => (string)$cuf, 'codigoMotivo' => (int)$codigoMotivo ]);
+			Log::error('AnulacionFacturaService.anular', [ 'services' => $services, 'error' => $e->getMessage(), 'cuf' => (string)$cuf, 'codigoMotivo' => (int)$codigoMotivo ]);
 			return [ 'success' => false, 'message' => $e->getMessage() ];
 		}
 	}

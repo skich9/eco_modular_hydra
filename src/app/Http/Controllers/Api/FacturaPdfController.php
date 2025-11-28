@@ -48,6 +48,32 @@ class FacturaPdfController extends Controller
 		}
 	}
 
+	public function pdfAnulado($anio, $nro)
+    {
+        try {
+            $anio = (int) $anio; $nro = (int) $nro;
+            $svc = new FacturaPdfService();
+            $path = $svc->generateAnuladaStrict($anio, $nro);
+            if (!is_file($path) || !is_readable($path)) {
+                return response()->json([ 'success' => false, 'message' => 'No se pudo generar PDF anulado' ], 500);
+            }
+            $filename = basename($path);
+            $size = @filesize($path) ?: null;
+            $headers = [
+                'Content-Type' => 'application/pdf',
+                'Content-Disposition' => 'attachment; filename="' . $filename . '"',
+                'Cache-Control' => 'no-store, no-cache, must-revalidate, max-age=0',
+                'Pragma' => 'no-cache',
+                'Expires' => '0',
+            ];
+            if ($size) { $headers['Content-Length'] = (string)$size; }
+            return response()->download($path, $filename, $headers);
+        } catch (\Throwable $e) {
+            Log::error('FacturaPdfController.pdfAnulado.exception', [ 'error' => $e->getMessage() ]);
+            return response()->json([ 'success' => false, 'message' => $e->getMessage() ], 500);
+        }
+    }
+
 	public function pdf($anio, $nro)
 	{
 		try {
@@ -94,13 +120,16 @@ class FacturaPdfController extends Controller
 				return response()->json([ 'success' => false, 'message' => 'Archivo PDF no accesible' ], 500);
 			}
 			
-			$suffix = $anulado ? '_ANULADO' : '';
-			$filename = "factura_{$anio}_{$nro}{$suffix}.pdf";
-			
-			return response()->download($path, $filename, [
+			$filename = basename($path);
+			$headers = [
 				'Content-Type' => 'application/pdf',
-				'Content-Disposition' => 'attachment; filename="' . $filename . '"'
-			]);
+				'Content-Disposition' => 'attachment; filename="' . $filename . '"',
+				'Cache-Control' => 'no-store, no-cache, must-revalidate, max-age=0',
+				'Pragma' => 'no-cache',
+				'Expires' => '0',
+				'Content-Length' => (string)$fileSize,
+			];
+			return response()->download($path, $filename, $headers);
 		} catch (\Throwable $e) {
 			Log::error('FacturaPdfController.pdf.exception', [ 'error' => $e->getMessage(), 'trace' => $e->getTraceAsString() ]);
 			return response()->json([ 'success' => false, 'message' => $e->getMessage() ], 500);
