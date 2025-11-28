@@ -8,8 +8,8 @@ use SoapFault;
 class OperationsService
 {
 	/**
-	 * Esqueleto para recepcion de factura computarizada (en línea)
-	 * Queda listo para integrar cuando se cuente con el payload completo y credenciales.
+	 * Recepción de factura computarizada (en línea)
+	 * Usa el servicio de FACTURACIÓN ELECTRÓNICA, no el de operaciones
 	 */
 	public function recepcionFactura(array $payload)
 	{
@@ -19,7 +19,8 @@ class OperationsService
 			return [ 'offline' => true ];
 		}
 
-		$svc = (string) config('sin.operations_service', 'ServicioFacturacionElectronica');
+		// Usar el servicio de FACTURACIÓN ELECTRÓNICA para recepción de facturas en línea
+		$svc = (string) config('sin.servicio_facturacion_electronica', 'ServicioFacturacionElectronica');
 		$lastError = null;
 		try {
 			try {

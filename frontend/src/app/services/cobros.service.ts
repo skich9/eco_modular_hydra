@@ -125,6 +125,42 @@ export class CobrosService {
 		return this.http.get(url);
 	}
 
+	// SIN: URL base del QR (centralizada en backend .env)
+	getSinQrUrl(): Observable<string> {
+		const url = `${this.apiUrl}/sin/qr-url`;
+		return this.http.get<any>(url).pipe(
+			map((res: any) => {
+				const u = res && res.data ? (res.data.url || '') : '';
+				return String(u || '');
+			})
+		);
+	}
+
+	// Facturas: estado en SIN
+	getFacturaEstado(anio: number, nroFactura: number): Observable<any> {
+		const url = `${this.apiUrl}/facturas/${anio}/${nroFactura}/estado`;
+		return this.http.get<any>(url);
+	}
+
+	// Facturas: anulación en SIN
+	anularFactura(anio: number, nroFactura: number, codigoMotivo: number = 1): Observable<any> {
+		const url = `${this.apiUrl}/facturas/${anio}/${nroFactura}/anular`;
+		return this.http.post<any>(url, { codigo_motivo: codigoMotivo });
+	}
+
+	// SIN: motivos de anulacion
+	getMotivosAnulacion(): Observable<Array<{ codigo: number|string; descripcion: string }>> {
+		const url = `${this.apiUrl}/sin/motivos-anulacion`;
+		return this.http.get<any>(url).pipe(map((res: any) => (Array.isArray(res?.data) ? res.data : [])));
+	}
+
+	// Facturas: listado paginado para UI SIN
+	getFacturasLista(params: { page?: number; per_page?: number; anio?: number | string } = {}): Observable<any> {
+		let httpParams = new HttpParams();
+		Object.entries(params).forEach(([k,v]) => { if (v !== undefined && v !== null && String(v) !== '') httpParams = httpParams.set(k, String(v)); });
+		return this.http.get<any>(`${this.apiUrl}/facturas`, { params: httpParams });
+	}
+
 	// Catálogos
 	getGestionesActivas(): Observable<any> {
 		return this.http.get<any>(`${this.apiUrl}/gestiones/estado/activas`).pipe(
@@ -147,6 +183,28 @@ export class CobrosService {
 	getFormasCobro(): Observable<any> {
 		return this.http.get<any>(`${this.apiUrl}/formas-cobro`).pipe(
 			map((res: any) => ({ success: !!res?.success, data: res?.data || [], message: res?.message }))
+		);
+	}
+
+	// ===================== Contingencias (SIN) =====================
+	getContingencias(params: { sucursal?: number|string; punto_venta?: number|string } = {}): Observable<any> {
+		let httpParams = new HttpParams();
+		Object.entries(params).forEach(([k,v]) => { if (v !== undefined && v !== null && String(v) !== '') httpParams = httpParams.set(k, String(v)); });
+		return this.http.get<any>(`${this.apiUrl}/contingencias`, { params: httpParams }).pipe(
+			map((res: any) => ({ success: !!res?.success, data: res?.facturas || [], total: res?.total ?? (res?.facturas ? res.facturas.length : 0) }))
+		);
+	}
+
+	getContingenciasEstadisticas(): Observable<any> {
+		return this.http.get<any>(`${this.apiUrl}/contingencias/estadisticas`).pipe(
+			map((res: any) => ({ success: !!res?.success, data: res?.estadisticas || {} }))
+		);
+	}
+
+	regularizarContingencias(facturas: Array<{ nro_factura: number|string; anio: number|string }>): Observable<any> {
+		const payload = { facturas: facturas || [] };
+		return this.http.post<any>(`${this.apiUrl}/contingencias/regularizar`, payload).pipe(
+			map((res: any) => ({ success: !!res?.success, data: res || res?.data }))
 		);
 	}
 

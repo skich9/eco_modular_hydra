@@ -72,6 +72,7 @@ export class CobrosComponent implements OnInit {
   private qrPanelStatus: 'pendiente' | 'procesando' | 'completado' | 'expirado' | 'cancelado' | null = null;
   private qrPanelActive: boolean = false;
   private qrSavedWaiting: boolean = false;
+  private sinQrBaseUrl: string | null = null;
 
   // Ref del modal de items
   @ViewChild('itemsDlg') itemsDlg?: ItemsModalComponent;
@@ -242,8 +243,11 @@ export class CobrosComponent implements OnInit {
                 const cuf = meta.cuf;
                 const numero = nro;
                 const t = 1; // 1 para roll80, 2 para A4/carta
-                const qrBaseUrl = environment.qrSinUrl || 'https://pilotosiat.impuestos.gob.bo/consulta/QR?';
-                const qrUrl = `${qrBaseUrl}?nit=${nit}&cuf=${cuf}&numero=${numero}&t=${t}`;
+                const backendUrl = (this.sinQrBaseUrl || '').trim();
+                const envUrl = (environment as any)?.qrSinUrl || '';
+                const base = backendUrl || envUrl || 'https://pilotosiat.impuestos.gob.bo/consulta/QR';
+                const sep = base.includes('?') ? '&' : '?';
+                const qrUrl = `${base}${sep}nit=${nit}&cuf=${cuf}&numero=${numero}&t=${t}`;
                 qrBase64 = await QRCode.toDataURL(qrUrl, {
                   errorCorrectionLevel: 'H',
                   type: 'image/png',
@@ -2498,6 +2502,16 @@ export class CobrosComponent implements OnInit {
         if (res.success) {
           try {
             const items = (res?.data?.items || []) as Array<any>;
+            // Aviso si alguna factura computarizada fue rechazada por SIN
+            let hasFacturaError = false;
+            try {
+              const rechazadas = items.filter((it: any) => (it?.tipo_documento === 'F') && (it?.medio_doc === 'C') && (it?.estado_factura === 'RECHAZADA'));
+              if (rechazadas.length > 0) {
+                hasFacturaError = true;
+                const det = rechazadas.map((r: any) => `#${r?.nro_factura || '?'}${r?.mensaje ? ' - ' + r.mensaje : ''}`).join(' | ');
+                this.showAlert(`⚠️ Ups! Hubo un problema con la facturación.\n\nEl cobro se registró correctamente pero la factura fue rechazada por el SIN.\n\nPor favor revise más tarde o notifique al administrador.\n\nDetalles: ${det}`, 'warning', 15000);
+              }
+            } catch {}
             // Construir resumen de éxito ANTES de cualquier limpieza
             this.successSummary = this.buildSuccessSummary(items);
             // Mostrar modal de éxito
@@ -2510,8 +2524,13 @@ export class CobrosComponent implements OnInit {
                 const anio = new Date(fecha).getFullYear();
                 this.downloadReciboPdfWithFallback(anio, it.nro_recibo);
               }
-              // Factura computarizada
+              // Factura computarizada - NO descargar si fue rechazada
               if ((it?.tipo_documento === 'F') && (it?.medio_doc === 'C') && it?.nro_factura) {
+                // Verificar si la factura fue rechazada
+                if (it?.estado_factura === 'RECHAZADA' || it?.factura_error) {
+                  console.warn('Factura rechazada, no se descarga PDF:', it);
+                  continue; // Saltar descarga de PDF
+                }
                 const fechaF = it?.cobro?.fecha_cobro || hoy;
                 const anioF = new Date(fechaF).getFullYear();
                 const key = `${anioF}:${it.nro_factura}`;

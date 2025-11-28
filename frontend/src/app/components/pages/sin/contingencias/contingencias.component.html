@@ -1,0 +1,98 @@
+<div class="container py-3">
+	<h2 class="mb-3">SIN - Contingencias</h2>
+
+	<div class="row g-3 align-items-end mb-3">
+		<div class="col-auto">
+			<label class="form-label">Sucursal</label>
+			<input class="form-control" [(ngModel)]="sucursal" placeholder="0" />
+		</div>
+		<div class="col-auto">
+			<label class="form-label">Punto de Venta</label>
+			<input class="form-control" [(ngModel)]="puntoVenta" placeholder="0" />
+		</div>
+		<div class="col-auto">
+			<button class="btn btn-outline-primary" (click)="refresh()" [disabled]="loading">
+				<i class="fas fa-sync-alt me-1"></i>
+				Actualizar
+			</button>
+		</div>
+	</div>
+
+	<div class="row mb-3">
+		<div class="col">
+			<div class="alert alert-info py-2" *ngIf="loadingStats">Cargando estadísticas...</div>
+			<div class="d-flex flex-wrap gap-3" *ngIf="!loadingStats">
+				<div class="badge bg-secondary p-2">Total: {{ stats.total || 0 }}</div>
+				<div class="badge bg-danger p-2">Fuera de plazo: {{ stats.fuera_de_plazo || 0 }}</div>
+				<div class="badge bg-warning text-dark p-2">Por vencer (&lt;12h): {{ stats.por_vencer || 0 }}</div>
+				<div class="badge bg-success p-2">Vigentes: {{ stats.vigentes || 0 }}</div>
+			</div>
+		</div>
+	</div>
+
+	<div class="alert alert-danger" *ngIf="error">{{ error }}</div>
+	<div class="alert alert-success" *ngIf="mensaje">{{ mensaje }}</div>
+
+	<div class="table-responsive">
+		<table class="table table-sm table-hover align-middle">
+			<thead class="table-light">
+				<tr>
+					<th style="width: 40px;">
+						<input type="checkbox" class="form-check-input" [(ngModel)]="selectAll" (change)="toggleAll()" />
+					</th>
+					<th># / Año</th>
+					<th>Fecha Emisión</th>
+					<th>Cliente / Razón Social</th>
+					<th>Punto Venta</th>
+					<th>Manual</th>
+					<th>CUFD</th>
+					<th>Evento</th>
+					<th>Estado</th>
+					<th>Tiempo</th>
+				</tr>
+			</thead>
+			<tbody>
+				<tr *ngFor="let f of facturas">
+					<td>
+						<input type="checkbox" class="form-check-input" [(ngModel)]="selected[keyOf(f)]" />
+					</td>
+					<td>
+						<strong>{{ f.nro_factura }}</strong> / {{ f.anio }}
+					</td>
+					<td>{{ f.fecha_emision | date: 'yyyy-MM-dd HH:mm' }}</td>
+					<td>{{ f.cliente || '—' }}</td>
+					<td>{{ f.codigo_punto_venta || '0' }}</td>
+					<td>
+						<span class="badge" [ngClass]="{ 'bg-success': isManual(f), 'bg-secondary': !isManual(f) }">{{ isManual(f) ? 'Sí' : 'No' }}</span>
+					</td>
+					<td><code class="small">{{ f.codigo_cufd }}</code></td>
+					<td>{{ f.codigo_evento || '—' }}</td>
+					<td>
+						<span class="badge" [ngClass]="{
+							'bg-secondary': (f.estado || '').toUpperCase() === 'CONTINGENCIA',
+							'bg-success': (f.estado || '').toUpperCase() === 'ACEPTADA',
+							'bg-danger': (f.estado || '').toUpperCase() === 'RECHAZADA'
+						}">
+							{{ f.estado || '—' }}
+						</span>
+					</td>
+					<td>
+						<span [class.text-danger]="f.fuera_de_plazo">{{ f.horas_restantes || 0 }}h</span>
+					</td>
+				</tr>
+			</tbody>
+		</table>
+	</div>
+
+	<div class="mt-3 d-flex justify-content-between align-items-center">
+		<div>
+			Seleccionadas: {{ selectedCount() }}
+		</div>
+		<div>
+			<button class="btn btn-primary" (click)="regularizarSeleccionadas()" [disabled]="regularizando || !isAnySelected()">
+				<i class="fas fa-paper-plane me-1"></i>
+				Regularizar Seleccionadas
+			</button>
+		</div>
+	</div>
+</div>

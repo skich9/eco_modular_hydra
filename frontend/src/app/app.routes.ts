@@ -83,6 +83,16 @@ export const routes: Routes = [
 				loadComponent: () => import('./components/pages/configuraciones-generales/configuraciones-generales.component').then(m => m.ConfiguracionesGeneralesComponent)
 			},
 
+            // SIN: Estado de Factura / Anulación
+            {
+                path: 'sin/estado-factura',
+                loadComponent: () => import('./components/pages/sin/estado-factura/estado-factura.component').then(m => m.EstadoFacturaComponent)
+            },
+            // SIN: Contingencias
+            {
+                path: 'sin/contingencias',
+                loadComponent: () => import('./components/pages/sin/contingencias/contingencias.component').then(m => m.ContingenciasComponent)
+            },
 			
 			// Ruta por defecto
 			{ path: '', redirectTo: 'dashboard', pathMatch: 'full' }

@@ -33,6 +33,9 @@ use App\Http\Controllers\Api\RezagadoController;
 use App\Http\Controllers\Api\SegundaInstanciaController;
 use App\Http\Controllers\Api\QrController;
 use App\Http\Controllers\Api\SocketController;
+use App\Http\Controllers\Api\FacturaEstadoController;
+use App\Http\Controllers\Api\FacturaAnulacionController;
+use App\Http\Controllers\Api\FacturaPdfController;
 
 // Búsqueda de estudiantes
 Route::get('/estudiantes/search', [EstudianteController::class, 'search']);
@@ -159,6 +162,45 @@ Route::get('recibos/{anio}/{nro_recibo}/pdf', [ReciboController::class, 'pdf'])
 // Facturas: meta (incluye CUF) para fallback del frontend
 Route::get('facturas/{anio}/{nro}/meta', [CobroController::class, 'facturaMeta'])
     ->where(['anio' => '\\d{4}', 'nro' => '\\d+']);
+
+// Facturas: listado paginado para UI SIN (anio opcional)
+Route::get('facturas', [FacturaEstadoController::class, 'lista']);
+
+// Facturas: verificación de estado en SIN
+Route::get('facturas/{anio}/{nro}/estado', [FacturaEstadoController::class, 'estado'])
+    ->where(['anio' => '\\d{4}', 'nro' => '\\d+']);
+
+// Facturas: anulación (verifica estado y luego anula)
+Route::post('facturas/{anio}/{nro}/anular', [FacturaAnulacionController::class, 'anular'])
+    ->where(['anio' => '\\d{4}', 'nro' => '\\d+']);
+
+// Facturas: Datos en JSON para generar PDF en frontend
+Route::get('facturas/{anio}/{nro}/datos', [FacturaPdfController::class, 'datos'])
+    ->where(['anio' => '\\d{4}', 'nro' => '\\d+']);
+
+// Facturas: PDF ANULADO (endpoint dedicado, tamaño ticket)
+Route::get('facturas/{anio}/{nro}/pdf-anulado', [FacturaPdfController::class, 'pdfAnulado'])
+    ->where(['anio' => '\\d{4}', 'nro' => '\\d+']);
+
+// Facturas: PDF (si está ANULADA, se devuelve con marca de agua) - DEPRECATED: usar /datos y generar en frontend
+Route::get('facturas/{anio}/{nro}/pdf', [FacturaPdfController::class, 'pdf'])
+    ->where(['anio' => '\\d{4}', 'nro' => '\\d+']);
+
+// SIN: motivos de anulacion
+Route::get('sin/motivos-anulacion', [SinCatalogoController::class, 'motivosAnulacion']);
+
+// SIN: URL base para QR 
+Route::get('sin/qr-url', [\App\Http\Controllers\Api\SinAdminController::class, 'qrUrl']);
+
+// Contingencias: gestión de facturas en contingencia
+Route::get('contingencias', [\App\Http\Controllers\Api\ContingenciaController::class, 'lista']);
+Route::post('contingencias/regularizar', [\App\Http\Controllers\Api\ContingenciaController::class, 'regularizar']);
+Route::get('contingencias/estadisticas', [\App\Http\Controllers\Api\ContingenciaController::class, 'estadisticas']);
+
+// Eventos significativos
+Route::get('eventos-significativos', [\App\Http\Controllers\Api\EventoSignificativoController::class, 'lista']);
+Route::post('eventos-significativos', [\App\Http\Controllers\Api\EventoSignificativoController::class, 'crear']);
+Route::get('eventos-significativos/buscar', [\App\Http\Controllers\Api\EventoSignificativoController::class, 'buscar']);
 
 // Parámetros de costos
 Route::get('parametros-costos', [ParametroCostoController::class, 'index']);

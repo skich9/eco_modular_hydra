@@ -11,8 +11,8 @@ class FacturaPayloadBuilder
     public function buildRecepcionFacturaPayload(array $args)
     {
         $now = Carbon::now('America/La_Paz');
-        $modalidad = (int) ($args['modalidad'] ?? 1);
-        $docSector = (int) ($args['doc_sector'] ?? 11);
+        $modalidad = (int) (isset($args['modalidad']) ? $args['modalidad'] : 1);
+        $docSector = (int) (isset($args['doc_sector']) ? $args['doc_sector'] : 11);
 
         $xmlPath = null;
         if ($modalidad === 2 && $docSector !== 11) {
@@ -32,7 +32,6 @@ class FacturaPayloadBuilder
             } else {
                 $nombreFactura = 'fact_' . uniqid();
             }
-            
             $archivoBytes = $xmlCrudo;
             try {
                 $firma = new FirmaDigital();
@@ -46,6 +45,10 @@ class FacturaPayloadBuilder
                 }
                 if ($xmlPath === null) {
                     $xmlPath = $this->saveXmlDebugCopy($archivoBytes, $args, $docSector);
+                }
+                // Guardar copias indexadas del XML para acceso fácil (CUF y anio_nro)
+                if ($xmlPath) {
+                    $this->storeXmlIndexCopies($xmlPath, $args);
                 }
                 Log::debug('FacturaPayloadBuilder.firmaXml', [
                     'nombreFactura' => $nombreFactura,
@@ -105,6 +108,8 @@ class FacturaPayloadBuilder
                 'len' => strlen($archivoBytesForSoap),
                 'hash' => $hashArchivo,
             ]);
+            // Guardar copia indexada del ZIP (CUF y anio_nro)
+            $this->storeZipIndexCopy($archivoBytesForSoap, $xmlPath, $args);
         }
 
         // Log específico con el archivo base64 completo para usar en pruebas (SoapUI, etc.)
@@ -119,18 +124,18 @@ class FacturaPayloadBuilder
         $fechaEnvioIso = $now->format('Y-m-d\\TH:i:s.000');
 
         $payload = [
-            'codigoAmbiente' => (int) ($args['ambiente'] ?? 2),
+            'codigoAmbiente' => (int) (isset($args['ambiente']) ? $args['ambiente'] : 2),
             'codigoModalidad' => $modalidad,
-            'codigoEmision' => (int) ($args['tipo_emision'] ?? 1),
-            'nit' => (int) ($args['nit'] ?? 0),
-            'codigoSistema' => (string) ($args['cod_sistema'] ?? ''),
-            'codigoSucursal' => (int) ($args['sucursal'] ?? 0),
-            'codigoPuntoVenta' => (int) ($args['punto_venta'] ?? 0),
-            'tipoFacturaDocumento' => (int) ($args['tipo_factura'] ?? 1),
+            'codigoEmision' => (int) (isset($args['tipo_emision']) ? $args['tipo_emision'] : 1),
+            'nit' => (int) (isset($args['nit']) ? $args['nit'] : 0),
+            'codigoSistema' => (string) (isset($args['cod_sistema']) ? $args['cod_sistema'] : ''),
+            'codigoSucursal' => (int) (isset($args['sucursal']) ? $args['sucursal'] : 0),
+            'codigoPuntoVenta' => (int) (isset($args['punto_venta']) ? $args['punto_venta'] : 0),
+            'tipoFacturaDocumento' => (int) (isset($args['tipo_factura']) ? $args['tipo_factura'] : 1),
             'codigoDocumentoSector' => $docSector,
-            'cuis' => (string) ($args['cuis'] ?? ''),
-            'cufd' => (string) ($args['cufd'] ?? ''),
-            'cuf' => (string) ($args['cuf'] ?? ''),
+            'cuis' => (string) (isset($args['cuis']) ? $args['cuis'] : ''),
+            'cufd' => (string) (isset($args['cufd']) ? $args['cufd'] : ''),
+            'cuf' => (string) (isset($args['cuf']) ? $args['cuf'] : ''),
             'fechaEnvio' => $fechaEnvioIso,
             // Importante: el SoapClient PHP espera bytes para base64Binary y realiza el encoding internamente
             'archivo' => $archivoBytesForSoap,
@@ -153,7 +158,7 @@ class FacturaPayloadBuilder
      *   xml -> archivo .xml -> gzopen(destino .zip, "w9") -> leer .zip -> hash_file(sha256, .zip)
      * Retorna ['bytes' => contenido_zip, 'hash' => sha256(contenido_zip)].
      */
-    private function compressSingleGzToZip(string $xml, ?string $xmlFilePath = null): array
+    private function compressSingleGzToZip($xml, $xmlFilePath = null)
     {
         $bytes = $xml;
         $hash = hash('sha256', $xml);
@@ -233,7 +238,7 @@ class FacturaPayloadBuilder
      * en storage/siat_xml para inspección y comparación. Devuelve la ruta
      * del archivo guardado o null si algo falla.
      */
-    private function saveXmlDebugCopy(string $xml, array $args, int $docSector): ?string
+    private function saveXmlDebugCopy($xml, $args, $docSector)
     {
         try {
             // storage/siat_xml dentro del proyecto Laravel
@@ -260,7 +265,7 @@ class FacturaPayloadBuilder
      * Compresión múltiple a tar.gz (no se usa actualmente en el flujo de facturación),
      * pero queda listo para futuras extensiones de envío masivo.
      */
-    private function compressMultipleTarGz(array $xmlFiles): ?string
+    private function compressMultipleTarGz($xmlFiles)
     {
         // $xmlFiles es un array de ['nombre' => 'factura1.xml', 'contenido' => '<xml...>']
         try {
@@ -293,7 +298,7 @@ class FacturaPayloadBuilder
         }
     }
 
-    private function buildJsonCompraVenta(array $args, int $docSector): array
+    private function buildJsonCompraVenta($args, $docSector)
     {
         // Cabecera básica según Compra-Venta; adaptable a otros docSector cuando se requiera
         $fechaIso = Carbon::parse($args['fecha_emision'] ?? Carbon::now())->format('Y-m-d\TH:i:s.000');
@@ -383,7 +388,7 @@ class FacturaPayloadBuilder
         ];
     }
 
-    private function buildXmlSectorEducativo(array $args, int $docSector): string
+    private function buildXmlSectorEducativo($args, $docSector)
     {
         $fechaIso = Carbon::parse($args['fecha_emision'] ?? Carbon::now())->format('Y-m-d\\TH:i:s.000');
 
@@ -499,4 +504,51 @@ class FacturaPayloadBuilder
         $xml .= '</facturaElectronicaSectorEducativo>';
         return $xml;
     }
+
+    private function storeXmlIndexCopies($xmlPath, $args)
+    {
+        try {
+            $anio = null;
+            try { $anio = (int) date('Y', strtotime((string)($args['fecha_emision'] ?? ''))); } catch (\Throwable $e) { $anio = (int) date('Y'); }
+            if ($anio <= 0) { $anio = (int) date('Y'); }
+            $nro = (int) ($args['numero_factura'] ?? 0);
+            $cuf = (string) ($args['cuf'] ?? '');
+            $safeCuf = $cuf !== '' ? preg_replace('/[^A-Za-z0-9]/', '', $cuf) : '';
+
+            $dir = storage_path('siat_xml' . DIRECTORY_SEPARATOR . 'index');
+            if (!is_dir($dir)) { @mkdir($dir, 0775, true); }
+            if ($nro > 0) {
+                @copy($xmlPath, $dir . DIRECTORY_SEPARATOR . $anio . '_' . $nro . '.xml');
+            }
+            if ($safeCuf !== '') {
+                @copy($xmlPath, $dir . DIRECTORY_SEPARATOR . $safeCuf . '.xml');
+            }
+        } catch (\Throwable $e) {
+            Log::warning('FacturaPayloadBuilder.storeXmlIndexCopies error', [ 'error' => $e->getMessage() ]);
+        }
+    }
+
+    private function storeZipIndexCopy($zipBytes, $xmlPath, $args)
+    {
+        try {
+            $anio = null;
+            try { $anio = (int) date('Y', strtotime((string)($args['fecha_emision'] ?? ''))); } catch (\Throwable $e) { $anio = (int) date('Y'); }
+            if ($anio <= 0) { $anio = (int) date('Y'); }
+            $nro = (int) ($args['numero_factura'] ?? 0);
+            $cuf = (string) ($args['cuf'] ?? '');
+            $safeCuf = $cuf !== '' ? preg_replace('/[^A-Za-z0-9]/', '', $cuf) : '';
+
+            $dir = storage_path('siat_xml' . DIRECTORY_SEPARATOR . 'comprimidos' . DIRECTORY_SEPARATOR . 'index');
+            if (!is_dir($dir)) { @mkdir($dir, 0775, true); }
+            if ($nro > 0) {
+                @file_put_contents($dir . DIRECTORY_SEPARATOR . $anio . '_' . $nro . '.zip', $zipBytes);
+            }
+            if ($safeCuf !== '') {
+                @file_put_contents($dir . DIRECTORY_SEPARATOR . $safeCuf . '.zip', $zipBytes);
+            }
+        } catch (\Throwable $e) {
+            Log::warning('FacturaPayloadBuilder.storeZipIndexCopy error', [ 'error' => $e->getMessage() ]);
+        }
+    }
+
 }
