@@ -67,6 +67,7 @@ class FacturaPdfController extends Controller
                 'Expires' => '0',
             ];
             if ($size) { $headers['Content-Length'] = (string)$size; }
+            $headers['X-Served-File'] = $filename;
             return response()->download($path, $filename, $headers);
         } catch (\Throwable $e) {
             Log::error('FacturaPdfController.pdfAnulado.exception', [ 'error' => $e->getMessage() ]);
@@ -93,7 +94,14 @@ class FacturaPdfController extends Controller
 			Log::info('FacturaPdfController.pdf.start', [ 'anio' => $anio, 'nro' => $nro, 'estado' => $estado, 'anulado' => $anulado ]);
 			
 			$svc = new FacturaPdfService();
-			$path = $svc->generate($anio, $nro, $anulado);
+			$dir = storage_path('siat_xml' . DIRECTORY_SEPARATOR . 'facturas');
+			$candidateAnulado = $dir . DIRECTORY_SEPARATOR . $anio . '_' . $nro . '_ANULADO.pdf';
+			if (is_file($candidateAnulado)) {
+				$path = $candidateAnulado;
+			} else {
+				$path = $anulado ? $svc->generateAnuladaStrict($anio, $nro)
+					: $svc->generate($anio, $nro, false);
+			}
 			
 			if (!is_file($path)) {
 				Log::error('FacturaPdfController.pdf.fileNotFound', [ 'path' => $path ]);
@@ -129,6 +137,7 @@ class FacturaPdfController extends Controller
 				'Expires' => '0',
 				'Content-Length' => (string)$fileSize,
 			];
+			$headers['X-Served-File'] = $filename;
 			return response()->download($path, $filename, $headers);
 		} catch (\Throwable $e) {
 			Log::error('FacturaPdfController.pdf.exception', [ 'error' => $e->getMessage(), 'trace' => $e->getTraceAsString() ]);

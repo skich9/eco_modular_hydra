@@ -3,7 +3,7 @@ import { CommonModule } from '@angular/common';
 import { ReactiveFormsModule, FormBuilder, FormGroup, Validators } from '@angular/forms';
 import { FormsModule } from '@angular/forms';
 import { CobrosService } from '../../../../services/cobros.service';
-import { generateQuickFacturaPdf } from '../../../../utils/pdf.helpers';
+import { saveBlobAsFile } from '../../../../utils/pdf.helpers';
 
 @Component({
 	selector: 'app-estado-factura',
@@ -339,87 +339,17 @@ export class EstadoFacturaComponent implements OnInit {
 	}
 
 	private descargarPdfAnulado(anio: number, nro: number): void {
-		// Obtener datos de la factura del backend
-		// Usar URL absoluta al backend de Laravel (puerto 8069)
-		const url = `http://localhost:8069/api/facturas/${anio}/${nro}/datos`;
-		
-		console.log('Solicitando datos de factura:', url);
-		
-		fetch(url, {
-			method: 'GET',
-			headers: {
-				'Accept': 'application/json',
-				'Content-Type': 'application/json'
-			}
-		})
-		.then(response => {
-			console.log('Response status:', response.status);
-			console.log('Response headers:', response.headers);
-			
-			if (!response.ok) {
-				return response.text().then(text => {
-					console.error('Response error body:', text);
-					throw new Error(`Error ${response.status}: ${text.substring(0, 100)}`);
-				});
-			}
-			
-			const contentType = response.headers.get('content-type');
-			if (!contentType || !contentType.includes('application/json')) {
-				return response.text().then(text => {
-					console.error('Response is not JSON:', text.substring(0, 200));
-					throw new Error('El servidor no devolvió JSON. Posiblemente la ruta no existe o Laravel devolvió un error HTML.');
-				});
-			}
-			
-			return response.json();
-		})
-		.then(data => {
-			console.log('Datos recibidos:', data);
-			// Generar PDF con jsPDF en el frontend
-			const factura = data.factura || {};
-			const detalles = data.detalles || [];
-			
-			// Preparar items para el PDF
-			const items = detalles.map((d: any) => ({
-				codigoProducto: d.codigo_producto || '',
-				descripcion: d.descripcion || 'Item',
-				nombreUnidadMedida: d.unidad_medida || 'UNI',
-				cantidad: Number(d.cantidad || 1),
-				precioUnitario: Number(d.precio_unitario || 0),
-				montoDescuento: Number(d.descuento || 0),
-				subTotal: Number(d.subtotal || 0)
-			}));
-			
-			// Generar PDF con marca de ANULADO
-			generateQuickFacturaPdf({
-				anio: anio,
-				nro: nro,
-				numeroFactura: nro,
-				razon: factura.cliente || factura.razon || 'S/N',
-				nit: factura.nit || '0',
-				codigoCliente: factura.codigo_cliente || '',
-				fechaEmision: factura.fecha_emision || new Date().toISOString(),
-				periodo: factura.periodo_facturado || '',
-				nombreEstudiante: factura.nombre_estudiante || '',
-				detalle: items.length > 0 ? items[0].descripcion : 'Factura anulada',
-				cantidad: items.length > 0 ? items[0].cantidad : 0,
-				pu: items.length > 0 ? items[0].precioUnitario : 0,
-				descuento: factura.descuento_adicional || 0,
-				montoGift: factura.monto_gift_card || 0,
-				total: Number(factura.monto_total || 0),
-				importeBase: Number(factura.monto_total_sujeto_iva || 0),
-				cuf: factura.cuf || '',
-				sucursal: factura.codigo_sucursal || '0',
-				puntoVenta: factura.codigo_punto_venta || '0',
-				items: items,
-				leyenda: '*** FACTURA ANULADA ***',
-				leyenda2: 'Este documento ha sido anulado y no tiene validez fiscal',
-				formato: 'a4'
-			});
-		})
-		.catch(error => {
-			console.error('Error generando PDF:', error);
-			alert('Error al generar el PDF. Por favor, intente nuevamente.');
-		});
+		const url = `http://localhost:8069/api/facturas/${anio}/${nro}/pdf-anulado`;
+		fetch(url, { method: 'GET', headers: { 'Accept': 'application/pdf' }, cache: 'no-store' })
+			.then(res => {
+				if (!res.ok) throw new Error(String(res.status));
+				const cd = res.headers.get('Content-Disposition') || '';
+				const xs = res.headers.get('X-Served-File') || '';
+				let filename = xs || `factura_${anio}_${nro}_ANULADO.pdf`;
+				try { const m = /filename="?([^";]+)"?/i.exec(cd); if (m && m[1]) filename = m[1]; } catch {}
+				return res.blob().then(blob => ({ blob, filename }));
+			})
+			.then(({ blob, filename }) => { saveBlobAsFile(blob, filename); })
+			.catch(() => { try { window.open(url, '_blank'); } catch {} });
 	}
 }
