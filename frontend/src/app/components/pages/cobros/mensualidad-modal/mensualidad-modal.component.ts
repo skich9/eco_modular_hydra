@@ -31,7 +31,7 @@ export class MensualidadModalComponent implements OnInit, OnChanges {
       metodo_pago: ['',[Validators.required]],
       cantidad: [1, [Validators.min(1)]],
       costo_total: [{ value: 0, disabled: true }],
-      descuento: [''],
+      descuento: [{ value: 0, disabled: true }],
       observaciones: [''],
       comprobante: ['RECIBO', [Validators.required]], // FACTURA | RECIBO (siempre seleccionado)
       nro_factura: [''],
