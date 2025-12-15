@@ -110,6 +110,9 @@ export class MensualidadModalComponent implements OnInit, OnChanges {
   get isOtro(): boolean {
     const f = this.getSelectedForma();
     const raw = (f?.descripcion_sin ?? f?.nombre ?? f?.name ?? f?.descripcion ?? f?.label ?? '').toString().trim().toUpperCase();
+    const id = (f?.id_forma_cobro ?? '').toString().trim().toUpperCase();
+    // Tratar explícitamente VALES por id_forma_cobro
+    if (id === 'V') return true;
     const nombre = raw.normalize('NFD').replace(/\p{Diacritic}/gu, '');
     if (!nombre) return false;
     if (nombre.includes('TRANSFER') || nombre.includes('TARJETA') || nombre.includes('CHEQUE') || nombre.includes('DEPOSITO') || nombre.includes('QR')) return false;
@@ -400,6 +403,9 @@ export class MensualidadModalComponent implements OnInit, OnChanges {
   // Indica si el método seleccionado corresponde a TARJETA según el catálogo recibido
   get isTarjeta(): boolean {
     const f = this.getSelectedForma();
+    const id = (f?.id_forma_cobro ?? '').toString().trim().toUpperCase();
+    const nameRaw = (f?.descripcion_sin ?? f?.nombre ?? f?.name ?? f?.descripcion ?? f?.label ?? '').toString().trim().toUpperCase();
+    if (id === 'V' || nameRaw.includes('VALES')) return false;
     const code = this.getSelectedCodigoSin();
     if (code !== null) {
       if ([2].includes(code)) return true; // 2 ~ Tarjeta (deb/cred)
@@ -412,6 +418,9 @@ export class MensualidadModalComponent implements OnInit, OnChanges {
   // Indica si el método seleccionado corresponde a CHEQUE
   get isCheque(): boolean {
     const f = this.getSelectedForma();
+    const id = (f?.id_forma_cobro ?? '').toString().trim().toUpperCase();
+    const nameRaw = (f?.descripcion_sin ?? f?.nombre ?? f?.name ?? f?.descripcion ?? f?.label ?? '').toString().trim().toUpperCase();
+    if (id === 'V' || nameRaw.includes('VALES')) return false;
     const code = this.getSelectedCodigoSin();
     if (code !== null) {
       if ([3].includes(code)) return true; // 3 ~ Cheque
@@ -424,6 +433,9 @@ export class MensualidadModalComponent implements OnInit, OnChanges {
   // Indica si el método seleccionado corresponde a DEPOSITO/DEPÓSITO
   get isDeposito(): boolean {
     const f = this.getSelectedForma();
+    const id = (f?.id_forma_cobro ?? '').toString().trim().toUpperCase();
+    const nameRaw = (f?.descripcion_sin ?? f?.nombre ?? f?.name ?? f?.descripcion ?? f?.label ?? '').toString().trim().toUpperCase();
+    if (id === 'V' || nameRaw.includes('VALES')) return false;
     const code = this.getSelectedCodigoSin();
     if (code !== null) {
       if ([4].includes(code)) return true; // 4 ~ Depósito en cuenta
@@ -564,7 +576,7 @@ export class MensualidadModalComponent implements OnInit, OnChanges {
         return;
       }
     }
-    if (!this.form.valid) {
+    if (!this.isFormValidForMetodo()) {
       this.modalAlertMessage = 'Complete los campos obligatorios.';
       this.modalAlertType = 'warning';
       return;
@@ -809,6 +821,66 @@ export class MensualidadModalComponent implements OnInit, OnChanges {
       instance.hide();
     }
     this.modalAlertMessage = '';
+  }
+
+  private isFormValidForMetodo(): boolean {
+    // Reglas mínimas comunes
+    const metodo = (this.form.get('metodo_pago')?.value || '').toString();
+    if (!metodo) return false;
+    // El comprobante se valida aparte en addAndClose()
+
+    // Bypass temprano: VALES/OTRO no exigen campos bancarios ni reglas adicionales
+    const metodoVal = (this.form.get('metodo_pago')?.value || '').toString().trim().toUpperCase();
+    if (metodoVal === 'V' || this.isOtro) {
+      return true;
+    }
+
+    // Tipo mensualidad/reincorporación: validar pago parcial o cantidad
+    if (this.tipo === 'mensualidad') {
+      const esParcial = !!this.form.get('pago_parcial')?.value;
+      if (esParcial) {
+        const mp = this.form.get('monto_parcial');
+        mp?.updateValueAndValidity({ emitEvent: false });
+        if (!mp || mp.value === null || mp.value === undefined) return false;
+        if (mp.hasError('required') || mp.hasError('min') || mp.hasError('max')) return false;
+        // Asegurar > 0
+        const mpNum = Number(mp.value);
+        if (!isFinite(mpNum) || mpNum <= 0) return false;
+      } else {
+        const cant = this.form.get('cantidad');
+        cant?.updateValueAndValidity({ emitEvent: false });
+        if (!cant || !cant.value) return false;
+        if (cant.hasError('required') || cant.hasError('min')) return false;
+      }
+    }
+
+    // Validaciones por método
+    if (this.isTarjeta) {
+      const idCuenta = this.form.get('id_cuentas_bancarias');
+      const f4 = this.form.get('tarjeta_first4');
+      const l4 = this.form.get('tarjeta_last4');
+      const fecha = this.form.get('fecha_deposito');
+      const nro = this.form.get('nro_deposito');
+      const banco = this.form.get('banco_origen');
+      for (const c of [idCuenta, f4, l4, fecha, nro, banco]) {
+        c?.updateValueAndValidity({ emitEvent: false });
+        if (!c || !c.value) return false;
+        if (c.hasError('required') || c.hasError('pattern')) return false;
+      }
+      return true;
+    }
+    if (this.isCheque || this.isDeposito || this.isTransferencia) {
+      const idCuenta = this.form.get('id_cuentas_bancarias');
+      const fecha = this.form.get('fecha_deposito');
+      const nro = this.form.get('nro_deposito');
+      idCuenta?.updateValueAndValidity({ emitEvent: false });
+      fecha?.updateValueAndValidity({ emitEvent: false });
+      nro?.updateValueAndValidity({ emitEvent: false });
+      if (!idCuenta?.value || !fecha?.value || !nro?.value) return false;
+    }
+    // QR: no exige fecha/nro/banco (autogestionado)
+    // OTRO / VALES: no exige campos bancarios
+    return true;
   }
 
   private buildObservaciones(): string {

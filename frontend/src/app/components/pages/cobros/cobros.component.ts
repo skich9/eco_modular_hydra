@@ -14,6 +14,7 @@ import { QrPanelComponent } from './qr-panel/qr-panel.component';
 import { environment } from '../../../../environments/environment';
 import { saveBlobAsFile, generateQuickReciboPdf, generateQuickFacturaPdf } from '../../../utils/pdf.helpers';
 import * as QRCode from 'qrcode';
+import { ActivatedRoute } from '@angular/router';
 
 @Component({
   selector: 'app-cobros-page',
@@ -102,12 +103,16 @@ export class CobrosComponent implements OnInit {
   busquedaPage = 1;
   busquedaPerPage = 10;
   private busquedaCriteria: { ap_paterno?: string; ap_materno?: string; nombres?: string; ci?: string } = {};
+  private qrMetodoSelected: boolean = false;
+  private codigoSinBaseSelected: string = '';
+  private selectedFormaItem: any | null = null;
 
   constructor(
     private fb: FormBuilder,
     private cobrosService: CobrosService,
     private auth: AuthService,
-    private gestionService: GestionService
+    private gestionService: GestionService,
+    private route: ActivatedRoute
   ) {
     this.searchForm = this.fb.group({
       cod_ceta: ['', Validators.required],
@@ -189,7 +194,7 @@ export class CobrosComponent implements OnInit {
           const pad = (n: number) => String(n).padStart(2, '0');
           const now = new Date();
           const ts = `${now.getFullYear()}-${pad(now.getMonth() + 1)}-${pad(now.getDate())} ${pad(now.getHours())}:${pad(now.getMinutes())}:${pad(now.getSeconds())}`;
-          const nick = this.auth?.getCurrentUser()?.nickname || 'Operador';
+          const nick = (this.auth.getCurrentUser()?.nickname) || 'Operador';
           const usuario = `Usuario-Hora: ${nick} - ${ts}`;
           const textoSucursal = this.computeTextoSucursal(est);
           const puntoVentaVar = this.computePuntoVenta();
@@ -451,8 +456,8 @@ export class CobrosComponent implements OnInit {
     const f = (this.formasCobro || []).find((x: any) => `${x?.id_forma_cobro}` === s || `${x?.codigo_sin}` === s);
     const raw = (f?.descripcion_sin ?? f?.descripcion ?? f?.nombre ?? '').toString().trim().toUpperCase();
     const nombre = raw.normalize('NFD').replace(/\p{Diacritic}/gu, '');
-    // Backend mapea QR a la forma "TRANSFERENCIA BANCARIA"; además, algunas instalaciones pueden nombrarla con "QR" explícito
-    const res = nombre.includes('QR') || nombre.includes('TRANSFERENCIA');
+    // Detectar QR únicamente por etiqueta explícita 'QR' en el catálogo
+    const res = nombre.includes('QR');
     try { console.log('[Cobros] isFormaIdQR', { id: s, label: raw, matchQR: res }); } catch {}
     return res;
   }
@@ -1389,10 +1394,11 @@ export class CobrosComponent implements OnInit {
         // Sincronizar codigo_sin desde id_forma_cobro si ya hubiese uno seleccionado
         const cab = this.batchForm.get('cabecera') as FormGroup;
         const idSel = (cab.get('id_forma_cobro')?.value ?? '').toString();
-        if (idSel) {
+        if (idSel && !((cab.get('codigo_sin')?.value ?? '').toString())) {
           const match = (this.formasCobro || []).find((f: any) => `${f?.id_forma_cobro}` === idSel);
           if (match) {
             cab.patchValue({ codigo_sin: match.codigo_sin }, { emitEvent: false });
+            this.codigoSinBaseSelected = this.getBaseCodigoSinForSiat(match);
           }
         }
         // Calcular opciones del modal según selección actual
@@ -1405,6 +1411,21 @@ export class CobrosComponent implements OnInit {
       next: (res) => { if (res.success) this.cuentasBancarias = res.data; },
       error: () => {}
     });
+
+    // Leer cod_ceta (y gestion) desde querystring para soportar deep-link desde SGA
+    try {
+      this.route.queryParamMap.subscribe((params) => {
+        const cod = (params.get('cod_ceta') || '').toString().trim();
+        const ges = (params.get('gestion') || '').toString().trim();
+        if (cod) {
+          this.searchForm.patchValue({ cod_ceta: cod }, { emitEvent: false });
+          if (ges) {
+            this.searchForm.patchValue({ gestion: ges }, { emitEvent: false });
+          }
+          this.loadResumen();
+        }
+      });
+    } catch {}
 
     // Recalcular costo total de mensualidades cuando cambie la cantidad
     this.mensualidadModalForm.get('cantidad')?.valueChanges.subscribe((v: number) => {
@@ -1670,11 +1691,26 @@ export class CobrosComponent implements OnInit {
     const sel = (ev?.target?.value ?? '').toString(); // codigo_sin
     const cab = this.batchForm.get('cabecera') as FormGroup;
     cab.patchValue({ codigo_sin: sel }, { emitEvent: false });
-    // Mapear a id_forma_cobro requerido por backend
-    let match = (this.formasCobro || []).find((f: any) => `${f?.codigo_sin}` === sel);
-    if (!match) match = (this.formasCobro || []).find((f: any) => `${f?.id_forma_cobro}` === sel);
+    // Determinar opción exacta seleccionada por el usuario usando el texto del option
+    const optEl: any = ev?.target?.selectedOptions?.[0] || null;
+    const optText = (optEl?.text || '').toString();
+    const optLabelNorm = this.normalizeLabel(optText);
+    // Buscar coincidencia exacta por codigo y etiqueta normalizada
+    let match = (this.formasCobro || []).find((f: any) => {
+      const lbl = this.normalizeLabel((f?.descripcion_sin ?? f?.nombre ?? f?.label ?? f?.descripcion ?? '').toString());
+      return `${f?.codigo_sin}` === sel && lbl === optLabelNorm;
+    });
+    // Fallback por codigo_sin si no se encontró por etiqueta
+    if (!match) match = (this.formasCobro || []).find((f: any) => `${f?.codigo_sin}` === sel);
     const idInterno = match ? `${match.id_forma_cobro}` : '';
+    // Asegurar que SIAT reciba el codigo_sin base cuando sea una variante QR
+    const baseCodigo = match ? this.getBaseCodigoSinForSiat(match) : sel;
+    this.codigoSinBaseSelected = baseCodigo;
     cab.patchValue({ id_forma_cobro: idInterno }, { emitEvent: false });
+    // Flag UI: QR según el texto del option seleccionado
+    this.qrMetodoSelected = optLabelNorm.includes('QR');
+    // Guardar item seleccionado para que el modal herede correctamente la variante
+    this.selectedFormaItem = match || null;
     const idCtrl = cab.get('id_forma_cobro');
     idCtrl?.markAsTouched();
     idCtrl?.updateValueAndValidity({ emitEvent: false });
@@ -1686,16 +1722,7 @@ export class CobrosComponent implements OnInit {
   }
 
   isQrMetodoSeleccionado(): boolean {
-    try {
-      const cab = this.batchForm.get('cabecera') as FormGroup;
-      const sel = (cab.get('codigo_sin')?.value ?? '').toString();
-      if (!sel) return false;
-      let match = (this.formasCobro || []).find((f: any) => `${f?.codigo_sin}` === sel);
-      if (!match) match = (this.formasCobro || []).find((f: any) => `${f?.id_forma_cobro}` === sel);
-      if (!match) return false;
-      const raw = (match?.descripcion_sin ?? match?.nombre ?? '').toString().trim().toUpperCase();
-      return raw.includes('QR');
-    } catch { return false; }
+    return this.qrMetodoSelected === true;
   }
 
 
@@ -1711,6 +1738,34 @@ export class CobrosComponent implements OnInit {
   private normalizeLabel(s: string): string {
     return (s || '').toString().trim().toUpperCase()
       .normalize('NFD').replace(/\p{Diacritic}/gu, '');
+  }
+
+  // Dado un item del catálogo, retorna el codigo_sin "base" para SIAT.
+  // Si el label es un QR variante (ej. "QR TRANSFERENCIA BANCARIA"), se mapea
+  // al codigo_sin del método base (ej. "TRANSFERENCIA BANCARIA").
+  private getBaseCodigoSinForSiat(item: any): string {
+    try {
+      if (!item) return '';
+      const raw = (item?.descripcion_sin ?? item?.nombre ?? item?.label ?? item?.descripcion ?? '').toString();
+      const norm = this.normalizeLabel(raw);
+      if (!norm.includes('QR')) return `${item?.codigo_sin ?? ''}`;
+      // Extraer segmento base luego de quitar el prefijo 'QR '
+      const baseSeg = norm.replace(/^QR\s*/, '').split(/[-–—]/)[0].trim();
+      if (!baseSeg) return `${item?.codigo_sin ?? ''}`;
+      const sameId = (this.formasCobro || []).filter((f: any) => `${f?.id_forma_cobro}`.toUpperCase() === `${item?.id_forma_cobro}`.toUpperCase());
+      let baseMatch = sameId.find((f: any) => {
+        const n = this.normalizeLabel((f?.descripcion_sin ?? f?.nombre ?? f?.label ?? f?.descripcion ?? '').toString());
+        return !n.includes('QR') && (n === baseSeg || n.startsWith(baseSeg) || n.includes(baseSeg));
+      });
+      if (!baseMatch) {
+        // Fallback: buscar en todo el catálogo (independiente del id_forma_cobro)
+        baseMatch = (this.formasCobro || []).find((f: any) => {
+          const n = this.normalizeLabel((f?.descripcion_sin ?? f?.nombre ?? f?.label ?? f?.descripcion ?? '').toString());
+          return !n.includes('QR') && (n === baseSeg || n.startsWith(baseSeg) || n.includes(baseSeg));
+        });
+      }
+      return baseMatch ? `${baseMatch.codigo_sin}` : `${item?.codigo_sin ?? ''}`;
+    } catch { return `${item?.codigo_sin ?? ''}`; }
   }
 
   private findBaseForma(name: string): any | null {
@@ -1769,6 +1824,8 @@ export class CobrosComponent implements OnInit {
 
   private computeModalFormasFromSelection(): void {
     try {
+      // Si se tiene el item exacto previamente seleccionado, usarlo directamente
+      if (this.selectedFormaItem) { this.modalFormasCobro = [this.selectedFormaItem]; return; }
       const cab = this.batchForm.get('cabecera') as FormGroup;
       const sel = (cab.get('codigo_sin')?.value ?? '').toString();
       let match = (this.formasCobro || []).find((f: any) => `${f?.codigo_sin}` === sel);
@@ -2401,7 +2458,7 @@ export class CobrosComponent implements OnInit {
     } catch {}
     // 3) id_usuario: desde AuthService o localStorage current_user
     try {
-      const currentUser = this.auth?.getCurrentUser?.();
+      const currentUser = this.auth.getCurrentUser();
       if (currentUser?.id_usuario && !cab?.get('id_usuario')?.value) {
         cab.patchValue({ id_usuario: currentUser.id_usuario }, { emitEvent: false });
       } else if (!cab?.get('id_usuario')?.value && typeof localStorage !== 'undefined') {
@@ -2456,6 +2513,8 @@ export class CobrosComponent implements OnInit {
     }
     this.loading = true;
     const { cabecera } = this.batchForm.value as any;
+    // Asegurar codigo_sin base para SIAT (QR variante -> base)
+    const siatCodigoSin = this.codigoSinBaseSelected || (cabecera?.codigo_sin || '');
     // Mapear pagos para enviar solo con 'monto' calculado y fallbacks de nro/fecha
     const hoy = new Date().toISOString().slice(0, 10);
     const pagosRaw = (baseCtrls || []).map((ctrl, idx) => {
@@ -2482,6 +2541,7 @@ export class CobrosComponent implements OnInit {
     });
     const payload = {
       ...cabecera,
+      codigo_sin: siatCodigoSin,
       id_forma_cobro: (cabecera?.id_forma_cobro !== undefined && cabecera?.id_forma_cobro !== null)
         ? String(cabecera.id_forma_cobro)
         : cabecera?.id_forma_cobro,

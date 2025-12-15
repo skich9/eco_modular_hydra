@@ -346,6 +346,33 @@ class FacturaPayloadBuilder
         }
         if ($direccionVal === '') { $direccionVal = 'S/D'; }
 
+        // numeroTarjeta: solo cuando el método es TARJETA (2)
+        $numeroTarjeta = null;
+        if ((int)$codigoMetodoPago === 2) {
+            $nt = $args['numero_tarjeta'] ?? null;
+            if (is_string($nt) || is_numeric($nt)) {
+                $ntSan = preg_replace('/\D/', '', (string)$nt);
+                $numeroTarjeta = $ntSan !== '' ? $ntSan : null;
+            }
+            // Fallback: si no llegó por args, intentar recuperar de nota_bancaria por nro_factura
+            if ($numeroTarjeta === null) {
+                $nf = isset($args['numero_factura']) ? (string)$args['numero_factura'] : '';
+                if ($nf !== '') {
+                    try {
+                        $nb = DB::table('nota_bancaria')
+                            ->where('nro_factura', (string)$nf)
+                            ->orderBy('anio_deposito', 'desc')
+                            ->orderBy('correlativo', 'desc')
+                            ->first();
+                        if ($nb && !empty($nb->nro_tarjeta)) {
+                            $ntSan = preg_replace('/\D/', '', (string)$nb->nro_tarjeta);
+                            $numeroTarjeta = $ntSan !== '' ? $ntSan : null;
+                        }
+                    } catch (\Throwable $e) {}
+                }
+            }
+        }
+
         $cabecera = [
             'nitEmisor' => (int) ($args['nit'] ?? 0),
             'razonSocialEmisor' => (string) ($args['razon_emisor'] ?? $razonEmisorCfg),
@@ -364,7 +391,7 @@ class FacturaPayloadBuilder
             'complemento' => $args['cliente']['complemento'] ?? null,
             'codigoCliente' => (string) ($args['cliente']['codigo'] ?? ($args['cliente']['numero'] ?? '0')),
             'codigoMetodoPago' => (int) $codigoMetodoPago,
-            'numeroTarjeta' => null,
+            'numeroTarjeta' => $numeroTarjeta,
             'montoTotal' => (float) ($args['monto_total'] ?? 0),
             'montoTotalSujetoIva' => (float) ($args['monto_total'] ?? 0),
             'codigoMoneda' => $codigoMonedaCfg,
@@ -421,6 +448,30 @@ class FacturaPayloadBuilder
             $m = DB::table('sin_forma_cobro')->where('id_forma_cobro', (string)$args['id_forma_cobro'])->first();
             if ($m && isset($m->codigo_sin)) {
                 $codigoMetodoPago = (int) $m->codigo_sin;
+            }
+        }
+        $numeroTarjetaXml = null;
+        if ((int)$codigoMetodoPago === 2) {
+            $nt = $args['numero_tarjeta'] ?? null;
+            if (is_string($nt) || is_numeric($nt)) {
+                $ntSan = preg_replace('/\D/', '', (string)$nt);
+                if ($ntSan !== '') { $numeroTarjetaXml = $ntSan; }
+            }
+            if ($numeroTarjetaXml === null) {
+                $nf = isset($args['numero_factura']) ? (string)$args['numero_factura'] : '';
+                if ($nf !== '') {
+                    try {
+                        $nb = DB::table('nota_bancaria')
+                            ->where('nro_factura', (string)$nf)
+                            ->orderBy('anio_deposito', 'desc')
+                            ->orderBy('correlativo', 'desc')
+                            ->first();
+                        if ($nb && !empty($nb->nro_tarjeta)) {
+                            $ntSan = preg_replace('/\D/', '', (string)$nb->nro_tarjeta);
+                            if ($ntSan !== '') { $numeroTarjetaXml = $ntSan; }
+                        }
+                    } catch (\Throwable $e) {}
+                }
             }
         }
         $actividad = DB::table('sin_actividades')->value('codigo_caeb') ?: '00000';
@@ -501,7 +552,11 @@ class FacturaPayloadBuilder
         }
         $xml .= '<periodoFacturado>' . htmlspecialchars($valorPeriodo, ENT_QUOTES | ENT_SUBSTITUTE, 'UTF-8') . '</periodoFacturado>';
         $xml .= '<codigoMetodoPago>' . (int)$codigoMetodoPago . '</codigoMetodoPago>';
-        $xml .= '<numeroTarjeta xsi:nil="true"/>';
+        if ($numeroTarjetaXml !== null) {
+            $xml .= '<numeroTarjeta>' . htmlspecialchars($numeroTarjetaXml, ENT_QUOTES | ENT_SUBSTITUTE, 'UTF-8') . '</numeroTarjeta>';
+        } else {
+            $xml .= '<numeroTarjeta xsi:nil="true"/>';
+        }
         $xml .= '<montoTotal>' . number_format((float)($args['monto_total'] ?? 0), 2, '.', '') . '</montoTotal>';
         $xml .= '<montoTotalSujetoIva>' . number_format((float)($args['monto_total'] ?? 0), 2, '.', '') . '</montoTotalSujetoIva>';
         $xml .= '<codigoMoneda>' . (int) config('sin.codigo_moneda', 1) . '</codigoMoneda>';
