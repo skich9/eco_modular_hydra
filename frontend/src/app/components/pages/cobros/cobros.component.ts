@@ -110,6 +110,7 @@ export class CobrosComponent implements OnInit {
   private frontSaldoByCuota: Record<number, number> = {};
   // Forzar cuota inicial del próximo modal cuando exista saldo parcial pendiente
   private startCuotaOverrideValue: number | null = null;
+  metodoPagoLocked: boolean = false;
 
   constructor(
     private fb: FormBuilder,
@@ -1248,6 +1249,8 @@ export class CobrosComponent implements OnInit {
       this.resumen = null;
       this.showOpciones = false;
       this.alertMessage = '';
+      this.metodoPagoLocked = false;
+      try { (this.batchForm.get('cabecera.codigo_sin') as any)?.enable?.({ emitEvent: false }); } catch {}
       this.successSummary = null;
     } catch {}
 
@@ -1724,6 +1727,9 @@ export class CobrosComponent implements OnInit {
   }
 
   onMetodoPagoChange(ev: any): void {
+    if (this.metodoPagoLocked) {
+      return;
+    }
     const sel = (ev?.target?.value ?? '').toString(); // codigo_sin
     const cab = this.batchForm.get('cabecera') as FormGroup;
     cab.patchValue({ codigo_sin: sel }, { emitEvent: false });
@@ -1755,6 +1761,8 @@ export class CobrosComponent implements OnInit {
     // Recalcular opciones para el modal (filtradas por selección actual)
     this.computeModalFormasFromSelection();
     if (this.isQrMetodoSeleccionado()) { this.checkQrPendiente(); }
+    this.metodoPagoLocked = true;
+    try { cab.get('codigo_sin')?.disable({ emitEvent: false }); } catch {}
   }
 
   isQrMetodoSeleccionado(): boolean {
@@ -2627,6 +2635,12 @@ export class CobrosComponent implements OnInit {
         razon_social: (this.identidadForm.get('razon_social')?.value || '').toString()
       }
     } as any;
+    try {
+      const uni = String((payload as any).id_forma_cobro || '');
+      if (uni) {
+        (payload as any).pagos = ((payload as any).pagos || []).map((p: any) => ({ ...p, id_forma_cobro: uni }));
+      }
+    } catch {}
     // Forzar bandera emitir_online si hay al menos una Factura Computarizada
     try {
       const shouldEmitOnline = pagos.some((p: any) => (p?.tipo_documento === 'F') && (p?.medio_doc === 'C'));
