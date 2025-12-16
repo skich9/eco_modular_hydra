@@ -142,7 +142,7 @@
           <ng-container *ngIf="tipo === 'mensualidad' || tipo === 'arrastre'; else noMensualidadOrReinc">
             <div class="col-md-4">
               <label class="form-label">Precio Unitario</label>
-              <input class="form-control" [value]="pu | number:'1.2-2'" readonly />
+              <input class="form-control" [value]="puDisplay | number:'1.2-2'" readonly />
             </div>
             <div class="col-md-4">
               <label class="form-label">Cant. mensualidades a pagar</label>
@@ -159,7 +159,7 @@
             <ng-container *ngIf="tipo === 'reincorporacion'; else noMensualidad">
               <div class="col-md-4">
                 <label class="form-label">Precio Reincorporación</label>
-                <input class="form-control" [value]="pu | number:'1.2-2'" readonly />
+                <input class="form-control" [value]="puDisplay | number:'1.2-2'" readonly />
               </div>
               <div class="col-md-4">
                 <label class="form-label">Fecha de cobro</label>
@@ -204,7 +204,7 @@
             <div class="invalid-feedback" *ngIf="form.get('monto_parcial')?.hasError('max') && form.get('monto_parcial')?.touched">
               El monto ingresado excede el saldo.
             </div>
-            <div class="form-text">Máximo: {{ pu | number:'1.2-2' }}</div>
+            <div class="form-text">Máximo: {{ puDisplay | number:'1.2-2' }}</div>
           </div>
           <div class="col-md-4">
             <label class="form-label">Costo total</label>

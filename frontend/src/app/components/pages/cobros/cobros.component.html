@@ -478,9 +478,11 @@
       [cuentasBancarias]="cuentasBancarias"
       [tipo]="modalTipo"
       [pendientes]="mensualidadesPendientes"
-      [pu]="mensualidadPU"
+      [pu]="getMensualidadPuForModal()"
       [baseNro]="getNextMensualidadNro()"
       [defaultMetodoPago]="modalFormasCobro[0]?.id_forma_cobro || selectedFormaCobroId"
+      [startCuotaOverride]="getNextMensualidadStartCuota()"
+      [frontSaldos]="getFrontSaldos()"
       (addPagos)="onAddPagosFromModal($event)"
     ></app-mensualidad-modal>
 

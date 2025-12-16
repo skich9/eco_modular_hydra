@@ -106,6 +106,10 @@ export class CobrosComponent implements OnInit {
   private qrMetodoSelected: boolean = false;
   private codigoSinBaseSelected: string = '';
   private selectedFormaItem: any | null = null;
+  // Saldo restante por cuota gestionado sólo en frontend para pagos parciales
+  private frontSaldoByCuota: Record<number, number> = {};
+  // Forzar cuota inicial del próximo modal cuando exista saldo parcial pendiente
+  private startCuotaOverrideValue: number | null = null;
 
   constructor(
     private fb: FormBuilder,
@@ -162,6 +166,33 @@ export class CobrosComponent implements OnInit {
       costo_total: [{ value: 0, disabled: true }],
       observaciones: ['']
     });
+  }
+
+  // PU a enviar al modal: si hay saldo en la cuota inicial efectiva, usarlo; caso contrario usar mensualidadPU
+  getMensualidadPuForModal(): number {
+    try {
+      const start = this.getNextMensualidadStartCuota();
+      const val = this.frontSaldoByCuota[start];
+      if (val !== undefined && val !== null) return Number(val || 0);
+      const puSemestral = Number(this.resumen?.totales?.pu_mensual || 0);
+      const puNext = Number(this.resumen?.mensualidad_next?.next_cuota?.monto ?? 0);
+      return puSemestral > 0 ? puSemestral : puNext;
+    } catch {
+      const puSemestral = Number(this.resumen?.totales?.pu_mensual || 0);
+      const puNext = Number(this.resumen?.mensualidad_next?.next_cuota?.monto ?? 0);
+      return puSemestral > 0 ? puSemestral : puNext;
+    }
+  }
+
+  public getFrontSaldos(): Record<number, number> {
+    const out: Record<number, number> = {};
+    try {
+      for (const k of Object.keys(this.frontSaldoByCuota)) {
+        const n = Number(k);
+        if (isFinite(n)) out[n] = Number(this.frontSaldoByCuota[n] || 0);
+      }
+    } catch {}
+    return out;
   }
 
   private downloadReciboPdfWithFallback(anio: number, nro: number): void {
@@ -1624,9 +1655,14 @@ export class CobrosComponent implements OnInit {
           const parcialesCnt = Number(this.resumen?.mensualidad_next?.parcial_count ?? 0) || 0;
           const combined = pendFromNext + parcialesCnt;
           this.mensualidadesPendientes = combined > 0 ? combined : Math.max(0, nroCuotas - pagadasFull);
-          // - PU: next_cuota.monto ya es restante si es PARCIAL, o el monto si es PENDIENTE
+          // - PU base desde backend y override por saldo en frontend si existe para la cuota bloqueada
           const puNext = Number(this.resumen?.mensualidad_next?.next_cuota?.monto ?? 0);
-          this.mensualidadPU = puNext > 0 ? puNext : Number(this.resumen?.totales?.pu_mensual || 0);
+          let puBase = puNext > 0 ? puNext : Number(this.resumen?.totales?.pu_mensual || 0);
+          const locked = this.lockedMensualidadCuota as number | null;
+          if (locked && this.frontSaldoByCuota[locked] !== undefined) {
+            puBase = this.frontSaldoByCuota[locked];
+          }
+          this.mensualidadPU = puBase;
           // Inicializar modal de mensualidades
           const defaultMetodo = (this.batchForm.get('cabecera.id_forma_cobro') as any)?.value || '';
           this.mensualidadModalForm.patchValue({
@@ -2083,8 +2119,7 @@ export class CobrosComponent implements OnInit {
     const parcialesCnt = Number(this.resumen?.mensualidad_next?.parcial_count ?? 0) || 0;
     // Mostrar suma pedida por usuario (pendientes + parciales)
     this.mensualidadesPendientes = Math.max(0, pendFromNext + parcialesCnt);
-    const puNext = Number(this.resumen?.mensualidad_next?.next_cuota?.monto ?? 0);
-    this.mensualidadPU = puNext > 0 ? puNext : Number(this.resumen?.totales?.pu_mensual || 0);
+    this.mensualidadPU = this.getMensualidadPuForModal();
     const defaultMetodo = (this.batchForm.get('cabecera.id_forma_cobro') as any)?.value || '';
     // Recalcular lista filtrada y escoger default coherente
     this.computeModalFormasFromSelection();
@@ -2214,6 +2249,8 @@ export class CobrosComponent implements OnInit {
     let max = 0;
     for (const ctrl of (this.pagos.controls || [])) {
       const det = (ctrl.get('detalle')?.value || '').toString();
+      // Ignorar filas parciales para este cálculo (solo considerar cuotas completas)
+      if (/(\(Parcial\))/i.test(det)) continue;
       const m = det.match(/Cuota\s+(\d+)/i);
       const n = m ? Number(m[1]) : 0;
       if (n > max) max = n;
@@ -2236,10 +2273,25 @@ export class CobrosComponent implements OnInit {
   }
 
   // Calcula desde qué número de cuota debe comenzar el siguiente agregado de mensualidades
-  private getNextMensualidadStartCuota(): number {
+  getNextMensualidadStartCuota(): number {
+    // 0) Si hay un override explícito, respételo SIEMPRE (sirve para forzar avance tras completar saldo)
+    if (this.startCuotaOverrideValue && this.startCuotaOverrideValue > 0) {
+      return this.startCuotaOverrideValue;
+    }
+    // 1) Si hay una cuota bloqueada por parcial, usarla mientras exista saldo en front
+    if (this.lockedMensualidadCuota && this.frontSaldoByCuota[this.lockedMensualidadCuota] !== undefined && this.frontSaldoByCuota[this.lockedMensualidadCuota] > 0) {
+      return this.lockedMensualidadCuota;
+    }
+    // 2) Si la última línea parcial tiene saldo registrado, mantener esa cuota
+    const lastParcial = this.getLastMensualidadParcialCuotaInForm();
+    if (lastParcial) {
+      const saldo = this.frontSaldoByCuota[lastParcial];
+      if (saldo !== undefined && saldo > 0) return lastParcial; // mantener misma cuota
+      if (saldo === undefined || saldo === 0) return lastParcial + 1; // avanzar una vez cubierto el saldo
+    }
+    // 3) Caso normal: usar siguiente a la mayor cuota COMPLETA en el detalle o backend next
     const backendNext = Number(this.resumen?.mensualidad_next?.next_cuota?.numero_cuota || 1);
-    const inFormMax = this.getMaxMensualidadCuotaInForm();
-    // Empezar desde el mayor observado (backend o en-form) + 1
+    const inFormMax = this.getMaxMensualidadCuotaInForm(); // ignora parciales
     return Math.max(backendNext, inFormMax + 1);
   }
 
@@ -2314,12 +2366,12 @@ export class CobrosComponent implements OnInit {
         } else if (fromPayload) {
           numeroCuota = fromPayload;
         } else {
-          // Si ya existe una fila parcial, fijar bloqueo a esa cuota para pagos combinados
           const lastParcial = this.getLastMensualidadParcialCuotaInForm();
-          if (lastParcial) {
+          if (lastParcial && this.frontSaldoByCuota[lastParcial] !== undefined && this.frontSaldoByCuota[lastParcial] > 0) {
             this.lockedMensualidadCuota = lastParcial;
             numeroCuota = lastParcial;
           } else {
+            this.lockedMensualidadCuota = null;
             numeroCuota = startCuota + idx;
           }
         }
@@ -2397,11 +2449,34 @@ export class CobrosComponent implements OnInit {
       if (isMensualidad) {
         if (esParcial && numeroCuota) {
           this.lockedMensualidadCuota = numeroCuota;
+          // Guardar saldo restante en frontend y desbloquear si quedó en 0
+          this.frontSaldoByCuota[numeroCuota] = saldo;
+          if (saldo <= 0) {
+            delete this.frontSaldoByCuota[numeroCuota];
+            this.lockedMensualidadCuota = null;
+            // Avanzar explícitamente a la siguiente cuota para el próximo modal
+            this.startCuotaOverrideValue = (numeroCuota || 0) + 1;
+          }
+          // Mantener override explícito mientras haya saldo
+          if (saldo > 0) this.startCuotaOverrideValue = numeroCuota;
         } else if (!esParcial) {
           this.lockedMensualidadCuota = null;
+          this.startCuotaOverrideValue = null;
         }
       }
     });
+    // Recalcular PU para el próximo modal según saldo guardado o fallback del backend
+    if (isMensualidad) {
+      const locked = this.lockedMensualidadCuota as number | null;
+      if (locked && this.frontSaldoByCuota[locked] !== undefined) {
+        this.mensualidadPU = this.frontSaldoByCuota[locked];
+      } else {
+        // Preferir PU semestral nominal cuando ya no hay saldo bloqueado
+        const puSemestral = Number(this.resumen?.totales?.pu_mensual || 0);
+        const puNext = Number(this.resumen?.mensualidad_next?.next_cuota?.monto ?? 0);
+        this.mensualidadPU = puSemestral > 0 ? puSemestral : puNext;
+      }
+    }
     // Aplicar cabecera si el modal la envió (p.e. id_cuentas_bancarias para TARJETA)
     if (headerPatch && typeof headerPatch === 'object') {
       (this.batchForm.get('cabecera') as FormGroup).patchValue(headerPatch, { emitEvent: false });

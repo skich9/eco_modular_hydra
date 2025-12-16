@@ -19,6 +19,8 @@ export class MensualidadModalComponent implements OnInit, OnChanges {
   @Input() pu = 0; // precio unitario de mensualidad
   @Input() baseNro = 1; // nro_cobro inicial sugerido
   @Input() defaultMetodoPago: string = '';
+  @Input() startCuotaOverride: number | null = null;
+  @Input() frontSaldos: Record<number, number> = {};
 
   @Output() addPagos = new EventEmitter<any>();
 
@@ -53,6 +55,24 @@ export class MensualidadModalComponent implements OnInit, OnChanges {
       fecha_deposito: [''],
       nro_deposito: ['']
     });
+  }
+
+  // PU efectivo a mostrar para mensualidad: si hay override de cuota inicial, usar restante de esa cuota; si no, usar input pu
+  get puDisplay(): number {
+    try {
+      if (this.tipo !== 'mensualidad') return Number(this.pu || 0);
+      const start = this.getStartCuotaFromResumen();
+      const list = this.getOrderedCuotasRestantes();
+      const hit = list.find(it => Number(it.numero) === Number(start));
+      if (hit && hit.restante !== undefined) return Number(hit.restante || 0);
+      return Number(this.pu || 0);
+    } catch { return Number(this.pu || 0); }
+  }
+
+  // Máximo permitido para pago parcial según el PU efectivo
+  private getParcialMax(): number {
+    const max = this.puDisplay;
+    return (isNaN(max) || max <= 0) ? Number.MAX_SAFE_INTEGER : max;
   }
 
   // Verifica si el bloque de tarjeta está completo para habilitar el resto del formulario
@@ -157,9 +177,9 @@ export class MensualidadModalComponent implements OnInit, OnChanges {
         this.form.get('cantidad')?.setValue(1, { emitEvent: false });
         this.form.get('cantidad')?.disable({ emitEvent: false });
         this.form.get('monto_parcial')?.enable({ emitEvent: false });
-        this.form.get('monto_parcial')?.setValidators([Validators.required, Validators.min(0.01), Validators.max(this.pu || Number.MAX_SAFE_INTEGER)]);
-        // Prefijar el monto parcial con el restante sugerido (pu)
-        this.form.get('monto_parcial')?.setValue(this.pu || 0, { emitEvent: false });
+        this.form.get('monto_parcial')?.setValidators([Validators.required, Validators.min(0.01), Validators.max(Number(this.puDisplay || Number.MAX_SAFE_INTEGER))]);
+        // Prefijar el monto parcial con el PU efectivo (ajustado por saldo y cuota inicial)
+        this.form.get('monto_parcial')?.setValue(this.puDisplay || 0, { emitEvent: false });
       } else {
         // restaurar cantidad y deshabilitar monto_parcial
         this.form.get('cantidad')?.enable({ emitEvent: false });
@@ -174,13 +194,19 @@ export class MensualidadModalComponent implements OnInit, OnChanges {
   }
 
   ngOnChanges(changes: SimpleChanges): void {
-    if (changes['pendientes'] || changes['pu'] || changes['tipo'] || changes['resumen']) {
+    if (changes['pendientes'] || changes['pu'] || changes['tipo'] || changes['resumen'] || changes['startCuotaOverride']) {
       // Si cambia a un tipo distinto de mensualidad, forzar pago_parcial=false
       if (changes['tipo'] && this.tipo !== 'mensualidad') {
         this.form.patchValue({ pago_parcial: false }, { emitEvent: false });
       }
       this.configureByTipo();
       this.recalcTotal();
+      // Si el parcial está activo, actualizar tope y valor sugerido del monto parcial con el PU efectivo
+      if (this.tipo === 'mensualidad' && this.form.get('pago_parcial')?.value) {
+        this.form.get('monto_parcial')?.setValidators([Validators.required, Validators.min(0.01), Validators.max(Number(this.puDisplay || Number.MAX_SAFE_INTEGER))]);
+        this.form.get('monto_parcial')?.setValue(this.puDisplay || 0, { emitEvent: false });
+        this.form.get('monto_parcial')?.updateValueAndValidity({ emitEvent: false });
+      }
     }
     if (changes['defaultMetodoPago']) {
       const v = (this.defaultMetodoPago || '').toString();
@@ -202,9 +228,9 @@ export class MensualidadModalComponent implements OnInit, OnChanges {
         this.form.get('cantidad')?.setValue(1, { emitEvent: false });
         this.form.get('cantidad')?.disable({ emitEvent: false });
         this.form.get('monto_parcial')?.enable({ emitEvent: false });
-        this.form.get('monto_parcial')?.setValidators([Validators.required, Validators.min(0.01), Validators.max(this.pu || Number.MAX_SAFE_INTEGER)]);
-        // Prefijar con el restante sugerido (pu)
-        this.form.get('monto_parcial')?.setValue(this.pu || 0, { emitEvent: false });
+        this.form.get('monto_parcial')?.setValidators([Validators.required, Validators.min(0.01), Validators.max(Number(this.puDisplay || Number.MAX_SAFE_INTEGER))]);
+        // Prefijar con el PU efectivo (ajustado)
+        this.form.get('monto_parcial')?.setValue(this.puDisplay || 0, { emitEvent: false });
       } else {
         this.form.get('cantidad')?.enable({ emitEvent: false });
         this.form.get('monto_parcial')?.setValue(0, { emitEvent: false });
@@ -220,8 +246,8 @@ export class MensualidadModalComponent implements OnInit, OnChanges {
       this.form.get('monto_manual')?.setValue(0, { emitEvent: false });
       if (this.form.get('pago_parcial')?.value) {
         this.form.get('monto_parcial')?.enable({ emitEvent: false });
-        this.form.get('monto_parcial')?.setValidators([Validators.required, Validators.min(0.01), Validators.max(this.pu || Number.MAX_SAFE_INTEGER)]);
-        this.form.get('monto_parcial')?.setValue(this.pu || 0, { emitEvent: false });
+        this.form.get('monto_parcial')?.setValidators([Validators.required, Validators.min(0.01), Validators.max(this.puDisplay || Number.MAX_SAFE_INTEGER)]);
+        this.form.get('monto_parcial')?.setValue(this.puDisplay || 0, { emitEvent: false });
       } else {
         this.form.get('monto_parcial')?.setValue(0, { emitEvent: false });
         this.form.get('monto_parcial')?.clearValidators();
@@ -301,6 +327,8 @@ export class MensualidadModalComponent implements OnInit, OnChanges {
 
   private getStartCuotaFromResumen(): number {
     try {
+      // Priorizar override proveniente del padre cuando exista
+      if (this.startCuotaOverride && this.startCuotaOverride > 0) return Number(this.startCuotaOverride);
       const list = this.getOrderedCuotasRestantes();
       if (list && list.length > 0) {
         const first = Number(list[0]?.numero || 0);
@@ -355,13 +383,23 @@ export class MensualidadModalComponent implements OnInit, OnChanges {
     for (const a of ord) {
       const monto = this.toNumberLoose(a?.monto);
       const pagado = this.toNumberLoose(a?.monto_pagado);
-      const restante = Math.max(0, monto - pagado);
+      const numero = Number(a?.numero_cuota || 0);
+      let restante = Math.max(0, monto - pagado);
+      if (this.frontSaldos && Object.prototype.hasOwnProperty.call(this.frontSaldos, numero)) {
+        const r = Number(this.frontSaldos[numero]);
+        if (isFinite(r)) restante = Math.max(0, r);
+      }
       if (restante > 0) out.push({
-        numero: Number(a?.numero_cuota || 0),
+        numero,
         restante,
         id_cuota_template: (a?.id_cuota_template !== undefined && a?.id_cuota_template !== null) ? Number(a?.id_cuota_template) : null,
         id_asignacion_costo: (a?.id_asignacion_costo !== undefined && a?.id_asignacion_costo !== null) ? Number(a?.id_asignacion_costo) : null,
       });
+    }
+    // Si el padre indica una cuota inicial distinta (p.ej. porque ya se cobró el saldo en el front), filtrar
+    if (this.startCuotaOverride && this.startCuotaOverride > 0) {
+      const start = Number(this.startCuotaOverride);
+      return out.filter(it => Number(it.numero) >= start);
     }
     return out;
   }
@@ -627,13 +665,19 @@ export class MensualidadModalComponent implements OnInit, OnChanges {
     } else if (this.tipo === 'mensualidad') {
       const esParcial = !!this.form.get('pago_parcial')?.value;
       if (esParcial) {
+        const start = this.getStartCuotaFromResumen();
+        const list = this.getOrderedCuotasRestantes();
+        const first = list.find(it => Number(it.numero) === Number(start)) || list[0] || null;
+        const numero_cuota = first ? (Number(first.numero || 0) || null) : null;
+        const id_cuota_template = first ? (first.id_cuota_template ?? null) : null;
+        const id_asignacion_costo = first ? (first.id_asignacion_costo ?? null) : null;
         pagos.push({
           id_forma_cobro: this.form.get('metodo_pago')?.value || null,
           nro_cobro: this.baseNro || 1,
           monto: Number(this.form.get('monto_parcial')?.value || 0),
           fecha_cobro: hoy,
           observaciones: this.composeObservaciones(),
-          pu_mensualidad: Number(this.pu || 0),
+          pu_mensualidad: Number(this.puDisplay || this.pu || 0),
           pago_parcial: true,
           // doc/medio
           tipo_documento,
@@ -651,6 +695,10 @@ export class MensualidadModalComponent implements OnInit, OnChanges {
           descuento: this.form.get('descuento')?.value || null,
           nro_factura: this.form.get('comprobante')?.value === 'FACTURA' ? (this.form.get('nro_factura')?.value || null) : null,
           nro_recibo: this.form.get('comprobante')?.value === 'RECIBO' ? (this.form.get('nro_recibo')?.value || null) : null,
+          // targeting de cuota
+          numero_cuota,
+          id_cuota: id_cuota_template,
+          id_asignacion_costo
         });
       } else {
         const cant = Math.max(0, Number(this.form.get('cantidad')?.value || 0));
