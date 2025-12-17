@@ -1,11 +1,12 @@
 import { Component, EventEmitter, Input, OnChanges, OnInit, Output, SimpleChanges } from '@angular/core';
 import { CommonModule } from '@angular/common';
 import { FormBuilder, FormGroup, ReactiveFormsModule, Validators, FormsModule } from '@angular/forms';
+import { ClickLockDirective } from '../../../../directives/click-lock.directive';
 
 @Component({
   selector: 'app-mensualidad-modal',
   standalone: true,
-  imports: [CommonModule, ReactiveFormsModule, FormsModule],
+  imports: [CommonModule, ReactiveFormsModule, FormsModule, ClickLockDirective],
   templateUrl: './mensualidad-modal.component.html',
   styleUrls: ['./mensualidad-modal.component.scss']
 })

@@ -251,10 +251,10 @@
 			</div>
 
 			<div class="d-flex justify-content-end gap-2 mb-1">
-				<button class="btn btn-success" *ngIf="!isQrMetodoSeleccionado()" [disabled]="loading || qrSaveBlocked" type="submit">
+				<button class="btn btn-success" *ngIf="!isQrMetodoSeleccionado()" [disabled]="loading || qrSaveBlocked" [appClickLock]="true" [lockDuration]="4000" type="submit">
 					<i class="bi bi-save me-1"></i> Registrar Cobro
 				</button>
-				<button *ngIf="qrSaveBlocked" type="button" class="btn btn-outline-primary" [disabled]="loading || pagos.length===0 || isQrCancelled" (click)="guardarEnEspera()">
+				<button *ngIf="qrSaveBlocked" type="button" class="btn btn-outline-primary" [disabled]="loading || pagos.length===0 || isQrCancelled" [appClickLock]="true" [lockDuration]="2500" (click)="guardarEnEspera()">
 					<i class="bi bi-cloud-arrow-down me-1"></i> Guardar en espera (QR)
 				</button>
 			</div>

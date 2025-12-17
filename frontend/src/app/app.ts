@@ -1,15 +1,17 @@
 import { Component } from '@angular/core';
 import { RouterOutlet } from '@angular/router';
+import { LoadingOverlayComponent } from './components/shared/loading-overlay/loading-overlay.component';
 
 @Component({
   selector: 'app-root',
   standalone: true,
-  imports: [RouterOutlet],
+  imports: [RouterOutlet, LoadingOverlayComponent],
   template: `
     <div class="app-container">
       <main>
         <router-outlet></router-outlet>
       </main>
+      <app-loading-overlay></app-loading-overlay>
     </div>
   `,
   styles: `

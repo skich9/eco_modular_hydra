@@ -217,8 +217,8 @@
         </form>
       </div>
       <div class="modal-footer">
-        <button type="button" class="btn btn-success" (click)="addAndClose()"><i class="bi bi-plus-circle me-1"></i> Adicionar y Salir</button>
-        <button type="button" class="btn btn-secondary" data-bs-dismiss="modal">Cerrar</button>
+        <button type="button" class="btn btn-success" [appClickLock]="true" [lockDuration]="3000" (click)="addAndClose()"><i class="bi bi-plus-circle me-1"></i> Adicionar y Salir</button>
+        <button type="button" class="btn btn-secondary" [appClickLock]="true" [lockDuration]="1200" data-bs-dismiss="modal">Cerrar</button>
       </div>
     </div>
   </div>
