@@ -616,7 +616,8 @@ export class MensualidadModalComponent implements OnInit, OnChanges {
       }
     }
     if (!this.isFormValidForMetodo()) {
-      this.modalAlertMessage = 'Complete los campos obligatorios.';
+      const missing = this.collectMissingFieldsForMetodo();
+      this.modalAlertMessage = missing.length ? `Complete los siguientes campos: ${missing.join(', ')}.` : 'Complete los campos obligatorios.';
       this.modalAlertType = 'warning';
       return;
     }
@@ -869,7 +870,74 @@ export class MensualidadModalComponent implements OnInit, OnChanges {
       const instance = bs.Modal.getInstance(modalEl) || new bs.Modal(modalEl);
       instance.hide();
     }
+    if (this.isTarjeta || this.isCheque || this.isDeposito || this.isTransferencia) {
+      this.resetTarjetaFields();
+    }
     this.modalAlertMessage = '';
+  }
+
+  private getFieldLabel(name: string): string {
+    const map: Record<string, string> = {
+      metodo_pago: 'Método de Pago',
+      comprobante: 'Comprobante',
+      id_cuentas_bancarias: 'Cuenta destino',
+      fecha_deposito: 'Fecha depósito',
+      nro_deposito: 'Num. depósito',
+      banco_origen: 'Banco Origen',
+      tarjeta_first4: 'Nº Tarjeta (4 primeros)',
+      tarjeta_last4: 'Nº Tarjeta (4 últimos)',
+      cantidad: 'Cantidad',
+      monto_parcial: this.tipo === 'reincorporacion' ? 'Saldo a pagar' : 'Monto parcial',
+    };
+    return map[name] || name;
+  }
+
+  private collectMissingFieldsForMetodo(): string[] {
+    const out: string[] = [];
+    const addIfMissing = (n: string) => {
+      const c = this.form.get(n);
+      if (!c) return;
+      c.updateValueAndValidity({ emitEvent: false });
+      const v = (c.value ?? '').toString().trim();
+      const invalid = !v || c.invalid;
+      if (invalid) {
+        try { c.markAsTouched(); } catch {}
+        out.push(this.getFieldLabel(n));
+      }
+    };
+    const metodo = (this.form.get('metodo_pago')?.value || '').toString();
+    if (!metodo) addIfMissing('metodo_pago');
+    const comp = (this.form.get('comprobante')?.value || '').toString().toUpperCase();
+    if (!(comp === 'RECIBO' || comp === 'FACTURA')) out.push(this.getFieldLabel('comprobante'));
+    if (this.tipo === 'mensualidad') {
+      const esParcial = !!this.form.get('pago_parcial')?.value;
+      if (esParcial) {
+        addIfMissing('monto_parcial');
+      } else {
+        addIfMissing('cantidad');
+      }
+    }
+    if (this.isTarjeta) {
+      ['id_cuentas_bancarias','fecha_deposito','nro_deposito','banco_origen','tarjeta_first4','tarjeta_last4'].forEach(addIfMissing);
+    } else if (this.isTransferencia) {
+      ['id_cuentas_bancarias','fecha_deposito','nro_deposito','banco_origen'].forEach(addIfMissing);
+    } else if (this.isCheque || this.isDeposito) {
+      ['id_cuentas_bancarias','fecha_deposito','nro_deposito'].forEach(addIfMissing);
+    }
+    return out;
+  }
+
+  private resetTarjetaFields(): void {
+    const names = ['banco_origen','tarjeta_first4','tarjeta_last4','id_cuentas_bancarias','fecha_deposito','nro_deposito'];
+    for (const n of names) {
+      const c = this.form.get(n);
+      if (!c) continue;
+      const v = (n === 'id_cuentas_bancarias') ? '' : '';
+      c.setValue(v, { emitEvent: false });
+      c.markAsPristine();
+      c.markAsUntouched();
+      c.updateValueAndValidity({ emitEvent: false });
+    }
   }
 
   private isFormValidForMetodo(): boolean {

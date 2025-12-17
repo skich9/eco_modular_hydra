@@ -6,6 +6,11 @@
         <button type="button" class="btn-close" data-bs-dismiss="modal" aria-label="Close"></button>
       </div>
       <div class="modal-body">
+        <div *ngIf="modalAlertMessage" class="alert" [ngClass]="{
+          'alert-warning': modalAlertType === 'warning',
+          'alert-danger': modalAlertType === 'error',
+          'alert-success': modalAlertType === 'success'
+        }">{{ modalAlertMessage }}</div>
         <div class="p-3 bg-primary bg-opacity-10 rounded mb-3">
           <div class="row g-3 align-items-center">
             <div class="col-md-8">
@@ -16,10 +21,11 @@
             </div>
             <div class="col-md-4" [formGroup]="form">
               <label class="form-label">Método de Pago</label>
-              <select class="form-select" formControlName="metodo_pago">
+              <select class="form-select" formControlName="metodo_pago" [class.is-invalid]="form.get('metodo_pago')?.invalid && (form.get('metodo_pago')?.touched || form.get('metodo_pago')?.dirty)">
                 <option value="">-- Seleccione --</option>
                 <option *ngFor="let f of formasCobro" [value]="f.id_forma_cobro">{{ labelForma(f) }}</option>
               </select>
+              <div class="invalid-feedback">Seleccione un método de pago</div>
             </div>
           </div>
         </div>
@@ -74,30 +80,36 @@
                 <div class="row g-3 align-items-end">
                   <div class="col-md-4">
                     <label class="form-label">Cuenta destino</label>
-                    <select class="form-select" formControlName="id_cuentas_bancarias">
+                    <select class="form-select" formControlName="id_cuentas_bancarias" [class.is-invalid]="form.get('id_cuentas_bancarias')?.invalid && (form.get('id_cuentas_bancarias')?.touched || form.get('id_cuentas_bancarias')?.dirty)">
                       <option value="">Seleccione cuenta/banco</option>
                       <option *ngFor="let c of cuentasBancarias" [value]="c.id_cuentas_bancarias">{{ c.banco }} - {{ c.numero_cuenta }}</option>
                     </select>
+                    <div class="invalid-feedback">Seleccione una cuenta destino</div>
                   </div>
                   <div class="col-md-4">
                     <label class="form-label">Fecha depósito</label>
-                    <input type="date" class="form-control" formControlName="fecha_deposito" />
+                    <input type="date" class="form-control" formControlName="fecha_deposito" [class.is-invalid]="form.get('fecha_deposito')?.invalid && (form.get('fecha_deposito')?.touched || form.get('fecha_deposito')?.dirty)" />
+                    <div class="invalid-feedback">Ingrese la fecha del depósito</div>
                   </div>
                   <div class="col-md-4">
                     <label class="form-label">Num. depósito</label>
-                    <input type="text" class="form-control" formControlName="nro_deposito" />
+                    <input type="text" class="form-control" formControlName="nro_deposito" [class.is-invalid]="form.get('nro_deposito')?.invalid && (form.get('nro_deposito')?.touched || form.get('nro_deposito')?.dirty)" />
+                    <div class="invalid-feedback">Ingrese el número de depósito</div>
                   </div>
                   <div class="col-md-4" *ngIf="isTransferencia || isTarjeta">
                     <label class="form-label">Banco Origen</label>
-                    <input type="text" class="form-control" formControlName="banco_origen" placeholder="Banco origen" />
+                    <input type="text" class="form-control" formControlName="banco_origen" placeholder="Banco origen" [class.is-invalid]="form.get('banco_origen')?.invalid && (form.get('banco_origen')?.touched || form.get('banco_origen')?.dirty)" />
+                    <div class="invalid-feedback">Ingrese el banco de origen</div>
                   </div>
                   <div class="col-md-2" *ngIf="isTarjeta">
                     <label class="form-label">Tarjeta (4 primeros)</label>
-                    <input class="form-control" maxlength="4" formControlName="tarjeta_first4" placeholder="4" />
+                    <input class="form-control" maxlength="4" formControlName="tarjeta_first4" placeholder="4" [class.is-invalid]="form.get('tarjeta_first4')?.invalid && (form.get('tarjeta_first4')?.touched || form.get('tarjeta_first4')?.dirty)" />
+                    <div class="invalid-feedback">Ingrese 4 dígitos</div>
                   </div>
                   <div class="col-md-2" *ngIf="isTarjeta">
                     <label class="form-label">Tarjeta (4 últimos)</label>
-                    <input class="form-control" maxlength="4" formControlName="tarjeta_last4" placeholder="4" />
+                    <input class="form-control" maxlength="4" formControlName="tarjeta_last4" placeholder="4" [class.is-invalid]="form.get('tarjeta_last4')?.invalid && (form.get('tarjeta_last4')?.touched || form.get('tarjeta_last4')?.dirty)" />
+                    <div class="invalid-feedback">Ingrese 4 dígitos</div>
                   </div>
                 </div>
               </div>
