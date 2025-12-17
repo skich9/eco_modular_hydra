@@ -1561,6 +1561,36 @@ export class CobrosComponent implements OnInit {
       this.showAlert('Solo puede eliminar la última fila del detalle', 'warning');
       return;
     }
+    // Antes de eliminar, si la fila es una Mensualidad parcial, reintegrar el monto al saldo frontal
+    try {
+      const ctrl = this.pagos.at(i) as FormGroup;
+      const detalle = (ctrl.get('detalle')?.value || '').toString();
+      const isMensualidad = /^\s*Mensualidad\s*-/i.test(detalle);
+      const esParcial = !!ctrl.get('es_parcial')?.value;
+      const numeroCuota = Number(ctrl.get('numero_cuota')?.value || 0);
+      const pu = Number(ctrl.get('pu_mensualidad')?.value || 0);
+      if (isMensualidad) {
+        if (esParcial && numeroCuota) {
+          const monto = this.calcRowSubtotal(i);
+          const prevSaldo = Number(this.frontSaldoByCuota[numeroCuota] || 0);
+          const base = pu > 0 ? pu : Number(this.resumen?.totales?.pu_mensual || this.mensualidadPU || 0);
+          let nuevoSaldo = (isFinite(prevSaldo) ? prevSaldo : 0) + (isFinite(monto) ? monto : 0);
+          if (base > 0 && nuevoSaldo > base) nuevoSaldo = base;
+          this.frontSaldoByCuota[numeroCuota] = nuevoSaldo;
+          // Fijar foco en la misma cuota nuevamente
+          this.lockedMensualidadCuota = numeroCuota;
+          this.startCuotaOverrideValue = numeroCuota;
+          // Actualizar PU sugerido para el próximo modal
+          if (nuevoSaldo > 0) {
+            this.mensualidadPU = nuevoSaldo;
+          } else {
+            const puSem = Number(this.resumen?.totales?.pu_mensual || 0);
+            const puNext = Number(this.resumen?.mensualidad_next?.next_cuota?.monto ?? 0);
+            this.mensualidadPU = puSem > 0 ? puSem : puNext;
+          }
+        }
+      }
+    } catch {}
     this.pagos.removeAt(i);
   }
 
