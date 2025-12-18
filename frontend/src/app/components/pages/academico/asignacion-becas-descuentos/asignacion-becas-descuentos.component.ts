@@ -68,7 +68,9 @@ export class AsignacionBecasDescuentosComponent implements OnInit {
 	asignaciones: AsignacionPreview[] = [];
 	gestionesCatalogo: string[] = [];
 	carrerasCatalogo: Array<{ codigo_carrera: string; nombre: string }> = [];
-	tipoInscripcionOptions: string[] = ['NORMAL', 'RECUPERACION', 'REINCORPORACION'];
+	tipoInscripcionOptions: string[] = [];
+	cuotas: Array<{ numero_cuota: number; monto: number; estado_pago: string; selected: boolean }> = [];
+	allCuotasSelected: boolean = false;
 
 	constructor(private fb: FormBuilder, private cobrosService: CobrosService) {
 		this.searchForm = this.fb.group({
@@ -135,7 +137,62 @@ export class AsignacionBecasDescuentosComponent implements OnInit {
 	}
 
 	selectDef(row: any): void {
-		this.selectedRowKey = this.keyOf(row);
+		this.toggleSelect(row);
+	}
+
+	toggleSelect(row: any): void {
+		const key = this.keyOf(row);
+		if (this.selectedRowKey === key) {
+			this.selectedRowKey = null;
+			this.updateDescuentoTotal(null);
+			return;
+		}
+		this.selectedRowKey = key;
+		this.updateDescuentoTotal(row);
+	}
+
+	private updateDescuentoTotal(row: any | null): void {
+		const mrCtrl = this.contextForm.get('montoReferencia');
+		const montoRef = Number((mrCtrl?.value ?? 0) as any) || 0;
+		let descuentoVal = 0;
+		if (row) {
+			const monto = Number((row?.monto ?? 0) as any) || 0;
+			const isPorc = !!row?.porcentaje;
+			descuentoVal = isPorc ? (montoRef * monto) / 100 : monto;
+		}
+		const total = Math.max(montoRef - descuentoVal, 0);
+		this.contextForm.patchValue({
+			descuento: this.round2(descuentoVal),
+			totalPagar: this.round2(total)
+		});
+	}
+
+	recalcMontoReferenciaFromCuotas(): void {
+		const sum = this.cuotas.filter(c => c.selected).reduce((acc, c) => acc + (Number(c.monto) || 0), 0);
+		const montoRef = this.round2(sum);
+		this.contextForm.patchValue({ montoReferencia: montoRef });
+		let selectedRow: any | null = null;
+		if (this.selectedRowKey) {
+			selectedRow = this.definicionesFiltradas.find(r => this.keyOf(r as any) === this.selectedRowKey) as any || null;
+		}
+		this.updateDescuentoTotal(selectedRow);
+	}
+
+	toggleCuota(index: number, checked: boolean): void {
+		if (index < 0 || index >= this.cuotas.length) return;
+		this.cuotas[index].selected = !!checked;
+		this.allCuotasSelected = this.cuotas.length > 0 && this.cuotas.every(c => c.selected);
+		this.recalcMontoReferenciaFromCuotas();
+	}
+
+	toggleAllCuotas(checked: boolean): void {
+		this.allCuotasSelected = !!checked;
+		this.cuotas = this.cuotas.map(c => ({ ...c, selected: this.allCuotasSelected }));
+		this.recalcMontoReferenciaFromCuotas();
+	}
+
+	private round2(n: number): number {
+		return Math.round((n + Number.EPSILON) * 100) / 100;
 	}
 
 	buscarPorCodCeta(): void {
@@ -196,7 +253,36 @@ export class AsignacionBecasDescuentosComponent implements OnInit {
 		};
 		this.codInscrip = insc?.cod_inscrip ?? null;
 		this.codPensumSelected = (insc?.cod_pensum ?? est?.cod_pensum ?? '') as string;
-		this.contextForm.patchValue({ montoReferencia: 0, descuento: 0, totalPagar: 0, tipoInscripcion: insc?.tipo_inscripcion || '' });
+		const asignacionesCuotas = Array.isArray(res?.data?.asignaciones) ? res.data.asignaciones : [];
+		this.cuotas = (asignacionesCuotas as any[]).map((a: any) => {
+			const estado = String(a?.estado_pago || '').toUpperCase();
+			const selected = estado === 'PENDIENTE' || estado === 'PARCIAL';
+			return {
+				numero_cuota: Number(a?.numero_cuota || 0) || 0,
+				monto: Number(a?.monto || 0) || 0,
+				estado_pago: String(a?.estado_pago || ''),
+				selected
+			};
+		});
+		this.allCuotasSelected = this.cuotas.length > 0 && this.cuotas.every(c => c.selected);
+		const sumCuotas = this.cuotas.filter(c => c.selected).reduce((acc, c) => acc + (Number(c.monto) || 0), 0);
+		const costoSem = Number(res?.data?.costo_semestral || 0) || 0;
+		const paramMonto = Number(res?.data?.parametros_costos?.monto_fijo || 0) || 0;
+		const paramCuotas = Number(res?.data?.parametros_costos?.nro_cuotas || 0) || 0;
+		const fallbackCalc = costoSem || (paramMonto && paramCuotas ? (paramMonto * paramCuotas) : 0);
+		const montoRef = (sumCuotas > 0 ? sumCuotas : (this.cuotas.length ? 0 : fallbackCalc)) || 0;
+		const tipos = (inscripciones as any[])
+			.filter((i: any) => String(i?.gestion || '') === String(selectedGestion || ''))
+			.map((i: any) => String(i?.tipo_inscripcion || '').toUpperCase())
+			.filter((t: string) => !!t);
+		this.tipoInscripcionOptions = Array.from(new Set(tipos));
+		const tipoDefault = (insc?.tipo_inscripcion || this.tipoInscripcionOptions[0] || '') as string;
+		this.contextForm.patchValue({ montoReferencia: this.round2(montoRef), descuento: 0, totalPagar: this.round2(montoRef), tipoInscripcion: tipoDefault });
+		let selectedRow: any | null = null;
+		if (this.selectedRowKey) {
+			selectedRow = this.definicionesFiltradas.find(r => this.keyOf(r as any) === this.selectedRowKey) as any || null;
+		}
+		this.updateDescuentoTotal(selectedRow);
 		this.gestionesDisponibles = gestiones;
 		if (!gesInput && gestion) {
 			this.searchForm.patchValue({ gestion });
@@ -252,6 +338,7 @@ export class AsignacionBecasDescuentosComponent implements OnInit {
 
 	cancelarSeleccion(): void {
 		this.selectedRowKey = null;
+		this.updateDescuentoTotal(null);
 	}
 
 	limpiarFormulario(): void {

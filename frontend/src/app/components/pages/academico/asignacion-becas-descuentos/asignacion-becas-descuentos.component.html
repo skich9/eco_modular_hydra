@@ -51,6 +51,9 @@
 					</div>
 				</div>
 			</form>
+				<div class="d-flex justify-content-end mt-2">
+					<button type="button" class="btn btn-outline-danger" (click)="limpiarFormulario()"><i class="fas fa-eraser me-1"></i>Limpiar</button>
+				</div>
 		</div>
 	</div>
 
@@ -62,7 +65,7 @@
 					<span>Asignaciones del Estudiante</span>
 				</div>
 				<div class="card-body">
-					<div class="table-responsive">
+					<div class="table-responsive table-scroll-5">
 						<table class="table table-sm table-striped align-middle">
 							<thead>
 								<tr>
@@ -126,8 +129,8 @@
 										<span *ngIf="!$any(d).porcentaje">{{ $any(d).monto || 0 }} Bs</span>
 									</td>
 									<td>
-										<button class="btn btn-sm btn-outline-primary" (click)="asignarSeleccion(); $event.stopPropagation();">
-											<i class="fas fa-plus"></i>
+										<button class="btn btn-sm" [ngClass]="(keyOf(d)===selectedRowKey) ? 'btn-success' : 'btn-outline-primary'" (click)="toggleSelect(d); $event.stopPropagation();">
+											<i class="fas" [ngClass]="(keyOf(d)===selectedRowKey) ? 'fa-check' : 'fa-plus'"></i>
 										</button>
 									</td>
 								</tr>
@@ -138,11 +141,6 @@
 						</table>
 					</div>
 				</div>
-				<div class="card-footer d-flex gap-2">
-					<button class="btn btn-success" (click)="asignarSeleccion()"><i class="fas fa-check me-1"></i>Asignar</button>
-					<button class="btn btn-outline-secondary" (click)="cancelarSeleccion()"><i class="fas fa-times me-1"></i>Cancelar</button>
-					<button class="btn btn-outline-danger ms-auto" (click)="limpiarFormulario()"><i class="fas fa-eraser me-1"></i>Limpiar</button>
-				</div>
 			</div>
 		</div>
 	</div>
@@ -150,6 +148,36 @@
 	<!-- Totales y observaciones -->
 	<div class="card">
 		<div class="card-body">
+			<div class="d-flex align-items-center gap-2 mb-2" *ngIf="cuotas.length">
+				<button type="button" class="btn btn-sm btn-outline-primary" (click)="toggleAllCuotas(true)">Seleccionar todo</button>
+			</div>
+			<div class="table-responsive mb-3">
+				<table class="table table-sm align-middle">
+					<thead>
+						<tr>
+							<th style="width:40px">
+								<input type="checkbox" class="form-check-input" [checked]="allCuotasSelected" (change)="toggleAllCuotas($event.target.checked)" />
+							</th>
+							<th>Cuota</th>
+							<th>Monto</th>
+							<th>Estado</th>
+						</tr>
+					</thead>
+					<tbody>
+						<tr *ngFor="let c of cuotas; index as i">
+							<td>
+								<input type="checkbox" class="form-check-input" [checked]="c.selected" (change)="toggleCuota(i, $event.target.checked)" />
+							</td>
+							<td>{{ c.numero_cuota }}</td>
+							<td>{{ c.monto | number:'1.2-2' }}</td>
+							<td>{{ c.estado_pago }}</td>
+						</tr>
+						<tr *ngIf="!cuotas.length">
+							<td colspan="4" class="text-center text-muted py-2">Sin cuotas</td>
+						</tr>
+					</tbody>
+				</table>
+			</div>
 			<form [formGroup]="contextForm">
 				<div class="row g-3">
 					<div class="col-sm-4 col-md-3">
@@ -177,6 +205,10 @@
 					</div>
 				</div>
 			</form>
+			<div class="d-flex gap-2 mt-3">
+				<button class="btn btn-success" (click)="asignarSeleccion()"><i class="fas fa-check me-1"></i>Asignar</button>
+				<button class="btn btn-outline-secondary" (click)="cancelarSeleccion()"><i class="fas fa-times me-1"></i>Cancelar</button>
+			</div>
 		</div>
 	</div>
 </div>
