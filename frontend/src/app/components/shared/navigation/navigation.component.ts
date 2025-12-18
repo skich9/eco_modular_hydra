@@ -118,11 +118,15 @@ export class NavigationComponent implements OnInit {
 				this.carreras = res.data || [];
 				const idx = this.menuItems.findIndex(mi => mi.name === 'Académico');
 				if (idx !== -1) {
-					this.menuItems[idx].submenu = this.carreras.map(c => ({
-						name: c.nombre,
-						icon: 'fa-university',
-						route: `/academico/${c.codigo_carrera}`
-					}));
+					const fixedItem = { name: 'Asignación de Becas/Descuentos', icon: 'fa-percent', route: '/academico/asignacion-becas-descuentos' };
+					this.menuItems[idx].submenu = [
+						fixedItem,
+						...this.carreras.map(c => ({
+							name: c.nombre,
+							icon: 'fa-university',
+							route: `/academico/${c.codigo_carrera}`
+						}))
+					];
 				}
 			},
 			error: (err: any) => {

@@ -36,6 +36,7 @@ use App\Http\Controllers\Api\SocketController;
 use App\Http\Controllers\Api\FacturaEstadoController;
 use App\Http\Controllers\Api\FacturaAnulacionController;
 use App\Http\Controllers\Api\FacturaPdfController;
+use App\Http\Controllers\Api\SgaSyncController;
 
 // Búsqueda de estudiantes
 Route::get('/estudiantes/search', [EstudianteController::class, 'search']);
@@ -123,6 +124,9 @@ Route::apiResource('items-cobro', ItemsCobroController::class);
 Route::patch('items-cobro/{id}/toggle-status', [ItemsCobroController::class, 'toggleStatus']);
 // Sincronización desde SGA/SIN
 Route::post('items-cobro/sync-sin', [ItemsCobroController::class, 'syncFromSin']);
+
+// Sincronización SGA: Becas y Descuentos (de_becas -> def_descuentos_beca, def_descuentos)
+Route::post('sga/sync/becas-descuentos', [SgaSyncController::class, 'syncBecasDescuentos']);
 
 // Formas de cobro (catálogo)
 Route::get('formas-cobro', [FormaCobroController::class, 'index']);

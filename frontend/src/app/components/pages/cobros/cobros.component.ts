@@ -1712,15 +1712,53 @@ export class CobrosComponent implements OnInit {
       },
       error: (err) => {
         console.error('Resumen error:', err);
+        const status = Number(err?.status || 0);
+        const backendMsg = (err?.error?.message || err?.message || '').toString();
+        // Fallback: si la gestión solicitada no aplica, reintentar con la última inscripción del estudiante
+        if (status === 404 && backendMsg.toLowerCase().includes('no tiene inscripción en la gestión solicitada')) {
+          try {
+            const cod = this.searchForm.get('cod_ceta')?.value;
+            // limpiar gestion seleccionada y reintentar sin gestion
+            this.searchForm.patchValue({ gestion: '' }, { emitEvent: false });
+            this.cobrosService.getResumen(cod).subscribe({
+              next: (res2) => {
+                if (res2?.success) {
+                  this.resumen = res2.data;
+                  this.showOpciones = true;
+                  this.showAlert('Se usó la última inscripción del estudiante', 'warning');
+                  // Prefill cabecera con la nueva respuesta
+                  const est = this.resumen?.estudiante || {};
+                  const ins = this.resumen?.inscripcion || {};
+                  (this.batchForm.get('cabecera') as FormGroup).patchValue({
+                    cod_ceta: est.cod_ceta || cod,
+                    cod_pensum: ins.cod_pensum ?? est.cod_pensum ?? '',
+                    tipo_inscripcion: ins.tipo_inscripcion || '',
+                    gestion: this.resumen?.gestion ?? ins.gestion ?? ''
+                  });
+                  // Actualizar costos contextuales tras fallback
+                  this.updateRezagadoCosto();
+                  this.updateReincorporacionCosto();
+                } else {
+                  this.resumen = null; this.reincorporacion = null; this.showOpciones = false;
+                }
+                this.loading = false;
+              },
+              error: (e2) => {
+                this.resumen = null; this.reincorporacion = null; this.showOpciones = false;
+                this.showAlert((e2?.error?.message || 'Error al obtener resumen (fallback)') as string, 'error');
+                this.loading = false;
+              }
+            });
+            return;
+          } catch {}
+        }
+        // Caso general: mostrar mensajes como antes
         this.resumen = null;
         this.reincorporacion = null;
         this.showOpciones = false;
-        const status = Number(err?.status || 0);
-        const backendMsg = (err?.error?.message || err?.message || '').toString();
         if (status === 404) {
           this.showAlert(backendMsg || 'Estudiante no encontrado', 'warning');
         } else if (status === 422) {
-          // Mostrar errores de validación si existen
           const errors = err?.error?.errors || {};
           const parts: string[] = [];
           for (const k of Object.keys(errors)) {

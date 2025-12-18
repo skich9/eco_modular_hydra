@@ -45,6 +45,12 @@ export const routes: Routes = [
 			{ path: 'roles/nuevo', component: RolFormComponent },
 			{ path: 'roles/editar/:id', component: RolFormComponent },
             
+            // Ruta para Académico: página específica (debe ir antes de la parametrizada)
+            {
+                path: 'academico/asignacion-becas-descuentos',
+                loadComponent: () => import('./components/pages/academico/asignacion-becas-descuentos/asignacion-becas-descuentos.component')
+                    .then(m => m.AsignacionBecasDescuentosComponent)
+            },
             // Ruta para Académico (carreras -> pensums + materias)
             {
                 path: 'academico/:codigo',
