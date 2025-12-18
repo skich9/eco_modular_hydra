@@ -202,7 +202,7 @@
 										<td>
 											<ng-container *ngIf="pg.get('observaciones')?.value as obs; else _obsVacias">
 												<div class="obs-cell">
-													<span class="obs-icon" aria-label="Observaciones"><i class="bi bi-eye"></i></span>
+													<span class="obs-icon" aria-label="Observaciones"><i class="fa-regular fa-eye"></i></span>
 													<div class="obs-popover">
 														<div class="obs-title">Observaciones</div>
 														<div class="obs-content">{{ obs }}</div>
@@ -221,7 +221,7 @@
 												class="btn btn-sm btn-outline-danger"
 												(click)="removePago(i)"
 												[disabled]="i !== (pagos.length - 1)">
-												<i class="bi bi-trash"></i>
+												<i class="fa fa-regular fa-trash-can"></i>
 											</button>
 										</td>
 									</tr>
@@ -287,21 +287,21 @@
 										<td>Mensualidad</td>
 										<td>{{ (resumen?.mensualidad_next?.next_cuota?.monto ?? resumen?.totales?.pu_mensual) | number:'1.2-2' }}</td>
 										<td class="text-center">
-											<button type="button" class="btn btn-sm btn-success" (click)="openMensualidadModal()"><i class="bi bi-plus"></i></button>
+											<button type="button" class="btn btn-sm btn-success" (click)="openMensualidadModal()"><i class="fa fa-plus"></i></button>
 										</td>
 									</tr>
 									<tr>
 										<td>Rezagado</td>
 										<td>{{ rezagadoCosto != null ? (rezagadoCosto | number:'1.2-2') : '-' }}</td>
 										<td class="text-center">
-											<button type="button" class="btn btn-sm btn-success" (click)="openRezagadoModal()"><i class="bi bi-plus"></i></button>
+											<button type="button" class="btn btn-sm btn-success" (click)="openRezagadoModal()"><i class="fa fa-plus"></i></button>
 										</td>
 									</tr>
 									<tr *ngIf="reincorporacion?.debe_reincorporacion && reincorporacionCosto && reincorporacionCosto > 0">
 										<td>Reincorporación</td>
 										<td>{{ reincorporacionCosto | number:'1.2-2' }}</td>
 										<td class="text-center">
-											<button type="button" class="btn btn-sm btn-success" (click)="openReincorporacionModal()"><i class="bi bi-plus"></i></button>
+											<button type="button" class="btn btn-sm btn-success" (click)="openReincorporacionModal()"><i class="fa fa-plus"></i></button>
 										</td>
 									</tr>
 									<tr>
@@ -313,7 +313,7 @@
 											<ng-template #recNoMonto>-</ng-template>
 										</td>
 										<td class="text-center">
-											<button type="button" class="btn btn-sm btn-success" (click)="openRecuperacionModal()"><i class="bi bi-plus"></i></button>
+											<button type="button" class="btn btn-sm btn-success" (click)="openRecuperacionModal()"><i class="fa fa-plus"></i></button>
 										</td>
 									</tr>
 									<tr *ngIf="resumen?.arrastre?.has">
