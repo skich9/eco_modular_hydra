@@ -22,6 +22,12 @@ class Estudiante extends Model
 		'ap_paterno',
 		'ap_materno',
 		'email',
+		'carrera',
+		'resolucion',
+		'gestion',
+		'grupos',
+		'descuento',
+		'observaciones',
 		'cod_pensum',
 		'estado',
 	];

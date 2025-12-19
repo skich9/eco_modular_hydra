@@ -118,7 +118,7 @@ class CobroController extends Controller
 				[$scopeCobro]
 			);
 			$row = DB::selectOne('SELECT LAST_INSERT_ID() AS id');
-			$nroCobro = (int)($row->id ?? 0);
+			$nroCobro = (int)(isset($row->id) ? $row->id : 0);
 			$data = $request->all();
 			$data['nro_cobro'] = $nroCobro;
 			$data['anio_cobro'] = $anioCobro;
@@ -246,7 +246,21 @@ class CobroController extends Controller
 			$gestionReq = $request->input('gestion');
 			$warnings = [];
 
-			$estudiante = Estudiante::with('pensum')->find($codCeta);
+			// Query para obtener documentos del estudiante
+			$documentosQuery = DB::table('doc_presentados as d')
+				->select(
+					'd.cod_ceta',
+					DB::raw("MAX(CASE WHEN UPPER(d.nombre_doc) LIKE '%CARNET%' THEN d.numero_doc END) as ci_doc"),
+					DB::raw("MAX(CASE WHEN UPPER(d.nombre_doc) LIKE '%TELÉFONO%' OR UPPER(d.nombre_doc) LIKE '%TELEFONO%' OR UPPER(d.nombre_doc) LIKE '%CELULAR%' OR UPPER(d.nombre_doc) LIKE '%CEL%' THEN d.numero_doc END) as telefono_doc"),
+					DB::raw("MAX(d.numero_doc) as any_doc")
+				)
+				->groupBy('d.cod_ceta');
+			
+			$estudiante = Estudiante::with('pensum')
+				->leftJoinSub($documentosQuery, 'dp', function($join){ 
+					$join->on('dp.cod_ceta', '=', 'estudiantes.cod_ceta'); 
+				})
+				->find($codCeta);
 			if (!$estudiante) {
 				return response()->json([
 					'success' => false,
@@ -317,11 +331,11 @@ class CobroController extends Controller
 							return strtoupper(trim($str));
 						};
 						$pick = $rows->first(function($r) use ($norm){
-							$tc = $norm($r->tipo_costo ?? '');
+							$tc = $norm(isset($r->tipo_costo) ? $r->tipo_costo : '');
 							return $tc === 'INSTACIA' || $tc === 'INSTANCIA' || $tc === 'RECUPERACION' || strpos($tc, 'SEGUNDA') !== false;
 						});
 						if (!$pick) {
-							$pick = $rows->first(function($r) use ($norm){ $tc = $norm($r->tipo_costo ?? ''); return (strpos($tc,'RECUP') !== false) || (strpos($tc,'INSTANC') !== false); });
+							$pick = $rows->first(function($r) use ($norm){ $tc = $norm(isset($r->tipo_costo) ? $r->tipo_costo : ''); return (strpos($tc,'RECUP') !== false) || (strpos($tc,'INSTANC') !== false); });
 						}
 						if ($pick) {
 							$recuperacionRow = $pick;
@@ -358,13 +372,15 @@ class CobroController extends Controller
 					$q->where('tipo_inscripcion', $primaryInscripcion->tipo_inscripcion);
 				});
 
-			$cobrosMensualidad = (clone $cobrosBase)
+			$cobrosMensualidad = clone $cobrosBase;
+			$cobrosMensualidad = $cobrosMensualidad
 				->where(function($q){
 					$q->whereNotNull('id_cuota')
 						->orWhereNotNull('id_asignacion_costo');
 				})
 				->get();
-			$cobrosItems = (clone $cobrosBase)->whereNotNull('id_item')->get();
+			$cobrosItems = clone $cobrosBase;
+			$cobrosItems = $cobrosItems->whereNotNull('id_item')->get();
 			$totalMensualidad = $cobrosMensualidad->sum('monto');
 			$totalItems = $cobrosItems->sum('monto');
 
@@ -375,7 +391,7 @@ class CobroController extends Controller
 				'total_cuotas' => $mensualidadTotalCuotas,
 				'asignaciones' => $asignacionesPrimarias->toArray()
 			]);
-			$parciales = $asignacionesPrimarias->filter(function($a){ return (string)($a->estado_pago ?? '') === 'PARCIAL'; })->sortBy('numero_cuota')->values();
+			$parciales = $asignacionesPrimarias->filter(function($a){ return (string)($a->estado_pago ? $a->estado_pago : '') === 'PARCIAL'; })->sortBy('numero_cuota')->values();
 			$parcialCount = $parciales->count();
 			if ($mensualidadTotalCuotas > 0) {
 				$orderedAsign = $asignacionesPrimarias->values(); // ya está ordenado por numero_cuota asc
@@ -622,10 +638,42 @@ class CobroController extends Controller
 				->values()
 				->all();
 
+			// Preparar objeto estudiante con datos adicionales de documentos y de inscripción
+			$estudianteData = $estudiante->toArray();
+			if (isset($estudiante->dp)) {
+				$estudianteData['ci'] = $estudiante->dp->ci_doc ?: ($estudiante->ci ?: '');
+				$estudianteData['telefono'] = $estudiante->dp->telefono_doc ?: '';
+				$estudianteData['cedula'] = $estudiante->dp->ci_doc ?: ($estudiante->ci ?: '');
+			} else {
+				$estudianteData['ci'] = $estudiante->ci ?: '';
+				$estudianteData['telefono'] = '';
+				$estudianteData['cedula'] = $estudiante->ci ?: '';
+			}
+			
+			// Si tenemos ci_doc pero cedula está vacío, asignar ci_doc a cedula
+			if (empty($estudianteData['cedula']) && !empty($estudianteData['ci_doc'])) {
+				$estudianteData['cedula'] = $estudianteData['ci_doc'];
+				$estudianteData['ci'] = $estudianteData['ci_doc'];
+			}
+			
+			// Agregar datos de la inscripción principal al estudiante
+			if ($primaryInscripcion) {
+				$estudianteData['carrera'] = $primaryInscripcion->carrera;
+				// Obtener resolución desde el pensum de la inscripción
+				$resolucion = DB::table('pensums')
+					->where('cod_pensum', $primaryInscripcion->cod_pensum)
+					->value('resolucion');
+				$estudianteData['resolucion'] = $resolucion;
+				$estudianteData['gestion'] = $primaryInscripcion->gestion;
+				$estudianteData['grupos'] = $primaryInscripcion->cod_curso;
+				$estudianteData['descuento'] = $primaryInscripcion->descuento ?? null;
+				$estudianteData['observaciones'] = $primaryInscripcion->observaciones ?? null;
+			}
+
 			return response()->json([
 				'success' => true,
 				'data' => [
-					'estudiante' => $estudiante,
+					'estudiante' => $estudianteData,
 					'inscripciones' => $inscripciones,
 					'grupos' => $grupos,
 					'gestiones_all' => $gestionesAll,

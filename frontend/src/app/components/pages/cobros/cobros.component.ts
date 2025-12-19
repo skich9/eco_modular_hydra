@@ -84,6 +84,7 @@ export class CobrosComponent implements OnInit {
   @ViewChild(RecuperacionModalComponent) recuperacionDlg?: RecuperacionModalComponent;
   @ViewChild(BusquedaEstudianteModalComponent) buscarDlg?: BusquedaEstudianteModalComponent;
   // Ref del panel QR para delegar acciones (guardar en espera)
+  @ViewChild('kardexDlg') kardexDlg?: KardexModalComponent;
   @ViewChild('qrPanel') qrPanel?: QrPanelComponent;
 
   // Modal de éxito (registro realizado)

@@ -43,12 +43,19 @@ class EstudianteController extends Controller
 				});
 			}
 			// Clonar para total
-			$total = (clone $q)->count();
+			$totalQuery = $q;
+			$total = $totalQuery->count();
 			$rows = $q->select(
 				'estudiantes.cod_ceta',
 				'estudiantes.nombres',
 				'estudiantes.ap_paterno',
 				'estudiantes.ap_materno',
+				'estudiantes.carrera',
+				'estudiantes.resolucion',
+				'estudiantes.gestion',
+				'estudiantes.grupos',
+				'estudiantes.descuento',
+				'estudiantes.observaciones',
 				DB::raw("COALESCE(NULLIF(dp.ci_doc,''), NULLIF(dp.any_doc,''), NULLIF(estudiantes.ci,'')) as ci")
 			)
 				->orderBy('estudiantes.ap_paterno')
