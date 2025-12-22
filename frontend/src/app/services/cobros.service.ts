@@ -509,4 +509,30 @@ export class CobrosService {
 			map((res: any) => ({ success: !!res?.success, data: res?.data || null, message: res?.message }))
 		);
 	}
+
+	assignDescuento(payload: {
+		cod_ceta: number | string;
+		cod_pensum: string;
+		cod_inscrip: number;
+		id_usuario: number | string;
+		cod_beca: number; // siempre id de def_descuentos_beca
+		nombre: string;
+		porcentaje: number; // MONTO a descontar (no %)
+		observaciones?: string;
+		codigoArchivo?: string;
+		fechaSolicitud?: string; // yyyy-mm-dd
+		meses?: string;
+		tipo_inscripcion?: string;
+		cuotas: Array<{ numero_cuota: number; id_cuota?: number | null; monto_descuento: number; observaciones?: string }>;
+	}): Observable<any> {
+		return this.http.post<any>(`${this.apiUrl}/descuentos/asignar`, payload).pipe(
+			map((res: any) => ({ success: !!res?.success, data: res?.data, message: res?.message }))
+		);
+	}
+
+	deleteDescuento(id: number): Observable<any> {
+		return this.http.delete<any>(`${this.apiUrl}/descuentos/${id}`).pipe(
+			map((res: any) => ({ success: !!res?.success, data: res?.data, message: res?.message }))
+		);
+	}
 }
