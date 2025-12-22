@@ -769,6 +769,8 @@ class CobroController extends Controller
 								'id_asignacion_costo' => (isset($a->id_asignacion_costo) && $a->id_asignacion_costo != 0) ? (int)$a->id_asignacion_costo : null,
 								'id_cuota_template' => isset($a->id_cuota_template) ? $a->id_cuota_template : null,
 								'nro_cobro' => null,
+								'nro_factura' => isset($a->nro_factura) ? $a->nro_factura : null,
+								'nro_recibo' => isset($a->nro_recibo) ? $a->nro_recibo : null,
 								'fecha_cobro' => $fechaPago,
 								'es_completo' => 'TEMP', // Se marcará después
 							];
