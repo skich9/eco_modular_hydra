@@ -111,7 +111,7 @@
 										</td>
 										<td>{{ m?.nro_factura || '-' }}</td>
 										<td>{{ m?.nro_recibo || '0' }}</td>
-										<td>{{ 'No' }}</td>
+										<td>{{ m?.es_completo || 'No' }}</td>
 										<td>{{ (m?.fecha_pago | date:'dd/MM/yyyy') || '-' }}</td>
 										<td>{{ r?.estudiante?.razon_social || (r?.estudiante?.ap_paterno + ' / ' + r?.estudiante?.ci) || '-' }}</td>
 										<td>{{ m?.observaciones || 'Efectivo:' }}</td>
@@ -191,49 +191,9 @@
 					</div>
 				</div>
 
-				<!-- Mensualidades Pendientes -->
-				<div class="card mb-4">
-					<div class="card-header bg-warning text-white">
-						<h6 class="mb-0">Mensualidades no vencidas</h6>
-					</div>
-					<div class="card-body">
-						<div class="table-responsive">
-							<table class="table table-sm table-bordered align-middle">
-								<thead class="table-light">
-									<tr>
-										<th>Cuota</th>
-										<th>Vencimiento</th>
-										<th>Monto</th>
-										<th>Estado</th>
-										<th>Días hasta vencimiento</th>
-									</tr>
-								</thead>
-								<tbody>
-									<tr *ngFor="let m of (r?.mensualidades?.pendientes || [])">
-										<td>{{ m?.numero_cuota ? ('Cuota ' + m?.numero_cuota) : '-' }}</td>
-										<td>{{ (m?.fecha_vencimiento | date:'yyyy-MM-dd') || '-' }}</td>
-										<td>{{ m?.monto | number:'1.2-2' }}</td>
-										<td>
-											<span class="badge bg-warning">Pendiente</span>
-										</td>
-										<td>{{ '-' }}</td>
-									</tr>
-								</tbody>
-								<tfoot>
-									<tr>
-										<th colspan="2" class="text-end">Total Pendiente</th>
-										<th class="text-warning">{{ '-' }}</th>
-										<th colspan="2"></th>
-									</tr>
-								</tfoot>
-							</table>
-						</div>
-					</div>
-				</div>
-
 				<!-- Material Extra -->
 				<div class="card mb-4">
-					<div class="card-header bg-info text-white">
+					<div class="card-header bg-primary text-white">
 						<h6 class="mb-0">Material Extra</h6>
 					</div>
 					<div class="card-body">
