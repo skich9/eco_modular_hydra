@@ -1094,8 +1094,8 @@ export class CobrosComponent implements OnInit {
         return {
           cant: Number(g.get('cantidad')?.value || 0),
           detalle: (g.get('detalle')?.value || '').toString(),
-          pu: this.calcRowSubtotal(idx),
-          descuento: Number(g.get('descuento')?.value || 0),
+          pu: this.getRowDisplayPU(idx),
+          descuento: this.getRowDisplayDescuento(idx),
           subtotal: this.calcRowSubtotal(idx),
           obs: (g.get('observaciones')?.value || '').toString()
         };
@@ -1573,9 +1573,12 @@ export class CobrosComponent implements OnInit {
         if (esParcial && numeroCuota) {
           const monto = this.calcRowSubtotal(i);
           const prevSaldo = Number(this.frontSaldoByCuota[numeroCuota] || 0);
+          const desc = Number(ctrl.get('descuento')?.value || 0) || 0;
           const base = pu > 0 ? pu : Number(this.resumen?.totales?.pu_mensual || this.mensualidadPU || 0);
+          const netoBase = Math.max(0, base - (isNaN(desc) ? 0 : desc));
           let nuevoSaldo = (isFinite(prevSaldo) ? prevSaldo : 0) + (isFinite(monto) ? monto : 0);
-          if (base > 0 && nuevoSaldo > base) nuevoSaldo = base;
+          // Reintegrar respetando el neto (PU - descuento) de esa línea parcial
+          if (netoBase > 0 && nuevoSaldo > netoBase) nuevoSaldo = netoBase;
           this.frontSaldoByCuota[numeroCuota] = nuevoSaldo;
           // Fijar foco en la misma cuota nuevamente
           this.lockedMensualidadCuota = numeroCuota;
@@ -2468,10 +2471,12 @@ export class CobrosComponent implements OnInit {
       const detalle = esParcial ? `${baseDetalle} (Parcial)` : baseDetalle;
       const pu = Number(p.pu_mensualidad ?? this.mensualidadPU ?? 0);
       const cant = 1;
-      const desc = p.descuento ?? 0;
-      // Si es parcial y viene un monto explícito, usarlo respetando un tope máximo de PU
-      const montoBase = esParcial ? Number(p.monto || 0) : (cant * pu);
-      const monto = Math.max(0, montoBase - (isNaN(desc) ? 0 : Number(desc)));
+      const desc = Number(p.descuento ?? 0) || 0;
+      // Parcial: el monto es el ingresado por el usuario (validado en el modal contra el neto PU - descuento).
+      // No volver a restar el descuento para evitar doble aplicación.
+      const monto = esParcial
+        ? Math.max(0, Number(p.monto || 0))
+        : Math.max(0, cant * pu - (isNaN(desc) ? 0 : desc));
       // Inferir turno desde identidad/resumen
       const turnoVal = (() => {
         let t = ((this.identidadForm.get('turno') as any)?.value || this.resumen?.inscripcion?.turno || this.resumen?.estudiante?.turno || '').toString().trim().toUpperCase();
@@ -2480,7 +2485,8 @@ export class CobrosComponent implements OnInit {
         if (t === 'N') t = 'NOCHE';
         return t.normalize('NFD').replace(/\p{Diacritic}/gu, '');
       })();
-      const saldo = esParcial && pu ? Math.max(0, pu - monto) : 0;
+      const neto = Math.max(0, pu - (isNaN(desc) ? 0 : desc));
+      const saldo = esParcial ? Math.max(0, neto - monto) : 0;
       const obsStr = ((p.observaciones || '') + '').trim();
       // Mapear medio/doc para UI y envío
       const medioDoc: 'C' | 'M' | '' = (p.medio_doc === 'M' || p.computarizada === 'MANUAL') ? 'M' : (p.medio_doc === 'C' || p.computarizada === 'COMPUTARIZADA') ? 'C' : '' as any;
@@ -2807,6 +2813,101 @@ export class CobrosComponent implements OnInit {
     const desc = Number(g.get('descuento')?.value || 0);
     const sub = cant * pu - (isNaN(desc) ? 0 : desc);
     return sub > 0 ? sub : 0;
+  }
+
+  // P/U mostrado en la tabla: para pagos parciales con descuento, mostrar
+  // pago_parcial + (pago_parcial * descuento_total_cuota / PU_efectivo);
+  // en otros casos, mostrar pu_mensualidad normal.
+  getRowDisplayPU(i: number): number {
+    try {
+      const g = this.pagos.at(i) as FormGroup;
+      if (!g) return 0;
+      const esParcial = !!g.get('es_parcial')?.value;
+      const puEff = Number(g.get('pu_mensualidad')?.value || 0);
+      if (!esParcial) return puEff;
+      const montoParcial = Number(g.get('monto')?.value || 0);
+      const numeroCuota = Number(g.get('numero_cuota')?.value || 0) || null;
+      let descuentoTotal = 0;
+      if (numeroCuota) {
+        // Buscar descuento por número de cuota en el resumen preferentemente
+        const asignList: any[] = Array.isArray(this.resumen?.asignaciones)
+          ? this.resumen!.asignaciones
+          : (Array.isArray(this.resumen?.asignacion_costos?.items) ? this.resumen!.asignacion_costos.items : []);
+        const hit = (asignList || []).find((a: any) => Number(a?.numero_cuota || a?.numero || 0) === Number(numeroCuota));
+        if (hit) {
+          const d = (hit as any).descuento;
+          descuentoTotal = Number(d ?? 0) || 0;
+        }
+      } else {
+        // Fallback por id_asignacion_costo
+        const idAsign = Number(g.get('id_asignacion_costo')?.value || 0) || null;
+        if (idAsign) {
+          const asignList: any[] = Array.isArray(this.resumen?.asignaciones)
+            ? this.resumen!.asignaciones
+            : (Array.isArray(this.resumen?.asignacion_costos?.items) ? this.resumen!.asignacion_costos.items : []);
+          const hit = (asignList || []).find((a: any) => Number(a?.id_asignacion_costo || 0) === Number(idAsign));
+          if (hit) {
+            const d = (hit as any).descuento;
+            descuentoTotal = Number(d ?? 0) || 0;
+          }
+        }
+      }
+      if (puEff > 0 && descuentoTotal > 0 && montoParcial > 0) {
+        const acomodado = (montoParcial * descuentoTotal) / puEff;
+        return montoParcial + acomodado;
+      }
+      return puEff;
+    } catch {
+      return 0;
+    }
+  }
+
+  // Descuento mostrado en la tabla: para pagos parciales con descuento, mostrar
+  // (pago_parcial * descuento_total_cuota / PU_efectivo);
+  // en otros casos, mostrar el descuento normal de la fila.
+  getRowDisplayDescuento(i: number): number {
+    try {
+      const g = this.pagos.at(i) as FormGroup;
+      if (!g) return 0;
+      const esParcial = !!g.get('es_parcial')?.value;
+      if (!esParcial) {
+        return Number(g.get('descuento')?.value || 0);
+      }
+      const puEff = Number(g.get('pu_mensualidad')?.value || 0);
+      const montoParcial = Number(g.get('monto')?.value || 0);
+      if (!(puEff > 0 && montoParcial > 0)) return 0;
+      const numeroCuota = Number(g.get('numero_cuota')?.value || 0) || null;
+      let descuentoTotal = 0;
+      if (numeroCuota) {
+        const asignList: any[] = Array.isArray(this.resumen?.asignaciones)
+          ? this.resumen!.asignaciones
+          : (Array.isArray(this.resumen?.asignacion_costos?.items) ? this.resumen!.asignacion_costos.items : []);
+        const hit = (asignList || []).find((a: any) => Number(a?.numero_cuota || a?.numero || 0) === Number(numeroCuota));
+        if (hit) {
+          const d = (hit as any).descuento;
+          descuentoTotal = Number(d ?? 0) || 0;
+        }
+      } else {
+        const idAsign = Number(g.get('id_asignacion_costo')?.value || 0) || null;
+        if (idAsign) {
+          const asignList: any[] = Array.isArray(this.resumen?.asignaciones)
+            ? this.resumen!.asignaciones
+            : (Array.isArray(this.resumen?.asignacion_costos?.items) ? this.resumen!.asignacion_costos.items : []);
+          const hit = (asignList || []).find((a: any) => Number(a?.id_asignacion_costo || 0) === Number(idAsign));
+          if (hit) {
+            const d = (hit as any).descuento;
+            descuentoTotal = Number(d ?? 0) || 0;
+          }
+        }
+      }
+      if (descuentoTotal > 0) {
+        const descuentoParcial = (montoParcial * descuentoTotal) / puEff;
+        return descuentoParcial > 0 ? descuentoParcial : 0;
+      }
+      return 0;
+    } catch {
+      return 0;
+    }
   }
 
   get totalSubtotal(): number {
