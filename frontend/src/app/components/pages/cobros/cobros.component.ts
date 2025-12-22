@@ -258,7 +258,7 @@ export class CobrosComponent implements OnInit {
                 console.error('Error generando QR:', err);
               }
             }
-            
+
             generateQuickFacturaPdf({
             anio,
             nro,
@@ -1531,7 +1531,7 @@ export class CobrosComponent implements OnInit {
           }
           // Prefill identidad/razón social
           const est = this.resumen?.estudiante || {};
-          const fullName = [est.nombres, est.ap_paterno, est.ap_materno].filter(Boolean).join(' ');
+          const fullName = [est.ap_paterno, est.ap_materno, est.nombres ].filter(Boolean).join(' ');
           this.identidadForm.patchValue({
             nombre_completo: fullName,
             tipo_identidad: 1,
@@ -1836,7 +1836,7 @@ export class CobrosComponent implements OnInit {
     }
   }
 
-  
+
 
   openRazonSocialModal(): void {
     const modalEl = document.getElementById('razonSocialModal');
@@ -1864,6 +1864,8 @@ export class CobrosComponent implements OnInit {
     const cabecera = this.batchForm.get('cabecera') as FormGroup;
     const cod_ceta = cabecera?.get('cod_ceta')?.value;
     const gestion = cabecera?.get('gestion')?.value || '';
+
+    console.log('[Cobros] buscarPorCodCetaCabecera xxxssasdd', { cod_ceta, gestion });
     if (!cod_ceta) {
       this.showAlert('Ingrese el Codigo CETA para buscar', 'warning');
       return;
@@ -2366,13 +2368,17 @@ export class CobrosComponent implements OnInit {
       console.warn('[Cobros] submitBatch() ignored because loading=true');
       return;
     }
-    console.log('[Cobros] submitBatch() called', {
+    console.log('[Cobros] submitBatch() called  zzzz', {
       valid: this.batchForm.valid,
       pagosLen: this.pagos.length,
       cabecera: (this.batchForm.get('cabecera') as FormGroup)?.getRawValue?.() || null
     });
     const cab = this.batchForm.get('cabecera') as FormGroup;
     // 1) cod_ceta: desde resumen o searchForm si falta
+
+    console.log('[Cobros] submitBatch() pre-patch cabecera', cab?.getRawValue?.() || null);
+    console.log('LOS PAGOS QUE LLEGAN SON:', this.pagos.getRawValue() || null);
+    console.log('EL RESUMEN ES:', this.resumen || null);
     try {
       const currentCod = cab?.get('cod_ceta')?.value;
       if (!currentCod) {
