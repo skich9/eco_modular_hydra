@@ -5,6 +5,7 @@ import { provideHttpClient, withFetch, withInterceptors } from '@angular/common/
 import { routes } from './app.routes';
 import { provideClientHydration, withEventReplay } from '@angular/platform-browser';
 import { authInterceptor } from './interceptors/auth.interceptor';
+import { loadingInterceptor } from './interceptors/loading.interceptor';
 import { AppErrorHandler } from './core/app-error.handler';
 
 export const appConfig: ApplicationConfig = {
@@ -16,7 +17,7 @@ export const appConfig: ApplicationConfig = {
     provideClientHydration(withEventReplay()),
     provideHttpClient(
       withFetch(),
-      withInterceptors([authInterceptor])
+      withInterceptors([authInterceptor, loadingInterceptor])
     ),
     { provide: LOCALE_ID, useValue: 'es' },
     { provide: ErrorHandler, useClass: AppErrorHandler }

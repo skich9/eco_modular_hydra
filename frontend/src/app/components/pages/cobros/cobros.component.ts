@@ -11,14 +11,16 @@ import { ItemsModalComponent } from './items-modal/items-modal.component';
 import { KardexModalComponent } from './kardex-modal/kardex-modal.component';
 import { BusquedaEstudianteModalComponent } from './busqueda-estudiante-modal/busqueda-estudiante-modal.component';
 import { QrPanelComponent } from './qr-panel/qr-panel.component';
+import { ClickLockDirective } from '../../../directives/click-lock.directive';
 import { environment } from '../../../../environments/environment';
 import { saveBlobAsFile, generateQuickReciboPdf, generateQuickFacturaPdf } from '../../../utils/pdf.helpers';
 import * as QRCode from 'qrcode';
+import { ActivatedRoute } from '@angular/router';
 
 @Component({
   selector: 'app-cobros-page',
   standalone: true,
-  imports: [CommonModule, ReactiveFormsModule, FormsModule, MensualidadModalComponent, ItemsModalComponent, RezagadoModalComponent, RecuperacionModalComponent, BusquedaEstudianteModalComponent, KardexModalComponent, QrPanelComponent],
+  imports: [CommonModule, ReactiveFormsModule, FormsModule, MensualidadModalComponent, ItemsModalComponent, RezagadoModalComponent, RecuperacionModalComponent, BusquedaEstudianteModalComponent, KardexModalComponent, QrPanelComponent, ClickLockDirective],
   templateUrl: './cobros.component.html',
   styleUrls: ['./cobros.component.scss']
 })
@@ -102,12 +104,21 @@ export class CobrosComponent implements OnInit {
   busquedaPage = 1;
   busquedaPerPage = 10;
   private busquedaCriteria: { ap_paterno?: string; ap_materno?: string; nombres?: string; ci?: string } = {};
+  private qrMetodoSelected: boolean = false;
+  private codigoSinBaseSelected: string = '';
+  private selectedFormaItem: any | null = null;
+  // Saldo restante por cuota gestionado sólo en frontend para pagos parciales
+  private frontSaldoByCuota: Record<number, number> = {};
+  // Forzar cuota inicial del próximo modal cuando exista saldo parcial pendiente
+  private startCuotaOverrideValue: number | null = null;
+  metodoPagoLocked: boolean = false;
 
   constructor(
     private fb: FormBuilder,
     private cobrosService: CobrosService,
     private auth: AuthService,
-    private gestionService: GestionService
+    private gestionService: GestionService,
+    private route: ActivatedRoute
   ) {
     this.searchForm = this.fb.group({
       cod_ceta: ['', Validators.required],
@@ -159,6 +170,33 @@ export class CobrosComponent implements OnInit {
     });
   }
 
+  // PU a enviar al modal: si hay saldo en la cuota inicial efectiva, usarlo; caso contrario usar mensualidadPU
+  getMensualidadPuForModal(): number {
+    try {
+      const start = this.getNextMensualidadStartCuota();
+      const val = this.frontSaldoByCuota[start];
+      if (val !== undefined && val !== null) return Number(val || 0);
+      const puSemestral = Number(this.resumen?.totales?.pu_mensual || 0);
+      const puNext = Number(this.resumen?.mensualidad_next?.next_cuota?.monto ?? 0);
+      return puSemestral > 0 ? puSemestral : puNext;
+    } catch {
+      const puSemestral = Number(this.resumen?.totales?.pu_mensual || 0);
+      const puNext = Number(this.resumen?.mensualidad_next?.next_cuota?.monto ?? 0);
+      return puSemestral > 0 ? puSemestral : puNext;
+    }
+  }
+
+  public getFrontSaldos(): Record<number, number> {
+    const out: Record<number, number> = {};
+    try {
+      for (const k of Object.keys(this.frontSaldoByCuota)) {
+        const n = Number(k);
+        if (isFinite(n)) out[n] = Number(this.frontSaldoByCuota[n] || 0);
+      }
+    } catch {}
+    return out;
+  }
+
   private downloadReciboPdfWithFallback(anio: number, nro: number): void {
     this.cobrosService.downloadReciboPdf(anio, nro).subscribe({
       next: (blob) => saveBlobAsFile(blob, `recibo_${anio}_${nro}.pdf`),
@@ -189,7 +227,7 @@ export class CobrosComponent implements OnInit {
           const pad = (n: number) => String(n).padStart(2, '0');
           const now = new Date();
           const ts = `${now.getFullYear()}-${pad(now.getMonth() + 1)}-${pad(now.getDate())} ${pad(now.getHours())}:${pad(now.getMinutes())}:${pad(now.getSeconds())}`;
-          const nick = this.auth?.getCurrentUser()?.nickname || 'Operador';
+          const nick = (this.auth.getCurrentUser()?.nickname) || 'Operador';
           const usuario = `Usuario-Hora: ${nick} - ${ts}`;
           const textoSucursal = this.computeTextoSucursal(est);
           const puntoVentaVar = this.computePuntoVenta();
@@ -451,8 +489,8 @@ export class CobrosComponent implements OnInit {
     const f = (this.formasCobro || []).find((x: any) => `${x?.id_forma_cobro}` === s || `${x?.codigo_sin}` === s);
     const raw = (f?.descripcion_sin ?? f?.descripcion ?? f?.nombre ?? '').toString().trim().toUpperCase();
     const nombre = raw.normalize('NFD').replace(/\p{Diacritic}/gu, '');
-    // Backend mapea QR a la forma "TRANSFERENCIA BANCARIA"; además, algunas instalaciones pueden nombrarla con "QR" explícito
-    const res = nombre.includes('QR') || nombre.includes('TRANSFERENCIA');
+    // Detectar QR únicamente por etiqueta explícita 'QR' en el catálogo
+    const res = nombre.includes('QR');
     try { console.log('[Cobros] isFormaIdQR', { id: s, label: raw, matchQR: res }); } catch {}
     return res;
   }
@@ -1212,6 +1250,8 @@ export class CobrosComponent implements OnInit {
       this.resumen = null;
       this.showOpciones = false;
       this.alertMessage = '';
+      this.metodoPagoLocked = false;
+      try { (this.batchForm.get('cabecera.codigo_sin') as any)?.enable?.({ emitEvent: false }); } catch {}
       this.successSummary = null;
     } catch {}
 
@@ -1389,10 +1429,11 @@ export class CobrosComponent implements OnInit {
         // Sincronizar codigo_sin desde id_forma_cobro si ya hubiese uno seleccionado
         const cab = this.batchForm.get('cabecera') as FormGroup;
         const idSel = (cab.get('id_forma_cobro')?.value ?? '').toString();
-        if (idSel) {
+        if (idSel && !((cab.get('codigo_sin')?.value ?? '').toString())) {
           const match = (this.formasCobro || []).find((f: any) => `${f?.id_forma_cobro}` === idSel);
           if (match) {
             cab.patchValue({ codigo_sin: match.codigo_sin }, { emitEvent: false });
+            this.codigoSinBaseSelected = this.getBaseCodigoSinForSiat(match);
           }
         }
         // Calcular opciones del modal según selección actual
@@ -1405,6 +1446,21 @@ export class CobrosComponent implements OnInit {
       next: (res) => { if (res.success) this.cuentasBancarias = res.data; },
       error: () => {}
     });
+
+    // Leer cod_ceta (y gestion) desde querystring para soportar deep-link desde SGA
+    try {
+      this.route.queryParamMap.subscribe((params) => {
+        const cod = (params.get('cod_ceta') || '').toString().trim();
+        const ges = (params.get('gestion') || '').toString().trim();
+        if (cod) {
+          this.searchForm.patchValue({ cod_ceta: cod }, { emitEvent: false });
+          if (ges) {
+            this.searchForm.patchValue({ gestion: ges }, { emitEvent: false });
+          }
+          this.loadResumen();
+        }
+      });
+    } catch {}
 
     // Recalcular costo total de mensualidades cuando cambie la cantidad
     this.mensualidadModalForm.get('cantidad')?.valueChanges.subscribe((v: number) => {
@@ -1505,6 +1561,36 @@ export class CobrosComponent implements OnInit {
       this.showAlert('Solo puede eliminar la última fila del detalle', 'warning');
       return;
     }
+    // Antes de eliminar, si la fila es una Mensualidad parcial, reintegrar el monto al saldo frontal
+    try {
+      const ctrl = this.pagos.at(i) as FormGroup;
+      const detalle = (ctrl.get('detalle')?.value || '').toString();
+      const isMensualidad = /^\s*Mensualidad\s*-/i.test(detalle);
+      const esParcial = !!ctrl.get('es_parcial')?.value;
+      const numeroCuota = Number(ctrl.get('numero_cuota')?.value || 0);
+      const pu = Number(ctrl.get('pu_mensualidad')?.value || 0);
+      if (isMensualidad) {
+        if (esParcial && numeroCuota) {
+          const monto = this.calcRowSubtotal(i);
+          const prevSaldo = Number(this.frontSaldoByCuota[numeroCuota] || 0);
+          const base = pu > 0 ? pu : Number(this.resumen?.totales?.pu_mensual || this.mensualidadPU || 0);
+          let nuevoSaldo = (isFinite(prevSaldo) ? prevSaldo : 0) + (isFinite(monto) ? monto : 0);
+          if (base > 0 && nuevoSaldo > base) nuevoSaldo = base;
+          this.frontSaldoByCuota[numeroCuota] = nuevoSaldo;
+          // Fijar foco en la misma cuota nuevamente
+          this.lockedMensualidadCuota = numeroCuota;
+          this.startCuotaOverrideValue = numeroCuota;
+          // Actualizar PU sugerido para el próximo modal
+          if (nuevoSaldo > 0) {
+            this.mensualidadPU = nuevoSaldo;
+          } else {
+            const puSem = Number(this.resumen?.totales?.pu_mensual || 0);
+            const puNext = Number(this.resumen?.mensualidad_next?.next_cuota?.monto ?? 0);
+            this.mensualidadPU = puSem > 0 ? puSem : puNext;
+          }
+        }
+      }
+    } catch {}
     this.pagos.removeAt(i);
   }
 
@@ -1603,9 +1689,14 @@ export class CobrosComponent implements OnInit {
           const parcialesCnt = Number(this.resumen?.mensualidad_next?.parcial_count ?? 0) || 0;
           const combined = pendFromNext + parcialesCnt;
           this.mensualidadesPendientes = combined > 0 ? combined : Math.max(0, nroCuotas - pagadasFull);
-          // - PU: next_cuota.monto ya es restante si es PARCIAL, o el monto si es PENDIENTE
+          // - PU base desde backend y override por saldo en frontend si existe para la cuota bloqueada
           const puNext = Number(this.resumen?.mensualidad_next?.next_cuota?.monto ?? 0);
-          this.mensualidadPU = puNext > 0 ? puNext : Number(this.resumen?.totales?.pu_mensual || 0);
+          let puBase = puNext > 0 ? puNext : Number(this.resumen?.totales?.pu_mensual || 0);
+          const locked = this.lockedMensualidadCuota as number | null;
+          if (locked && this.frontSaldoByCuota[locked] !== undefined) {
+            puBase = this.frontSaldoByCuota[locked];
+          }
+          this.mensualidadPU = puBase;
           // Inicializar modal de mensualidades
           const defaultMetodo = (this.batchForm.get('cabecera.id_forma_cobro') as any)?.value || '';
           this.mensualidadModalForm.patchValue({
@@ -1621,15 +1712,53 @@ export class CobrosComponent implements OnInit {
       },
       error: (err) => {
         console.error('Resumen error:', err);
+        const status = Number(err?.status || 0);
+        const backendMsg = (err?.error?.message || err?.message || '').toString();
+        // Fallback: si la gestión solicitada no aplica, reintentar con la última inscripción del estudiante
+        if (status === 404 && backendMsg.toLowerCase().includes('no tiene inscripción en la gestión solicitada')) {
+          try {
+            const cod = this.searchForm.get('cod_ceta')?.value;
+            // limpiar gestion seleccionada y reintentar sin gestion
+            this.searchForm.patchValue({ gestion: '' }, { emitEvent: false });
+            this.cobrosService.getResumen(cod).subscribe({
+              next: (res2) => {
+                if (res2?.success) {
+                  this.resumen = res2.data;
+                  this.showOpciones = true;
+                  this.showAlert('Se usó la última inscripción del estudiante', 'warning');
+                  // Prefill cabecera con la nueva respuesta
+                  const est = this.resumen?.estudiante || {};
+                  const ins = this.resumen?.inscripcion || {};
+                  (this.batchForm.get('cabecera') as FormGroup).patchValue({
+                    cod_ceta: est.cod_ceta || cod,
+                    cod_pensum: ins.cod_pensum ?? est.cod_pensum ?? '',
+                    tipo_inscripcion: ins.tipo_inscripcion || '',
+                    gestion: this.resumen?.gestion ?? ins.gestion ?? ''
+                  });
+                  // Actualizar costos contextuales tras fallback
+                  this.updateRezagadoCosto();
+                  this.updateReincorporacionCosto();
+                } else {
+                  this.resumen = null; this.reincorporacion = null; this.showOpciones = false;
+                }
+                this.loading = false;
+              },
+              error: (e2) => {
+                this.resumen = null; this.reincorporacion = null; this.showOpciones = false;
+                this.showAlert((e2?.error?.message || 'Error al obtener resumen (fallback)') as string, 'error');
+                this.loading = false;
+              }
+            });
+            return;
+          } catch {}
+        }
+        // Caso general: mostrar mensajes como antes
         this.resumen = null;
         this.reincorporacion = null;
         this.showOpciones = false;
-        const status = Number(err?.status || 0);
-        const backendMsg = (err?.error?.message || err?.message || '').toString();
         if (status === 404) {
           this.showAlert(backendMsg || 'Estudiante no encontrado', 'warning');
         } else if (status === 422) {
-          // Mostrar errores de validación si existen
           const errors = err?.error?.errors || {};
           const parts: string[] = [];
           for (const k of Object.keys(errors)) {
@@ -1667,14 +1796,32 @@ export class CobrosComponent implements OnInit {
   }
 
   onMetodoPagoChange(ev: any): void {
+    if (this.metodoPagoLocked) {
+      return;
+    }
     const sel = (ev?.target?.value ?? '').toString(); // codigo_sin
     const cab = this.batchForm.get('cabecera') as FormGroup;
     cab.patchValue({ codigo_sin: sel }, { emitEvent: false });
-    // Mapear a id_forma_cobro requerido por backend
-    let match = (this.formasCobro || []).find((f: any) => `${f?.codigo_sin}` === sel);
-    if (!match) match = (this.formasCobro || []).find((f: any) => `${f?.id_forma_cobro}` === sel);
+    // Determinar opción exacta seleccionada por el usuario usando el texto del option
+    const optEl: any = ev?.target?.selectedOptions?.[0] || null;
+    const optText = (optEl?.text || '').toString();
+    const optLabelNorm = this.normalizeLabel(optText);
+    // Buscar coincidencia exacta por codigo y etiqueta normalizada
+    let match = (this.formasCobro || []).find((f: any) => {
+      const lbl = this.normalizeLabel((f?.descripcion_sin ?? f?.nombre ?? f?.label ?? f?.descripcion ?? '').toString());
+      return `${f?.codigo_sin}` === sel && lbl === optLabelNorm;
+    });
+    // Fallback por codigo_sin si no se encontró por etiqueta
+    if (!match) match = (this.formasCobro || []).find((f: any) => `${f?.codigo_sin}` === sel);
     const idInterno = match ? `${match.id_forma_cobro}` : '';
+    // Asegurar que SIAT reciba el codigo_sin base cuando sea una variante QR
+    const baseCodigo = match ? this.getBaseCodigoSinForSiat(match) : sel;
+    this.codigoSinBaseSelected = baseCodigo;
     cab.patchValue({ id_forma_cobro: idInterno }, { emitEvent: false });
+    // Flag UI: QR según el texto del option seleccionado
+    this.qrMetodoSelected = optLabelNorm.includes('QR');
+    // Guardar item seleccionado para que el modal herede correctamente la variante
+    this.selectedFormaItem = match || null;
     const idCtrl = cab.get('id_forma_cobro');
     idCtrl?.markAsTouched();
     idCtrl?.updateValueAndValidity({ emitEvent: false });
@@ -1683,19 +1830,12 @@ export class CobrosComponent implements OnInit {
     // Recalcular opciones para el modal (filtradas por selección actual)
     this.computeModalFormasFromSelection();
     if (this.isQrMetodoSeleccionado()) { this.checkQrPendiente(); }
+    this.metodoPagoLocked = true;
+    try { cab.get('codigo_sin')?.disable({ emitEvent: false }); } catch {}
   }
 
   isQrMetodoSeleccionado(): boolean {
-    try {
-      const cab = this.batchForm.get('cabecera') as FormGroup;
-      const sel = (cab.get('codigo_sin')?.value ?? '').toString();
-      if (!sel) return false;
-      let match = (this.formasCobro || []).find((f: any) => `${f?.codigo_sin}` === sel);
-      if (!match) match = (this.formasCobro || []).find((f: any) => `${f?.id_forma_cobro}` === sel);
-      if (!match) return false;
-      const raw = (match?.descripcion_sin ?? match?.nombre ?? '').toString().trim().toUpperCase();
-      return raw.includes('QR');
-    } catch { return false; }
+    return this.qrMetodoSelected === true;
   }
 
 
@@ -1711,6 +1851,34 @@ export class CobrosComponent implements OnInit {
   private normalizeLabel(s: string): string {
     return (s || '').toString().trim().toUpperCase()
       .normalize('NFD').replace(/\p{Diacritic}/gu, '');
+  }
+
+  // Dado un item del catálogo, retorna el codigo_sin "base" para SIAT.
+  // Si el label es un QR variante (ej. "QR TRANSFERENCIA BANCARIA"), se mapea
+  // al codigo_sin del método base (ej. "TRANSFERENCIA BANCARIA").
+  private getBaseCodigoSinForSiat(item: any): string {
+    try {
+      if (!item) return '';
+      const raw = (item?.descripcion_sin ?? item?.nombre ?? item?.label ?? item?.descripcion ?? '').toString();
+      const norm = this.normalizeLabel(raw);
+      if (!norm.includes('QR')) return `${item?.codigo_sin ?? ''}`;
+      // Extraer segmento base luego de quitar el prefijo 'QR '
+      const baseSeg = norm.replace(/^QR\s*/, '').split(/[-–—]/)[0].trim();
+      if (!baseSeg) return `${item?.codigo_sin ?? ''}`;
+      const sameId = (this.formasCobro || []).filter((f: any) => `${f?.id_forma_cobro}`.toUpperCase() === `${item?.id_forma_cobro}`.toUpperCase());
+      let baseMatch = sameId.find((f: any) => {
+        const n = this.normalizeLabel((f?.descripcion_sin ?? f?.nombre ?? f?.label ?? f?.descripcion ?? '').toString());
+        return !n.includes('QR') && (n === baseSeg || n.startsWith(baseSeg) || n.includes(baseSeg));
+      });
+      if (!baseMatch) {
+        // Fallback: buscar en todo el catálogo (independiente del id_forma_cobro)
+        baseMatch = (this.formasCobro || []).find((f: any) => {
+          const n = this.normalizeLabel((f?.descripcion_sin ?? f?.nombre ?? f?.label ?? f?.descripcion ?? '').toString());
+          return !n.includes('QR') && (n === baseSeg || n.startsWith(baseSeg) || n.includes(baseSeg));
+        });
+      }
+      return baseMatch ? `${baseMatch.codigo_sin}` : `${item?.codigo_sin ?? ''}`;
+    } catch { return `${item?.codigo_sin ?? ''}`; }
   }
 
   private findBaseForma(name: string): any | null {
@@ -1769,6 +1937,8 @@ export class CobrosComponent implements OnInit {
 
   private computeModalFormasFromSelection(): void {
     try {
+      // Si se tiene el item exacto previamente seleccionado, usarlo directamente
+      if (this.selectedFormaItem) { this.modalFormasCobro = [this.selectedFormaItem]; return; }
       const cab = this.batchForm.get('cabecera') as FormGroup;
       const sel = (cab.get('codigo_sin')?.value ?? '').toString();
       let match = (this.formasCobro || []).find((f: any) => `${f?.codigo_sin}` === sel);
@@ -2028,8 +2198,7 @@ export class CobrosComponent implements OnInit {
     const parcialesCnt = Number(this.resumen?.mensualidad_next?.parcial_count ?? 0) || 0;
     // Mostrar suma pedida por usuario (pendientes + parciales)
     this.mensualidadesPendientes = Math.max(0, pendFromNext + parcialesCnt);
-    const puNext = Number(this.resumen?.mensualidad_next?.next_cuota?.monto ?? 0);
-    this.mensualidadPU = puNext > 0 ? puNext : Number(this.resumen?.totales?.pu_mensual || 0);
+    this.mensualidadPU = this.getMensualidadPuForModal();
     const defaultMetodo = (this.batchForm.get('cabecera.id_forma_cobro') as any)?.value || '';
     // Recalcular lista filtrada y escoger default coherente
     this.computeModalFormasFromSelection();
@@ -2159,6 +2328,8 @@ export class CobrosComponent implements OnInit {
     let max = 0;
     for (const ctrl of (this.pagos.controls || [])) {
       const det = (ctrl.get('detalle')?.value || '').toString();
+      // Ignorar filas parciales para este cálculo (solo considerar cuotas completas)
+      if (/(\(Parcial\))/i.test(det)) continue;
       const m = det.match(/Cuota\s+(\d+)/i);
       const n = m ? Number(m[1]) : 0;
       if (n > max) max = n;
@@ -2181,10 +2352,25 @@ export class CobrosComponent implements OnInit {
   }
 
   // Calcula desde qué número de cuota debe comenzar el siguiente agregado de mensualidades
-  private getNextMensualidadStartCuota(): number {
+  getNextMensualidadStartCuota(): number {
+    // 0) Si hay un override explícito, respételo SIEMPRE (sirve para forzar avance tras completar saldo)
+    if (this.startCuotaOverrideValue && this.startCuotaOverrideValue > 0) {
+      return this.startCuotaOverrideValue;
+    }
+    // 1) Si hay una cuota bloqueada por parcial, usarla mientras exista saldo en front
+    if (this.lockedMensualidadCuota && this.frontSaldoByCuota[this.lockedMensualidadCuota] !== undefined && this.frontSaldoByCuota[this.lockedMensualidadCuota] > 0) {
+      return this.lockedMensualidadCuota;
+    }
+    // 2) Si la última línea parcial tiene saldo registrado, mantener esa cuota
+    const lastParcial = this.getLastMensualidadParcialCuotaInForm();
+    if (lastParcial) {
+      const saldo = this.frontSaldoByCuota[lastParcial];
+      if (saldo !== undefined && saldo > 0) return lastParcial; // mantener misma cuota
+      if (saldo === undefined || saldo === 0) return lastParcial + 1; // avanzar una vez cubierto el saldo
+    }
+    // 3) Caso normal: usar siguiente a la mayor cuota COMPLETA en el detalle o backend next
     const backendNext = Number(this.resumen?.mensualidad_next?.next_cuota?.numero_cuota || 1);
-    const inFormMax = this.getMaxMensualidadCuotaInForm();
-    // Empezar desde el mayor observado (backend o en-form) + 1
+    const inFormMax = this.getMaxMensualidadCuotaInForm(); // ignora parciales
     return Math.max(backendNext, inFormMax + 1);
   }
 
@@ -2259,12 +2445,12 @@ export class CobrosComponent implements OnInit {
         } else if (fromPayload) {
           numeroCuota = fromPayload;
         } else {
-          // Si ya existe una fila parcial, fijar bloqueo a esa cuota para pagos combinados
           const lastParcial = this.getLastMensualidadParcialCuotaInForm();
-          if (lastParcial) {
+          if (lastParcial && this.frontSaldoByCuota[lastParcial] !== undefined && this.frontSaldoByCuota[lastParcial] > 0) {
             this.lockedMensualidadCuota = lastParcial;
             numeroCuota = lastParcial;
           } else {
+            this.lockedMensualidadCuota = null;
             numeroCuota = startCuota + idx;
           }
         }
@@ -2342,11 +2528,34 @@ export class CobrosComponent implements OnInit {
       if (isMensualidad) {
         if (esParcial && numeroCuota) {
           this.lockedMensualidadCuota = numeroCuota;
+          // Guardar saldo restante en frontend y desbloquear si quedó en 0
+          this.frontSaldoByCuota[numeroCuota] = saldo;
+          if (saldo <= 0) {
+            delete this.frontSaldoByCuota[numeroCuota];
+            this.lockedMensualidadCuota = null;
+            // Avanzar explícitamente a la siguiente cuota para el próximo modal
+            this.startCuotaOverrideValue = (numeroCuota || 0) + 1;
+          }
+          // Mantener override explícito mientras haya saldo
+          if (saldo > 0) this.startCuotaOverrideValue = numeroCuota;
         } else if (!esParcial) {
           this.lockedMensualidadCuota = null;
+          this.startCuotaOverrideValue = null;
         }
       }
     });
+    // Recalcular PU para el próximo modal según saldo guardado o fallback del backend
+    if (isMensualidad) {
+      const locked = this.lockedMensualidadCuota as number | null;
+      if (locked && this.frontSaldoByCuota[locked] !== undefined) {
+        this.mensualidadPU = this.frontSaldoByCuota[locked];
+      } else {
+        // Preferir PU semestral nominal cuando ya no hay saldo bloqueado
+        const puSemestral = Number(this.resumen?.totales?.pu_mensual || 0);
+        const puNext = Number(this.resumen?.mensualidad_next?.next_cuota?.monto ?? 0);
+        this.mensualidadPU = puSemestral > 0 ? puSemestral : puNext;
+      }
+    }
     // Aplicar cabecera si el modal la envió (p.e. id_cuentas_bancarias para TARJETA)
     if (headerPatch && typeof headerPatch === 'object') {
       (this.batchForm.get('cabecera') as FormGroup).patchValue(headerPatch, { emitEvent: false });
@@ -2407,7 +2616,7 @@ export class CobrosComponent implements OnInit {
     } catch {}
     // 3) id_usuario: desde AuthService o localStorage current_user
     try {
-      const currentUser = this.auth?.getCurrentUser?.();
+      const currentUser = this.auth.getCurrentUser();
       if (currentUser?.id_usuario && !cab?.get('id_usuario')?.value) {
         cab.patchValue({ id_usuario: currentUser.id_usuario }, { emitEvent: false });
       } else if (!cab?.get('id_usuario')?.value && typeof localStorage !== 'undefined') {
@@ -2462,6 +2671,8 @@ export class CobrosComponent implements OnInit {
     }
     this.loading = true;
     const { cabecera } = this.batchForm.value as any;
+    // Asegurar codigo_sin base para SIAT (QR variante -> base)
+    const siatCodigoSin = this.codigoSinBaseSelected || (cabecera?.codigo_sin || '');
     // Mapear pagos para enviar solo con 'monto' calculado y fallbacks de nro/fecha
     const hoy = new Date().toISOString().slice(0, 10);
     const pagosRaw = (baseCtrls || []).map((ctrl, idx) => {
@@ -2488,6 +2699,7 @@ export class CobrosComponent implements OnInit {
     });
     const payload = {
       ...cabecera,
+      codigo_sin: siatCodigoSin,
       id_forma_cobro: (cabecera?.id_forma_cobro !== undefined && cabecera?.id_forma_cobro !== null)
         ? String(cabecera.id_forma_cobro)
         : cabecera?.id_forma_cobro,
@@ -2498,6 +2710,12 @@ export class CobrosComponent implements OnInit {
         razon_social: (this.identidadForm.get('razon_social')?.value || '').toString()
       }
     } as any;
+    try {
+      const uni = String((payload as any).id_forma_cobro || '');
+      if (uni) {
+        (payload as any).pagos = ((payload as any).pagos || []).map((p: any) => ({ ...p, id_forma_cobro: uni }));
+      }
+    } catch {}
     // Forzar bandera emitir_online si hay al menos una Factura Computarizada
     try {
       const shouldEmitOnline = pagos.some((p: any) => (p?.tipo_documento === 'F') && (p?.medio_doc === 'C'));

@@ -52,6 +52,9 @@ class GestionController extends Controller
                     $input[$f] = null;
                 }
             }
+            // Asignar orden automáticamente: último orden + 1
+            $maxOrden = (int) (Gestion::max('orden') ?? 0);
+            $input['orden'] = $maxOrden + 1;
             $validator = Validator::make($input, [
                 'gestion' => 'required|string|max:30|unique:gestion,gestion',
                 'fecha_ini' => 'required|date',
@@ -59,6 +62,22 @@ class GestionController extends Controller
                 'orden' => 'required|integer|min:1',
                 'fecha_graduacion' => 'nullable|date|after_or_equal:fecha_ini',
                 'activo' => 'nullable|boolean'
+            ], [
+                'gestion.required' => 'El campo Gestión es requerido.',
+                'gestion.string' => 'El campo Gestión debe ser un texto.',
+                'gestion.max' => 'El campo Gestión no puede exceder 30 caracteres.',
+                'gestion.unique' => 'La gestión ya existe. Ingrese un valor diferente.',
+                'fecha_ini.required' => 'La fecha inicio es requerida.',
+                'fecha_ini.date' => 'La fecha inicio debe ser una fecha válida.',
+                'fecha_fin.required' => 'La fecha fin es requerida.',
+                'fecha_fin.date' => 'La fecha fin debe ser una fecha válida.',
+                'fecha_fin.after_or_equal' => 'La fecha fin debe ser mayor o igual a la fecha inicio.',
+                'fecha_graduacion.date' => 'La fecha de graduación debe ser una fecha válida.',
+                'fecha_graduacion.after_or_equal' => 'La fecha de graduación debe ser mayor o igual a la fecha inicio.',
+                'orden.required' => 'El campo Orden es requerido.',
+                'orden.integer' => 'El campo Orden debe ser un número entero.',
+                'orden.min' => 'El campo Orden debe ser mayor o igual a 1.',
+                'activo.boolean' => 'El campo Activo debe ser verdadero o falso.'
             ]);
 
             if ($validator->fails()) {
@@ -132,6 +151,18 @@ class GestionController extends Controller
                 'orden' => 'sometimes|required|integer|min:1',
                 'fecha_graduacion' => 'nullable|date|after_or_equal:fecha_ini',
                 'activo' => 'nullable|boolean'
+            ], [
+                'fecha_ini.required' => 'La fecha inicio es requerida.',
+                'fecha_ini.date' => 'La fecha inicio debe ser una fecha válida.',
+                'fecha_fin.required' => 'La fecha fin es requerida.',
+                'fecha_fin.date' => 'La fecha fin debe ser una fecha válida.',
+                'fecha_fin.after_or_equal' => 'La fecha fin debe ser mayor o igual a la fecha inicio.',
+                'fecha_graduacion.date' => 'La fecha de graduación debe ser una fecha válida.',
+                'fecha_graduacion.after_or_equal' => 'La fecha de graduación debe ser mayor o igual a la fecha inicio.',
+                'orden.required' => 'El campo Orden es requerido.',
+                'orden.integer' => 'El campo Orden debe ser un número entero.',
+                'orden.min' => 'El campo Orden debe ser mayor o igual a 1.',
+                'activo.boolean' => 'El campo Activo debe ser verdadero o falso.'
             ]);
 
             if ($validator->fails()) {

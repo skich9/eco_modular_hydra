@@ -22,6 +22,9 @@ class DescuentoController extends Controller
 			if ($request->has('cod_ceta')) {
 				$query->where('cod_ceta', $request->get('cod_ceta'));
 			}
+			if ($request->has('cod_inscrip')) {
+				$query->where('cod_inscrip', $request->get('cod_inscrip'));
+			}
 			$descuentos = $query->orderByDesc('id_descuentos')->get();
 			return response()->json(['success' => true, 'data' => $descuentos]);
 		} catch (\Exception $e) {

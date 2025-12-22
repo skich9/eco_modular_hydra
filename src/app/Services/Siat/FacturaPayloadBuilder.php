@@ -313,7 +313,7 @@ class FacturaPayloadBuilder
         }
 
         // Actividad económica y leyenda asociada (aleatoria por actividad)
-        $actividad = DB::table('sin_actividades')->value('codigo_caeb') ?: '00000';
+        $actividad = DB::table('sin_actividades')->value('codigo_caeb') ?: (string) config('sin.actividad_economica', '853000');
         $leyenda = DB::table('sin_list_leyenda_factura')
             ->where('codigo_actividad', $actividad)
             ->inRandomOrder()
@@ -323,17 +323,67 @@ class FacturaPayloadBuilder
                 ?: 'Ley N° 453: Esta factura contribuye al desarrollo del país.';
         }
 
+        $razonEmisorCfg = (string) config('sin.razon_social', 'EMISOR');
+        $municipioCfg = (string) config('sin.municipio', 'COCHABAMBA');
+        $telefonoCfg = config('sin.telefono');
+        $codigoMonedaCfg = (int) config('sin.codigo_moneda', 1);
+        $tipoCambioCfg = (float) config('sin.tipo_cambio', 1);
+        $sucursalArg = (int) ($args['sucursal'] ?? 0);
+        $puntoVentaArg = (int) ($args['punto_venta'] ?? 0);
+        $direccionVal = isset($args['direccion']) ? (string)$args['direccion'] : '';
+        if ($direccionVal === '') {
+            try {
+                $dirRow = DB::table('sin_cufd')
+                    ->where('codigo_sucursal', $sucursalArg)
+                    ->where('codigo_punto_venta', $puntoVentaArg)
+                    ->where('fecha_vigencia', '>', now())
+                    ->orderBy('fecha_vigencia', 'desc')
+                    ->first();
+                if ($dirRow && isset($dirRow->direccion) && $dirRow->direccion !== '') {
+                    $direccionVal = (string)$dirRow->direccion;
+                }
+            } catch (\Throwable $e) {}
+        }
+        if ($direccionVal === '') { $direccionVal = 'S/D'; }
+
+        // numeroTarjeta: solo cuando el método es TARJETA (2)
+        $numeroTarjeta = null;
+        if ((int)$codigoMetodoPago === 2) {
+            $nt = $args['numero_tarjeta'] ?? null;
+            if (is_string($nt) || is_numeric($nt)) {
+                $ntSan = preg_replace('/\D/', '', (string)$nt);
+                $numeroTarjeta = $ntSan !== '' ? $ntSan : null;
+            }
+            // Fallback: si no llegó por args, intentar recuperar de nota_bancaria por nro_factura
+            if ($numeroTarjeta === null) {
+                $nf = isset($args['numero_factura']) ? (string)$args['numero_factura'] : '';
+                if ($nf !== '') {
+                    try {
+                        $nb = DB::table('nota_bancaria')
+                            ->where('nro_factura', (string)$nf)
+                            ->orderBy('anio_deposito', 'desc')
+                            ->orderBy('correlativo', 'desc')
+                            ->first();
+                        if ($nb && !empty($nb->nro_tarjeta)) {
+                            $ntSan = preg_replace('/\D/', '', (string)$nb->nro_tarjeta);
+                            $numeroTarjeta = $ntSan !== '' ? $ntSan : null;
+                        }
+                    } catch (\Throwable $e) {}
+                }
+            }
+        }
+
         $cabecera = [
             'nitEmisor' => (int) ($args['nit'] ?? 0),
-            'razonSocialEmisor' => (string) ($args['razon_emisor'] ?? 'EMISOR'),
-            'municipio' => (string) ($args['municipio'] ?? 'LA PAZ'),
-            'telefono' => isset($args['telefono']) ? (int)$args['telefono'] : null,
+            'razonSocialEmisor' => (string) ($args['razon_emisor'] ?? $razonEmisorCfg),
+            'municipio' => (string) ($args['municipio'] ?? $municipioCfg),
+            'telefono' => isset($args['telefono']) ? (int)$args['telefono'] : (is_numeric($telefonoCfg) ? (int)$telefonoCfg : null),
             'numeroFactura' => (int) ($args['numero_factura'] ?? 0),
             'cuf' => (string) ($args['cuf'] ?? ''),
             'cufd' => (string) ($args['cufd'] ?? ''),
-            'codigoSucursal' => (int) ($args['sucursal'] ?? 0),
-            'direccion' => (string) ($args['direccion'] ?? 'S/D'),
-            'codigoPuntoVenta' => (int) ($args['punto_venta'] ?? 0),
+            'codigoSucursal' => $sucursalArg,
+            'direccion' => $direccionVal,
+            'codigoPuntoVenta' => $puntoVentaArg,
             'fechaEmision' => $fechaIso,
             'nombreRazonSocial' => (string) ($args['cliente']['razon'] ?? 'S/N'),
             'codigoTipoDocumentoIdentidad' => (int) ($args['cliente']['tipo_doc'] ?? 5),
@@ -341,11 +391,11 @@ class FacturaPayloadBuilder
             'complemento' => $args['cliente']['complemento'] ?? null,
             'codigoCliente' => (string) ($args['cliente']['codigo'] ?? ($args['cliente']['numero'] ?? '0')),
             'codigoMetodoPago' => (int) $codigoMetodoPago,
-            'numeroTarjeta' => null,
+            'numeroTarjeta' => $numeroTarjeta,
             'montoTotal' => (float) ($args['monto_total'] ?? 0),
             'montoTotalSujetoIva' => (float) ($args['monto_total'] ?? 0),
-            'codigoMoneda' => 1,
-            'tipoCambio' => 1,
+            'codigoMoneda' => $codigoMonedaCfg,
+            'tipoCambio' => $tipoCambioCfg,
             'montoTotalMoneda' => (float) ($args['monto_total'] ?? 0),
             'leyenda' => $leyenda,
             'usuario' => (string) ($args['usuario'] ?? 'system'),
@@ -357,8 +407,8 @@ class FacturaPayloadBuilder
         if (!empty($args['detalles']) && is_array($args['detalles'])) {
             foreach ($args['detalles'] as $d) {
                 $detalle[] = [
-                    'actividadEconomica' => (string) $actividad,
-                    'codigoProductoSin' => (int) ($d['codigo_sin'] ?? ($args['detalle']['codigo_sin'] ?? 0)),
+                    'actividadEconomica' => (string) ($actividadEnv = (string) config('sin.actividad_economica', $actividad)),
+                    'codigoProductoSin' => (int) ($d['codigo_sin'] ?? ($args['detalle']['codigo_sin'] ?? (int) config('sin.codigo_producto_sin', 0))),
                     'codigoProducto' => (string) ($d['codigo'] ?? ($args['detalle']['codigo'] ?? 'ITEM')),
                     'descripcion' => (string) ($d['descripcion'] ?? ($args['detalle']['descripcion'] ?? 'Servicio/Item')),
                     'cantidad' => (float) ($d['cantidad'] ?? ($args['detalle']['cantidad'] ?? 1)),
@@ -370,8 +420,8 @@ class FacturaPayloadBuilder
             }
         } else {
             $detalle = [[
-                'actividadEconomica' => (string) $actividad,
-                'codigoProductoSin' => (int) ($args['detalle']['codigo_sin'] ?? 0),
+                'actividadEconomica' => (string) ((string) config('sin.actividad_economica', $actividad)),
+                'codigoProductoSin' => (int) ($args['detalle']['codigo_sin'] ?? (int) config('sin.codigo_producto_sin', 0)),
                 'codigoProducto' => (string) ($args['detalle']['codigo'] ?? 'ITEM'),
                 'descripcion' => (string) ($args['detalle']['descripcion'] ?? 'Servicio/Item'),
                 'cantidad' => (float) ($args['detalle']['cantidad'] ?? 1),
@@ -400,6 +450,30 @@ class FacturaPayloadBuilder
                 $codigoMetodoPago = (int) $m->codigo_sin;
             }
         }
+        $numeroTarjetaXml = null;
+        if ((int)$codigoMetodoPago === 2) {
+            $nt = $args['numero_tarjeta'] ?? null;
+            if (is_string($nt) || is_numeric($nt)) {
+                $ntSan = preg_replace('/\D/', '', (string)$nt);
+                if ($ntSan !== '') { $numeroTarjetaXml = $ntSan; }
+            }
+            if ($numeroTarjetaXml === null) {
+                $nf = isset($args['numero_factura']) ? (string)$args['numero_factura'] : '';
+                if ($nf !== '') {
+                    try {
+                        $nb = DB::table('nota_bancaria')
+                            ->where('nro_factura', (string)$nf)
+                            ->orderBy('anio_deposito', 'desc')
+                            ->orderBy('correlativo', 'desc')
+                            ->first();
+                        if ($nb && !empty($nb->nro_tarjeta)) {
+                            $ntSan = preg_replace('/\D/', '', (string)$nb->nro_tarjeta);
+                            if ($ntSan !== '') { $numeroTarjetaXml = $ntSan; }
+                        }
+                    } catch (\Throwable $e) {}
+                }
+            }
+        }
         $actividad = DB::table('sin_actividades')->value('codigo_caeb') ?: '00000';
         $leyenda = DB::table('sin_list_leyenda_factura')
             ->where('codigo_actividad', $actividad)
@@ -415,9 +489,9 @@ class FacturaPayloadBuilder
 
         // Detalle
         $det = $args['detalle'] ?? [];
-        $codigoProductoSin = (int) ($det['codigo_sin'] ?? 49111);
+        $codigoProductoSin = (int) ($det['codigo_sin'] ?? (int) config('sin.codigo_producto_sin', 99100));
         if ($codigoProductoSin <= 0) {
-            $codigoProductoSin = 49111;
+            $codigoProductoSin = (int) config('sin.codigo_producto_sin', 99100);
         }
         $unidadMedida = (int) ($det['unidad_medida'] ?? 1);
         $codigoProducto = (string) ($det['codigo'] ?? '123456');
@@ -426,11 +500,30 @@ class FacturaPayloadBuilder
         $precioUnitario = (float) ($det['precio_unitario'] ?? ($args['monto_total'] ?? 0));
         $subTotal = (float) ($det['subtotal'] ?? ($args['monto_total'] ?? 0));
 
-        // Emisor
-        $razonEmisor = (string) ($args['razon_emisor'] ?? 'EMISOR');
-        $municipio = (string) ($args['municipio'] ?? 'La Paz');
-        $telefono = isset($args['telefono']) ? (int)$args['telefono'] : null;
-        $direccion = (string) ($args['direccion'] ?? 'S/D');
+        // Emisor (usar .env/config y direccion desde sin_cufd)
+        $razonEmisorCfg = (string) config('sin.razon_social', 'INSTITUTO TECNOLOGICO DE ENSEÑANZA AUTOMOTRIZ "CETA" S.R.L.');
+        $municipioCfg = (string) config('sin.municipio', 'COCHABAMBA');
+        $telefonoCfg = config('sin.telefono');
+        $razonEmisor = (string) ($args['razon_emisor'] ?? $razonEmisorCfg);
+        $municipio = (string) ($args['municipio'] ?? $municipioCfg);
+        $telefono = isset($args['telefono']) ? (int)$args['telefono'] : (is_numeric($telefonoCfg) ? (int)$telefonoCfg : null);
+        $direccion = isset($args['direccion']) ? (string)$args['direccion'] : '';
+        if ($direccion === '') {
+            try {
+                $sucArg = (int) ($args['sucursal'] ?? 0);
+                $pvArg = (int) ($args['punto_venta'] ?? 0);
+                $dirRow = DB::table('sin_cufd')
+                    ->where('codigo_sucursal', $sucArg)
+                    ->where('codigo_punto_venta', $pvArg)
+                    ->where('fecha_vigencia', '>', now())
+                    ->orderBy('fecha_vigencia', 'desc')
+                    ->first();
+                if ($dirRow && isset($dirRow->direccion) && $dirRow->direccion !== '') {
+                    $direccion = (string)$dirRow->direccion;
+                }
+            } catch (\Throwable $e) {}
+        }
+        if ($direccion === '') { $direccion = 'S/D'; }
 
         $xml = '';
         $xml .= '<?xml version="1.0" encoding="UTF-8" standalone="yes"?>';
@@ -459,11 +552,15 @@ class FacturaPayloadBuilder
         }
         $xml .= '<periodoFacturado>' . htmlspecialchars($valorPeriodo, ENT_QUOTES | ENT_SUBSTITUTE, 'UTF-8') . '</periodoFacturado>';
         $xml .= '<codigoMetodoPago>' . (int)$codigoMetodoPago . '</codigoMetodoPago>';
-        $xml .= '<numeroTarjeta xsi:nil="true"/>';
+        if ($numeroTarjetaXml !== null) {
+            $xml .= '<numeroTarjeta>' . htmlspecialchars($numeroTarjetaXml, ENT_QUOTES | ENT_SUBSTITUTE, 'UTF-8') . '</numeroTarjeta>';
+        } else {
+            $xml .= '<numeroTarjeta xsi:nil="true"/>';
+        }
         $xml .= '<montoTotal>' . number_format((float)($args['monto_total'] ?? 0), 2, '.', '') . '</montoTotal>';
         $xml .= '<montoTotalSujetoIva>' . number_format((float)($args['monto_total'] ?? 0), 2, '.', '') . '</montoTotalSujetoIva>';
-        $xml .= '<codigoMoneda>1</codigoMoneda>';
-        $xml .= '<tipoCambio>1</tipoCambio>';
+        $xml .= '<codigoMoneda>' . (int) config('sin.codigo_moneda', 1) . '</codigoMoneda>';
+        $xml .= '<tipoCambio>' . number_format((float) config('sin.tipo_cambio', 1), 2, '.', '') . '</tipoCambio>';
         $xml .= '<montoTotalMoneda>' . number_format((float)($args['monto_total'] ?? 0), 2, '.', '') . '</montoTotalMoneda>';
         $xml .= '<montoGiftCard xsi:nil="true"/>';
         $xml .= '<descuentoAdicional xsi:nil="true"/>';

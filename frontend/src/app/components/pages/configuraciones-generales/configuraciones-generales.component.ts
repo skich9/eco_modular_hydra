@@ -34,7 +34,7 @@ export class ConfiguracionesGeneralesComponent implements OnInit {
 	alertMessage = '';
 	alertType: 'success' | 'error' | 'warning' = 'success';
 	// Ordenamiento (Gestiones)
-	sortGestionDir: 'asc' | 'desc' = 'asc';
+	sortGestionDir: 'asc' | 'desc' = 'desc';
 	// Errores de servidor en modal Gestión
 	gFormServerErrors: string[] = [];
 
@@ -134,7 +134,9 @@ export class ConfiguracionesGeneralesComponent implements OnInit {
 			);
 		}
 		list.sort((a, b) => {
-			const cmp = (a.gestion || '').localeCompare(b.gestion || '', undefined, { numeric: true, sensitivity: 'base' });
+			const ao = Number(a.orden || 0);
+			const bo = Number(b.orden || 0);
+			const cmp = ao === bo ? 0 : (ao < bo ? -1 : 1);
 			return this.sortGestionDir === 'asc' ? cmp : -cmp;
 		});
 		return list;
@@ -164,7 +166,12 @@ export class ConfiguracionesGeneralesComponent implements OnInit {
 	// Modales Gestión
 	openNewG(): void {
 		this.editingG = null;
-		this.gForm.reset({ estado: true, orden: 1 });
+		// Calcular siguiente orden automáticamente: último orden + 1
+		const maxOrden = Math.max(0, ...((this.gestiones || []).map(g => Number((g as any)?.orden) || 0)));
+		const nextOrden = maxOrden + 1;
+		this.gForm.reset({ estado: true, orden: nextOrden });
+		// En creación, el orden se autogenera y no debe editarse
+		this.gForm.get('orden')?.disable({ emitEvent: false });
 		this.gForm.get('gestion')?.enable(); // permitir ingresar clave en creación
 		this.gFormServerErrors = [];
 		this.alertMessage = '';
@@ -175,6 +182,8 @@ export class ConfiguracionesGeneralesComponent implements OnInit {
 		this.editingG = g;
 		this.gForm.patchValue(g);
 		this.gForm.get('gestion')?.disable(); // clave primaria inmutable en edición
+		// En edición: el orden no es editable, mantener deshabilitado
+		this.gForm.get('orden')?.disable({ emitEvent: false });
 		this.gFormServerErrors = [];
 		this.alertMessage = '';
 		// Limpiar errores previos del control gestion
@@ -276,6 +285,20 @@ export class ConfiguracionesGeneralesComponent implements OnInit {
 			this.alertMessage = '';
 			this.scrollToGFormErrors();
 			return;
+		}
+		// Validación opcional: fecha de graduación si existe debe ser >= fecha_ini
+		if (payload.fecha_graduacion) {
+			const fg = new Date(payload.fecha_graduacion);
+			const fi = new Date(payload.fecha_ini);
+			if (fg < fi) {
+				const cgr = this.gForm.get('fecha_graduacion');
+				cgr?.setErrors({ ...(cgr?.errors || {}), backend: true, message: 'La fecha de graduación debe ser mayor o igual a la fecha inicio.' });
+				cgr?.markAsTouched();
+				this.gFormServerErrors = ['La fecha de graduación debe ser mayor o igual a la fecha inicio.'];
+				this.alertMessage = '';
+				this.scrollToGFormErrors();
+				return;
+			}
 		}
 		if (payload.orden == null || Number.isNaN(payload.orden) || payload.orden < 1) {
 			const co = this.gForm.get('orden');

@@ -196,6 +196,157 @@ class SgaSyncRepository
 	}
 
 	/**
+	 * Sincroniza becas y descuentos desde SGA (tabla de_becas) hacia las tablas locales
+	 *  - Becas  -> def_descuentos_beca (nombre_beca, descripcion, monto, porcentaje, estado)
+	 *  - Descuentos -> def_descuentos (nombre_descuento, descripcion, monto, porcentaje, estado)
+	 * Separación por heurística del nombre: contiene la palabra 'BECA' (case-insensitive) => beca; caso contrario => descuento
+	 */
+	public function syncBecasDescuentos(string $source, int $chunk = 1000, bool $dryRun = false): array
+	{
+		$source = strtolower($source);
+		$connections = [];
+		switch ($source) {
+			case 'sga_elec': $connections = ['sga_elec']; break;
+			case 'sga_mec': $connections = ['sga_mec']; break;
+			case 'all':
+			default: $connections = ['sga_elec','sga_mec']; break;
+		}
+
+		$summary = [
+			'source' => $source,
+			'total' => 0,
+			'rows_scanned' => 0,
+			'becas_found' => 0,
+			'descuentos_found' => 0,
+			'becas_inserted' => 0,
+			'becas_updated' => 0,
+			'descuentos_inserted' => 0,
+			'descuentos_updated' => 0,
+			'skipped' => 0,
+		];
+
+		// Si no existen las tablas destino, no hacemos nada
+		if (!\Illuminate\Support\Facades\Schema::hasTable('def_descuentos') || !\Illuminate\Support\Facades\Schema::hasTable('def_descuentos_beca')) {
+			return $summary;
+		}
+
+		foreach ($connections as $conn) {
+			// Resolver nombre real de la tabla fuente en SGA: puede ser de_becas o def_becas (u otros alias)
+			$tableCandidates = ['de_becas','def_becas','becas','descuentos_becas'];
+			$sourceTable = null;
+			foreach ($tableCandidates as $t) {
+				try { if (\Illuminate\Support\Facades\Schema::connection($conn)->hasTable($t)) { $sourceTable = $t; break; } }
+				catch (\Throwable $e) { /* ignore and continue */ }
+			}
+			if (!$sourceTable) { continue; }
+
+			\Illuminate\Support\Facades\DB::connection($conn)
+				->table($sourceTable)
+				->orderBy('cod_beca')
+				->chunk($chunk, function ($rows) use (&$summary, $dryRun) {
+					$summary['total'] += count($rows);
+					$summary['rows_scanned'] += count($rows);
+					if (empty($rows)) { return; }
+
+					$becas = [];
+					$descuentos = [];
+					foreach ($rows as $r) {
+						$nombre = trim((string)($r->nombre_beca ?? $r->nom_beca ?? $r->nombre_descuento ?? $r->nombre ?? ''));
+						if ($nombre === '') { $summary['skipped']++; continue; }
+						$desc = isset($r->descripcion) ? trim((string)$r->descripcion) : (isset($r->detalle) ? trim((string)$r->detalle) : '');
+						$monto = isset($r->monto) ? (int)$r->monto : (isset($r->importe) ? (int)$r->importe : 0);
+						$pv = $r->porcentaje ?? ($r->es_porcentaje ?? null);
+						$porc = $pv !== null ? (bool)($pv === true || $pv === 1 || $pv === '1' || $pv === 't' || $pv === 'T' || $pv === 'true' || $pv === 'TRUE') : false;
+						$ev = $r->estado ?? ($r->activo ?? 1);
+						$activo = (bool)($ev === true || $ev === 1 || $ev === '1' || $ev === 't' || $ev === 'T' || $ev === 'true' || $ev === 'TRUE');
+
+						$norm = mb_strtoupper($nombre);
+						$isBeca = (bool)preg_match('/(^|[^A-ZÑÁÉÍÓÚ])BECA(\b|[^A-ZÑÁÉÍÓÚ])/u', $norm) || (mb_strpos($norm, 'BECA') === 0);
+
+						if ($isBeca) {
+							$becas[] = [
+								'nombre_beca' => mb_substr($nombre, 0, 255),
+								'descripcion' => mb_substr($desc, 0, 65535),
+								'monto' => $monto,
+								'porcentaje' => $porc,
+								'estado' => $activo,
+							];
+						} else {
+							$descuentos[] = [
+								'nombre_descuento' => mb_substr($nombre, 0, 255),
+								'descripcion' => mb_substr($desc, 0, 65535),
+								'monto' => $monto,
+								'porcentaje' => $porc,
+								'estado' => $activo,
+							];
+						}
+					}
+
+					$summary['becas_found'] += count($becas);
+					$summary['descuentos_found'] += count($descuentos);
+
+					if ($dryRun) { return; }
+
+					// 1) Upsert-like por nombre para BECAS usando estrategia insert/update sin requerir índices únicos
+					if (!empty($becas)) {
+						$names = array_values(array_unique(array_map(function($x){ return (string)$x['nombre_beca']; }, $becas)));
+						$existing = \Illuminate\Support\Facades\DB::table('def_descuentos_beca')->whereIn('nombre_beca', $names)->pluck('cod_beca','nombre_beca')->all();
+						$toInsert = [];
+						$toUpdate = [];
+						foreach ($becas as $b) {
+							$key = (string)$b['nombre_beca'];
+							if (isset($existing[$key])) {
+								$toUpdate[] = array_merge($b, ['cod_beca' => (int)$existing[$key]]);
+							} else { $toInsert[] = $b; }
+						}
+						if (!empty($toInsert)) {
+							\Illuminate\Support\Facades\DB::table('def_descuentos_beca')->insert($toInsert);
+							$summary['becas_inserted'] += count($toInsert);
+						}
+						if (!empty($toUpdate)) {
+							foreach (array_chunk($toUpdate, 1000) as $chunkRows) {
+								foreach ($chunkRows as $u) {
+									$id = (int)$u['cod_beca']; unset($u['cod_beca']);
+									\Illuminate\Support\Facades\DB::table('def_descuentos_beca')->where('cod_beca', $id)->update($u);
+									$summary['becas_updated']++;
+								}
+							}
+						}
+					}
+
+					// 2) Upsert-like por nombre para DESCUENTOS (tabla def_descuentos)
+					if (!empty($descuentos)) {
+						$names = array_values(array_unique(array_map(function($x){ return (string)$x['nombre_descuento']; }, $descuentos)));
+						$existing = \Illuminate\Support\Facades\DB::table('def_descuentos')->whereIn('nombre_descuento', $names)->pluck('cod_descuento','nombre_descuento')->all();
+						$toInsert = [];
+						$toUpdate = [];
+						foreach ($descuentos as $d) {
+							$key = (string)$d['nombre_descuento'];
+							if (isset($existing[$key])) {
+								$toUpdate[] = array_merge($d, ['cod_descuento' => (int)$existing[$key]]);
+							} else { $toInsert[] = $d; }
+						}
+						if (!empty($toInsert)) {
+							\Illuminate\Support\Facades\DB::table('def_descuentos')->insert($toInsert);
+							$summary['descuentos_inserted'] += count($toInsert);
+						}
+						if (!empty($toUpdate)) {
+							foreach (array_chunk($toUpdate, 1000) as $chunkRows) {
+								foreach ($chunkRows as $u) {
+									$id = (int)$u['cod_descuento']; unset($u['cod_descuento']);
+									\Illuminate\Support\Facades\DB::table('def_descuentos')->where('cod_descuento', $id)->update($u);
+									$summary['descuentos_updated']++;
+								}
+							}
+						}
+					}
+				});
+		}
+
+		return $summary;
+	}
+
+	/**
 	 * Sincroniza Items de Cobro desde SGA (sin_item_service) hacia la tabla local 'items_cobro'.
 	 * - Clave: codigo_producto_interno
 	 * - En updates NO se sobreescriben: nro_creditos, costo, created_at

@@ -21,10 +21,11 @@
             </div>
             <div class="col-md-4">
               <label class="form-label">Método de Pago</label>
-              <select class="form-select" formControlName="metodo_pago">
+              <select class="form-select" formControlName="metodo_pago" [class.is-invalid]="form.get('metodo_pago')?.invalid && (form.get('metodo_pago')?.touched || form.get('metodo_pago')?.dirty)">
                 <option value="">-- Seleccione --</option>
                 <option *ngFor="let f of formasCobro" [value]="f.id_forma_cobro">{{ labelForma(f) }}</option>
               </select>
+              <div class="invalid-feedback">Seleccione un método de pago</div>
             </div>
           </div>
         </div>
@@ -64,22 +65,26 @@
                 <div class="row g-3 align-items-end">
                   <div class="col-md-4">
                     <label class="form-label">Cuenta destino</label>
-                    <select class="form-select" formControlName="id_cuentas_bancarias">
+                    <select class="form-select" formControlName="id_cuentas_bancarias" [class.is-invalid]="form.get('id_cuentas_bancarias')?.invalid && (form.get('id_cuentas_bancarias')?.touched || form.get('id_cuentas_bancarias')?.dirty)">
                       <option value="">Seleccione cuenta/banco</option>
                       <option *ngFor="let c of cuentasBancarias" [value]="c.id_cuentas_bancarias">{{ c.banco }} - {{ c.numero_cuenta }}</option>
                     </select>
+                    <div class="invalid-feedback">Seleccione una cuenta destino</div>
                   </div>
                   <div class="col-md-4">
                     <label class="form-label">Fecha depósito</label>
-                    <input type="date" class="form-control" formControlName="fecha_deposito" />
+                    <input type="date" class="form-control" formControlName="fecha_deposito" [class.is-invalid]="form.get('fecha_deposito')?.invalid && (form.get('fecha_deposito')?.touched || form.get('fecha_deposito')?.dirty)" />
+                    <div class="invalid-feedback">Ingrese la fecha del depósito</div>
                   </div>
                   <div class="col-md-4">
                     <label class="form-label">Num. depósito</label>
-                    <input type="text" class="form-control" formControlName="nro_deposito" />
+                    <input type="text" class="form-control" formControlName="nro_deposito" [class.is-invalid]="form.get('nro_deposito')?.invalid && (form.get('nro_deposito')?.touched || form.get('nro_deposito')?.dirty)" />
+                    <div class="invalid-feedback">Ingrese el número de depósito</div>
                   </div>
                   <div class="col-md-4" *ngIf="isTransferencia">
                     <label class="form-label">Banco Origen</label>
-                    <input type="text" class="form-control" formControlName="banco_origen" placeholder="Banco origen" />
+                    <input type="text" class="form-control" formControlName="banco_origen" placeholder="Banco origen" [class.is-invalid]="form.get('banco_origen')?.invalid && (form.get('banco_origen')?.touched || form.get('banco_origen')?.dirty)" />
+                    <div class="invalid-feedback">Ingrese el banco de origen</div>
                   </div>
                 </div>
               </div>

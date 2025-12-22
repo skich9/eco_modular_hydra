@@ -1,0 +1,17 @@
+/* Estilos mínimos para la página de Asignación de Becas/Descuentos */
+.table-hover tbody tr.table-active {
+	--bs-table-accent-bg: rgba(0, 123, 255, 0.1);
+}
+.table-scroll-5 {
+	max-height: 18rem;
+	overflow-y: auto;
+}
+.table-scroll-5 table {
+	margin-bottom: 0;
+}
+.table-scroll-5 thead th {
+	position: sticky;
+	top: 0;
+	background: var(--bs-body-bg);
+	z-index: 1;
+}

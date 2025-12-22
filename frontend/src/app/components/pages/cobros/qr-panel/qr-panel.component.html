@@ -52,7 +52,7 @@
 						</div>
 					</div>
 					<ng-template #noqr>
-						<div class="text-center my-3" *ngIf="(loading || (status==='procesando')); else noqr_msg">
+						<div class="text-center my-3" *ngIf="loading; else noqr_msg">
 							<div class="engine-loader mx-auto"></div>
 							<div class="mt-2 small text-muted">{{ isCancelling ? 'Anulando QR...' : 'Generando QR...' }}</div>
 						</div>
@@ -111,7 +111,7 @@
 			</div>
 		</div>
 		<ng-template #noqr_local>
-			<div class="text-center my-3" *ngIf="(loading || (status==='procesando')); else noqr_local_msg">
+			<div class="text-center my-3" *ngIf="loading; else noqr_local_msg">
 				<div class="engine-loader mx-auto"></div>
 				<div class="mt-2 small text-muted">{{ isCancelling ? 'Anulando QR...' : 'Generando QR...' }}</div>
 			</div>

@@ -390,7 +390,8 @@ export class RecuperacionModalComponent implements OnInit, OnChanges {
 		}
 		if (!this.form.valid) {
 			try { this.form.markAllAsTouched(); } catch {}
-			this.modalAlertMessage = 'Complete los campos obligatorios del método de pago.';
+			const missing = this.collectMissingFieldsForMetodo();
+			this.modalAlertMessage = missing.length ? `Complete los siguientes campos: ${missing.join(', ')}.` : 'Complete los campos obligatorios del método de pago.';
 			this.modalAlertType = 'warning';
 			return;
 		}
@@ -444,5 +445,61 @@ export class RecuperacionModalComponent implements OnInit, OnChanges {
 			instance.hide();
 		}
 		this.modalAlertMessage = '';
+		if (this.isTarjeta || this.isCheque || this.isDeposito || this.isTransferencia) {
+			this.resetTarjetaFields();
+		}
+	}
+
+	private resetTarjetaFields(): void {
+		const names = ['banco_origen','tarjeta_first4','tarjeta_last4','id_cuentas_bancarias','fecha_deposito','nro_deposito'];
+		for (const n of names) {
+			const c = this.form.get(n);
+			if (!c) continue;
+			c.setValue('', { emitEvent: false });
+			c.markAsPristine();
+			c.markAsUntouched();
+			c.updateValueAndValidity({ emitEvent: false });
+		}
+	}
+
+	private getFieldLabel(name: string): string {
+		const map: Record<string, string> = {
+			metodo_pago: 'Método de Pago',
+			comprobante: 'Comprobante',
+			id_cuentas_bancarias: 'Cuenta destino',
+			fecha_deposito: 'Fecha depósito',
+			nro_deposito: 'Num. depósito',
+			banco_origen: 'Banco Origen',
+			tarjeta_first4: 'Nº Tarjeta (4 primeros)',
+			tarjeta_last4: 'Nº Tarjeta (4 últimos)'
+		};
+		return map[name] || name;
+	}
+
+	private collectMissingFieldsForMetodo(): string[] {
+		const out: string[] = [];
+		const addIfMissing = (n: string) => {
+			const c = this.form.get(n);
+			if (!c) return;
+			c.updateValueAndValidity({ emitEvent: false });
+			const v = (c.value ?? '').toString().trim();
+			const invalid = !v || c.invalid;
+			if (invalid) {
+				try { c.markAsTouched(); } catch {}
+				out.push(this.getFieldLabel(n));
+			}
+		};
+		const metodo = (this.form.get('metodo_pago')?.value || '').toString();
+		if (!metodo) addIfMissing('metodo_pago');
+		const comp = (this.form.get('comprobante')?.value || '').toString().toUpperCase();
+		if (!(comp === 'RECIBO' || comp === 'FACTURA')) out.push(this.getFieldLabel('comprobante'));
+		if (this.isTarjeta) {
+			['id_cuentas_bancarias','fecha_deposito','nro_deposito','banco_origen','tarjeta_first4','tarjeta_last4'].forEach(addIfMissing);
+		} else if (this.isTransferencia) {
+			['id_cuentas_bancarias','fecha_deposito','nro_deposito','banco_origen'].forEach(addIfMissing);
+		} else if (this.isCheque || this.isDeposito) {
+			['id_cuentas_bancarias','fecha_deposito','nro_deposito'].forEach(addIfMissing);
+		}
+		return out;
 	}
 }

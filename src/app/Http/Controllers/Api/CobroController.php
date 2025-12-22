@@ -69,7 +69,7 @@ class CobroController extends Controller
 			];
 			foreach ($meses as $idx => $mesNum) {
 				$cuota = $idx + 1; // cuotas 1..5
-				$map[] = [ 'numero_cuota' => $cuota, 'mes_num' => $mesNum, 'mes_nombre' => $names[$mesNum] ?? (string)$mesNum ];
+				$map[] = [ 'numero_cuota' => $cuota, 'mes_num' => $mesNum, 'mes_nombre' => (isset($names[$mesNum]) ? $names[$mesNum] : (string)$mesNum) ];
 			}
 		} catch (\Throwable $e) { /* noop */ }
 		return $map;
@@ -244,8 +244,6 @@ class CobroController extends Controller
 
 			$codCeta = (int) $request->input('cod_ceta');
 			$gestionReq = $request->input('gestion');
-			// Gestion inicial (podría ser null). La gestion final se determinará tras cargar la inscripción
-			$gestion = $gestionReq ?: optional(Gestion::gestionActual())->gestion;
 			$warnings = [];
 
 			$estudiante = Estudiante::with('pensum')->find($codCeta);
@@ -256,46 +254,39 @@ class CobroController extends Controller
 				], 404);
 			}
 
-			// Obtener todas las inscripciones por gestión para el estudiante (NORMAL y ARRASTRE)
-			$inscripciones = Inscripcion::where('cod_ceta', $codCeta)
-				->when($gestion, function ($q) use ($gestion) {
-					$q->where('gestion', $gestion);
-				})
-				->orderByDesc('fecha_inscripcion')
-				->orderByDesc('created_at')
-				->get();
-			// Manejo explícito: si no hay inscripciones
-			if ($inscripciones->isEmpty()) {
-				if ($gestionReq) {
+			// Estrategia de gestión: si viene gestion en request, usarla; caso contrario usar la última inscripción del estudiante
+			if ($gestionReq) {
+				$inscripciones = Inscripcion::with('pensum')->where('cod_ceta', $codCeta)
+					->where('gestion', $gestionReq)
+					->orderByDesc('fecha_inscripcion')
+					->orderByDesc('created_at')
+					->get();
+				if ($inscripciones->isEmpty()) {
 					return response()->json([
 						'success' => false,
 						'message' => 'El estudiante no tiene inscripción en la gestión solicitada',
 					], 404);
 				}
-
-				// Fallback automático: usar la última inscripción disponible
+				$gestionToUse = $gestionReq;
+			} else {
 				$ultima = Inscripcion::where('cod_ceta', $codCeta)
 					->orderByDesc('fecha_inscripcion')
 					->orderByDesc('created_at')
 					->first();
-				if ($ultima) {
-					$inscripciones = Inscripcion::where('cod_ceta', $codCeta)
-						->where('gestion', $ultima->gestion)
-						->orderByDesc('fecha_inscripcion')
-						->orderByDesc('created_at')
-						->get();
-					$warnings[] = 'No hay inscripción en la gestión actual; se usó la última disponible: ' . $ultima->gestion;
-					$gestion = $ultima->gestion;
-				} else {
+				if (!$ultima) {
 					return response()->json([
 						'success' => false,
 						'message' => 'El estudiante no posee inscripciones registradas',
 					], 404);
 				}
+				$gestionToUse = $ultima->gestion;
+				$inscripciones = Inscripcion::with('pensum')->where('cod_ceta', $codCeta)
+					->where('gestion', $gestionToUse)
+					->orderByDesc('fecha_inscripcion')
+					->orderByDesc('created_at')
+					->get();
+				$warnings[] = 'Se usó la última inscripción del estudiante: ' . $gestionToUse;
 			}
-
-			// Determinar gestión a usar en cálculos y respuesta
-			$gestionToUse = $gestion ?: optional(Gestion::gestionActual())->gestion;
 			// Seleccionar inscripción principal: priorizar NORMAL si existe, caso contrario la primera
 			$primaryInscripcion = $inscripciones->firstWhere('tipo_inscripcion', 'NORMAL') ?: $inscripciones->first();
 			// Determinar pensum a usar (desde la inscripción principal, si existe)
@@ -616,11 +607,28 @@ class CobroController extends Controller
 			}
 			$mensualidadMeses = $this->calcularMesesPorGestion($gestionToUse);
 
+			$grupos = $inscripciones->pluck('cod_curso')
+				->filter()
+				->unique()
+				->values()
+				->all();
+
+			$gestionesAll = Inscripcion::where('cod_ceta', $codCeta)
+				->orderByDesc('fecha_inscripcion')
+				->orderByDesc('created_at')
+				->pluck('gestion')
+				->filter()
+				->unique()
+				->values()
+				->all();
+
 			return response()->json([
 				'success' => true,
 				'data' => [
 					'estudiante' => $estudiante,
 					'inscripciones' => $inscripciones,
+					'grupos' => $grupos,
+					'gestiones_all' => $gestionesAll,
 					'inscripcion' => $primaryInscripcion,
 					'gestion' => $gestionToUse,
 					'costo_semestral' => $costoSemestral,
@@ -1054,6 +1062,7 @@ class CobroController extends Controller
 									'id_usuario' => (int)$request->id_usuario,
 									'id_forma_cobro' => $formaIdItem,
 									'monto_total' => (float)$item['monto'],
+									'periodo_facturado' => ($request->gestion ?? null),
 									'cliente' => $cliName2,
 									'codigo_cufd' => $cufd['codigo_cufd'] ?? null,
 									'cuf' => $cuf,
@@ -1127,6 +1136,7 @@ class CobroController extends Controller
 											'cufd' => (string)($cufd['codigo_cufd'] ?? ''),
 											'cuf' => (string)$cuf,
 											'fecha_emision' => (string)$fechaEmisionIso,
+											'periodo_facturado' => ($request->gestion ?? null),
 											'monto_total' => (float) $item['monto'],
 											'numero_factura' => (int) $nroFactura,
 											'id_forma_cobro' => $formaIdItem,
@@ -1246,6 +1256,7 @@ class CobroController extends Controller
 								'id_usuario' => (int)$request->id_usuario,
 								'id_forma_cobro' => $formaIdItem,
 								'monto_total' => (float)$item['monto'],
+								'periodo_facturado' => ($request->gestion ?? null),
 								'cliente' => $cliNameM,
 								'codigo_cafc' => $range['cafc'] ?? null,
 							]);
@@ -1707,6 +1718,7 @@ class CobroController extends Controller
 								'cufd' => $cufdGroup,
 								'cuf' => $cufGroup,
 								'fecha_emision' => (string)$fechaEmisionIsoGroup,
+								'periodo_facturado' => ($request->gestion ?? null),
 								'monto_total' => (float)$factMontoTotal,
 								'numero_factura' => (int)$nroFacturaGroup,
 								'id_forma_cobro' => (string)($request->id_forma_cobro ?? ''),

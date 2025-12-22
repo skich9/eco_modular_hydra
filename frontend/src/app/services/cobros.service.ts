@@ -76,6 +76,39 @@ export class CobrosService {
 		);
 	}
 
+	// ===================== Definiciones de descuentos/becas =====================
+	getDefDescuentos(): Observable<any> {
+		return this.http.get<any>(`${this.apiUrl}/def-descuentos`).pipe(
+			map((res: any) => ({ success: !!res?.success, data: res?.data || [] }))
+		);
+	}
+
+	getDefBecas(): Observable<any> {
+		return this.http.get<any>(`${this.apiUrl}/def-descuentos-beca`).pipe(
+			map((res: any) => ({ success: !!res?.success, data: res?.data || [] }))
+		);
+	}
+
+	// ===================== Descuentos asignados =====================
+	getDescuentos(params: { cod_inscrip?: number; cod_ceta?: string | number; cod_pensum?: string; estado?: boolean }): Observable<any> {
+		let httpParams = new HttpParams();
+		Object.entries(params || {}).forEach(([k, v]) => {
+			if (v !== undefined && v !== null && String(v).toString().trim() !== '') {
+				httpParams = httpParams.set(k, String(v));
+			}
+		});
+		return this.http.get<any>(`${this.apiUrl}/descuentos`, { params: httpParams }).pipe(
+			map((res: any) => ({ success: !!res?.success, data: res?.data || [] }))
+		);
+	}
+
+	// ===================== Catálogos globales (gestiones, carreras) =====================
+	getCarreras(): Observable<any> {
+		return this.http.get<any>(`${this.apiUrl}/carreras`).pipe(
+			map((res: any) => ({ success: !!res?.success, data: res?.data || [] }))
+		);
+	}
+
 	// ===================== Parámetros de Cuotas =====================
 	getParametrosCuotasActivas(): Observable<any> {
 		return this.http.get<any>(`${this.apiUrl}/parametros-cuota/activos`).pipe(
