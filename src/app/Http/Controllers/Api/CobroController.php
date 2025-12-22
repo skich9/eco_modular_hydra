@@ -530,7 +530,7 @@ class CobroController extends Controller
 			// Preferencia: sumar todos los montos de asignacion_costos para TODAS las inscripciones del estudiante en la gestión seleccionada
 			$montoSemestralFromAsignGestion = null;
 			try {
-				$inscripIds = $inscripciones->pluck('cod_inscrip')->filter()->map(fn($v) => (int)$v)->values();
+				$inscripIds = $inscripciones->pluck('cod_inscrip')->filter()->map(function($v) { return (int)$v; })->values();
 				if ($inscripIds->count() > 0 && Schema::hasTable('asignacion_costos')) {
 					$montoSemestralFromAsignGestion = (float) DB::table('asignacion_costos')
 						->whereIn('cod_inscrip', $inscripIds)
@@ -588,7 +588,7 @@ class CobroController extends Controller
 						],
 					];
 					$upperDocs = $documentosPresentados->map(function($d){
-						$src = (string)($d->nombre_doc ?? '');
+						$src = (string)(isset($d->nombre_doc) ? $d->nombre_doc : '');
 						if (function_exists('mb_strtoupper')) {
 							$d->nombre_doc_upper = mb_strtoupper($src, 'UTF-8');
 						} else {
@@ -706,6 +706,20 @@ class CobroController extends Controller
 							'fecha_vencimiento' => $a->fecha_vencimiento,
 						];
 					})->values(),
+					
+					// Calcular mensualidades pagadas y adeudadas a la fecha actual
+					'mensualidades' => [
+						'pagadas' => $asignacionesPrimarias->filter(function($a){
+							// Incluir COBRADO y PARCIAL (que tienen pago parcial)
+							return ($a->estado_pago === 'COBRADO' || $a->estado_pago === 'PARCIAL') && $a->fecha_pago && $a->fecha_pago <= now()->toDateString();
+						})->values(),
+						'adeudadas' => $asignacionesPrimarias->filter(function($a){
+							// Incluir PARCIAL (deben mostrar el saldo restante) y otros estados no cobrados
+							// Incluir todas las cuotas no cobradas (vencidas y no vencidas)
+							return $a->estado_pago !== 'COBRADO';
+						})->values(),
+						'pendientes' => collect(), // Vacío porque ahora están incluidas en adeudadas
+					],
 					'arrastre' => $arrastreSummary,
 					'cobros' => [
 						'mensualidad' => [

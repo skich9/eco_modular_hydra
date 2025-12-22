@@ -171,6 +171,23 @@ export class CobrosComponent implements OnInit {
     });
   }
 
+  // Helper method to extract form errors for debugging
+  private getFormErrors(form: FormGroup): any {
+    const errors: any = {};
+    Object.keys(form.controls).forEach(key => {
+      const control = form.get(key);
+      if (control instanceof FormGroup) {
+        const nestedErrors = this.getFormErrors(control);
+        if (Object.keys(nestedErrors).length > 0) {
+          errors[key] = nestedErrors;
+        }
+      } else if (control && control.errors) {
+        errors[key] = control.errors;
+      }
+    });
+    return errors;
+  }
+
   // PU a enviar al modal: si hay saldo en la cuota inicial efectiva, usarlo; caso contrario usar mensualidadPU
   getMensualidadPuForModal(): number {
     try {
@@ -2576,11 +2593,17 @@ export class CobrosComponent implements OnInit {
       console.warn('[Cobros] submitBatch() ignored because loading=true');
       return;
     }
-    console.log('[Cobros] submitBatch() called', {
-      valid: this.batchForm.valid,
-      pagosLen: this.pagos.length,
+    console.log('[Cobros] submitBatch() called', { 
+      loading: this.loading,
+      formValid: this.batchForm.valid,
+      pagosLength: this.pagos.length,
+      qrPanelStatus: this.qrPanelStatus,
       cabecera: (this.batchForm.get('cabecera') as FormGroup)?.getRawValue?.() || null
     });
+    if (this.loading) {
+      console.warn('[Cobros] submitBatch() ignored because loading=true');
+      return;
+    }
     const cab = this.batchForm.get('cabecera') as FormGroup;
     // 1) cod_ceta: desde resumen o searchForm si falta
     try {
@@ -2639,7 +2662,11 @@ export class CobrosComponent implements OnInit {
     // Forzar visualización de errores de validación en el formulario
     try { this.batchForm.markAllAsTouched(); } catch {}
     if (!this.batchForm.valid || this.pagos.length === 0) {
-      console.warn('[Cobros] submitBatch() invalid form or empty pagos');
+      console.warn('[Cobros] submitBatch() invalid form or empty pagos', {
+        formValid: this.batchForm.valid,
+        pagosLength: this.pagos.length,
+        formErrors: this.getFormErrors(this.batchForm)
+      });
       this.showAlert('Complete los datos y agregue al menos un pago', 'warning');
       return;
     }
