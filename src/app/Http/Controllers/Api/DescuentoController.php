@@ -264,7 +264,30 @@ class DescuentoController extends Controller
 						->first();
 					$row['id_cuota'] = $asig ? (int)$asig->id_asignacion_costo : null;
 					if (isset($c['observaciones']) && $c['observaciones'] !== '') $row['observaciones'] = (string)$c['observaciones'];
-					$row['monto_descuento'] = isset($c['monto_descuento']) ? (float)$c['monto_descuento'] : 0.0;
+					// Validación de monto_descuento contra saldo referencial por cuota
+					$reqMonto = isset($c['monto_descuento']) ? (float)$c['monto_descuento'] : 0.0;
+					$canApply = true;
+					if (!$asig) { $canApply = false; }
+					else {
+						$bruto = (float)($asig->monto ?? 0);
+						$pagado = (float)($asig->monto_pagado ?? 0);
+						$descExist = 0.0;
+						try {
+							$idDetExist = (int)($asig->id_descuentoDetalle ?? 0);
+							if ($idDetExist) {
+								$detExist = DescuentoDetalle::where('id_descuento_detalle', $idDetExist)->first(['monto_descuento']);
+								$descExist = $detExist ? (float)($detExist->monto_descuento ?? 0) : 0.0;
+							} else {
+								$detExist = DescuentoDetalle::where('id_cuota', (int)$asig->id_asignacion_costo)->orderByDesc('id_descuento_detalle')->first(['monto_descuento']);
+								$descExist = $detExist ? (float)($detExist->monto_descuento ?? 0) : 0.0;
+							}
+						} catch (\Throwable $e) { $descExist = 0.0; }
+						$neto = max(0.0, $bruto - $descExist);
+						$saldoRef = max(0.0, $neto - $pagado);
+						if ($reqMonto <= 0.0 || $reqMonto > $saldoRef) { $canApply = false; }
+					}
+					if (!$canApply) { continue; }
+					$row['monto_descuento'] = $reqMonto;
 					$det = DescuentoDetalle::create($row);
 					$rows[] = $det;
 					try {

@@ -163,10 +163,6 @@
 						<option *ngFor="let t of tipoInscripcionOptions" [value]="t">{{ t }}</option>
 					</select>
 				</div>
-				<div class="col-sm-4 col-md-3" *ngIf="(contextForm.value?.tipoInscripcion || '').toUpperCase() === 'ARRASTRE'">
-					<label class="form-label">Cantidad de Arrastre</label>
-					<div class="form-control bg-light">{{ arrastreCantidad }} cuotas</div>
-				</div>
 			</div>
 			<div class="table-responsive mb-3">
 				<table class="table table-sm align-middle">

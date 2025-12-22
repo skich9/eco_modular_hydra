@@ -58,6 +58,30 @@ export class MensualidadModalComponent implements OnInit, OnChanges {
     });
   }
 
+  // Obtiene el monto NETO de una cuota (monto - descuento) desde el resumen por número de cuota
+  private getCuotaNetoByNumero(numeroCuota: number): number {
+    try {
+      const src: any[] = ((this.resumen?.asignacion_costos?.items || this.resumen?.asignaciones || []) as any[]);
+      const hit = (src || []).find(a => Number(a?.numero_cuota || 0) === Number(numeroCuota));
+      if (!hit) return Number(this.pu || 0);
+      const bruto = this.toNumberLoose(hit?.monto);
+      const desc = this.toNumberLoose(hit?.descuento);
+      const neto = (hit?.monto_neto !== undefined && hit?.monto_neto !== null) ? this.toNumberLoose(hit?.monto_neto) : Math.max(0, bruto - desc);
+      return neto;
+    } catch { return Number(this.pu || 0); }
+  }
+
+  // Obtiene el restante actual para una cuota por número (considera saldos frontales si existen)
+  private getCuotaRestanteByNumero(numeroCuota: number): number {
+    try {
+      const list = this.getOrderedCuotasRestantes();
+      const hit = list.find(it => Number(it.numero) === Number(numeroCuota));
+      if (hit && hit.restante !== undefined) return Math.max(0, Number(hit.restante || 0));
+      // Si no aparece en la lista (posiblemente ya está saldada), restante = 0
+      return 0;
+    } catch { return 0; }
+  }
+
   // PU efectivo a mostrar para mensualidad: si hay override de cuota inicial, usar restante de esa cuota; si no, usar input pu
   get puDisplay(): number {
     try {
@@ -202,6 +226,16 @@ export class MensualidadModalComponent implements OnInit, OnChanges {
       }
       this.configureByTipo();
       this.recalcTotal();
+      // Actualizar campo de descuento mostrado (sólo informativo) para la próxima cuota
+      try {
+        const start = this.getStartCuotaFromResumen();
+        const neto = this.getCuotaNetoByNumero(start);
+        const restante = this.getCuotaRestanteByNumero(start);
+        const d = this.getDescuentoForCuota(start);
+        // Si la cuota está en estado PARCIAL (restante < neto), el "descuento" ya fue considerado y no aplica nuevamente al saldo
+        const showDesc = (restante < neto) ? 0 : d;
+        this.form.get('descuento')?.setValue(showDesc, { emitEvent: false });
+      } catch {}
       // Si el parcial está activo, actualizar tope y valor sugerido del monto parcial con el PU efectivo
       if (this.tipo === 'mensualidad' && this.form.get('pago_parcial')?.value) {
         this.form.get('monto_parcial')?.setValidators([Validators.required, Validators.min(0.01), Validators.max(Number(this.puDisplay || Number.MAX_SAFE_INTEGER))]);
@@ -367,7 +401,7 @@ export class MensualidadModalComponent implements OnInit, OnChanges {
     return names[n] || String(n);
   }
 
-  // Suma los montos restantes de las próximas k cuotas según resumen.asignacion_costos/asignaciones
+  // Suma los montos restantes (netos) de las próximas k cuotas según resumen.asignacion_costos/asignaciones
   private sumNextKCuotasRestantes(k: number): number {
     if (!k) return 0;
     const list = this.getOrderedCuotasRestantes();
@@ -376,16 +410,18 @@ export class MensualidadModalComponent implements OnInit, OnChanges {
     return acc;
   }
 
-  // Devuelve lista ordenada por numero_cuota con {numero, restante}
+  // Devuelve lista ordenada por numero_cuota con {numero, restante} usando monto neto (monto - descuento)
   private getOrderedCuotasRestantes(): Array<{ numero: number; restante: number; id_cuota_template: number|null; id_asignacion_costo: number|null; }> {
     const src: any[] = ((this.resumen?.asignacion_costos?.items || this.resumen?.asignaciones || []) as any[]);
     const ord = (src || []).slice().sort((a: any, b: any) => Number(a?.numero_cuota || 0) - Number(b?.numero_cuota || 0));
     const out: Array<{ numero: number; restante: number; id_cuota_template: number|null; id_asignacion_costo: number|null; }> = [];
     for (const a of ord) {
-      const monto = this.toNumberLoose(a?.monto);
+      const bruto = this.toNumberLoose(a?.monto);
+      const desc = this.toNumberLoose(a?.descuento);
+      const montoNeto = (a?.monto_neto !== undefined && a?.monto_neto !== null) ? this.toNumberLoose(a?.monto_neto) : Math.max(0, bruto - desc);
       const pagado = this.toNumberLoose(a?.monto_pagado);
       const numero = Number(a?.numero_cuota || 0);
-      let restante = Math.max(0, monto - pagado);
+      let restante = Math.max(0, montoNeto - pagado);
       if (this.frontSaldos && Object.prototype.hasOwnProperty.call(this.frontSaldos, numero)) {
         const r = Number(this.frontSaldos[numero]);
         if (isFinite(r)) restante = Math.max(0, r);
@@ -403,6 +439,17 @@ export class MensualidadModalComponent implements OnInit, OnChanges {
       return out.filter(it => Number(it.numero) >= start);
     }
     return out;
+  }
+
+  // Obtiene el descuento configurado para una cuota específica desde el resumen
+  private getDescuentoForCuota(numeroCuota: number): number {
+    try {
+      const src: any[] = ((this.resumen?.asignacion_costos?.items || this.resumen?.asignaciones || []) as any[]);
+      const hit = (src || []).find(a => Number(a?.numero_cuota || 0) === Number(numeroCuota));
+      if (!hit) return 0;
+      const d = (hit?.descuento !== undefined && hit?.descuento !== null) ? this.toNumberLoose(hit?.descuento) : 0;
+      return d || 0;
+    } catch { return 0; }
   }
 
   // Promedio nominal de las cuotas (monto sin considerar pagos) para fallback
