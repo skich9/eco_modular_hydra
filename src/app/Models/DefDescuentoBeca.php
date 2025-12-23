@@ -20,6 +20,8 @@ class DefDescuentoBeca extends Model
 		'monto',
 		'porcentaje',
 		'estado',
+		'd_i',
+		'beca',
 	];
 
 	protected $casts = [
@@ -27,5 +29,7 @@ class DefDescuentoBeca extends Model
 		'monto' => 'integer',
 		'porcentaje' => 'boolean',
 		'estado' => 'boolean',
+		'd_i' => 'boolean',
+		'beca' => 'boolean',
 	];
 }

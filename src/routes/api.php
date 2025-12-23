@@ -237,6 +237,7 @@ Route::post('webhooks/inscripciones/created', [InscripcionesWebhookController::c
 Route::get('descuentos/active', [DescuentoController::class, 'active']);
 Route::patch('descuentos/{id}/toggle-status', [DescuentoController::class, 'toggleStatus']);
 Route::apiResource('descuentos', DescuentoController::class);
+Route::post('descuentos/asignar', [DescuentoController::class, 'asignar']);
 
 // Definiciones de descuentos
 Route::apiResource('def-descuentos', DefDescuentoController::class);

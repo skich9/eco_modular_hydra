@@ -973,7 +973,69 @@ export class CobrosComponent implements OnInit {
     // Definir tipo antes de propagar inputs al modal
     this.modalTipo = 'arrastre';
     // Configurar PU y pendientes para arrastre
-    this.mensualidadPU = Number(next?.monto || 0);
+    // Preferir NETO desde la lista de asignaciones_arrastre o asignacion_costos del bloque 'arrastre'
+    let arrNet = 0;
+    try {
+      const numero = Number((next as any)?.numero_cuota || 0);
+      const ida = Number((next as any)?.id_asignacion_costo || 0);
+      const idt = Number((next as any)?.id_cuota_template || 0);
+      // 1) Buscar en arrastre.asignacion_costos.items
+      const acItems: any[] = Array.isArray(this.resumen?.arrastre?.asignacion_costos?.items)
+        ? this.resumen!.arrastre.asignacion_costos.items : [];
+      let hit: any = null;
+      if (acItems.length) hit = acItems.find((a: any) => {
+        const n = Number(a?.numero_cuota || a?.numero || 0);
+        const _ida = Number(a?.id_asignacion_costo || 0);
+        const _idt = Number(a?.id_cuota_template || 0);
+        return (ida && _ida === ida) || (idt && _idt === idt) || (numero && n === numero);
+      }) || null;
+      // 2) Fallback: buscar en arrastre.asignaciones_arrastre
+      if (!hit) {
+        const arrAsigs: any[] = Array.isArray(this.resumen?.arrastre?.asignaciones_arrastre)
+          ? this.resumen!.arrastre.asignaciones_arrastre : [];
+        hit = arrAsigs.find((a: any) => {
+          const n = Number(a?.numero_cuota || 0);
+          const _ida = Number(a?.id_asignacion_costo || 0);
+          const _idt = Number(a?.id_cuota_template || 0);
+          return (ida && _ida === ida) || (idt && _idt === idt) || (numero && n === numero);
+        }) || null;
+      }
+      // 2.b) Fallback adicional: raíz resumen.asignaciones_arrastre
+      if (!hit) {
+        const rootArr: any[] = Array.isArray((this.resumen as any)?.asignaciones_arrastre)
+          ? (this.resumen as any).asignaciones_arrastre : [];
+        hit = rootArr.find((a: any) => {
+          const n = Number(a?.numero_cuota || 0);
+          const _ida = Number(a?.id_asignacion_costo || 0);
+          const _idt = Number(a?.id_cuota_template || 0);
+          return (ida && _ida === ida) || (idt && _idt === idt) || (numero && n === numero);
+        }) || null;
+      }
+      if (hit) {
+        const bruto = this.toNumber((hit as any)?.monto);
+        const desc = this.toNumber((hit as any)?.descuento);
+        const neto = this.toNumber((hit as any)?.monto_neto);
+        arrNet = neto > 0 ? neto : Math.max(0, bruto - desc);
+      }
+      // 3) Intentar con campos del objeto 'arrastre' (algunos backends colocan la cuota activa aquí)
+      if (!(arrNet > 0)) {
+        const arrObj: any = (this.resumen as any)?.arrastre || null;
+        if (arrObj) {
+          const brutoArr = this.toNumber(arrObj?.monto);
+          const descArr = this.toNumber(arrObj?.descuento);
+          const netoArr = this.toNumber(arrObj?.monto_neto);
+          if (netoArr > 0) arrNet = netoArr; else if (brutoArr > 0 && descArr > 0) arrNet = Math.max(0, brutoArr - descArr);
+        }
+      }
+      // 4) Último recurso: usar campos de next
+      if (!(arrNet > 0)) {
+        const brutoNext = this.toNumber((next as any)?.monto);
+        const descNext = this.toNumber((next as any)?.descuento);
+        const netoNext = this.toNumber((next as any)?.monto_neto);
+        arrNet = netoNext > 0 ? netoNext : Math.max(0, brutoNext - descNext);
+      }
+    } catch { arrNet = Number((next as any)?.monto || 0); }
+    this.mensualidadPU = arrNet;
     this.mensualidadesPendientes = Math.max(0, Number(arr?.pending_count || 0));
     // Recalcular lista filtrada y escoger default coherente
     this.computeModalFormasFromSelection();
@@ -1094,8 +1156,8 @@ export class CobrosComponent implements OnInit {
         return {
           cant: Number(g.get('cantidad')?.value || 0),
           detalle: (g.get('detalle')?.value || '').toString(),
-          pu: this.calcRowSubtotal(idx),
-          descuento: Number(g.get('descuento')?.value || 0),
+          pu: this.getRowDisplayPU(idx),
+          descuento: this.getRowDisplayDescuento(idx),
           subtotal: this.calcRowSubtotal(idx),
           obs: (g.get('observaciones')?.value || '').toString()
         };
@@ -1573,9 +1635,12 @@ export class CobrosComponent implements OnInit {
         if (esParcial && numeroCuota) {
           const monto = this.calcRowSubtotal(i);
           const prevSaldo = Number(this.frontSaldoByCuota[numeroCuota] || 0);
+          const desc = Number(ctrl.get('descuento')?.value || 0) || 0;
           const base = pu > 0 ? pu : Number(this.resumen?.totales?.pu_mensual || this.mensualidadPU || 0);
+          const netoBase = Math.max(0, base - (isNaN(desc) ? 0 : desc));
           let nuevoSaldo = (isFinite(prevSaldo) ? prevSaldo : 0) + (isFinite(monto) ? monto : 0);
-          if (base > 0 && nuevoSaldo > base) nuevoSaldo = base;
+          // Reintegrar respetando el neto (PU - descuento) de esa línea parcial
+          if (netoBase > 0 && nuevoSaldo > netoBase) nuevoSaldo = netoBase;
           this.frontSaldoByCuota[numeroCuota] = nuevoSaldo;
           // Fijar foco en la misma cuota nuevamente
           this.lockedMensualidadCuota = numeroCuota;
@@ -2470,10 +2535,12 @@ export class CobrosComponent implements OnInit {
       const detalle = esParcial ? `${baseDetalle} (Parcial)` : baseDetalle;
       const pu = Number(p.pu_mensualidad ?? this.mensualidadPU ?? 0);
       const cant = 1;
-      const desc = p.descuento ?? 0;
-      // Si es parcial y viene un monto explícito, usarlo respetando un tope máximo de PU
-      const montoBase = esParcial ? Number(p.monto || 0) : (cant * pu);
-      const monto = Math.max(0, montoBase - (isNaN(desc) ? 0 : Number(desc)));
+      const desc = Number(p.descuento ?? 0) || 0;
+      // Parcial: el monto es el ingresado por el usuario (validado en el modal contra el neto PU - descuento).
+      // No volver a restar el descuento para evitar doble aplicación.
+      const monto = esParcial
+        ? Math.max(0, Number(p.monto || 0))
+        : Math.max(0, cant * pu - (isNaN(desc) ? 0 : desc));
       // Inferir turno desde identidad/resumen
       const turnoVal = (() => {
         let t = ((this.identidadForm.get('turno') as any)?.value || this.resumen?.inscripcion?.turno || this.resumen?.estudiante?.turno || '').toString().trim().toUpperCase();
@@ -2482,7 +2549,8 @@ export class CobrosComponent implements OnInit {
         if (t === 'N') t = 'NOCHE';
         return t.normalize('NFD').replace(/\p{Diacritic}/gu, '');
       })();
-      const saldo = esParcial && pu ? Math.max(0, pu - monto) : 0;
+      const neto = Math.max(0, pu - (isNaN(desc) ? 0 : desc));
+      const saldo = esParcial ? Math.max(0, neto - monto) : 0;
       const obsStr = ((p.observaciones || '') + '').trim();
       // Mapear medio/doc para UI y envío
       const medioDoc: 'C' | 'M' | '' = (p.medio_doc === 'M' || p.computarizada === 'MANUAL') ? 'M' : (p.medio_doc === 'C' || p.computarizada === 'COMPUTARIZADA') ? 'C' : '' as any;
@@ -2606,6 +2674,22 @@ export class CobrosComponent implements OnInit {
       if (!cab?.get('gestion')?.value && (this.resumen as any)?.gestion) patch.gestion = String((this.resumen as any).gestion);
       if (Object.keys(patch).length) cab.patchValue(patch, { emitEvent: false });
     } catch {}
+    // 1.2) Si hay filas de ARRASTRE en el detalle, forzar cabecera a usar la inscripción ARRASTRE
+    try {
+      const hasArrRows = (this.pagos.controls || []).some(ctrl => {
+        const d = ((ctrl as FormGroup).get('detalle')?.value || '').toString().toUpperCase();
+        return d.includes('ARRASTRE');
+      });
+      if (hasArrRows) {
+        const arrObj: any = (this.resumen as any)?.arrastre?.inscripcion || null;
+        const patch: any = { tipo_inscripcion: 'ARRASTRE' };
+        if (arrObj?.cod_pensum) patch.cod_pensum = String(arrObj.cod_pensum);
+        if (arrObj?.gestion) patch.gestion = String(arrObj.gestion);
+        (this.batchForm.get('cabecera') as FormGroup).patchValue(patch, { emitEvent: false });
+        // Guardar en memoria local para el payload (cod_inscrip no existe en form cabecera)
+        (this as any)._arrInsPayload = arrObj;
+      }
+    } catch {}
     // 2) id_forma_cobro: tomar del modal si cabecera está vacío
     try {
       const currentForma = cab?.get('id_forma_cobro')?.value;
@@ -2710,6 +2794,18 @@ export class CobrosComponent implements OnInit {
         razon_social: (this.identidadForm.get('razon_social')?.value || '').toString()
       }
     } as any;
+    // Inyectar cod_inscrip de ARRASTRE si corresponde
+    try {
+      const hasArrRows = (this.pagos.controls || []).some(ctrl => {
+        const d = ((ctrl as FormGroup).get('detalle')?.value || '').toString().toUpperCase();
+        return d.includes('ARRASTRE');
+      });
+      if (hasArrRows) {
+        const mem = (this as any)._arrInsPayload;
+        if (mem?.cod_inscrip) (payload as any).cod_inscrip = Number(mem.cod_inscrip);
+        (payload as any).tipo_inscripcion = 'ARRASTRE';
+      }
+    } catch {}
     try {
       const uni = String((payload as any).id_forma_cobro || '');
       if (uni) {
@@ -2813,6 +2909,101 @@ export class CobrosComponent implements OnInit {
     const desc = Number(g.get('descuento')?.value || 0);
     const sub = cant * pu - (isNaN(desc) ? 0 : desc);
     return sub > 0 ? sub : 0;
+  }
+
+  // P/U mostrado en la tabla: para pagos parciales con descuento, mostrar
+  // pago_parcial + (pago_parcial * descuento_total_cuota / PU_efectivo);
+  // en otros casos, mostrar pu_mensualidad normal.
+  getRowDisplayPU(i: number): number {
+    try {
+      const g = this.pagos.at(i) as FormGroup;
+      if (!g) return 0;
+      const esParcial = !!g.get('es_parcial')?.value;
+      const puEff = Number(g.get('pu_mensualidad')?.value || 0);
+      if (!esParcial) return puEff;
+      const montoParcial = Number(g.get('monto')?.value || 0);
+      const numeroCuota = Number(g.get('numero_cuota')?.value || 0) || null;
+      let descuentoTotal = 0;
+      if (numeroCuota) {
+        // Buscar descuento por número de cuota en el resumen preferentemente
+        const asignList: any[] = Array.isArray(this.resumen?.asignaciones)
+          ? this.resumen!.asignaciones
+          : (Array.isArray(this.resumen?.asignacion_costos?.items) ? this.resumen!.asignacion_costos.items : []);
+        const hit = (asignList || []).find((a: any) => Number(a?.numero_cuota || a?.numero || 0) === Number(numeroCuota));
+        if (hit) {
+          const d = (hit as any).descuento;
+          descuentoTotal = Number(d ?? 0) || 0;
+        }
+      } else {
+        // Fallback por id_asignacion_costo
+        const idAsign = Number(g.get('id_asignacion_costo')?.value || 0) || null;
+        if (idAsign) {
+          const asignList: any[] = Array.isArray(this.resumen?.asignaciones)
+            ? this.resumen!.asignaciones
+            : (Array.isArray(this.resumen?.asignacion_costos?.items) ? this.resumen!.asignacion_costos.items : []);
+          const hit = (asignList || []).find((a: any) => Number(a?.id_asignacion_costo || 0) === Number(idAsign));
+          if (hit) {
+            const d = (hit as any).descuento;
+            descuentoTotal = Number(d ?? 0) || 0;
+          }
+        }
+      }
+      if (puEff > 0 && descuentoTotal > 0 && montoParcial > 0) {
+        const acomodado = (montoParcial * descuentoTotal) / puEff;
+        return montoParcial + acomodado;
+      }
+      return puEff;
+    } catch {
+      return 0;
+    }
+  }
+
+  // Descuento mostrado en la tabla: para pagos parciales con descuento, mostrar
+  // (pago_parcial * descuento_total_cuota / PU_efectivo);
+  // en otros casos, mostrar el descuento normal de la fila.
+  getRowDisplayDescuento(i: number): number {
+    try {
+      const g = this.pagos.at(i) as FormGroup;
+      if (!g) return 0;
+      const esParcial = !!g.get('es_parcial')?.value;
+      if (!esParcial) {
+        return Number(g.get('descuento')?.value || 0);
+      }
+      const puEff = Number(g.get('pu_mensualidad')?.value || 0);
+      const montoParcial = Number(g.get('monto')?.value || 0);
+      if (!(puEff > 0 && montoParcial > 0)) return 0;
+      const numeroCuota = Number(g.get('numero_cuota')?.value || 0) || null;
+      let descuentoTotal = 0;
+      if (numeroCuota) {
+        const asignList: any[] = Array.isArray(this.resumen?.asignaciones)
+          ? this.resumen!.asignaciones
+          : (Array.isArray(this.resumen?.asignacion_costos?.items) ? this.resumen!.asignacion_costos.items : []);
+        const hit = (asignList || []).find((a: any) => Number(a?.numero_cuota || a?.numero || 0) === Number(numeroCuota));
+        if (hit) {
+          const d = (hit as any).descuento;
+          descuentoTotal = Number(d ?? 0) || 0;
+        }
+      } else {
+        const idAsign = Number(g.get('id_asignacion_costo')?.value || 0) || null;
+        if (idAsign) {
+          const asignList: any[] = Array.isArray(this.resumen?.asignaciones)
+            ? this.resumen!.asignaciones
+            : (Array.isArray(this.resumen?.asignacion_costos?.items) ? this.resumen!.asignacion_costos.items : []);
+          const hit = (asignList || []).find((a: any) => Number(a?.id_asignacion_costo || 0) === Number(idAsign));
+          if (hit) {
+            const d = (hit as any).descuento;
+            descuentoTotal = Number(d ?? 0) || 0;
+          }
+        }
+      }
+      if (descuentoTotal > 0) {
+        const descuentoParcial = (montoParcial * descuentoTotal) / puEff;
+        return descuentoParcial > 0 ? descuentoParcial : 0;
+      }
+      return 0;
+    } catch {
+      return 0;
+    }
   }
 
   get totalSubtotal(): number {
@@ -2976,7 +3167,63 @@ export class CobrosComponent implements OnInit {
     if (!this.ensureMetodoPagoPermitido(['EFECTIVO','TARJETA','CHEQUE','DEPOSITO','TRANSFERENCIA','QR','OTRO'])) return;
     const hoy = new Date().toISOString().slice(0, 10);
     const nro = this.getNextMensualidadNro();
-    const monto = Number(next.monto || 0);
+    // Monto/PU de arrastre debe ser NETO (preferir datos de arrastre.asignacion_costos/asignaciones_arrastre)
+    let monto = 0;
+    try {
+      const numero = Number((next as any)?.numero_cuota || 0);
+      const ida = Number((next as any)?.id_asignacion_costo || 0);
+      const idt = Number((next as any)?.id_cuota_template || 0);
+      const acItems: any[] = Array.isArray(this.resumen?.arrastre?.asignacion_costos?.items)
+        ? this.resumen!.arrastre.asignacion_costos.items : [];
+      let hit: any = null;
+      if (acItems.length) hit = acItems.find((a: any) => {
+        const n = Number(a?.numero_cuota || a?.numero || 0);
+        const _ida = Number(a?.id_asignacion_costo || 0);
+        const _idt = Number(a?.id_cuota_template || 0);
+        return (ida && _ida === ida) || (idt && _idt === idt) || (numero && n === numero);
+      }) || null;
+      if (!hit) {
+        const arrAsigs: any[] = Array.isArray(this.resumen?.arrastre?.asignaciones_arrastre)
+          ? this.resumen!.arrastre.asignaciones_arrastre : [];
+        hit = arrAsigs.find((a: any) => {
+          const n = Number(a?.numero_cuota || 0);
+          const _ida = Number(a?.id_asignacion_costo || 0);
+          const _idt = Number(a?.id_cuota_template || 0);
+          return (ida && _ida === ida) || (idt && _idt === idt) || (numero && n === numero);
+        }) || null;
+      }
+      if (!hit) {
+        const rootArr: any[] = Array.isArray((this.resumen as any)?.asignaciones_arrastre)
+          ? (this.resumen as any).asignaciones_arrastre : [];
+        hit = rootArr.find((a: any) => {
+          const n = Number(a?.numero_cuota || 0);
+          const _ida = Number(a?.id_asignacion_costo || 0);
+          const _idt = Number(a?.id_cuota_template || 0);
+          return (ida && _ida === ida) || (idt && _idt === idt) || (numero && n === numero);
+        }) || null;
+      }
+      if (hit) {
+        const bruto = this.toNumber((hit as any)?.monto);
+        const desc = this.toNumber((hit as any)?.descuento);
+        const neto = this.toNumber((hit as any)?.monto_neto);
+        monto = neto > 0 ? neto : Math.max(0, bruto - desc);
+      }
+      if (!(monto > 0)) {
+        const arrObj: any = (this.resumen as any)?.arrastre || null;
+        if (arrObj) {
+          const brutoArr = this.toNumber(arrObj?.monto);
+          const descArr = this.toNumber(arrObj?.descuento);
+          const netoArr = this.toNumber(arrObj?.monto_neto);
+          if (netoArr > 0) monto = netoArr; else if (brutoArr > 0 && descArr > 0) monto = Math.max(0, brutoArr - descArr);
+        }
+      }
+      if (!(monto > 0)) {
+        const brutoNext = this.toNumber((next as any)?.monto);
+        const descNext = this.toNumber((next as any)?.descuento);
+        const netoNext = this.toNumber((next as any)?.monto_neto);
+        monto = netoNext > 0 ? netoNext : Math.max(0, brutoNext - descNext);
+      }
+    } catch { monto = Number((next as any)?.monto || 0); }
     this.pagos.push(this.fb.group({
       nro_cobro: [nro, Validators.required],
       id_cuota: [next.id_cuota_template ?? null],

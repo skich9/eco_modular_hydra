@@ -12,7 +12,7 @@ class DefDescuentoBecaController extends Controller
 	public function index()
 	{
 		try {
-			$items = DefDescuentoBeca::all();
+			$items = DefDescuentoBeca::where('beca', true)->get();
 			return response()->json(['success' => true, 'data' => $items]);
 		} catch (\Exception $e) {
 			return response()->json(['success' => false, 'message' => 'Error al obtener definiciones de becas: ' . $e->getMessage()], 500);
@@ -23,18 +23,29 @@ class DefDescuentoBecaController extends Controller
 	{
 		try {
 			$validator = Validator::make($request->all(), [
-				'nombre_beca' => 'required|string|max:255|unique:def_descuentos_beca,nombre_beca',
+				'nombre_beca' => 'required|string|max:255|unique:def_descuentos_beca,nombre_beca,NULL,cod_beca,beca,1',
 				'descripcion' => 'nullable|string',
 				'monto' => 'required|integer',
 				'porcentaje' => 'required|boolean',
 				'estado' => 'required|boolean',
+				'd_i' => 'nullable|boolean',
+				'beca' => 'nullable|boolean',
 			]);
 
 			if ($validator->fails()) {
 				return response()->json(['success' => false, 'message' => 'Error de validación', 'errors' => $validator->errors()], 422);
 			}
 
-			$item = DefDescuentoBeca::create($request->all());
+			$payload = [
+				'nombre_beca' => $request->input('nombre_beca'),
+				'descripcion' => $request->input('descripcion'),
+				'monto' => (int) $request->input('monto'),
+				'porcentaje' => (bool) $request->input('porcentaje'),
+				'estado' => (bool) $request->input('estado'),
+				'd_i' => $request->input('d_i', null),
+				'beca' => true,
+			];
+			$item = DefDescuentoBeca::create($payload);
 			return response()->json(['success' => true, 'message' => 'Definición de beca creada correctamente', 'data' => $item], 201);
 		} catch (\Exception $e) {
 			return response()->json(['success' => false, 'message' => 'Error al crear definición de beca: ' . $e->getMessage()], 500);
@@ -44,7 +55,7 @@ class DefDescuentoBecaController extends Controller
 	public function show($id)
 	{
 		try {
-			$item = DefDescuentoBeca::find($id);
+			$item = DefDescuentoBeca::where('cod_beca', $id)->where('beca', true)->first();
 			if (!$item) return response()->json(['success' => false, 'message' => 'Definición no encontrada'], 404);
 			return response()->json(['success' => true, 'data' => $item]);
 		} catch (\Exception $e) {
@@ -55,22 +66,34 @@ class DefDescuentoBecaController extends Controller
 	public function update(Request $request, $id)
 	{
 		try {
-			$item = DefDescuentoBeca::find($id);
+			$item = DefDescuentoBeca::where('cod_beca', $id)->where('beca', true)->first();
 			if (!$item) return response()->json(['success' => false, 'message' => 'Definición no encontrada'], 404);
 
 			$validator = Validator::make($request->all(), [
-				'nombre_beca' => 'required|string|max:255|unique:def_descuentos_beca,nombre_beca,' . $id . ',cod_beca',
+				'nombre_beca' => 'required|string|max:255|unique:def_descuentos_beca,nombre_beca,' . $id . ',cod_beca,beca,1',
 				'descripcion' => 'nullable|string',
 				'monto' => 'required|integer',
 				'porcentaje' => 'required|boolean',
 				'estado' => 'required|boolean',
+				'd_i' => 'nullable|boolean',
+				'beca' => 'nullable|boolean',
 			]);
 
 			if ($validator->fails()) {
 				return response()->json(['success' => false, 'message' => 'Error de validación', 'errors' => $validator->errors()], 422);
 			}
 
-			$item->update($request->all());
+			$payload = [
+				'nombre_beca' => $request->input('nombre_beca'),
+				'descripcion' => $request->input('descripcion'),
+				'monto' => (int) $request->input('monto'),
+				'porcentaje' => (bool) $request->input('porcentaje'),
+				'estado' => (bool) $request->input('estado'),
+				'd_i' => $request->input('d_i', $item->d_i),
+				// mantener como beca
+				'beca' => true,
+			];
+			$item->update($payload);
 			return response()->json(['success' => true, 'message' => 'Definición de beca actualizada correctamente', 'data' => $item]);
 		} catch (\Exception $e) {
 			return response()->json(['success' => false, 'message' => 'Error al actualizar definición de beca: ' . $e->getMessage()], 500);
@@ -80,7 +103,7 @@ class DefDescuentoBecaController extends Controller
 	public function destroy($id)
 	{
 		try {
-			$item = DefDescuentoBeca::find($id);
+			$item = DefDescuentoBeca::where('cod_beca', $id)->where('beca', true)->first();
 			if (!$item) return response()->json(['success' => false, 'message' => 'Definición no encontrada'], 404);
 
 			try {
@@ -98,7 +121,7 @@ class DefDescuentoBecaController extends Controller
 	public function toggleStatus($id)
 	{
 		try {
-			$item = DefDescuentoBeca::find($id);
+			$item = DefDescuentoBeca::where('cod_beca', $id)->where('beca', true)->first();
 			if (!$item) return response()->json(['success' => false, 'message' => 'Definición no encontrada'], 404);
 			$item->estado = !$item->estado;
 			$item->save();

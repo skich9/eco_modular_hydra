@@ -175,12 +175,12 @@
 
 										<!-- P/U -->
 										<td class="text-end">
-											<span class="d-block">{{ calcRowSubtotal(i) | number:'1.2-2' }}</span>
+											<span class="d-block">{{ getRowDisplayPU(i) | number:'1.2-2' }}</span>
 										</td>
 
 										<!-- Descuento -->
 										<td class="text-end">
-											<span class="d-block">{{ (pg.get('descuento')?.value || 0) | number:'1.2-2' }}</span>
+											<span class="d-block">{{ getRowDisplayDescuento(i) | number:'1.2-2' }}</span>
 										</td>
 
 										<!-- Sub total (solo lectura) -->
@@ -478,7 +478,7 @@
       [cuentasBancarias]="cuentasBancarias"
       [tipo]="modalTipo"
       [pendientes]="mensualidadesPendientes"
-      [pu]="getMensualidadPuForModal()"
+      [pu]="modalTipo === 'arrastre' ? mensualidadPU : getMensualidadPuForModal()"
       [baseNro]="getNextMensualidadNro()"
       [defaultMetodoPago]="modalFormasCobro[0]?.id_forma_cobro || selectedFormaCobroId"
       [startCuotaOverride]="getNextMensualidadStartCuota()"

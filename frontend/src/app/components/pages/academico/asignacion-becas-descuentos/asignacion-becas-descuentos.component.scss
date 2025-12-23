@@ -15,3 +15,16 @@
 	background: var(--bs-body-bg);
 	z-index: 1;
 }
+.row > .col-lg-6.mb-3:first-child .card .card-body .table-responsive {
+	max-height: 18rem;
+	overflow-y: auto;
+}
+.row > .col-lg-6.mb-3:first-child .card .card-body .table-responsive table {
+	margin-bottom: 0;
+}
+.row > .col-lg-6.mb-3:first-child .card .card-body .table-responsive thead th {
+	position: sticky;
+	top: 0;
+	background: var(--bs-body-bg);
+	z-index: 1;
+}

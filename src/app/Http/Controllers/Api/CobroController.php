@@ -11,6 +11,7 @@ use App\Models\CostoSemestral;
 use App\Models\Gestion;
 use App\Models\ParametroCosto;
 use App\Models\Cuota;
+use App\Models\DescuentoDetalle;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\Validator;
 use Illuminate\Support\Facades\DB;
@@ -349,6 +350,37 @@ class CobroController extends Controller
 				$asignacionesPrimarias = $queryAsign->orderBy('numero_cuota')->get();
 			}
 
+			// Mapear descuentos por asignación (id_asignacion_costo -> monto_descuento)
+			$descuentosPorAsign = [];
+			try {
+				if ($asignacionesPrimarias && $asignacionesPrimarias->count() > 0) {
+					$idsDet = $asignacionesPrimarias->pluck('id_descuentoDetalle')->filter()->map(fn($v) => (int)$v)->unique()->values();
+					if ($idsDet->count() > 0) {
+						$detRows = DescuentoDetalle::whereIn('id_descuento_detalle', $idsDet)->get(['id_descuento_detalle','monto_descuento']);
+						$detById = [];
+						foreach ($detRows as $dr) { $detById[(int)$dr->id_descuento_detalle] = (float)($dr->monto_descuento ?? 0); }
+						foreach ($asignacionesPrimarias as $a) {
+							$ida = (int)($a->id_asignacion_costo ?? 0);
+							$idDet = (int)($a->id_descuentoDetalle ?? 0);
+							$descuentosPorAsign[$ida] = ($idDet && isset($detById[$idDet])) ? (float)$detById[$idDet] : 0.0;
+						}
+					}
+					// Fallback: si no hay id_descuentoDetalle en asignacion_costos, buscar detalle por id_cuota (id_asignacion_costo)
+					$idsAsign = $asignacionesPrimarias->pluck('id_asignacion_costo')->filter()->map(fn($v) => (int)$v)->unique()->values();
+					if ($idsAsign->count() > 0) {
+						$detByCuota = DescuentoDetalle::whereIn('id_cuota', $idsAsign)->get(['id_cuota','monto_descuento']);
+						$mapByCuota = [];
+						foreach ($detByCuota as $dr) { $mapByCuota[(int)$dr->id_cuota] = (float)($dr->monto_descuento ?? 0); }
+						foreach ($asignacionesPrimarias as $a) {
+							$ida = (int)($a->id_asignacion_costo ?? 0);
+							if ($ida && (!isset($descuentosPorAsign[$ida]) || $descuentosPorAsign[$ida] <= 0)) {
+								if (isset($mapByCuota[$ida])) $descuentosPorAsign[$ida] = (float)$mapByCuota[$ida];
+							}
+						}
+					}
+				}
+			} catch (\Throwable $e) { /* noop */ }
+
 			$cobrosBase = Cobro::where('cod_ceta', $codCeta)
 				->where('cod_pensum', $codPensumToUse)
 				->when($gestionToUse, function ($q) use ($gestionToUse) {
@@ -381,7 +413,9 @@ class CobroController extends Controller
 				$orderedAsign = $asignacionesPrimarias->values(); // ya está ordenado por numero_cuota asc
 				$nextParcial = $parciales->first();
 				if ($nextParcial) {
-					$restante = max(0, (float)$nextParcial->monto - (float)($nextParcial->monto_pagado ?? 0));
+					$descN = (float) ($descuentosPorAsign[(int)($nextParcial->id_asignacion_costo ?? 0)] ?? 0);
+					$neto = max(0, (float)$nextParcial->monto - $descN);
+					$restante = max(0, $neto - (float)($nextParcial->monto_pagado ?? 0));
 					$mensualidadNext = [
 						'numero_cuota' => (int) $nextParcial->numero_cuota,
 						'monto' => (float) $restante, // para UI usamos directamente el restante
@@ -396,7 +430,9 @@ class CobroController extends Controller
 					// No hay PARCIAL: elegir la primera no cobrada (pendiente)
 					$nextPend = $orderedAsign->first(function($a){ return (string)($a->estado_pago ?? '') !== 'COBRADO'; });
 					if ($nextPend) {
-						$restante = max(0, (float)$nextPend->monto - (float)($nextPend->monto_pagado ?? 0));
+						$descN2 = (float) ($descuentosPorAsign[(int)($nextPend->id_asignacion_costo ?? 0)] ?? 0);
+						$neto2 = max(0, (float)$nextPend->monto - $descN2);
+						$restante = max(0, $neto2 - (float)($nextPend->monto_pagado ?? 0));
 						$mensualidadNext = [
 							'numero_cuota' => (int) $nextPend->numero_cuota,
 							'monto' => (float) ($restante > 0 ? $restante : (float)$nextPend->monto),
@@ -422,18 +458,18 @@ class CobroController extends Controller
 				})->count();
 			}
 
-			// Construir resumen para ARRASTRE: próxima cuota pendiente desde asignacion_costos
-			$arrastreSummary = null;
+			// Construir resumen para ARRASTRE y exponer sus asignaciones
+			$arrastreSummary = null; $asignacionesArrastre = collect(); $descuentosPorAsignArrastre = [];
 			if ($arrastreInscripcion) {
 				try {
-					$asignaciones = AsignacionCostos::query()
+					$asignacionesArrastre = AsignacionCostos::query()
 						->where('cod_pensum', (string) $arrastreInscripcion->cod_pensum)
 						->where('cod_inscrip', (int) $arrastreInscripcion->cod_inscrip)
 						->orderBy('numero_cuota')
 						->get();
 					$paidCuotaIds = $cobrosMensualidad->pluck('id_cuota')->filter()->map(fn($v) => (int)$v)->unique()->values();
-					$next = null; $pendingCount = 0; $totalCuotas = $asignaciones->count();
-					foreach ($asignaciones as $asig) {
+					$next = null; $pendingCount = 0; $totalCuotas = $asignacionesArrastre->count();
+					foreach ($asignacionesArrastre as $asig) {
 						$tplId = (int) ($asig->id_cuota_template ?? 0);
 						$pagada = $tplId ? $paidCuotaIds->contains($tplId) : false;
 						if (!$pagada) {
@@ -446,6 +482,32 @@ class CobroController extends Controller
 									'id_cuota_template' => $tplId ?: null,
 									'fecha_vencimiento' => $asig->fecha_vencimiento,
 								];
+							}
+						}
+					}
+					// Mapear descuentos para ARRASTRE
+					if ($asignacionesArrastre && $asignacionesArrastre->count() > 0) {
+						$idsDetA = $asignacionesArrastre->pluck('id_descuentoDetalle')->filter()->map(fn($v) => (int)$v)->unique()->values();
+						if ($idsDetA->count() > 0) {
+							$detRowsA = DescuentoDetalle::whereIn('id_descuento_detalle', $idsDetA)->get(['id_descuento_detalle','monto_descuento']);
+							$detByIdA = [];
+							foreach ($detRowsA as $dr) { $detByIdA[(int)$dr->id_descuento_detalle] = (float)($dr->monto_descuento ?? 0); }
+							foreach ($asignacionesArrastre as $a) {
+								$ida = (int)($a->id_asignacion_costo ?? 0);
+								$idDet = (int)($a->id_descuentoDetalle ?? 0);
+								$descuentosPorAsignArrastre[$ida] = ($idDet && isset($detByIdA[$idDet])) ? (float)$detByIdA[$idDet] : 0.0;
+							}
+						}
+						$idsAsignA = $asignacionesArrastre->pluck('id_asignacion_costo')->filter()->map(fn($v) => (int)$v)->unique()->values();
+						if ($idsAsignA->count() > 0) {
+							$detByCuotaA = DescuentoDetalle::whereIn('id_cuota', $idsAsignA)->get(['id_cuota','monto_descuento']);
+							$mapByCuotaA = [];
+							foreach ($detByCuotaA as $dr) { $mapByCuotaA[(int)$dr->id_cuota] = (float)($dr->monto_descuento ?? 0); }
+							foreach ($asignacionesArrastre as $a) {
+								$ida = (int)($a->id_asignacion_costo ?? 0);
+								if ($ida && (!isset($descuentosPorAsignArrastre[$ida]) || $descuentosPorAsignArrastre[$ida] <= 0)) {
+									if (isset($mapByCuotaA[$ida])) $descuentosPorAsignArrastre[$ida] = (float)$mapByCuotaA[$ida];
+								}
 							}
 						}
 					}
@@ -526,7 +588,10 @@ class CobroController extends Controller
 				: (optional($costoSemestral)->monto_semestre
 					?: ($asignacionesPrimarias->count() > 0 ? (float) $asignacionesPrimarias->sum('monto') : null)
 					?: ($paramMonto ? (float) $paramMonto->valor : null));
-			$saldoMensualidad = isset($montoSemestre) ? (float) $montoSemestre - (float) $totalMensualidad : null;
+			$totalDescuentos = 0.0;
+			if (!empty($descuentosPorAsign)) { foreach ($descuentosPorAsign as $v) { $totalDescuentos += (float)$v; } }
+			$montoSemestreNeto = isset($montoSemestre) ? max(0, (float)$montoSemestre - (float)$totalDescuentos) : null;
+			$saldoMensualidad = $montoSemestreNeto !== null ? (float)$montoSemestreNeto - (float)$totalMensualidad : null;
 			$puMensualFromNext = $mensualidadNext ? round((float) ($mensualidadNext['monto'] ?? 0), 2) : null;
 			$puMensualFromAsignacion = $asignacionesPrimarias->count() > 0 ? round((float) $asignacionesPrimarias->avg('monto'), 2) : null;
 			$puMensualNominal = $puMensualFromAsignacion !== null
@@ -647,10 +712,12 @@ class CobroController extends Controller
 					],
 					'asignacion_costos' => $asignacion,
 					// Exponer todas las cuotas ordenadas con datos clave para el modal 
-					'asignaciones' => $asignacionesPrimarias->map(function($a){
+					'asignaciones' => $asignacionesPrimarias->map(function($a) use ($descuentosPorAsign){
 						return [
 							'numero_cuota' => (int) ($a->numero_cuota ?? 0),
 							'monto' => (float) ($a->monto ?? 0),
+							'descuento' => (float) ($descuentosPorAsign[(int)($a->id_asignacion_costo ?? 0)] ?? 0),
+							'monto_neto' => max(0, (float) ($a->monto ?? 0) - (float) ($descuentosPorAsign[(int)($a->id_asignacion_costo ?? 0)] ?? 0)),
 							'monto_pagado' => (float) ($a->monto_pagado ?? 0),
 							'estado_pago' => (string) ($a->estado_pago ?? ''),
 							'id_asignacion_costo' => (int) ($a->id_asignacion_costo ?? 0) ?: null,
@@ -658,6 +725,19 @@ class CobroController extends Controller
 							'fecha_vencimiento' => $a->fecha_vencimiento,
 						];
 					})->values(),
+					'asignaciones_arrastre' => ($asignacionesArrastre && $asignacionesArrastre->count() > 0) ? $asignacionesArrastre->map(function($a) use ($descuentosPorAsignArrastre){
+						return [
+							'numero_cuota' => (int) ($a->numero_cuota ?? 0),
+							'monto' => (float) ($a->monto ?? 0),
+							'descuento' => (float) ($descuentosPorAsignArrastre[(int)($a->id_asignacion_costo ?? 0)] ?? 0),
+							'monto_neto' => max(0, (float) ($a->monto ?? 0) - (float) ($descuentosPorAsignArrastre[(int)($a->id_asignacion_costo ?? 0)] ?? 0)),
+							'monto_pagado' => (float) ($a->monto_pagado ?? 0),
+							'estado_pago' => (string) ($a->estado_pago ?? ''),
+							'id_asignacion_costo' => (int) ($a->id_asignacion_costo ?? 0) ?: null,
+							'id_cuota_template' => isset($a->id_cuota_template) ? ((int)$a->id_cuota_template ?: null) : null,
+							'fecha_vencimiento' => $a->fecha_vencimiento,
+						];
+					})->values() : [],
 					'arrastre' => $arrastreSummary,
 					'cobros' => [
 						'mensualidad' => [
@@ -679,6 +759,7 @@ class CobroController extends Controller
 					] : null,
 					'totales' => [
 						'monto_semestral' => isset($montoSemestre) ? (float)$montoSemestre : null,
+						'descuentos' => (float) $totalDescuentos,
 						'saldo_mensualidad' => $saldoMensualidad,
 						'total_pagado' => (float) ($totalMensualidad + $totalItems),
 						'nro_cuotas' => $nroCuotas,
@@ -854,12 +935,25 @@ class CobroController extends Controller
 				$codCetaCtx = (int) $request->cod_ceta;
 				$codPensumCtx = (string) $request->cod_pensum;
 				$gestionCtx = $request->gestion;
-				$primaryInscripcion = Inscripcion::query()
+				// Preferir la inscripción solicitada explícitamente por el frontend (cod_inscrip o tipo_inscripcion)
+				$tipoInsReq = (string) $request->tipo_inscripcion;
+				$codInsReq = $request->cod_inscrip;
+				$insList = Inscripcion::query()
 					->where('cod_ceta', $codCetaCtx)
 					->when($gestionCtx, function($q) use ($gestionCtx){ $q->where('gestion', $gestionCtx); })
 					->orderByDesc('fecha_inscripcion')
 					->orderByDesc('created_at')
-					->first();
+					->get();
+				$primaryInscripcion = null;
+				if ($codInsReq) {
+					$primaryInscripcion = $insList->firstWhere('cod_inscrip', (int)$codInsReq);
+				}
+				if (!$primaryInscripcion && $tipoInsReq !== '') {
+					$primaryInscripcion = $insList->firstWhere('tipo_inscripcion', (string)$tipoInsReq);
+				}
+				if (!$primaryInscripcion) {
+					$primaryInscripcion = $insList->firstWhere('tipo_inscripcion', 'NORMAL') ?: $insList->first();
+				}
 				// Precargar asignaciones y cuotas pagadas para mapear automáticamente si faltan ids
 				$asignPrimarias = collect();
 				$paidTplIds = collect();
@@ -1301,7 +1395,21 @@ class CobroController extends Controller
 								$tpl = (int)($asig->id_cuota_template ?? 0);
 								if (!$tpl) continue;
 								$alreadyPaid = (float)($asig->monto_pagado ?? 0) + (float)($batchPaidByTpl[$tpl] ?? 0);
-								$remaining = (float)($asig->monto ?? 0) - $alreadyPaid;
+								// Considerar descuento por cuota para calcular el restante
+								$descN = 0.0;
+								try {
+									$idDet = (int)($asig->id_descuentoDetalle ?? 0);
+									if ($idDet) {
+										$dr = DescuentoDetalle::where('id_descuento_detalle', $idDet)->first(['monto_descuento']);
+										$descN = $dr ? (float)($dr->monto_descuento ?? 0) : 0.0;
+									} else {
+										$dr = DescuentoDetalle::where('id_cuota', (int)($asig->id_asignacion_costo ?? 0))->first(['monto_descuento']);
+										$descN = $dr ? (float)($dr->monto_descuento ?? 0) : 0.0;
+									}
+								} catch (\Throwable $e) { $descN = 0.0; }
+								$nominal = (float)($asig->monto ?? 0);
+								$neto = max(0, $nominal - $descN);
+								$remaining = $neto - $alreadyPaid;
 								if ($remaining > 0) { $found = $asig; break; }
 							}
 							if ($found) { $asignRow = $found; }
@@ -1313,8 +1421,20 @@ class CobroController extends Controller
 								$tplSel = (int)($asignRow->id_cuota_template ?? 0);
 								$prev = (float)($asignRow->monto_pagado ?? 0);
 								$total = (float)($asignRow->monto ?? 0);
-								$rem = $total - ($prev + (float)($batchPaidByTpl[$tplSel] ?? 0));
-								Log::info('batchStore:target', [ 'idx' => $idx, 'id_asignacion_costo' => $idAsign, 'id_cuota_template' => $idCuota, 'prev_pagado' => $prev, 'total' => $total, 'remaining_before' => $rem ]);
+								$descN = 0.0;
+								try {
+									$idDet = (int)($asignRow->id_descuentoDetalle ?? 0);
+									if ($idDet) {
+										$dr = DescuentoDetalle::where('id_descuento_detalle', $idDet)->first(['monto_descuento']);
+										$descN = $dr ? (float)($dr->monto_descuento ?? 0) : 0.0;
+									} else {
+										$dr = DescuentoDetalle::where('id_cuota', (int)($asignRow->id_asignacion_costo ?? 0))->first(['monto_descuento']);
+										$descN = $dr ? (float)($dr->monto_descuento ?? 0) : 0.0;
+									}
+								} catch (\Throwable $e) { $descN = 0.0; }
+								$netoForLog = max(0, $total - $descN);
+								$rem = $netoForLog - ($prev + (float)($batchPaidByTpl[$tplSel] ?? 0));
+								Log::info('batchStore:target', [ 'idx' => $idx, 'id_asignacion_costo' => $idAsign, 'id_cuota_template' => $idCuota, 'prev_pagado' => $prev, 'total' => $total, 'descuento' => $descN, 'neto' => $netoForLog, 'remaining_before' => $rem ]);
 							} catch (\Throwable $e) {}
 						}
 					}
@@ -1336,7 +1456,19 @@ class CobroController extends Controller
 							$numeroCuota = (int)($cuotaRow->numero_cuota ?? 0);
 							$prevPag = (float)($cuotaRow->monto_pagado ?? 0);
 							$totalCuota = (float)($cuotaRow->monto ?? 0);
-							$parcial = ($prevPag + (float)$item['monto']) < $totalCuota;
+							$descN = 0.0;
+							try {
+								$idDet = (int)($cuotaRow->id_descuentoDetalle ?? 0);
+								if ($idDet) {
+									$dr = DescuentoDetalle::where('id_descuento_detalle', $idDet)->first(['monto_descuento']);
+									$descN = $dr ? (float)($dr->monto_descuento ?? 0) : 0.0;
+								} else {
+									$dr = DescuentoDetalle::where('id_cuota', (int)($cuotaRow->id_asignacion_costo ?? 0))->first(['monto_descuento']);
+									$descN = $dr ? (float)($dr->monto_descuento ?? 0) : 0.0;
+								}
+							} catch (\Throwable $e) { $descN = 0.0; }
+							$neto = max(0, $totalCuota - $descN);
+							$parcial = ($prevPag + (float)$item['monto']) < $neto;
 							$detalle = 'Mensualidad - Cuota ' . ($numeroCuota ?: $idCuota) . ($parcial ? ' (Parcial)' : '');
 						}
 					} else {
@@ -1545,7 +1677,20 @@ class CobroController extends Controller
 						if ($toUpd) {
 							$prevPagado = (float)($toUpd->monto_pagado ?? 0);
 							$newPagado = $prevPagado + (float)$item['monto'];
-							$fullNow = $newPagado >= (float) ($toUpd->monto ?? 0) || !empty($item['cobro_completo']);
+							$descN = 0.0;
+							try {
+								$idDet = (int)($toUpd->id_descuentoDetalle ?? 0);
+								if ($idDet) {
+									$dr = DescuentoDetalle::where('id_descuento_detalle', $idDet)->first(['monto_descuento']);
+									$descN = $dr ? (float)($dr->monto_descuento ?? 0) : 0.0;
+								} else {
+									$dr = DescuentoDetalle::where('id_cuota', (int)($toUpd->id_asignacion_costo ?? 0))->first(['monto_descuento']);
+									$descN = $dr ? (float)($dr->monto_descuento ?? 0) : 0.0;
+								}
+							} catch (\Throwable $e) { $descN = 0.0; }
+							$nominal = (float) ($toUpd->monto ?? 0);
+							$neto = max(0, $nominal - $descN);
+							$fullNow = ($newPagado >= $neto) || !empty($item['cobro_completo']);
 							$upd = [ 'monto_pagado' => $newPagado ];
 							if ($fullNow) {
 								$upd['estado_pago'] = 'COBRADO';

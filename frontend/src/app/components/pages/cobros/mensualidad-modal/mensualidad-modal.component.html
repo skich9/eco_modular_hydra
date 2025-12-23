@@ -14,7 +14,10 @@
                 <div class="small fw-semibold text-primary" *ngIf="tipo === 'mensualidad'">Mensualidades pendientes : {{ pendientes }}</div>
               </div>
               <div class="small text-muted">{{ resumen?.estudiante?.cod_ceta }} - {{ resumen?.estudiante?.nombre_completo || resumen?.estudiante?.nombres }}</div>
-              <div class="small">Pensum: {{ resumen?.inscripcion?.cod_pensum }} | Tipo: {{ resumen?.inscripcion?.tipo_inscripcion }}</div>
+              <div class="small">
+                Pensum: {{ (tipo === 'arrastre' ? (resumen?.arrastre?.inscripcion?.cod_pensum || resumen?.inscripcion?.cod_pensum) : resumen?.inscripcion?.cod_pensum) }}
+                | Tipo: {{ (tipo === 'arrastre' ? 'ARRASTRE' : (resumen?.inscripcion?.tipo_inscripcion)) }}
+              </div>
               <div class="small">Gestión: {{ resumen?.gestion }}</div>
             </div>
             <div class="col-md-4">
@@ -216,7 +219,7 @@
             <div class="invalid-feedback" *ngIf="form.get('monto_parcial')?.hasError('max') && form.get('monto_parcial')?.touched">
               El monto ingresado excede el saldo.
             </div>
-            <div class="form-text">Máximo: {{ puDisplay | number:'1.2-2' }}</div>
+            <div class="form-text">Máximo: {{ getParcialMax() | number:'1.2-2' }}</div>
           </div>
           <div class="col-md-4">
             <label class="form-label">Costo total</label>
