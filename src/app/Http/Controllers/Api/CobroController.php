@@ -921,7 +921,7 @@ class CobroController extends Controller
 						'descuentos' => (float) $totalDescuentos,
 						'saldo_mensualidad' => $saldoMensualidad,
 						'total_pagado' => (float) $totalPagadoDesdeAsignaciones,
-						'total_pagado_v2' => (float) 2500, // TEMPORAL para probar frontend
+						'total_pagado_v2' => (float) $totalMensualidadCompletas,
 						'nro_cuotas' => $nroCuotas,
 						'pu_mensual' => $puMensual,
 						'pu_mensual_nominal' => $puMensualNominal,
