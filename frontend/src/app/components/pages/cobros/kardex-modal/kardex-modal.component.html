@@ -9,7 +9,7 @@
 				<!-- Información Biográfica del Postulante -->
 				<div class="card mb-4">
 					<div class="card-header bg-primary text-white">
-						<h6 class="mb-0">Información Biográfica del Postulante</h6>
+						<h6 class="mb-0">Información Biográfica del Estudiante</h6>
 					</div>
 					<div class="card-body">
 						<div class="row g-3">
@@ -43,7 +43,7 @@
 							</div>
 							<div class="col-md-3">
 								<label class="form-label small text-muted">Grupos</label>
-								<div class="fw-bold">{{ r?.estudiante?.grupos || '-' }}</div>
+								<div class="badge rounded-pill text-bg-primary">{{ r?.estudiante?.grupos || '-' }}</div>
 							</div>
 							<div class="col-md-3">
 								<label class="form-label small text-muted">Descuento</label>
@@ -66,7 +66,7 @@
 					<div class="col-md-6">
 						<ul class="list-unstyled mb-0">
 							<li>Monto Semestral: <strong>{{ r?.totales?.monto_semestral | number:'1.2-2' }}</strong></li>
-							<li>Total Pagado: <strong class="text-success">{{ r?.totales?.total_pagado | number:'1.2-2' }}</strong></li>
+							<li>Total Pagado: <strong class="text-success">{{ r?.totales?.total_pagado_v2 | number:'1.2-2' }}</strong></li>
 							<li>Saldo Mensualidad: <strong class="text-danger">{{ r?.totales?.saldo_mensualidad | number:'1.2-2' }}</strong></li>
 						</ul>
 					</div>
@@ -95,10 +95,10 @@
 									</tr>
 								</thead>
 								<tbody>
-									<tr *ngFor="let m of (r?.mensualidades?.pagadas || [])">
+									<tr *ngFor="let m of getPagosExpandidos()">
 										<td>{{ 'NORMAL' }}</td>
-										<td>{{ m?.numero_cuota || '1' }}</td>
-										<td>{{ '1' }}</td>
+										<td>{{ getCuotaFormat(m?.numero_cuota || 1) }}</td>
+										<td>{{ m?.numero_pago || 1 }}</td>
 										<td>
 											<ng-container [ngSwitch]="m?.estado_pago">
 												<ng-container *ngSwitchCase="'PARCIAL'">
@@ -117,13 +117,6 @@
 										<td>{{ m?.observaciones || 'Efectivo:' }}</td>
 									</tr>
 								</tbody>
-								<tfoot>
-									<tr>
-										<th colspan="8" class="text-end">Total Pagado</th>
-										<th class="text-success">{{ r?.cobros?.mensualidad?.total | number:'1.0-0' }}</th>
-										<th colspan="2"></th>
-									</tr>
-								</tfoot>
 							</table>
 						</div>
 					</div>
@@ -155,8 +148,8 @@
 									<ng-container *ngFor="let m of (r?.mensualidades?.adeudadas || []); let i = index">
 									<tr>
 										<td>{{ 'NORMAL' }}</td>
-										<td>{{ m?.numero_cuota || (i + 1) }}</td>
-										<td>
+										<td>{{ getCuotaFormat(m?.numero_cuota || (i + 1)) }}</td>
+										<td class="text-end">
 											<ng-container [ngSwitch]="m?.estado_pago">
 												<ng-container *ngSwitchCase="'PARCIAL'">
 													<!-- Mostrar saldo restante para pagos parciales -->
@@ -167,10 +160,10 @@
 												</ng-container>
 											</ng-container>
 										</td>
-										<td>{{ calculateDaysOverdue(m?.fecha_vencimiento) }}</td>
-										<td>{{ calculateDaysOverdue(m?.fecha_vencimiento) > 0 ? calculateDaysOverdue(m?.fecha_vencimiento) : '0' }}</td>
+										<td class="text-center">{{ calculateDaysOverdue(m?.fecha_vencimiento) }}</td>
+										<td class="text-end">{{ calculateDaysOverdue(m?.fecha_vencimiento) > 0 ? calculateDaysOverdue(m?.fecha_vencimiento) : '0' }}</td>
 										<td>{{ '0' }}</td>
-										<td class="align-text-end">
+										<td class="text-end">
 											<ng-container [ngSwitch]="m?.estado_pago">
 												<ng-container *ngSwitchCase="'PARCIAL'">
 													{{ ((m?.monto || 0) - (m?.monto_pagado || 0)) | number:'1.0-0' }}
@@ -180,7 +173,7 @@
 												</ng-container>
 											</ng-container>
 										</td>
-										<td>{{ calculateCumulativeAmount(r?.mensualidades?.adeudadas, i) | number:'1.0-0' }}</td>
+										<td class="text-end">{{ calculateCumulativeAmount(r?.mensualidades?.adeudadas, i) | number:'1.0-0' }}</td>
 										<td>{{ (m?.fecha_vencimiento | date:'yyyy-MM-dd') || '-' }}</td>
 										<td>{{ '' }}</td>
 									</tr>
@@ -211,7 +204,7 @@
 									</tr>
 								</thead>
 								<tbody>
-									<tr *ngFor="let it of (r?.cobros?.items?.items || [])">
+									<tr *ngFor="let it of (r?.cobros?.items | filterNonMensualidades)">
 										<td>{{ it?.fecha_cobro | date:'yyyy-MM-dd' }}</td>
 										<td>{{ it?.nro_cobro }}</td>
 										<td>{{ it?.id_item || '-' }}</td>

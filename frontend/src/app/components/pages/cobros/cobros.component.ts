@@ -1257,7 +1257,58 @@ export class CobrosComponent implements OnInit {
   }
 
   onSuccessClose(): void {
-    // Limpiar todo como si fuera la primera carga
+    // Recargar datos del resumen antes de limpiar para mostrar actualizados
+    const cod = (this.searchForm.get('cod_ceta')?.value || '').toString().trim();
+    const gestion = (this.searchForm.get('gestion')?.value || '').toString().trim();
+    
+    if (cod) {
+      this.cobrosService.getResumen(cod, gestion).subscribe({
+        next: (res) => {
+          if (res?.success) {
+            this.resumen = res.data;
+            this.showOpciones = true;
+            // Limpiar solo el formulario de cobros, pero mantener el resumen actualizado
+            this.limpiarFormularioCobros();
+            this.showAlert('Datos actualizados. Puede ver los nuevos pagos en el Kardex económico.', 'success');
+          } else {
+            // Si falla la recarga, limpiar todo como antes
+            this.limpiarTodo();
+          }
+        },
+        error: () => {
+          // Si falla la recarga, limpiar todo como antes
+          this.limpiarTodo();
+        }
+      });
+    } else {
+      // Si no hay código, limpiar todo
+      this.limpiarTodo();
+    }
+
+    // Cerrar modal
+    const modalEl = document.getElementById('successModal');
+    const bs = (window as any).bootstrap;
+    if (modalEl && bs?.Modal) {
+      const instance = bs.Modal.getInstance(modalEl) || new bs.Modal(modalEl);
+      instance.hide();
+    }
+  }
+
+  private limpiarFormularioCobros(): void {
+    try {
+      (this.batchForm.get('pagos') as FormArray).clear();
+      this.batchForm.reset({ cabecera: { id_forma_cobro: '', id_cuentas_bancarias: '' }, pagos: [] });
+      this.identidadForm.reset({ nombre_completo: '', tipo_identidad: 1, ci: '', complemento_habilitado: false, complemento_ci: '', razon_social: '', email_habilitado: false, email: '', turno: '' });
+      this.modalIdentidadForm.reset({ tipo_identidad: 1, ci: '', complemento_habilitado: false, complemento_ci: '', razon_social: '' });
+      this.mensualidadModalForm.reset({ metodo_pago: '', cantidad: 1, costo_total: 0, observaciones: '' });
+      this.alertMessage = '';
+      this.metodoPagoLocked = false;
+      this.successSummary = null;
+      try { (this.batchForm.get('cabecera.codigo_sin') as any)?.enable?.({ emitEvent: false }); } catch {}
+    } catch {}
+  }
+
+  private limpiarTodo(): void {
     try {
       (this.batchForm.get('pagos') as FormArray).clear();
       this.batchForm.reset({ cabecera: { id_forma_cobro: '', id_cuentas_bancarias: '' }, pagos: [] });
@@ -1269,18 +1320,9 @@ export class CobrosComponent implements OnInit {
       this.showOpciones = false;
       this.alertMessage = '';
       this.metodoPagoLocked = false;
-      try { (this.batchForm.get('cabecera.codigo_sin') as any)?.enable?.({ emitEvent: false }); } catch {}
       this.successSummary = null;
+      try { (this.batchForm.get('cabecera.codigo_sin') as any)?.enable?.({ emitEvent: false }); } catch {}
     } catch {}
-
-    // Cerrar modal si hay instancia y recargar para estado inicial real
-    const modalEl = document.getElementById('successModal');
-    const bs = (window as any).bootstrap;
-    if (modalEl && bs?.Modal) {
-      const instance = bs.Modal.getInstance(modalEl) || new bs.Modal(modalEl);
-      instance.hide();
-    }
-    try { setTimeout(() => { window.location.reload(); }, 150); } catch {}
   }
 
   openQrSavedWaitingConfirmModal(): void {
@@ -2595,6 +2637,7 @@ export class CobrosComponent implements OnInit {
   }
 
   submitBatch(): void {
+    console.log('HOIla');
     if (this.loading) {
       console.warn('[Cobros] submitBatch() ignored because loading=true');
       return;
@@ -2606,6 +2649,7 @@ export class CobrosComponent implements OnInit {
       qrPanelStatus: this.qrPanelStatus,
       cabecera: (this.batchForm.get('cabecera') as FormGroup)?.getRawValue?.() || null
     });
+    console.log('HOIla 2');
     if (this.loading) {
       console.warn('[Cobros] submitBatch() ignored because loading=true');
       return;
@@ -2621,6 +2665,7 @@ export class CobrosComponent implements OnInit {
         if (codFinal) cab.patchValue({ cod_ceta: codFinal }, { emitEvent: false });
       }
     } catch {}
+    console.log('HOIla 3');
     // 1.1) cod_pensum / tipo_inscripcion / gestion desde resumen.inscripcion si faltan
     try {
       const ins = (this.resumen as any)?.inscripcion || (this.resumen as any)?.inscripciones?.[0] || null;
@@ -2630,6 +2675,7 @@ export class CobrosComponent implements OnInit {
       if (!cab?.get('gestion')?.value && (this.resumen as any)?.gestion) patch.gestion = String((this.resumen as any).gestion);
       if (Object.keys(patch).length) cab.patchValue(patch, { emitEvent: false });
     } catch {}
+    console.log('HOIla 3');
     // 2) id_forma_cobro: tomar del modal si cabecera está vacío
     try {
       const currentForma = cab?.get('id_forma_cobro')?.value;
@@ -2638,6 +2684,7 @@ export class CobrosComponent implements OnInit {
         if (metodo) cab.patchValue({ id_forma_cobro: String(metodo) }, { emitEvent: false });
       }
     } catch {}
+    console.log('HOIla 4');
     // 3) id_usuario: desde AuthService o localStorage current_user
     try {
       const currentUser = this.auth.getCurrentUser();
@@ -2651,6 +2698,7 @@ export class CobrosComponent implements OnInit {
         }
       }
     } catch {}
+    console.log('HOIla 5');
     // Pre-completar fecha/monto y ASIGNAR nro_cobro único en cliente (hasta que backend lo haga atómico)
     try {
       const hoy = new Date().toISOString().slice(0, 10);
@@ -2665,6 +2713,7 @@ export class CobrosComponent implements OnInit {
       });
       this.batchForm.updateValueAndValidity({ onlySelf: false, emitEvent: false });
     } catch {}
+    console.log('HOIla 6');
     // Forzar visualización de errores de validación en el formulario
     try { this.batchForm.markAllAsTouched(); } catch {}
     if (!this.batchForm.valid || this.pagos.length === 0) {
@@ -2676,6 +2725,7 @@ export class CobrosComponent implements OnInit {
       this.showAlert('Complete los datos y agregue al menos un pago', 'warning');
       return;
     }
+    console.log('HOIla 7');
     const hasQrRows = (this.pagos.controls || []).some(ctrl => this.isFormaIdQR((ctrl as FormGroup).get('id_forma_cobro')?.value));
     if (hasQrRows && this.qrPanelStatus !== 'completado') {
       const cod = (this.batchForm.get('cabecera.cod_ceta') as any)?.value || '';
@@ -2690,6 +2740,7 @@ export class CobrosComponent implements OnInit {
       }
       return;
     }
+    console.log('HOIla 8');
     // Enviar todas las filas (incluida la QR) cuando el estado QR es 'completado';
     // el backend ya no inserta desde callback
     const baseCtrls = (this.pagos.controls || []);
@@ -2713,6 +2764,7 @@ export class CobrosComponent implements OnInit {
       }
       return item;
     });
+    console.log('HOIla 9');
     // Normalizar tipo_documento y medio_doc para todos los items
     const pagos = pagosRaw.map((it: any) => {
       const tipo = this.normalizeDocFromPayload(it);
@@ -2744,6 +2796,7 @@ export class CobrosComponent implements OnInit {
         (payload as any).pagos = ((payload as any).pagos || []).map((p: any) => ({ ...p, id_forma_cobro: uni }));
       }
     } catch {}
+    console.log('HOIla 10');
     // Forzar bandera emitir_online si hay al menos una Factura Computarizada
     try {
       const shouldEmitOnline = pagos.some((p: any) => (p?.tipo_documento === 'F') && (p?.medio_doc === 'C'));
@@ -2824,6 +2877,7 @@ export class CobrosComponent implements OnInit {
         this.loading = false;
       }
     });
+    console.log('HOIla 11');
   }
 
   // ====== Totales estilo sistema antiguo ======
@@ -3026,7 +3080,7 @@ export class CobrosComponent implements OnInit {
     return s > 0 ? s : 0;
   }
 
-  private getCurrentGestion(): string {
+  public getCurrentGestion(): string {
     try {
       const cab = (this.batchForm.get('cabecera') as FormGroup);
       const fromResumen = (this.resumen as any)?.gestion || (this.resumen as any)?.inscripcion?.gestion || (this.resumen as any)?.inscripciones?.[0]?.gestion || '';

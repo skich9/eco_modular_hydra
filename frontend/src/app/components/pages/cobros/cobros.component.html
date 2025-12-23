@@ -352,7 +352,7 @@
 			<div class="card mb-4 shadow-sm">
 				<div class="card-header d-flex justify-content-between align-items-center">
 					<strong>Resumen economico</strong>
-					<button type="button" class="btn btn-sm btn-outline-primary" [disabled]="!resumen" (click)="kardexDlg.open()">
+					<button type="button" class="btn btn-sm btn-primary" [disabled]="!resumen" (click)="kardexDlg.open()">
 						<i class="bi bi-journal-text me-1"></i>Kardex económico
 					</button>
 				</div>
@@ -366,11 +366,11 @@
 						</div>
 						<div class="mb-2 d-flex justify-content-between">
 							<span>Total Pagado:</span>
-							<strong class="text-success">{{ totalPagadoMensualidad | number: '1.2-2' }}</strong>
+							<strong class="text-success">{{ r?.totales?.total_pagado_v2 | number: '1.2-2' }}</strong>
 						</div>
 						<div class="mb-3 d-flex justify-content-between">
 							<span>Saldo Mensualidad:</span>
-							<strong class="text-danger">{{ saldoMensualidadCalc | number: '1.2-2' }}</strong>
+							<strong class="text-danger">{{ (r?.totales?.monto_semestral - r?.totales?.total_pagado_v2) | number: '1.2-2' }}</strong>
 						</div>
 
 						<div class="mt-3">
@@ -533,7 +533,7 @@
     ></app-busqueda-estudiante-modal>
 
     <!-- Modal: Kardex económico -->
-    <app-kardex-modal #kardexDlg [resumen]="resumen"></app-kardex-modal>
+    <app-kardex-modal #kardexDlg [resumen]="resumen" [gestion]="getCurrentGestion()"></app-kardex-modal>
 
     <div class="modal fade" id="qrSavedWaitingConfirmModal" tabindex="-1" aria-hidden="true">
       <div class="modal-dialog">

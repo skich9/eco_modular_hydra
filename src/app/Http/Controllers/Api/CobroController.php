@@ -404,14 +404,21 @@ class CobroController extends Controller
 					$q->where('tipo_inscripcion', $primaryInscripcion->tipo_inscripcion);
 				});
 
+			// Calcular total pagado directamente desde asignaciones con pagos (sin filtrar estado)
+			$totalPagadoDesdeAsignaciones = 0;
+			if ($asignacionesPrimarias && $asignacionesPrimarias->count() > 0) {
+				$totalPagadoDesdeAsignaciones = $asignacionesPrimarias
+					->sum(function($a) {
+						return isset($a->monto_pagado) ? (float)$a->monto_pagado : 0;
+					});
+			}
+			
 			$cobrosMensualidad = clone $cobrosBase;
-			$cobrosMensualidad = $cobrosMensualidad
-				->whereNull('id_item') // Capturar todos los cobros que no son de items adicionales
-				->get();
+			$cobrosMensualidad = $cobrosMensualidad->get();
 			$cobrosItems = clone $cobrosBase;
-			$cobrosItems = $cobrosItems->whereNotNull('id_item')->get();
+			$cobrosItems = $cobrosItems->get();
 			$totalMensualidad = $cobrosMensualidad->sum('monto');
-			$totalItems = $cobrosItems->sum('monto');
+			$totalItems = 0; // Ya están incluidos en totalMensualidad
 			
 			// Calcular total solo de mensualidades pagadas completamente (estado COBRADO)
 			$cobrosMensualidadCompletas = clone $cobrosBase;
@@ -429,16 +436,7 @@ class CobroController extends Controller
 			// Calcular total de mensualidades con pagos parciales para mostrar en UI (COBRADO + PARCIAL)
 			$cobrosMensualidadConParciales = clone $cobrosBase;
 			$cobrosMensualidadConParciales = $cobrosMensualidadConParciales
-				->where(function($q){
-					$q->whereNotNull('id_cuota')
-						->orWhereNotNull('id_asignacion_costo');
-				})
-				->where(function($q) {
-					$q->whereHas('asignacionCostos', function($subQ) {
-						$subQ->whereIn('estado_pago', ['COBRADO', 'PARCIAL']);
-					})
-					->orWhereNull('id_asignacion_costo'); // Incluir cobros sin asignacion_costos (cuotas directas)
-				})
+				->whereNull('id_item') // Capturar todos los cobros que no son de items adicionales
 				->get();
 			$totalMensualidadConParciales = $cobrosMensualidadConParciales->sum('monto');
 
@@ -747,6 +745,8 @@ class CobroController extends Controller
 
 			// Preparar objeto estudiante con datos adicionales de documentos y de inscripción
 			$estudianteData = $estudiante->toArray();
+			// Agregar nombre_completo desde el accessor
+			$estudianteData['nombre_completo'] = $estudiante->nombre_completo;
 			if (isset($estudiante->dp)) {
 				$estudianteData['ci'] = $estudiante->dp->ci_doc ?: ($estudiante->ci ?: '');
 				$estudianteData['telefono'] = $estudiante->dp->telefono_doc ?: '';
@@ -920,7 +920,8 @@ class CobroController extends Controller
 						'monto_semestral' => isset($montoSemestre) ? (float)$montoSemestre : null,
 						'descuentos' => (float) $totalDescuentos,
 						'saldo_mensualidad' => $saldoMensualidad,
-						'total_pagado' => (float) ($totalMensualidad + $totalItems),
+						'total_pagado' => (float) $totalPagadoDesdeAsignaciones,
+						'total_pagado_v2' => (float) 2500, // TEMPORAL para probar frontend
 						'nro_cuotas' => $nroCuotas,
 						'pu_mensual' => $puMensual,
 						'pu_mensual_nominal' => $puMensualNominal,

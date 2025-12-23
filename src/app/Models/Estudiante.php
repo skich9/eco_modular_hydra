@@ -41,4 +41,19 @@ class Estudiante extends Model
 	{
 		return $this->hasMany(Inscripcion::class, 'cod_ceta', 'cod_ceta');
 	}
+
+	public function getNombreCompletoAttribute()
+	{
+		$parts = [];
+		if (!empty($this->ap_paterno)) {
+			$parts[] = trim($this->ap_paterno);
+		}
+		if (!empty($this->ap_materno)) {
+			$parts[] = trim($this->ap_materno);
+		}
+		if (!empty($this->nombres)) {
+			$parts[] = trim($this->nombres);
+		}
+		return implode(' ', $parts);
+	}
 }
