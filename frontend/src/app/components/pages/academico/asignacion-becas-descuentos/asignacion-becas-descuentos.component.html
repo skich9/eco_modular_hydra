@@ -73,6 +73,7 @@
 									<th>Tipo</th>
 									<th>Nombre</th>
 									<th>Valor</th>
+									<th>Inscripción</th>
 									<th>Estado</th>
 									<th style="width:60px"></th>
 								</tr>
@@ -83,6 +84,9 @@
 									<td><span class="badge" [ngClass]="{ 'bg-success': a.tipo==='BECA', 'bg-info': a.tipo==='DESCUENTO' }">{{ a.tipo }}</span></td>
 									<td>{{ a.nombre }}</td>
 									<td>{{ a.valor }}</td>
+									<td>
+										<span class="badge" [ngClass]="{ 'bg-warning text-dark': a.inscripcion==='NORMAL', 'bg-info': a.inscripcion==='ARRASTRE' }">{{ a.inscripcion }}</span>
+									</td>
 									<td>{{ a.estado }}</td>
 									<td class="text-end">
 										<button class="btn btn-sm btn-outline-danger" title="Eliminar" (click)="eliminarAsignacion(a)">
@@ -91,7 +95,7 @@
 									</td>
 								</tr>
 								<tr *ngIf="!asignaciones.length">
-									<td colspan="6" class="text-center text-muted py-3">Sin asignaciones</td>
+									<td colspan="7" class="text-center text-muted py-3">Sin asignaciones</td>
 								</tr>
 							</tbody>
 						</table>

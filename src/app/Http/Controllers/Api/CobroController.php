@@ -935,12 +935,25 @@ class CobroController extends Controller
 				$codCetaCtx = (int) $request->cod_ceta;
 				$codPensumCtx = (string) $request->cod_pensum;
 				$gestionCtx = $request->gestion;
-				$primaryInscripcion = Inscripcion::query()
+				// Preferir la inscripción solicitada explícitamente por el frontend (cod_inscrip o tipo_inscripcion)
+				$tipoInsReq = (string) $request->tipo_inscripcion;
+				$codInsReq = $request->cod_inscrip;
+				$insList = Inscripcion::query()
 					->where('cod_ceta', $codCetaCtx)
 					->when($gestionCtx, function($q) use ($gestionCtx){ $q->where('gestion', $gestionCtx); })
 					->orderByDesc('fecha_inscripcion')
 					->orderByDesc('created_at')
-					->first();
+					->get();
+				$primaryInscripcion = null;
+				if ($codInsReq) {
+					$primaryInscripcion = $insList->firstWhere('cod_inscrip', (int)$codInsReq);
+				}
+				if (!$primaryInscripcion && $tipoInsReq !== '') {
+					$primaryInscripcion = $insList->firstWhere('tipo_inscripcion', (string)$tipoInsReq);
+				}
+				if (!$primaryInscripcion) {
+					$primaryInscripcion = $insList->firstWhere('tipo_inscripcion', 'NORMAL') ?: $insList->first();
+				}
 				// Precargar asignaciones y cuotas pagadas para mapear automáticamente si faltan ids
 				$asignPrimarias = collect();
 				$paidTplIds = collect();

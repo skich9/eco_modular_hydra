@@ -4,6 +4,7 @@ import { FormsModule, ReactiveFormsModule, FormBuilder, FormGroup, Validators } 
 import { RouterModule } from '@angular/router';
 import { CobrosService } from '../../../../services/cobros.service';
 import { AuthService } from '../../../../services/auth.service';
+import { forkJoin, of } from 'rxjs';
 
 interface DefBeca {
 	cod_beca: number;
@@ -28,6 +29,7 @@ interface AsignacionPreview {
 	tipo: 'BECA' | 'DESCUENTO';
 	nombre: string;
 	valor: string;
+	inscripcion: string;
 	estado: 'Activo' | 'Inactivo';
 }
 
@@ -51,6 +53,8 @@ export class AsignacionBecasDescuentosComponent implements OnInit {
 	};
 
 	codInscrip: number | null = null;
+	codInscripNormal: number | null = null;
+	codInscripArrastre: number | null = null;
 	codPensumSelected: string = '';
 	gestionesDisponibles: string[] = [];
 	noInscrito: boolean = false;
@@ -103,6 +107,12 @@ export class AsignacionBecasDescuentosComponent implements OnInit {
 
 	onTipoInscripcionChange(tipo: string): void {
 		this.switchCuotasForTipo(tipo);
+		const up = (tipo || '').toString().toUpperCase();
+		if (up === 'ARRASTRE') {
+			this.codInscrip = this.codInscripArrastre ?? this.codInscripNormal ?? null;
+		} else {
+			this.codInscrip = this.codInscripNormal ?? null;
+		}
 		this.recalcMontoReferenciaFromCuotas();
 	}
 
@@ -306,6 +316,7 @@ export class AsignacionBecasDescuentosComponent implements OnInit {
 		const est = res?.data?.estudiante || {};
 		const gestion = res?.data?.gestion || '';
 		const insc = res?.data?.inscripcion || null;
+		const inscArr = res?.data?.arrastre?.inscripcion || null;
 		const inscripciones = Array.isArray(res?.data?.inscripciones) ? res.data.inscripciones : [];
 		const gestionesAll = Array.isArray(res?.data?.gestiones_all) ? (res.data.gestiones_all as string[]) : [];
 		const gestiones = (gestionesAll.length ? gestionesAll : Array.from(new Set((inscripciones as any[]).map((i: any) => String(i?.gestion || '')).filter((g: string) => !!g)))) as string[];
@@ -331,7 +342,9 @@ export class AsignacionBecasDescuentosComponent implements OnInit {
 			gestion: gestion,
 			grupos: gruposUnique
 		};
-		this.codInscrip = insc?.cod_inscrip ?? null;
+		this.codInscripNormal = insc?.cod_inscrip ?? null;
+		this.codInscripArrastre = inscArr?.cod_inscrip ?? null;
+		this.codInscrip = this.codInscripNormal;
 		this.codPensumSelected = (insc?.cod_pensum ?? est?.cod_pensum ?? '') as string;
 		const asignacionesCuotas = Array.isArray(res?.data?.asignaciones) ? res.data.asignaciones : [];
 		const asignacionesArrastre = Array.isArray(res?.data?.asignaciones_arrastre) ? res.data.asignaciones_arrastre : [];
@@ -396,6 +409,11 @@ export class AsignacionBecasDescuentosComponent implements OnInit {
 		const tipoDefault = (insc?.tipo_inscripcion || this.tipoInscripcionOptions[0] || '') as string;
 		this.contextForm.patchValue({ montoReferencia: this.round2(montoRef), descuento: 0, totalPagar: this.round2(montoRef), tipoInscripcion: tipoDefault });
 		this.switchCuotasForTipo(tipoDefault);
+		if ((tipoDefault || '').toUpperCase() === 'ARRASTRE') {
+			this.codInscrip = this.codInscripArrastre ?? this.codInscripNormal ?? null;
+		} else {
+			this.codInscrip = this.codInscripNormal ?? null;
+		}
 		let selectedRow: any | null = null;
 		if (this.selectedRowKey) {
 			selectedRow = this.definicionesFiltradas.find(r => this.keyOf(r as any) === this.selectedRowKey) as any || null;
@@ -420,6 +438,8 @@ export class AsignacionBecasDescuentosComponent implements OnInit {
 	private resetResumenState(err?: any): void {
 		this.student = { ap_paterno: '', ap_materno: '', nombres: '', pensum: '', gestion: '', grupos: [] };
 		this.codInscrip = null;
+		this.codInscripNormal = null;
+		this.codInscripArrastre = null;
 		this.codPensumSelected = '';
 		this.gestionesDisponibles = [];
 		const msg = (err?.error?.message || '').toString().toLowerCase();
@@ -433,9 +453,10 @@ export class AsignacionBecasDescuentosComponent implements OnInit {
 	}
 
 	private loadDescuentosAsignados(): void {
-		if (!this.codInscrip) { this.asignaciones = []; return; }
-		const selGestion = String(this.searchForm.get('gestion')?.value || '');
-		this.cobrosService.getDescuentos({ cod_inscrip: this.codInscrip, cod_pensum: this.codPensumSelected, cod_ceta: undefined as any, estado: undefined as any }).subscribe({
+		const codCetaRaw = this.searchForm.get('cod_ceta')?.value;
+		const codCeta = Number(codCetaRaw || 0);
+		if (!codCeta) { this.asignaciones = []; return; }
+		this.cobrosService.getDescuentos({ cod_ceta: codCeta, cod_pensum: this.codPensumSelected, estado: undefined as any }).subscribe({
 			next: (res) => {
 				const items = Array.isArray(res?.data) ? res.data : [];
 				this.asignaciones = items.map((it: any, idx: number) => ({
@@ -444,6 +465,7 @@ export class AsignacionBecasDescuentosComponent implements OnInit {
 					tipo: (it?.cod_beca ? 'BECA' : 'DESCUENTO') as 'BECA' | 'DESCUENTO',
 					nombre: it?.nombre || (it?.beca?.nombre_beca || it?.definicion?.nombre_descuento || ''),
 					valor: `${Number(it?.porcentaje ?? 0)} Bs`,
+					inscripcion: String((it?.tipo ?? it?.tipo_inscripcion ?? '') || '').toUpperCase(),
 					estado: (it?.estado ? 'Activo' : 'Inactivo') as 'Activo' | 'Inactivo'
 				}));
 			},

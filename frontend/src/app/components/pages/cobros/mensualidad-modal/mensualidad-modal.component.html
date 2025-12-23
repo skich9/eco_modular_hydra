@@ -14,7 +14,10 @@
                 <div class="small fw-semibold text-primary" *ngIf="tipo === 'mensualidad'">Mensualidades pendientes : {{ pendientes }}</div>
               </div>
               <div class="small text-muted">{{ resumen?.estudiante?.cod_ceta }} - {{ resumen?.estudiante?.nombre_completo || resumen?.estudiante?.nombres }}</div>
-              <div class="small">Pensum: {{ resumen?.inscripcion?.cod_pensum }} | Tipo: {{ resumen?.inscripcion?.tipo_inscripcion }}</div>
+              <div class="small">
+                Pensum: {{ (tipo === 'arrastre' ? (resumen?.arrastre?.inscripcion?.cod_pensum || resumen?.inscripcion?.cod_pensum) : resumen?.inscripcion?.cod_pensum) }}
+                | Tipo: {{ (tipo === 'arrastre' ? 'ARRASTRE' : (resumen?.inscripcion?.tipo_inscripcion)) }}
+              </div>
               <div class="small">Gestión: {{ resumen?.gestion }}</div>
             </div>
             <div class="col-md-4">

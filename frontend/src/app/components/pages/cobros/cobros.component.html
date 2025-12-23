@@ -478,7 +478,7 @@
       [cuentasBancarias]="cuentasBancarias"
       [tipo]="modalTipo"
       [pendientes]="mensualidadesPendientes"
-      [pu]="getMensualidadPuForModal()"
+      [pu]="modalTipo === 'arrastre' ? mensualidadPU : getMensualidadPuForModal()"
       [baseNro]="getNextMensualidadNro()"
       [defaultMetodoPago]="modalFormasCobro[0]?.id_forma_cobro || selectedFormaCobroId"
       [startCuotaOverride]="getNextMensualidadStartCuota()"

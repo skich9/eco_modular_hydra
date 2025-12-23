@@ -97,6 +97,57 @@ export class MensualidadModalComponent implements OnInit, OnChanges {
   // PU efectivo a mostrar para mensualidad: si hay override de cuota inicial, usar restante de esa cuota; si no, usar input pu
   get puDisplay(): number {
     try {
+      // Visual: en ARRASTRE mostrar el BRUTO de la cuota (monto de asignación de costos)
+      if (this.tipo === 'arrastre') {
+        const next: any = this.resumen?.arrastre?.next_cuota || null;
+        const numero = Number(next?.numero_cuota || 0);
+        const ida = Number(next?.id_asignacion_costo || 0);
+        const idt = Number(next?.id_cuota_template || 0);
+        let hit: any = null;
+        // 1) arrastre.asignacion_costos.items
+        const acItems: any[] = Array.isArray(this.resumen?.arrastre?.asignacion_costos?.items)
+          ? this.resumen!.arrastre.asignacion_costos.items : [];
+        if (acItems.length) {
+          hit = acItems.find((a: any) => {
+            const n = Number(a?.numero_cuota || a?.numero || 0);
+            const _ida = Number(a?.id_asignacion_costo || 0);
+            const _idt = Number(a?.id_cuota_template || 0);
+            return (ida && _ida === ida) || (idt && _idt === idt) || (numero && n === numero);
+          }) || null;
+        }
+        // 2) arrastre.asignaciones_arrastre
+        if (!hit) {
+          const arrAsigs: any[] = Array.isArray(this.resumen?.arrastre?.asignaciones_arrastre)
+            ? this.resumen!.arrastre.asignaciones_arrastre : [];
+          hit = arrAsigs.find((a: any) => {
+            const n = Number(a?.numero_cuota || 0);
+            const _ida = Number(a?.id_asignacion_costo || 0);
+            const _idt = Number(a?.id_cuota_template || 0);
+            return (ida && _ida === ida) || (idt && _idt === idt) || (numero && n === numero);
+          }) || null;
+        }
+        // 3) raíz resumen.asignaciones_arrastre
+        if (!hit) {
+          const rootArr: any[] = Array.isArray((this.resumen as any)?.asignaciones_arrastre)
+            ? (this.resumen as any).asignaciones_arrastre : [];
+          hit = rootArr.find((a: any) => {
+            const n = Number(a?.numero_cuota || 0);
+            const _ida = Number(a?.id_asignacion_costo || 0);
+            const _idt = Number(a?.id_cuota_template || 0);
+            return (ida && _ida === ida) || (idt && _idt === idt) || (numero && n === numero);
+          }) || null;
+        }
+        if (hit) {
+          const bruto = this.toNumberLoose((hit as any)?.monto);
+          return bruto > 0 ? bruto : Number(this.pu || 0);
+        }
+        // 4) fallback: objeto arrastre o next
+        const arrObj: any = (this.resumen as any)?.arrastre || null;
+        const brutoArr = this.toNumberLoose(arrObj?.monto);
+        if (brutoArr > 0) return brutoArr;
+        const brutoNext = this.toNumberLoose(next?.monto);
+        return brutoNext > 0 ? brutoNext : Number(this.pu || 0);
+      }
       if (this.tipo !== 'mensualidad') return Number(this.pu || 0);
       const start = this.getStartCuotaFromResumen();
       // Precio unitario = monto (bruto) - monto_pagado (saldo sin considerar descuento)
@@ -248,8 +299,65 @@ export class MensualidadModalComponent implements OnInit, OnChanges {
       this.recalcTotal();
       // Actualizar campo de descuento mostrado (sólo informativo) para la próxima cuota
       try {
-        const start = this.getStartCuotaFromResumen();
-        const d = this.getDescuentoForCuota(start);
+        let d = 0;
+        if (this.tipo === 'arrastre') {
+          const next: any = this.resumen?.arrastre?.next_cuota || null;
+          const numero = Number(next?.numero_cuota || 0);
+          const ida = Number(next?.id_asignacion_costo || 0);
+          const idt = Number(next?.id_cuota_template || 0);
+          let hit: any = null;
+          // 1) arrastre.asignacion_costos.items
+          const acItems: any[] = Array.isArray(this.resumen?.arrastre?.asignacion_costos?.items)
+            ? this.resumen!.arrastre.asignacion_costos.items : [];
+          if (acItems.length) {
+            hit = acItems.find((a: any) => {
+              const n = Number(a?.numero_cuota || a?.numero || 0);
+              const _ida = Number(a?.id_asignacion_costo || 0);
+              const _idt = Number(a?.id_cuota_template || 0);
+              return (ida && _ida === ida) || (idt && _idt === idt) || (numero && n === numero);
+            }) || null;
+          }
+          // 2) arrastre.asignaciones_arrastre
+          if (!hit) {
+            const arrAsigs: any[] = Array.isArray(this.resumen?.arrastre?.asignaciones_arrastre)
+              ? this.resumen!.arrastre.asignaciones_arrastre : [];
+            hit = arrAsigs.find((a: any) => {
+              const n = Number(a?.numero_cuota || 0);
+              const _ida = Number(a?.id_asignacion_costo || 0);
+              const _idt = Number(a?.id_cuota_template || 0);
+              return (ida && _ida === ida) || (idt && _idt === idt) || (numero && n === numero);
+            }) || null;
+          }
+          // 3) raíz resumen.asignaciones_arrastre
+          if (!hit) {
+            const rootArr: any[] = Array.isArray((this.resumen as any)?.asignaciones_arrastre)
+              ? (this.resumen as any).asignaciones_arrastre : [];
+            hit = rootArr.find((a: any) => {
+              const n = Number(a?.numero_cuota || 0);
+              const _ida = Number(a?.id_asignacion_costo || 0);
+              const _idt = Number(a?.id_cuota_template || 0);
+              return (ida && _ida === ida) || (idt && _idt === idt) || (numero && n === numero);
+            }) || null;
+          }
+          if (hit) {
+            const fromField = this.toNumberLoose((hit as any)?.descuento);
+            d = fromField > 0 ? fromField : 0;
+          } else if (next) {
+            const fromNext = this.toNumberLoose((next as any)?.descuento ?? (next as any)?.monto_descuento ?? 0);
+            d = fromNext > 0 ? fromNext : 0;
+            // 4) último intento: el backend puede poner la cuota activa de arrastre a nivel arrastre
+            if (!(d > 0)) {
+              const arrObj: any = (this.resumen as any)?.arrastre || null;
+              const arrDesc = this.toNumberLoose(arrObj?.descuento ?? 0);
+              if (arrDesc > 0) d = arrDesc;
+            }
+          } else {
+            d = 0;
+          }
+        } else {
+          const start = this.getStartCuotaFromResumen();
+          d = this.getDescuentoForCuota(start);
+        }
         // Mostrar siempre el descuento aplicado a la cuota seleccionada
         this.form.get('descuento')?.setValue(d || 0, { emitEvent: false });
       } catch {}
@@ -708,7 +816,14 @@ export class MensualidadModalComponent implements OnInit, OnChanges {
 
     if (this.tipo === 'arrastre') {
       const next = this.resumen?.arrastre?.next_cuota || null;
-      const monto = next ? Number(next?.monto || 0) : Number(this.pu || 0);
+      // Para arrastre, el PU/monto debe reflejar el NETO (monto - descuento) del item de arrastre
+      let monto = next ? this.toNumberLoose((next as any)?.monto_neto) : 0;
+      if (!(monto > 0) && next) {
+        const bruto = this.toNumberLoose((next as any)?.monto);
+        const desc = this.toNumberLoose((next as any)?.descuento);
+        monto = Math.max(0, bruto - desc);
+      }
+      if (!(monto > 0)) monto = Number(this.pu || 0);
       pagos.push({
         id_forma_cobro: this.form.get('metodo_pago')?.value || null,
         nro_cobro: this.baseNro || 1,
