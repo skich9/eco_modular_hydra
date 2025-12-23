@@ -58,22 +58,66 @@ export class MensualidadModalComponent implements OnInit, OnChanges {
     });
   }
 
+  // Obtiene el monto BRUTO y PAGADO de una cuota por número (para PU = bruto - pagado)
+  private getCuotaBrutoPagadoByNumero(numeroCuota: number): { bruto: number; pagado: number } {
+    try {
+      const src: any[] = ((this.resumen?.asignacion_costos?.items || this.resumen?.asignaciones || []) as any[]);
+      const hit = (src || []).find(a => Number(a?.numero_cuota || 0) === Number(numeroCuota));
+      if (!hit) return { bruto: Number(this.pu || 0), pagado: 0 };
+      const bruto = this.toNumberLoose(hit?.monto);
+      const pagado = this.toNumberLoose(hit?.monto_pagado);
+      return { bruto, pagado };
+    } catch { return { bruto: Number(this.pu || 0), pagado: 0 }; }
+  }
+
+  // Obtiene el monto NETO de una cuota (monto - descuento) desde el resumen por número de cuota
+  private getCuotaNetoByNumero(numeroCuota: number): number {
+    try {
+      const src: any[] = ((this.resumen?.asignacion_costos?.items || this.resumen?.asignaciones || []) as any[]);
+      const hit = (src || []).find(a => Number(a?.numero_cuota || 0) === Number(numeroCuota));
+      if (!hit) return Number(this.pu || 0);
+      const bruto = this.toNumberLoose(hit?.monto);
+      const desc = this.toNumberLoose(hit?.descuento);
+      const neto = (hit?.monto_neto !== undefined && hit?.monto_neto !== null) ? this.toNumberLoose(hit?.monto_neto) : Math.max(0, bruto - desc);
+      return neto;
+    } catch { return Number(this.pu || 0); }
+  }
+
+  // Obtiene el restante actual para una cuota por número (considera saldos frontales si existen)
+  private getCuotaRestanteByNumero(numeroCuota: number): number {
+    try {
+      const list = this.getOrderedCuotasRestantes();
+      const hit = list.find(it => Number(it.numero) === Number(numeroCuota));
+      if (hit && hit.restante !== undefined) return Math.max(0, Number(hit.restante || 0));
+      // Si no aparece en la lista (posiblemente ya está saldada), restante = 0
+      return 0;
+    } catch { return 0; }
+  }
+
   // PU efectivo a mostrar para mensualidad: si hay override de cuota inicial, usar restante de esa cuota; si no, usar input pu
   get puDisplay(): number {
     try {
       if (this.tipo !== 'mensualidad') return Number(this.pu || 0);
       const start = this.getStartCuotaFromResumen();
-      const list = this.getOrderedCuotasRestantes();
-      const hit = list.find(it => Number(it.numero) === Number(start));
-      if (hit && hit.restante !== undefined) return Number(hit.restante || 0);
-      return Number(this.pu || 0);
+      // Precio unitario = monto (bruto) - monto_pagado (saldo sin considerar descuento)
+      const { bruto, pagado } = this.getCuotaBrutoPagadoByNumero(start);
+      return Math.max(0, Number(bruto || 0) - Number(pagado || 0));
     } catch { return Number(this.pu || 0); }
   }
 
   // Máximo permitido para pago parcial según el PU efectivo
-  private getParcialMax(): number {
-    const max = this.puDisplay;
-    return (isNaN(max) || max <= 0) ? Number.MAX_SAFE_INTEGER : max;
+  getParcialMax(): number {
+    // Máximo permitido para parcial = (PU - descuento) = (bruto - pagado) - descuento
+    try {
+      const start = this.getStartCuotaFromResumen();
+      const pu = this.puDisplay; // bruto - pagado
+      const d = this.getDescuentoForCuota(start);
+      const max = Math.max(0, (Number(pu || 0) - Number(d || 0)));
+      return (isNaN(max) || max <= 0) ? Number.MAX_SAFE_INTEGER : max;
+    } catch {
+      const max = this.puDisplay;
+      return (isNaN(max) || max <= 0) ? Number.MAX_SAFE_INTEGER : max;
+    }
   }
 
   // Verifica si el bloque de tarjeta está completo para habilitar el resto del formulario
@@ -178,9 +222,9 @@ export class MensualidadModalComponent implements OnInit, OnChanges {
         this.form.get('cantidad')?.setValue(1, { emitEvent: false });
         this.form.get('cantidad')?.disable({ emitEvent: false });
         this.form.get('monto_parcial')?.enable({ emitEvent: false });
-        this.form.get('monto_parcial')?.setValidators([Validators.required, Validators.min(0.01), Validators.max(Number(this.puDisplay || Number.MAX_SAFE_INTEGER))]);
-        // Prefijar el monto parcial con el PU efectivo (ajustado por saldo y cuota inicial)
-        this.form.get('monto_parcial')?.setValue(this.puDisplay || 0, { emitEvent: false });
+        this.form.get('monto_parcial')?.setValidators([Validators.required, Validators.min(0.01), Validators.max(Number(this.getParcialMax() || Number.MAX_SAFE_INTEGER))]);
+        // Prefijar el monto parcial con el neto de la cuota (PU - descuento)
+        this.form.get('monto_parcial')?.setValue(this.getParcialMax() || 0, { emitEvent: false });
       } else {
         // restaurar cantidad y deshabilitar monto_parcial
         this.form.get('cantidad')?.enable({ emitEvent: false });
@@ -202,10 +246,17 @@ export class MensualidadModalComponent implements OnInit, OnChanges {
       }
       this.configureByTipo();
       this.recalcTotal();
+      // Actualizar campo de descuento mostrado (sólo informativo) para la próxima cuota
+      try {
+        const start = this.getStartCuotaFromResumen();
+        const d = this.getDescuentoForCuota(start);
+        // Mostrar siempre el descuento aplicado a la cuota seleccionada
+        this.form.get('descuento')?.setValue(d || 0, { emitEvent: false });
+      } catch {}
       // Si el parcial está activo, actualizar tope y valor sugerido del monto parcial con el PU efectivo
       if (this.tipo === 'mensualidad' && this.form.get('pago_parcial')?.value) {
-        this.form.get('monto_parcial')?.setValidators([Validators.required, Validators.min(0.01), Validators.max(Number(this.puDisplay || Number.MAX_SAFE_INTEGER))]);
-        this.form.get('monto_parcial')?.setValue(this.puDisplay || 0, { emitEvent: false });
+        this.form.get('monto_parcial')?.setValidators([Validators.required, Validators.min(0.01), Validators.max(Number(this.getParcialMax() || Number.MAX_SAFE_INTEGER))]);
+        this.form.get('monto_parcial')?.setValue(this.getParcialMax() || 0, { emitEvent: false });
         this.form.get('monto_parcial')?.updateValueAndValidity({ emitEvent: false });
       }
     }
@@ -229,9 +280,9 @@ export class MensualidadModalComponent implements OnInit, OnChanges {
         this.form.get('cantidad')?.setValue(1, { emitEvent: false });
         this.form.get('cantidad')?.disable({ emitEvent: false });
         this.form.get('monto_parcial')?.enable({ emitEvent: false });
-        this.form.get('monto_parcial')?.setValidators([Validators.required, Validators.min(0.01), Validators.max(Number(this.puDisplay || Number.MAX_SAFE_INTEGER))]);
-        // Prefijar con el PU efectivo (ajustado)
-        this.form.get('monto_parcial')?.setValue(this.puDisplay || 0, { emitEvent: false });
+        this.form.get('monto_parcial')?.setValidators([Validators.required, Validators.min(0.01), Validators.max(Number(this.getParcialMax() || Number.MAX_SAFE_INTEGER))]);
+        // Prefijar con el neto de la cuota (PU - descuento)
+        this.form.get('monto_parcial')?.setValue(this.getParcialMax() || 0, { emitEvent: false });
       } else {
         this.form.get('cantidad')?.enable({ emitEvent: false });
         this.form.get('monto_parcial')?.setValue(0, { emitEvent: false });
@@ -286,15 +337,23 @@ export class MensualidadModalComponent implements OnInit, OnChanges {
         total = Number(this.form.get('monto_parcial')?.value || 0);
       } else {
         const cant = Math.max(0, Number(this.form.get('cantidad')?.value || 0));
-        const sum = this.sumNextKCuotasRestantes(cant);
-        if (sum > 0) {
-          total = sum;
+        if (cant === 1) {
+          // Costo total = Precio unitario (monto - pagado) - descuento
+          const start = this.getStartCuotaFromResumen();
+          const pu = this.puDisplay;
+          const d = this.getDescuentoForCuota(start);
+          total = Math.max(0, Number(pu || 0) - Number(d || 0));
         } else {
-          const puNext = Number(this.pu || 0);
-          const avg = this.avgAsignMonto();
-          const puTotales = Number(this.resumen?.totales?.pu_mensual || 0);
-          const puSemestral = (avg !== null && avg !== undefined) ? avg : (puTotales || puNext);
-          if (cant <= 0) total = 0; else if (cant === 1) total = puNext; else total = puNext + Math.max(0, cant - 1) * (puSemestral || puNext);
+          const sum = this.sumNextKCuotasRestantes(cant);
+          if (sum > 0) {
+            total = sum;
+          } else {
+            const puNext = Number(this.pu || 0);
+            const avg = this.avgAsignMonto();
+            const puTotales = Number(this.resumen?.totales?.pu_mensual || 0);
+            const puSemestral = (avg !== null && avg !== undefined) ? avg : (puTotales || puNext);
+            if (cant <= 0) total = 0; else if (cant === 1) total = puNext; else total = puNext + Math.max(0, cant - 1) * (puSemestral || puNext);
+          }
         }
       }
     } else if (this.tipo === 'arrastre') {
@@ -367,7 +426,7 @@ export class MensualidadModalComponent implements OnInit, OnChanges {
     return names[n] || String(n);
   }
 
-  // Suma los montos restantes de las próximas k cuotas según resumen.asignacion_costos/asignaciones
+  // Suma los montos restantes (netos) de las próximas k cuotas según resumen.asignacion_costos/asignaciones
   private sumNextKCuotasRestantes(k: number): number {
     if (!k) return 0;
     const list = this.getOrderedCuotasRestantes();
@@ -376,16 +435,18 @@ export class MensualidadModalComponent implements OnInit, OnChanges {
     return acc;
   }
 
-  // Devuelve lista ordenada por numero_cuota con {numero, restante}
+  // Devuelve lista ordenada por numero_cuota con {numero, restante} usando monto neto (monto - descuento)
   private getOrderedCuotasRestantes(): Array<{ numero: number; restante: number; id_cuota_template: number|null; id_asignacion_costo: number|null; }> {
     const src: any[] = ((this.resumen?.asignacion_costos?.items || this.resumen?.asignaciones || []) as any[]);
     const ord = (src || []).slice().sort((a: any, b: any) => Number(a?.numero_cuota || 0) - Number(b?.numero_cuota || 0));
     const out: Array<{ numero: number; restante: number; id_cuota_template: number|null; id_asignacion_costo: number|null; }> = [];
     for (const a of ord) {
-      const monto = this.toNumberLoose(a?.monto);
+      const bruto = this.toNumberLoose(a?.monto);
+      const desc = this.toNumberLoose(a?.descuento);
+      const montoNeto = (a?.monto_neto !== undefined && a?.monto_neto !== null) ? this.toNumberLoose(a?.monto_neto) : Math.max(0, bruto - desc);
       const pagado = this.toNumberLoose(a?.monto_pagado);
       const numero = Number(a?.numero_cuota || 0);
-      let restante = Math.max(0, monto - pagado);
+      let restante = Math.max(0, montoNeto - pagado);
       if (this.frontSaldos && Object.prototype.hasOwnProperty.call(this.frontSaldos, numero)) {
         const r = Number(this.frontSaldos[numero]);
         if (isFinite(r)) restante = Math.max(0, r);
@@ -403,6 +464,17 @@ export class MensualidadModalComponent implements OnInit, OnChanges {
       return out.filter(it => Number(it.numero) >= start);
     }
     return out;
+  }
+
+  // Obtiene el descuento configurado para una cuota específica desde el resumen
+  private getDescuentoForCuota(numeroCuota: number): number {
+    try {
+      const src: any[] = ((this.resumen?.asignacion_costos?.items || this.resumen?.asignaciones || []) as any[]);
+      const hit = (src || []).find(a => Number(a?.numero_cuota || 0) === Number(numeroCuota));
+      if (!hit) return 0;
+      const d = (hit?.descuento !== undefined && hit?.descuento !== null) ? this.toNumberLoose(hit?.descuento) : 0;
+      return d || 0;
+    } catch { return 0; }
   }
 
   // Promedio nominal de las cuotas (monto sin considerar pagos) para fallback
@@ -673,10 +745,11 @@ export class MensualidadModalComponent implements OnInit, OnChanges {
         const numero_cuota = first ? (Number(first.numero || 0) || null) : null;
         const id_cuota_template = first ? (first.id_cuota_template ?? null) : null;
         const id_asignacion_costo = first ? (first.id_asignacion_costo ?? null) : null;
+        const monto = Number(this.form.get('monto_parcial')?.value || 0);
         pagos.push({
           id_forma_cobro: this.form.get('metodo_pago')?.value || null,
           nro_cobro: this.baseNro || 1,
-          monto: Number(this.form.get('monto_parcial')?.value || 0),
+          monto,
           fecha_cobro: hoy,
           observaciones: this.composeObservaciones(),
           pu_mensualidad: Number(this.puDisplay || this.pu || 0),
@@ -708,17 +781,23 @@ export class MensualidadModalComponent implements OnInit, OnChanges {
         let nro = this.baseNro || 1;
         if (list.length > 0) {
           for (let i = 0; i < list.length; i++) {
-            const m = Number(list[i]?.restante || 0);
+            const m = Number(list[i]?.restante || 0); // neto (PU - descuento)
             const numero_cuota = Number(list[i]?.numero || 0) || null;
             const id_cuota_template = list[i]?.id_cuota_template ?? null;
             const id_asignacion_costo = list[i]?.id_asignacion_costo ?? null;
+            // P/U debe ser (monto - monto_pagado)
+            let pu_unit = 0;
+            if (numero_cuota) {
+              const bp = this.getCuotaBrutoPagadoByNumero(numero_cuota);
+              pu_unit = Math.max(0, Number(bp.bruto || 0) - Number(bp.pagado || 0));
+            }
             pagos.push({
               id_forma_cobro: this.form.get('metodo_pago')?.value || null,
               nro_cobro: nro++,
               monto: m,
               fecha_cobro: hoy,
               observaciones: this.composeObservaciones(),
-              pu_mensualidad: m,
+              pu_mensualidad: pu_unit,
               numero_cuota,
               id_cuota: id_cuota_template,
               id_asignacion_costo,

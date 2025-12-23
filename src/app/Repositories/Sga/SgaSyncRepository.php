@@ -270,6 +270,7 @@ class SgaSyncRepository
 								'monto' => $monto,
 								'porcentaje' => $porc,
 								'estado' => $activo,
+								'beca' => true,
 							];
 						} else {
 							$descuentos[] = [
@@ -316,26 +317,41 @@ class SgaSyncRepository
 
 					// 2) Upsert-like por nombre para DESCUENTOS (tabla def_descuentos)
 					if (!empty($descuentos)) {
-						$names = array_values(array_unique(array_map(function($x){ return (string)$x['nombre_descuento']; }, $descuentos)));
-						$existing = \Illuminate\Support\Facades\DB::table('def_descuentos')->whereIn('nombre_descuento', $names)->pluck('cod_descuento','nombre_descuento')->all();
+						$mapped = array_map(function($d){
+							return [
+								'nombre_beca' => (string)$d['nombre_descuento'],
+								'descripcion' => (string)$d['descripcion'],
+								'monto' => (int)$d['monto'],
+								'porcentaje' => (bool)$d['porcentaje'],
+								'estado' => (bool)$d['estado'],
+								'beca' => false,
+							];
+						}, $descuentos);
+
+						$names = array_values(array_unique(array_map(function($x){ return (string)$x['nombre_beca']; }, $mapped)));
+						$existing = \Illuminate\Support\Facades\DB::table('def_descuentos_beca')
+							->whereIn('nombre_beca', $names)
+							->pluck('cod_beca','nombre_beca')
+							->all();
+
 						$toInsert = [];
 						$toUpdate = [];
-						foreach ($descuentos as $d) {
-							$key = (string)$d['nombre_descuento'];
+						foreach ($mapped as $m) {
+							$key = (string)$m['nombre_beca'];
 							if (isset($existing[$key])) {
-								$toUpdate[] = array_merge($d, ['cod_descuento' => (int)$existing[$key]]);
-							} else { $toInsert[] = $d; }
+								$toUpdate[] = array_merge($m, ['cod_beca' => (int)$existing[$key]]);
+							} else {
+								$toInsert[] = $m;
+							}
 						}
 						if (!empty($toInsert)) {
-							\Illuminate\Support\Facades\DB::table('def_descuentos')->insert($toInsert);
-							$summary['descuentos_inserted'] += count($toInsert);
+							\Illuminate\Support\Facades\DB::table('def_descuentos_beca')->insert($toInsert);
 						}
 						if (!empty($toUpdate)) {
 							foreach (array_chunk($toUpdate, 1000) as $chunkRows) {
 								foreach ($chunkRows as $u) {
-									$id = (int)$u['cod_descuento']; unset($u['cod_descuento']);
-									\Illuminate\Support\Facades\DB::table('def_descuentos')->where('cod_descuento', $id)->update($u);
-									$summary['descuentos_updated']++;
+									$id = (int)$u['cod_beca']; unset($u['cod_beca']);
+									\Illuminate\Support\Facades\DB::table('def_descuentos_beca')->where('cod_beca', $id)->update($u);
 								}
 							}
 						}

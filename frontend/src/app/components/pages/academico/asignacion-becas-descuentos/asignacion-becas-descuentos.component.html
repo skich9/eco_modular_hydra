@@ -51,6 +51,9 @@
 					</div>
 				</div>
 			</form>
+				<div class="d-flex justify-content-end mt-2">
+					<button type="button" class="btn btn-outline-danger" (click)="limpiarFormulario()"><i class="fas fa-eraser me-1"></i>Limpiar</button>
+				</div>
 		</div>
 	</div>
 
@@ -62,7 +65,7 @@
 					<span>Asignaciones del Estudiante</span>
 				</div>
 				<div class="card-body">
-					<div class="table-responsive">
+					<div class="table-responsive table-scroll-5">
 						<table class="table table-sm table-striped align-middle">
 							<thead>
 								<tr>
@@ -71,6 +74,7 @@
 									<th>Nombre</th>
 									<th>Valor</th>
 									<th>Estado</th>
+									<th style="width:60px"></th>
 								</tr>
 							</thead>
 							<tbody>
@@ -80,9 +84,14 @@
 									<td>{{ a.nombre }}</td>
 									<td>{{ a.valor }}</td>
 									<td>{{ a.estado }}</td>
+									<td class="text-end">
+										<button class="btn btn-sm btn-outline-danger" title="Eliminar" (click)="eliminarAsignacion(a)">
+											<i class="fas fa-trash"></i>
+										</button>
+									</td>
 								</tr>
 								<tr *ngIf="!asignaciones.length">
-									<td colspan="5" class="text-center text-muted py-3">Sin asignaciones</td>
+									<td colspan="6" class="text-center text-muted py-3">Sin asignaciones</td>
 								</tr>
 							</tbody>
 						</table>
@@ -93,7 +102,7 @@
 
 		<!-- Catálogo de becas/descuentos -->
 		<div class="col-lg-6 mb-3">
-			<div class="card h-100">
+			<div class="card h-100" [ngClass]="{ 'border border-danger': !!defSelectError }">
 				<div class="card-header">
 					<div class="d-flex align-items-center gap-2">
 						<select class="form-select" style="max-width: 220px" [(ngModel)]="selectedTipo">
@@ -104,6 +113,7 @@
 					</div>
 				</div>
 				<div class="card-body">
+					<div *ngIf="defSelectError" class="mb-2"><small class="text-danger">{{ defSelectError }}</small></div>
 					<div class="table-responsive table-scroll-5">
 						<table class="table table-sm table-hover align-middle">
 							<thead>
@@ -126,8 +136,8 @@
 										<span *ngIf="!$any(d).porcentaje">{{ $any(d).monto || 0 }} Bs</span>
 									</td>
 									<td>
-										<button class="btn btn-sm btn-outline-primary" (click)="asignarSeleccion(); $event.stopPropagation();">
-											<i class="fas fa-plus"></i>
+										<button class="btn btn-sm" [ngClass]="(keyOf(d)===selectedRowKey) ? 'btn-success' : 'btn-outline-primary'" (click)="toggleSelect(d); $event.stopPropagation();">
+											<i class="fas" [ngClass]="(keyOf(d)===selectedRowKey) ? 'fa-check' : 'fa-plus'"></i>
 										</button>
 									</td>
 								</tr>
@@ -138,11 +148,6 @@
 						</table>
 					</div>
 				</div>
-				<div class="card-footer d-flex gap-2">
-					<button class="btn btn-success" (click)="asignarSeleccion()"><i class="fas fa-check me-1"></i>Asignar</button>
-					<button class="btn btn-outline-secondary" (click)="cancelarSeleccion()"><i class="fas fa-times me-1"></i>Cancelar</button>
-					<button class="btn btn-outline-danger ms-auto" (click)="limpiarFormulario()"><i class="fas fa-eraser me-1"></i>Limpiar</button>
-				</div>
 			</div>
 		</div>
 	</div>
@@ -150,6 +155,46 @@
 	<!-- Totales y observaciones -->
 	<div class="card">
 		<div class="card-body">
+			<div class="row g-2 align-items-end mb-2" *ngIf="cuotas.length">
+				<div class="col-sm-4 col-md-3">
+					<label class="form-label">Tipo Inscripción</label>
+					<select class="form-select" [ngModel]="contextForm.value?.tipoInscripcion" (ngModelChange)="contextForm.patchValue({ tipoInscripcion: $event }); updateDescuentoTotal(getSelectedDef());">
+						<option value="">Seleccione...</option>
+						<option *ngFor="let t of tipoInscripcionOptions" [value]="t">{{ t }}</option>
+					</select>
+				</div>
+			</div>
+			<div class="table-responsive mb-3">
+				<table class="table table-sm align-middle">
+					<thead>
+						<tr>
+							<th style="width:40px">
+								<input type="checkbox" class="form-check-input" [checked]="allSelected" (change)="toggleAll($event.target.checked)" />
+							</th>
+							<th>Cuota</th>
+							<th>Estado</th>
+							<th>Monto referencial</th>
+							<th>Descuento</th>
+							<th>Total a pagar</th>
+						</tr>
+					</thead>
+					<tbody>
+						<tr *ngFor="let c of cuotas; index as i">
+							<td>
+								<input type="checkbox" class="form-check-input" [disabled]="!isSelectable(c)" [(ngModel)]="c.selected" (ngModelChange)="toggleCuota(i, $event)" />
+							</td>
+							<td>{{ c.numero_cuota }}</td>
+							<td>{{ c.estado_pago }}</td>
+							<td>{{ c.monto | number:'1.2-2' }}</td>
+							<td>{{ descuentoPorCuota(c) | number:'1.2-2' }}</td>
+							<td>{{ totalPorCuota(c) | number:'1.2-2' }}</td>
+						</tr>
+						<tr *ngIf="!cuotas.length">
+							<td colspan="6" class="text-center text-muted py-2">Sin cuotas</td>
+						</tr>
+					</tbody>
+				</table>
+			</div>
 			<form [formGroup]="contextForm">
 				<div class="row g-3">
 					<div class="col-sm-4 col-md-3">
@@ -164,19 +209,42 @@
 						<label class="form-label">Total a Pagar</label>
 						<input type="text" class="form-control" formControlName="totalPagar" />
 					</div>
-					<div class="col-sm-6 col-md-3">
-						<label class="form-label">Tipo Inscripción</label>
-						<select class="form-select" formControlName="tipoInscripcion">
-							<option value="">Seleccione...</option>
-							<option *ngFor="let t of tipoInscripcionOptions" [value]="t">{{ t }}</option>
-						</select>
-					</div>
-					<div class="col-12">
-						<label class="form-label">Observaciones</label>
-						<textarea rows="3" class="form-control" formControlName="observaciones"></textarea>
+					<div class="row g-3 mt-1">
+						<div class="col-lg-6">
+							<div class="row g-3">
+								<div class="col-sm-6">
+									<label class="form-label">Código Archivo</label>
+									<input type="text" class="form-control" formControlName="codigoArchivo" />
+								</div>
+								<div class="col-sm-6">
+									<label class="form-label">Fecha solicitud</label>
+									<input type="date" class="form-control" formControlName="fechaSolicitud" [ngClass]="{ 'is-invalid': submitted && contextForm.get('fechaSolicitud')?.invalid }" />
+									<div *ngIf="submitted && contextForm.get('fechaSolicitud')?.invalid" class="invalid-feedback d-block">
+										Debe ingresar la fecha de solicitud.
+									</div>
+								</div>
+								<div class="col-sm-6">
+									<label class="form-label">Meses</label>
+									<input type="text" class="form-control" formControlName="meses" />
+								</div>
+							</div>
+						</div>
+						<div class="col-lg-6">
+							<label class="form-label">Observaciones</label>
+							<textarea rows="3" class="form-control"
+									formControlName="observaciones"
+									[ngClass]="{ 'is-invalid': submitted && contextForm.get('observaciones')?.invalid }"></textarea>
+							<div *ngIf="submitted && contextForm.get('observaciones')?.invalid" class="invalid-feedback d-block">
+								Debe ingresar una observación.
+							</div>
+						</div>
 					</div>
 				</div>
 			</form>
+			<div class="d-flex gap-2 mt-3">
+				<button class="btn btn-success" (click)="asignarSeleccion()"><i class="fas fa-check me-1"></i>Asignar</button>
+				<button class="btn btn-outline-secondary" (click)="cancelarSeleccion()"><i class="fas fa-times me-1"></i>Cancelar</button>
+			</div>
 		</div>
 	</div>
 </div>

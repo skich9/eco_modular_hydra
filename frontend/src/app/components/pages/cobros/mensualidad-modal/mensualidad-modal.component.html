@@ -216,7 +216,7 @@
             <div class="invalid-feedback" *ngIf="form.get('monto_parcial')?.hasError('max') && form.get('monto_parcial')?.touched">
               El monto ingresado excede el saldo.
             </div>
-            <div class="form-text">Máximo: {{ puDisplay | number:'1.2-2' }}</div>
+            <div class="form-text">Máximo: {{ getParcialMax() | number:'1.2-2' }}</div>
           </div>
           <div class="col-md-4">
             <label class="form-label">Costo total</label>
