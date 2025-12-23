@@ -58,6 +58,52 @@ export class MensualidadModalComponent implements OnInit, OnChanges {
     });
   }
 
+  // Suma del BRUTO - PAGADO de las próximas k cuotas restantes (según asignacion_costos/asignaciones)
+  private sumBrutoMenosPagadoNextK(k: number): number {
+    try {
+      const list = this.getOrderedCuotasRestantes();
+      if (!list || !list.length || k <= 0) return 0;
+      const src: any[] = ((this.resumen?.asignacion_costos?.items || this.resumen?.asignaciones || []) as any[]);
+      let acc = 0; let c = 0;
+      for (const it of list) {
+        const hit = (src || []).find(a => Number(a?.numero_cuota || 0) === Number(it.numero));
+        const bruto = this.toNumberLoose(hit?.monto);
+        const pagado = this.toNumberLoose(hit?.monto_pagado);
+        acc += Math.max(0, bruto - pagado);
+        c++; if (c >= k) break;
+      }
+      return acc;
+    } catch { return 0; }
+  }
+
+  // Suma del DESCUENTO de las próximas k cuotas restantes
+  private sumDescuentoNextK(k: number): number {
+    try {
+      const list = this.getOrderedCuotasRestantes();
+      if (!list || !list.length || k <= 0) return 0;
+      const src: any[] = ((this.resumen?.asignacion_costos?.items || this.resumen?.asignaciones || []) as any[]);
+      let acc = 0; let c = 0;
+      for (const it of list) {
+        const hit = (src || []).find(a => Number(a?.numero_cuota || 0) === Number(it.numero));
+        const d = this.toNumberLoose(hit?.descuento);
+        acc += Math.max(0, d);
+        c++; if (c >= k) break;
+      }
+      return acc;
+    } catch { return 0; }
+  }
+
+  // Actualiza el campo visual de descuento al cambiar la cantidad seleccionada
+  private updateDescuentoDisplay(): void {
+    try {
+      if (this.tipo === 'mensualidad') {
+        const cantSel = Math.max(1, Number(this.form?.get('cantidad')?.value || 1));
+        const d = this.sumDescuentoNextK(cantSel);
+        this.form.get('descuento')?.setValue(d || 0, { emitEvent: false });
+      }
+    } catch {}
+  }
+
   // Obtiene el monto BRUTO y PAGADO de una cuota por número (para PU = bruto - pagado)
   private getCuotaBrutoPagadoByNumero(numeroCuota: number): { bruto: number; pagado: number } {
     try {
@@ -149,10 +195,8 @@ export class MensualidadModalComponent implements OnInit, OnChanges {
         return brutoNext > 0 ? brutoNext : Number(this.pu || 0);
       }
       if (this.tipo !== 'mensualidad') return Number(this.pu || 0);
-      const start = this.getStartCuotaFromResumen();
-      // Precio unitario = monto (bruto) - monto_pagado (saldo sin considerar descuento)
-      const { bruto, pagado } = this.getCuotaBrutoPagadoByNumero(start);
-      return Math.max(0, Number(bruto || 0) - Number(pagado || 0));
+      const cant = Math.max(1, Number(this.form?.get('cantidad')?.value || 1));
+      return this.sumBrutoMenosPagadoNextK(cant);
     } catch { return Number(this.pu || 0); }
   }
 
@@ -246,7 +290,7 @@ export class MensualidadModalComponent implements OnInit, OnChanges {
   ngOnInit(): void {
     this.recalcTotal();
     // Recalcular total al cambiar cantidad, descuento o monto_manual
-    this.form.get('cantidad')?.valueChanges.subscribe(() => this.recalcTotal());
+    this.form.get('cantidad')?.valueChanges.subscribe(() => { this.recalcTotal(); this.updateDescuentoDisplay(); });
     this.form.get('monto_manual')?.valueChanges.subscribe(() => this.recalcTotal());
     this.form.get('monto_parcial')?.valueChanges.subscribe(() => this.recalcTotal());
     // Cambios de método de pago para activar validadores de TARJETA
@@ -355,8 +399,8 @@ export class MensualidadModalComponent implements OnInit, OnChanges {
             d = 0;
           }
         } else {
-          const start = this.getStartCuotaFromResumen();
-          d = this.getDescuentoForCuota(start);
+          const cantSel = Math.max(1, Number(this.form?.get('cantidad')?.value || 1));
+          d = this.sumDescuentoNextK(cantSel);
         }
         // Mostrar siempre el descuento aplicado a la cuota seleccionada
         this.form.get('descuento')?.setValue(d || 0, { emitEvent: false });
@@ -881,8 +925,8 @@ export class MensualidadModalComponent implements OnInit, OnChanges {
           nro_deposito: this.form.get('nro_deposito')?.value || null,
           tarjeta_first4: this.form.get('tarjeta_first4')?.value || null,
           tarjeta_last4: this.form.get('tarjeta_last4')?.value || null,
-          // opcionales
-          descuento: this.form.get('descuento')?.value || null,
+          // opcionales: usar el descuento individual de esa cuota
+          descuento: this.getDescuentoForCuota(Number(numero_cuota || 0)) || null,
           nro_factura: this.form.get('comprobante')?.value === 'FACTURA' ? (this.form.get('nro_factura')?.value || null) : null,
           nro_recibo: this.form.get('comprobante')?.value === 'RECIBO' ? (this.form.get('nro_recibo')?.value || null) : null,
           // targeting de cuota
@@ -906,6 +950,7 @@ export class MensualidadModalComponent implements OnInit, OnChanges {
               const bp = this.getCuotaBrutoPagadoByNumero(numero_cuota);
               pu_unit = Math.max(0, Number(bp.bruto || 0) - Number(bp.pagado || 0));
             }
+            const descUnit = this.getDescuentoForCuota(Number(numero_cuota || 0)) || 0;
             pagos.push({
               id_forma_cobro: this.form.get('metodo_pago')?.value || null,
               nro_cobro: nro++,
@@ -926,7 +971,7 @@ export class MensualidadModalComponent implements OnInit, OnChanges {
               nro_deposito: this.form.get('nro_deposito')?.value || null,
               tarjeta_first4: this.form.get('tarjeta_first4')?.value || null,
               tarjeta_last4: this.form.get('tarjeta_last4')?.value || null,
-              descuento: this.form.get('descuento')?.value || null,
+              descuento: descUnit || null,
               nro_factura: this.form.get('comprobante')?.value === 'FACTURA' ? (this.form.get('nro_factura')?.value || null) : null,
               nro_recibo: this.form.get('comprobante')?.value === 'RECIBO' ? (this.form.get('nro_recibo')?.value || null) : null,
             });
@@ -959,7 +1004,7 @@ export class MensualidadModalComponent implements OnInit, OnChanges {
               nro_deposito: this.form.get('nro_deposito')?.value || null,
               tarjeta_first4: this.form.get('tarjeta_first4')?.value || null,
               tarjeta_last4: this.form.get('tarjeta_last4')?.value || null,
-              descuento: this.form.get('descuento')?.value || null,
+              descuento: 0,
               nro_factura: this.form.get('comprobante')?.value === 'FACTURA' ? (this.form.get('nro_factura')?.value || null) : null,
               nro_recibo: this.form.get('comprobante')?.value === 'RECIBO' ? (this.form.get('nro_recibo')?.value || null) : null,
             });
@@ -985,7 +1030,7 @@ export class MensualidadModalComponent implements OnInit, OnChanges {
               nro_deposito: this.form.get('nro_deposito')?.value || null,
               tarjeta_first4: this.form.get('tarjeta_first4')?.value || null,
               tarjeta_last4: this.form.get('tarjeta_last4')?.value || null,
-              descuento: this.form.get('descuento')?.value || null,
+              descuento: 0,
               nro_factura: this.form.get('comprobante')?.value === 'FACTURA' ? (this.form.get('nro_factura')?.value || null) : null,
               nro_recibo: this.form.get('comprobante')?.value === 'RECIBO' ? (this.form.get('nro_recibo')?.value || null) : null,
             });
