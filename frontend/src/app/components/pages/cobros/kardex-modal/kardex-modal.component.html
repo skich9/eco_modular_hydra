@@ -64,7 +64,7 @@
 
 							<!-- Columna derecha reservada para foto del estudiante -->
 							<div class="col-md-4">
-								<div class="d-flex flex-column align-items-center justify-content-center h-100 border-2 border-dashed border-secondary rounded p-4" style="min-height: 280px;">
+								<div class="student-photo-placeholder">
 									<div class="text-center text-muted">
 										<i class="fas fa-user-circle fa-5x mb-3"></i>
 										<p class="mb-2 small fw-semibold">Espacio para foto del estudiante</p>
@@ -93,17 +93,30 @@
 				</div>
 
 				<!-- Resumen Financiero -->
-				<div class="row g-3 mb-3">
-					<div class="col-md-6">
-						<div class="small text-muted">{{ r?.estudiante?.cod_ceta }} - {{ r?.estudiante?.nombre_completo || r?.estudiante?.nombres }}</div>
-						<div class="small">Pensum: {{ r?.inscripcion?.cod_pensum }} | Tipo: {{ r?.inscripcion?.tipo_inscripcion }}</div>
-					</div>
-					<div class="col-md-6">
-						<ul class="list-unstyled mb-0">
-							<li>Monto Semestral: <strong>{{ r?.totales?.monto_semestral | number:'1.2-2' }}</strong></li>
-							<li>Total Pagado: <strong class="text-success">{{ r?.totales?.total_pagado_v2 | number:'1.2-2' }}</strong></li>
-							<li>Saldo Mensualidad: <strong class="text-danger">{{ r?.totales?.saldo_mensualidad | number:'1.2-2' }}</strong></li>
-						</ul>
+				<div class="financial-summary mb-4">
+					<div class="row g-3">
+						<div class="col-md-6">
+							<div class="student-info">
+								<div class="fw-semibold">{{ r?.estudiante?.cod_ceta }} - {{ r?.estudiante?.nombre_completo || r?.estudiante?.nombres }}</div>
+								<div class="small">Pensum: {{ r?.inscripcion?.cod_pensum }} | Tipo: {{ r?.inscripcion?.tipo_inscripcion }}</div>
+							</div>
+						</div>
+						<div class="col-md-6">
+							<ul class="financial-details">
+								<li>
+									<span class="text-muted">Monto Semestral:</span>
+									<strong class="float-end">{{ r?.totales?.monto_semestral | number:'1.2-2' }}</strong>
+								</li>
+								<li>
+									<span class="text-muted">Total Pagado:</span>
+									<strong class="text-success float-end">{{ r?.totales?.total_pagado_v2 | number:'1.2-2' }}</strong>
+								</li>
+								<li>
+									<span class="text-muted">Saldo Mensualidad:</span>
+									<strong class="text-danger float-end">{{ r?.totales?.saldo_mensualidad | number:'1.2-2' }}</strong>
+								</li>
+							</ul>
+						</div>
 					</div>
 				</div>
 
@@ -114,7 +127,7 @@
 					</div>
 					<div class="card-body">
 						<div class="table-responsive">
-							<table class="table table-sm table-bordered align-middle">
+							<table class="table table-sm table-bordered align-middle pagos-table">
 								<thead class="table-light">
 									<tr>
 										<th>Tipo</th>
@@ -123,7 +136,7 @@
 										<th>Monto</th>
 										<th>Factura</th>
 										<th>Recibo</th>
-										<th>Total</th>
+										<th>Pago Total</th>
 										<th>Fecha</th>
 										<th>Tipo de Pago</th>
 										<th>Observaciones</th>
@@ -131,24 +144,28 @@
 								</thead>
 								<tbody>
 									<tr *ngFor="let m of getPagosExpandidos()">
-										<td>{{ (m?.tipo_inscripcion || 'NORMAL').toUpperCase() }}</td>
-										<td>{{ getCuotaFormat(m?.numero_cuota || 1) }}</td>
-										<td>{{ m?.numero_pago || 1 }}</td>
-										<td>
+										<td class="text-center">{{ (m?.tipo_inscripcion || 'NORMAL').toUpperCase() }}</td>
+										<td class="text-center">{{ getCuotaFormat(m?.numero_cuota || 1) }}</td>
+										<td class="text-center">{{ m?.numero_pago || 1 }}</td>
+										<td class="text-center">
 											<ng-container [ngSwitch]="m?.estado_pago">
 												<ng-container *ngSwitchCase="'PARCIAL'">
-													{{ m?.monto_pagado | number:'1.0-0' }}
+													<span class="status-indicator pending">{{ m?.monto_pagado | number:'1.0-0' }}</span>
 												</ng-container>
 												<ng-container *ngSwitchDefault>
-													{{ m?.monto_pagado | number:'1.0-0' }}
+													<span class="status-indicator paid">{{ m?.monto_pagado | number:'1.0-0' }}</span>
 												</ng-container>
 											</ng-container>
 										</td>
-										<td>{{ m?.nro_factura || '-' }}</td>
-										<td>{{ m?.nro_recibo || '0' }}</td>
-										<td>{{ m?.es_completo || 'No' }}</td>
-										<td>{{ (m?.fecha_pago | date:'dd/MM/yyyy') || '-' }}</td>
-										<td>{{ getNombreFormaCobro(m?.id_forma_cobro) }}</td>
+										<td class="text-center">{{ m?.nro_factura || '-' }}</td>
+										<td class="text-center">{{ m?.nro_recibo || '0' }}</td>
+										<td class="text-center">
+											<span [ngClass]="m?.es_completo === 'Si' ? 'badge bg-success' : 'badge bg-warning text-dark'">
+												{{ m?.es_completo === 'Si' ? 'Completo' : 'Parcial' }}
+											</span>
+										</td>
+										<td class="text-center">{{ (m?.fecha_pago | date:'dd/MM/yyyy') || '-' }}</td>
+										<td class="text-center">{{ getNombreFormaCobro(m?.id_forma_cobro) }}</td>
 										<td>{{ getObservacionesExtendidas(m) }}</td>
 									</tr>
 								</tbody>
@@ -164,7 +181,7 @@
 					</div>
 					<div class="card-body">
 						<div class="table-responsive">
-							<table class="table table-sm table-bordered align-middle">
+							<table class="table table-sm table-bordered align-middle adeudadas-table">
 								<thead class="table-light">
 									<tr>
 										<th>Tipo</th>
@@ -182,22 +199,28 @@
 								<tbody>
 									<ng-container *ngFor="let m of (r?.mensualidades?.adeudadas || []); let i = index">
 									<tr>
-										<td>{{ (m?.tipo_inscripcion || 'NORMAL').toUpperCase() }}</td>
-										<td>{{ getCuotaFormat(m?.numero_cuota || (i + 1)) }}</td>
+										<td class="text-center">{{ (m?.tipo_inscripcion || 'NORMAL').toUpperCase() }}</td>
+										<td class="text-center">{{ getCuotaFormat(m?.numero_cuota || (i + 1)) }}</td>
 										<td class="text-end">
-											<ng-container [ngSwitch]="m?.estado_pago">
-												<ng-container *ngSwitchCase="'PARCIAL'">
-													<!-- Mostrar saldo restante para pagos parciales -->
-													{{ ((m?.monto || 0) - (m?.monto_pagado || 0)) | number:'1.0-0' }}
+											<span class="status-indicator overdue">
+												<ng-container [ngSwitch]="m?.estado_pago">
+													<ng-container *ngSwitchCase="'PARCIAL'">
+														<!-- Mostrar saldo restante para pagos parciales -->
+														{{ ((m?.monto || 0) - (m?.monto_pagado || 0)) | number:'1.0-0' }}
+													</ng-container>
+													<ng-container *ngSwitchDefault>
+														{{ m?.monto | number:'1.0-0' }}
+													</ng-container>
 												</ng-container>
-												<ng-container *ngSwitchDefault>
-													{{ m?.monto | number:'1.0-0' }}
-												</ng-container>
-											</ng-container>
+											</span>
 										</td>
-										<td class="text-center">{{ calculateDaysOverdue(m?.fecha_vencimiento) }}</td>
+										<td class="text-center">
+											<span class="badge {{ calculateDaysOverdue(m?.fecha_vencimiento) > 0 ? 'bg-danger' : 'bg-secondary' }}">
+												{{ calculateDaysOverdue(m?.fecha_vencimiento) }}
+											</span>
+										</td>
 										<td class="text-end">{{ calculateDaysOverdue(m?.fecha_vencimiento) > 0 ? calculateDaysOverdue(m?.fecha_vencimiento) : '0' }}</td>
-										<td>{{ '0' }}</td>
+										<td class="text-center">{{ '0' }}</td>
 										<td class="text-end">
 											<ng-container [ngSwitch]="m?.estado_pago">
 												<ng-container *ngSwitchCase="'PARCIAL'">
@@ -209,7 +232,7 @@
 											</ng-container>
 										</td>
 										<td class="text-end">{{ calculateCumulativeAmount(r?.mensualidades?.adeudadas, i) | number:'1.0-0' }}</td>
-										<td>{{ (m?.fecha_vencimiento | date:'yyyy-MM-dd') || '-' }}</td>
+										<td class="text-center">{{ (m?.fecha_vencimiento | date:'yyyy-MM-dd') || '-' }}</td>
 										<td>{{ '' }}</td>
 									</tr>
 									</ng-container>
@@ -226,7 +249,7 @@
 					</div>
 					<div class="card-body">
 						<div class="table-responsive">
-							<table class="table table-sm table-bordered align-middle">
+							<table class="table table-sm table-bordered align-middle material-table">
 								<thead class="table-light">
 									<tr>
 										<th>Fecha</th>
