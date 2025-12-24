@@ -22,6 +22,12 @@ class Estudiante extends Model
 		'ap_paterno',
 		'ap_materno',
 		'email',
+		'carrera',
+		'resolucion',
+		'gestion',
+		'grupos',
+		'descuento',
+		'observaciones',
 		'cod_pensum',
 		'estado',
 	];
@@ -34,5 +40,20 @@ class Estudiante extends Model
 	public function inscripciones()
 	{
 		return $this->hasMany(Inscripcion::class, 'cod_ceta', 'cod_ceta');
+	}
+
+	public function getNombreCompletoAttribute()
+	{
+		$parts = [];
+		if (!empty($this->ap_paterno)) {
+			$parts[] = trim($this->ap_paterno);
+		}
+		if (!empty($this->ap_materno)) {
+			$parts[] = trim($this->ap_materno);
+		}
+		if (!empty($this->nombres)) {
+			$parts[] = trim($this->nombres);
+		}
+		return implode(' ', $parts);
 	}
 }

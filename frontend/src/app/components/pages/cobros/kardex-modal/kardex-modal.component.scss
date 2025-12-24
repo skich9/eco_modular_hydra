@@ -1,1 +1,60 @@
-/* Styles for Kardex modal (empty for now) */
+/* Styles for Kardex modal */
+
+// Reducir el tamaño de la letra en las tablas para mejor estética
+.table {
+  font-size: 0.875rem; // 14px en lugar de 16px por defecto
+  
+  th {
+    font-size: 0.8rem; // Headers un poco más pequeños
+    padding: 0.5rem 0.75rem;
+    text-align: center; // Headers centrados
+    
+    // Headers de montos alineados a la izquierda
+    &.text-left {
+      text-align: left;
+    }
+  }
+  
+  td {
+    font-size: 0.875rem;
+    padding: 0.5rem 0.75rem;
+    vertical-align: middle;
+    
+    // Demás columnas centradas por defecto
+    text-align: center;
+  }
+  
+  // Para pantallas más pequeñas, reducir aún más
+  @media (max-width: 768px) {
+    font-size: 0.8rem;
+    
+    th, td {
+      font-size: 0.75rem;
+      padding: 0.4rem 0.6rem;
+    }
+  }
+}
+
+// Tabla de mensualidades pagadas - solo columna monto a la derecha
+.table:nth-of-type(1) {
+  td:nth-child(4) { // Columna "Monto"
+    text-align: right;
+  }
+}
+
+// Tabla de material extra - columna monto a la derecha
+.table:nth-of-type(3) {
+  td:nth-child(5) { // Columna "Monto"
+    text-align: right;
+  }
+}
+
+// Asegurar que el modal no sea demasiado grande
+.modal-xl {
+  max-width: 85%; // Reducido de 95% a 85%
+}
+
+// Mejorar la legibilidad con espaciado adecuado
+.modal-body {
+  font-size: 0.9rem;
+}

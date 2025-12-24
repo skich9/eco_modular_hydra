@@ -36,11 +36,15 @@
             <thead class="table-light">
               <tr>
                 <th style="width:5%">Nº</th>
-                <th style="width:12%">Cod. CETA</th>
-                <th style="width:18%">Ap. Paterno</th>
-                <th style="width:18%">Ap. Materno</th>
-                <th>Nombres</th>
-                <th style="width:14%">Cédula de Identidad</th>
+                <th style="width:10%">Cod. CETA</th>
+                <th style="width:12%">Ap. Paterno</th>
+                <th style="width:12%">Ap. Materno</th>
+                <th style="width:12%">Nombres</th>
+                <th style="width:8%">CI</th>
+                <th style="width:10%">Carrera</th>
+                <th style="width:8%">Gestión</th>
+                <th style="width:8%">Grupos</th>
+                <th style="width:7%">Descuento</th>
                 <th style="width:8%">Acción</th>
               </tr>
             </thead>
@@ -52,6 +56,10 @@
                 <td>{{ r.ap_materno }}</td>
                 <td>{{ r.nombres }}</td>
                 <td>{{ r.ci }}</td>
+                <td>{{ r.carrera }}</td>
+                <td>{{ r.gestion }}</td>
+                <td>{{ r.grupos }}</td>
+                <td>{{ r.descuento }}</td>
                 <td class="text-center">
                   <button type="button" class="btn btn-sm btn-success" (click)="selectRow(r)"><i class="bi bi-check2"></i></button>
                 </td>
