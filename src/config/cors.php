@@ -21,7 +21,7 @@ return [
     // Permitir múltiples orígenes. Si CORS_ALLOW_ALL=true o APP_ENV=local, se permite '*'.
     'allowed_origins' => (env('CORS_ALLOW_ALL', false) || env('APP_ENV') === 'local')
         ? ['*']
-        : array_filter(array_map('trim', explode(',', env('CORS_ALLOWED_ORIGINS', 'http://localhost:4200,http://127.0.0.1:4200,http://192.168.0.74:4200')))),
+        : array_filter(array_map('trim', explode(',', env('CORS_ALLOWED_ORIGINS', 'http://localhost:4200,http://127.0.0.1:4200,http://192.168.0.74:4200,http://192.168.0.229:4200')))),
 
 	// Patrones para facilitar acceso desde IPs de la LAN (ajusta según tu red)
 	'allowed_origins_patterns' => [
@@ -32,6 +32,7 @@ return [
 		'#^https?://192\\.168\\.\d{1,3}\\.\d{1,3}(:\d+)?$#',
 		// IP del host principal con puerto variable
 		'#^https?://192\\.168\\.0\\.74(:\d+)?$#',
+        '#^https?://192\\.168\\.0\\.229(:\d+)?$#',
 	],
 
 	'allowed_headers' => ['*'],

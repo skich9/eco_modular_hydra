@@ -31,7 +31,10 @@ RUN apk add --no-cache --virtual build-essentials \
 RUN apk add --no-cache pcre-dev $PHPIZE_DEPS && \
     pecl install redis && \
     docker-php-ext-enable redis
-	
+
+# RUN pecl install xdebug
 RUN addgroup -g 1000 laravel && adduser -G laravel -g laravel -s /bin/sh -D laravel
 RUN chown -R laravel /var/www/html
+
+COPY --from=composer:latest /usr/bin/composer /usr/bin/composer
 USER laravel

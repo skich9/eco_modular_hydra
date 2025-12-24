@@ -7,3 +7,5 @@ build_php.log
 sga_refs_socket/
 /seguimiento
 /vistas_old
+
+frontend/package-lock.json
