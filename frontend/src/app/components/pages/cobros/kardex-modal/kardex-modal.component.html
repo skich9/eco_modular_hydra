@@ -12,51 +12,81 @@
 						<h6 class="mb-0">Información Biográfica del Estudiante</h6>
 					</div>
 					<div class="card-body">
-						<div class="row g-3">
-							<div class="col-md-3">
-								<label class="form-label small text-muted">Código CETA</label>
-								<div class="fw-bold">{{ r?.estudiante?.cod_ceta || '-' }}</div>
-							</div>
-							<div class="col-md-3">
-								<label class="form-label small text-muted">Nombre Completo</label>
-								<div class="fw-bold">{{ r?.estudiante?.nombre_completo || r?.estudiante?.nombres || '-' }}</div>
-							</div>
-							<div class="col-md-3">
-								<label class="form-label small text-muted">Cédula</label>
-								<div class="fw-bold">{{ r?.estudiante?.cedula || r?.estudiante?.ci || '-' }}</div>
-							</div>
-							<div class="col-md-3">
-								<label class="form-label small text-muted">Email</label>
-								<div class="fw-bold">{{ r?.estudiante?.email || '-' }}</div>
-							</div>
-							<div class="col-md-3">
-								<label class="form-label small text-muted">Carrera</label>
-								<div class="fw-bold">{{ r?.estudiante?.carrera || '-' }}</div>
-							</div>
-							<div class="col-md-3">
-								<label class="form-label small text-muted">Resolución</label>
-								<div class="fw-bold">{{ r?.estudiante?.resolucion || '-' }}</div>
-							</div>
-							<div class="col-md-3">
-								<label class="form-label small text-muted">Gestión</label>
-								<div class="fw-bold">{{ r?.estudiante?.gestion || '-' }}</div>
-							</div>
-							<div class="col-md-3">
-								<label class="form-label small text-muted">Grupos</label>
-								<div class="d-flex flex-column gap-1">
-									<div class="d-flex align-items-center gap-2" *ngFor="let ins of (r?.inscripciones || [])">
-										<span class="badge rounded-pill text-bg-primary">{{ ins?.cod_curso || '-' }}</span>
-										<span class="badge rounded-pill text-bg-warning text-dark">{{ (ins?.tipo_inscripcion || '-').toUpperCase() }}</span>
+						<div class="row g-4">
+							<!-- Columna izquierda de información biográfica -->
+							<div class="col-md-4">
+								<div class="h-100">
+									<div class="mb-3">
+										<label class="form-label small text-muted">Código CETA</label> 
+										<div class="fw-bold">{{ r?.estudiante?.cod_ceta || '-' }}</div>
+									</div>
+									<div class="mb-3">
+										<label class="form-label small text-muted">Nombre Completo</label>
+										<div class="fw-bold">{{ r?.estudiante?.nombre_completo || r?.estudiante?.nombres || '-' }}</div>
+									</div>
+									<div class="mb-3">
+										<label class="form-label small text-muted">Cédula</label>
+										<div class="fw-bold">{{ r?.estudiante?.cedula || r?.estudiante?.ci || '-' }}</div>
+									</div>
+									<div class="mb-3">
+										<label class="form-label small text-muted">Email</label>
+										<div class="fw-bold">{{ r?.estudiante?.email || '-' }}</div>
 									</div>
 								</div>
 							</div>
-							<div class="col-md-3">
-								<label class="form-label small text-muted">Descuento</label>
-								<div class="fw-bold">{{ r?.estudiante?.descuento || '-' }}</div>
+
+							<!-- Columna central de información biográfica -->
+							<div class="col-md-4">
+								<div class="h-100">
+									<div class="mb-3">
+										<label class="form-label small text-muted">Carrera</label>
+										<div class="fw-bold">{{ r?.estudiante?.carrera || '-' }}</div>
+									</div>
+									<div class="mb-3">
+										<label class="form-label small text-muted">Resolución</label>
+										<div class="fw-bold">{{ r?.estudiante?.resolucion || '-' }}</div>
+									</div>
+									<div class="mb-3">
+										<label class="form-label small text-muted">Gestión</label>
+										<div class="fw-bold">{{ r?.estudiante?.gestion || '-' }}</div>
+									</div>
+									<div class="mb-3">
+										<label class="form-label small text-muted">Grupos</label>
+										<div class="d-flex flex-column gap-1">
+											<div class="d-flex align-items-center gap-2" *ngFor="let ins of (r?.inscripciones || [])">
+												<span class="badge rounded-pill bg-primary">{{ ins?.cod_curso || '-' }}</span>
+												<span class="badge rounded-pill bg-warning text-dark">{{ (ins?.tipo_inscripcion || '-').toUpperCase() }}</span>
+											</div>
+										</div>
+									</div>
+								</div>
+							</div>
+
+							<!-- Columna derecha reservada para foto del estudiante -->
+							<div class="col-md-4">
+								<div class="d-flex flex-column align-items-center justify-content-center h-100 border-2 border-dashed border-secondary rounded p-4" style="min-height: 280px;">
+									<div class="text-center text-muted">
+										<i class="fas fa-user-circle fa-5x mb-3"></i>
+										<p class="mb-2 small fw-semibold">Espacio para foto del estudiante</p>
+										<p class="mb-0 small text-secondary">Aquí se añadirá la foto</p>
+									</div>
+								</div>
+							</div>
+						</div>
+					</div>
+					<div class="card-footer bg-light">
+						<div class="row">
+							<div class="col-md-6">
+								<div class="small">
+									<span class="text-muted">Descuento:</span>
+									<span class="fw-bold">{{ r?.estudiante?.descuento || '-' }}</span>
+								</div>
 							</div>
 							<div class="col-md-6">
-								<label class="form-label small text-muted">Observaciones</label>
-								<div class="fw-bold">{{ r?.estudiante?.observaciones || '-' }}</div>
+								<div class="small">
+									<span class="text-muted">Observaciones:</span>
+									<span class="fw-bold">{{ r?.estudiante?.observaciones || '-' }}</span>
+								</div>
 							</div>
 						</div>
 					</div>
