@@ -75,7 +75,7 @@
 								<div class="col-12">
 								</div>
 								<div class="col-12">
-									<label class="form-label">Grupo</label>
+									<label class="form-label">Grupos</label>
 									<div class="form-control-plaintext border rounded px-2 py-2">
 										<ng-container *ngIf="(resumen?.inscripciones?.length || 0) > 0; else noInscripciones">
 											<div class="d-flex flex-column gap-2">
@@ -83,10 +83,20 @@
 													<span class="badge rounded-pill bg-primary">{{ ins?.cod_curso || '-' }}</span>
 													<span class="badge rounded-pill" [ngClass]="{'bg-warning text-dark': true}">{{ (ins?.tipo_inscripcion || '-').toUpperCase() }}</span>
 												</div>
+												<!-- Mostrar arrastre si existe -->
+												<div class="d-flex align-items-center gap-2" *ngIf="resumen?.arrastre?.has">
+													<span class="badge rounded-pill bg-info">{{ resumen?.arrastre?.inscripcion?.cod_curso || '-' }}</span>
+													<span class="badge rounded-pill bg-secondary">{{ (resumen?.arrastre?.inscripcion?.tipo_inscripcion || 'ARRASTRE').toUpperCase() }}</span>
+												</div>
 											</div>
 										</ng-container>
 										<ng-template #noInscripciones>
 											<span class="text-muted">{{ resumen?.inscripcion?.cod_curso ? (resumen?.inscripcion?.cod_curso + ' - ' + (resumen?.inscripcion?.tipo_inscripcion || '-')) : '-' }}</span>
+											<!-- Mostrar arrastre si no hay inscripciones regulares pero sí hay arrastre -->
+											<div class="d-flex align-items-center gap-2 mt-2" *ngIf="resumen?.arrastre?.has">
+												<span class="badge rounded-pill bg-info">{{ resumen?.arrastre?.inscripcion?.cod_curso || '-' }}</span>
+												<span class="badge rounded-pill bg-secondary">{{ (resumen?.arrastre?.inscripcion?.tipo_inscripcion || 'ARRASTRE').toUpperCase() }}</span>
+											</div>
 										</ng-template>
 									</div>
 								</div>

@@ -217,129 +217,72 @@ export class KardexModalComponent implements OnChanges {
 			
 			const expandidos: any[] = [];
 			
-			// Crear mapa de id_designacion_costo a numero_cuota desde TODAS las asignaciones
-			const mapaDesignacionACuota = new Map();
-			const todasLasAsignaciones = new Set(); // Guardar IDs de TODAS las asignaciones
+			// Agrupar pagos reales por id_asignacion_costo
+			const pagosRealesPorAsignacion = new Map();
 			
-			for (const asignacion of asignaciones) {
-				const idDesignacion = asignacion?.id_asignacion_costo;
-				const numeroCuota = asignacion?.numero_cuota;
-				const estado = (asignacion?.estado_pago || '').toString().toUpperCase();
-				
-				if (idDesignacion && numeroCuota) {
-					mapaDesignacionACuota.set(Number(idDesignacion), Number(numeroCuota));
-					todasLasAsignaciones.add(Number(idDesignacion));
-					console.log(`[Kardex] Mapa: id_designacion_costo ${idDesignacion} -> cuota ${numeroCuota} (${estado})`);
-				}
-			}
-			
-			// Agrupar todos los pagos por cuota
-			const pagosPorCuota = new Map();
-			
-			// Primero procesar asignaciones COBRADAS únicamente
-			for (const asignacion of asignaciones) {
-				const estado = (asignacion?.estado_pago || '').toString().toUpperCase();
-				
-				// SOLO procesar asignaciones COBRADAS, ignorar PARCIALES
-				if (estado === 'COBRADO') {
-					const cuota = asignacion?.numero_cuota || 1;
-					console.log('[Kardex] Procesando asignación:', {
-						estado: estado,
-						numero_cuota: asignacion?.numero_cuota,
-						monto_pagado: asignacion?.monto_pagado,
-						fecha_pago: asignacion?.fecha_pago
-					});
-					
-					if (!pagosPorCuota.has(cuota)) {
-						pagosPorCuota.set(cuota, []);
-					}
-					
-					// Cada asignación es un pago individual
-					pagosPorCuota.get(cuota).push({
-						...asignacion,
-						fuente: 'asignacion',
-						tipo_pago: 'COMPLETO'
-					});
-				} else if (estado === 'PARCIAL') {
-					console.log('[Kardex] Ignorando asignación PARCIAL, solo se mostrarán sus cobros individuales:', {
-						numero_cuota: asignacion?.numero_cuota,
-						monto_pagado: asignacion?.monto_pagado
-					});
-				}
-			}
-			
-			// Luego procesar CADA cobro individual de cobros.items
+			// Procesar SOLO los cobros individuales que tengan id_asignacion_costo
 			for (const cobro of cobrosItems) {
-				// Usar id_asignacion_costo que es la propiedad correcta en los cobros individuales
 				const idDesignacion = cobro?.id_asignacion_costo;
-				const idCuota = cobro?.id_cuota;
-				const tipoCobro = cobro?.tipo_cobro || cobro?.concepto || '';
-				
-				console.log('[Kardex] Procesando cobro item INDIVIDUAL:', {
-					id_asignacion_costo: idDesignacion,
-					id_cuota: idCuota,
-					tipo_cobro: tipoCobro,
-					monto: cobro?.monto,
-					fecha: cobro?.fecha_cobro
-				});
 				
 				// SOLO procesar cobros que tengan id_asignacion_costo (son de mensualidades)
 				if (!idDesignacion) {
-					console.log('[Kardex] Cobro sin id_asignacion_costo, ignorando (no es mensualidad):', tipoCobro);
+					console.log('[Kardex] Cobro sin id_asignacion_costo, ignorando (no es mensualidad):', cobro?.tipo_cobro);
 					continue;
 				}
 				
-				// Agregar CADA cobro individual si corresponde a una asignación
-				if (todasLasAsignaciones.has(Number(idDesignacion))) {
-					const cuota = mapaDesignacionACuota.get(Number(idDesignacion));
-					console.log(`[Kardex] Cobro individual mensualidad id_asignacion_costo ${idDesignacion} corresponde a cuota ${cuota}`);
-					
-					if (!pagosPorCuota.has(cuota)) {
-						pagosPorCuota.set(cuota, []);
-					}
-					
-					// CADA cobro es una fila separada
-					pagosPorCuota.get(cuota).push({
-						...cobro,
-						fuente: 'cobro_individual',
-						tipo_pago: 'PAGO_INDIVIDUAL'
-					});
-				} else {
-					console.log(`[Kardex] Cobro id_asignacion_costo ${idDesignacion} no corresponde a ninguna asignación, ignorando`);
+				// Agrupar por asignación
+				if (!pagosRealesPorAsignacion.has(idDesignacion)) {
+					pagosRealesPorAsignacion.set(idDesignacion, []);
 				}
+				
+				pagosRealesPorAsignacion.get(idDesignacion).push(cobro);
 			}
 			
-			// Procesar los pagos agrupados por cuota
-			for (const [cuota, pagos] of pagosPorCuota.entries()) {
-				console.log(`[Kardex] Cuota ${cuota} tiene ${pagos.length} pagos individuales`);
+			// Procesar los pagos reales agrupados
+			for (const [idAsignacion, pagos] of pagosRealesPorAsignacion.entries()) {
+				console.log(`[Kardex] Asignación ${idAsignacion} tiene ${pagos.length} pagos reales`);
 				
-				// Si hay múltiples pagos para la misma cuota, mostrar cada uno como fila separada
+				// Ordenar pagos por fecha
+				pagos.sort((a: any, b: any) => {
+					const fechaA = new Date(a?.fecha_cobro || a?.fecha_pago || 0);
+					const fechaB = new Date(b?.fecha_cobro || b?.fecha_pago || 0);
+					return fechaA.getTime() - fechaB.getTime();
+				});
+				
+				// Mostrar cada pago como fila separada
 				for (let i = 0; i < pagos.length; i++) {
 					const pago = pagos[i];
+					const esUltimoPago = i === pagos.length - 1;
+					
+					// Buscar información de la asignación para obtener número de cuota y tipo
+					const asignacion = asignaciones.find((a: any) => a?.id_asignacion_costo == idAsignacion);
+					
 					const pagoExpandido = {
 						...pago,
-						numero_cuota: cuota,
-						numero_pago: i + 1, // Numeración consecutiva: 1, 2, 3...
+						numero_cuota: asignacion?.numero_cuota || 1,
+						numero_pago: i + 1,
+						tipo_inscripcion: asignacion?.tipo_inscripcion || 'NORMAL',
 						es_multipago: pagos.length > 1,
-						es_completo: pago?.tipo_pago === 'COMPLETO' ? 'Si' : 'No',
-						fecha_pago: pago?.fecha_pago || pago?.fecha_cobro || pago?.fecha || null,
-						monto_pagado: pago?.monto_pagado || pago?.monto || 0,
+						es_completo: esUltimoPago ? 'Si' : 'No',
+						fecha_pago: pago?.fecha_cobro || pago?.fecha_pago || null,
+						monto_pagado: pago?.monto || 0,
 						nro_factura: pago?.nro_factura || '-',
 						nro_recibo: pago?.nro_recibo || '0',
-						observaciones: this.getObservacionesPorTipo(pago?.tipo_pago, pago?.fuente)
+						observaciones: this.getObservacionesExtendidas(pago)
 					};
-					console.log(`[Kardex] Fila ${i+1} de cuota ${cuota} (pago #${pagoExpandido.numero_pago}):`, {
+					
+					console.log(`[Kardex] Pago real #${pagoExpandido.numero_pago} de cuota ${pagoExpandido.numero_cuota}:`, {
 						monto: pagoExpandido.monto_pagado,
 						fecha: pagoExpandido.fecha_pago,
-						fuente: pagoExpandido.fuente,
-						tipo_pago: pagoExpandido.tipo_pago
+						es_completo: pagoExpandido.es_completo
 					});
+					
 					expandidos.push(pagoExpandido);
 				}
 			}
 			
 			// Ordenar por número de cuota y luego por número de pago
-			expandidos.sort((a, b) => {
+			expandidos.sort((a: any, b: any) => {
 				const cuotaA = a.numero_cuota || 0;
 				const cuotaB = b.numero_cuota || 0;
 				if (cuotaA !== cuotaB) return cuotaA - cuotaB;
@@ -372,5 +315,64 @@ export class KardexModalComponent implements OnChanges {
 		if (tipoPago === 'PAGO_INDIVIDUAL') return 'Efectivo: PAGO INDIVIDUAL';
 		if (tipoPago === 'PENDIENTE') return 'Efectivo: PENDIENTE DE PAGO';
 		return 'Efectivo:';
+	}
+
+	// Obtener nombre completo del método de pago a partir del código
+	getNombreFormaCobro(idFormaCobro: string): string {
+		const metodosPago: { [key: string]: string } = {
+			'EF': 'EFECTIVO',
+			'TA': 'TARJETA',
+			'CH': 'CHEQUE',
+			'DE': 'DEPOSITO',
+			'TR': 'TRANSFERENCIA',
+			'QR': 'QR',
+			'OT': 'OTRO'
+		};
+		
+		return metodosPago[idFormaCobro] || 'EFECTIVO';
+	}
+
+	// Obtener observaciones extendidas según el método de pago
+	getObservacionesExtendidas(pago: any): string {
+		const idFormaCobro = pago?.id_forma_cobro;
+		const obsOriginal = pago?.observaciones || '';
+		
+		// Si es efectivo, solo mostrar observaciones si existen
+		if (idFormaCobro === 'EF') {
+			return obsOriginal || '';
+		}
+		
+		// Para otros métodos, concatenar información adicional
+		let infoAdicional = '';
+		
+		switch (idFormaCobro) {
+			case 'TA': // TARJETA
+				infoAdicional = `Tarjeta: ${pago?.nro_tarjeta || 'N/A'} - Autorización: ${pago?.nro_autorizacion || 'N/A'}`;
+				break;
+			case 'CH': // CHEQUE
+				infoAdicional = `Cheque N°: ${pago?.nro_cheque || 'N/A'} - Banco: ${pago?.banco || 'N/A'}`;
+				break;
+			case 'DE': // DEPOSITO
+				infoAdicional = `Depósito - N° Cuenta: ${pago?.nro_cuenta || 'N/A'} - Banco: ${pago?.banco || 'N/A'} - Referencia: ${pago?.nro_referencia || 'N/A'}`;
+				break;
+			case 'TR': // TRANSFERENCIA
+				infoAdicional = `Transferencia - N° Cuenta: ${pago?.nro_cuenta || 'N/A'} - Banco: ${pago?.banco || 'N/A'} - Referencia: ${pago?.nro_referencia || 'N/A'}`;
+				break;
+			case 'QR': // QR
+				infoAdicional = `QR - Código: ${pago?.codigo_qr || 'N/A'} - Fecha: ${pago?.fecha_qr || 'N/A'}`;
+				break;
+			case 'OT': // OTRO
+				infoAdicional = `Otro: ${pago?.detalle_otro || 'N/A'}`;
+				break;
+		}
+		
+		// Combinar observaciones originales con información adicional
+		if (obsOriginal && infoAdicional) {
+			return `${obsOriginal} | ${infoAdicional}`;
+		} else if (infoAdicional) {
+			return infoAdicional;
+		} else {
+			return obsOriginal || '';
+		}
 	}
 }

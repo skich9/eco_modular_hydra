@@ -43,7 +43,17 @@
 							</div>
 							<div class="col-md-3">
 								<label class="form-label small text-muted">Grupos</label>
-								<div class="badge rounded-pill text-bg-primary">{{ r?.estudiante?.grupos || '-' }}</div>
+								<div class="d-flex flex-column gap-1">
+									<div class="d-flex align-items-center gap-2" *ngFor="let ins of (r?.inscripciones || [])">
+										<span class="badge rounded-pill text-bg-primary">{{ ins?.cod_curso || '-' }}</span>
+										<span class="badge rounded-pill text-bg-warning text-dark">{{ (ins?.tipo_inscripcion || '-').toUpperCase() }}</span>
+									</div>
+									<!-- Mostrar arrastre si existe -->
+									<div class="d-flex align-items-center gap-2" *ngIf="r?.arrastre?.has">
+										<span class="badge rounded-pill text-bg-info">{{ r?.arrastre?.inscripcion?.cod_curso || '-' }}</span>
+										<span class="badge rounded-pill text-bg-secondary">{{ (r?.arrastre?.inscripcion?.tipo_inscripcion || 'ARRASTRE').toUpperCase() }}</span>
+									</div>
+								</div>
 							</div>
 							<div class="col-md-3">
 								<label class="form-label small text-muted">Descuento</label>
@@ -90,13 +100,13 @@
 										<th>Recibo</th>
 										<th>Total</th>
 										<th>Fecha</th>
-										<th>Razón Social / NIT</th>
-										<th>Obs.</th>
+										<th>Tipo de Pago</th>
+										<th>Observaciones</th>
 									</tr>
 								</thead>
 								<tbody>
 									<tr *ngFor="let m of getPagosExpandidos()">
-										<td>{{ 'NORMAL' }}</td>
+										<td>{{ (m?.tipo_inscripcion || 'NORMAL').toUpperCase() }}</td>
 										<td>{{ getCuotaFormat(m?.numero_cuota || 1) }}</td>
 										<td>{{ m?.numero_pago || 1 }}</td>
 										<td>
@@ -113,8 +123,8 @@
 										<td>{{ m?.nro_recibo || '0' }}</td>
 										<td>{{ m?.es_completo || 'No' }}</td>
 										<td>{{ (m?.fecha_pago | date:'dd/MM/yyyy') || '-' }}</td>
-										<td>{{ r?.estudiante?.razon_social || (r?.estudiante?.ap_paterno + ' / ' + r?.estudiante?.ci) || '-' }}</td>
-										<td>{{ m?.observaciones || 'Efectivo:' }}</td>
+										<td>{{ getNombreFormaCobro(m?.id_forma_cobro) }}</td>
+										<td>{{ getObservacionesExtendidas(m) }}</td>
 									</tr>
 								</tbody>
 							</table>
@@ -147,7 +157,7 @@
 								<tbody>
 									<ng-container *ngFor="let m of (r?.mensualidades?.adeudadas || []); let i = index">
 									<tr>
-										<td>{{ 'NORMAL' }}</td>
+										<td>{{ (m?.tipo_inscripcion || 'NORMAL').toUpperCase() }}</td>
 										<td>{{ getCuotaFormat(m?.numero_cuota || (i + 1)) }}</td>
 										<td class="text-end">
 											<ng-container [ngSwitch]="m?.estado_pago">

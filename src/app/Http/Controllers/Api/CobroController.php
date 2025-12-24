@@ -624,21 +624,22 @@ class CobroController extends Controller
 			}
 
 			// Calcular monto del semestre, saldo y precio unitario mensual
-			// Preferencia: sumar todos los montos de asignacion_costos para TODAS las inscripciones del estudiante en la gestión seleccionada
+			// Priorizar cálculo real desde asignaciones de costos sobre valores configurados
 			$montoSemestralFromAsignGestion = null;
 			try {
-				$inscripIds = $inscripciones->pluck('cod_inscrip')->filter()->map(function($v) { return (int)$v; })->values();
-				if ($inscripIds->count() > 0 && Schema::hasTable('asignacion_costos')) {
+				if ($primaryInscripcion && Schema::hasTable('asignacion_costos')) {
 					$montoSemestralFromAsignGestion = (float) DB::table('asignacion_costos')
-						->whereIn('cod_inscrip', $inscripIds)
+						->where('cod_inscrip', $primaryInscripcion->cod_inscrip)
 						->sum('monto');
 				}
 			} catch (\Throwable $e) { /* fallback automático abajo */ }
+			
+			// Prioridad: 1) Cálculo real desde asignaciones, 2) Suma de asignaciones primarias, 3) Costo semestral configurado, 4) Parámetro
 			$montoSemestre = ($montoSemestralFromAsignGestion !== null && $montoSemestralFromAsignGestion > 0)
 				? $montoSemestralFromAsignGestion
-				: (optional($costoSemestral)->monto_semestre
-					?: ($asignacionesPrimarias->count() > 0 ? (float) $asignacionesPrimarias->sum('monto') : null)
-					?: ($paramMonto ? (float) $paramMonto->valor : null));
+				: (($asignacionesPrimarias->count() > 0 ? (float) $asignacionesPrimarias->sum('monto') : null)
+					?: (optional($costoSemestral)->monto_semestre
+						?: ($paramMonto ? (float) $paramMonto->valor : null)));
 // <<<<<<< HEAD
 // 			$saldoMensualidad = isset($montoSemestre) ? (float) $montoSemestre - (float) $totalMensualidadCompletas : null;
 // 			$puMensualFromNext = $mensualidadNext ? round((float) (isset($mensualidadNext['monto']) ? $mensualidadNext['monto'] : 0), 2) : null;
