@@ -100,6 +100,8 @@ class CobroController extends Controller
 				'id_asignacion_costo' => 'nullable|integer',
 				'id_cuota' => 'nullable|integer|exists:cuotas,id_cuota',
 				'gestion' => 'nullable|string|max:255',
+				'cod_tipo_cobro' => 'nullable|string|exists:tipo_cobro,cod_tipo_cobro',
+				'concepto' => 'nullable|string',
 			]);
 
 			if ($validator->fails()) {
@@ -121,6 +123,39 @@ class CobroController extends Controller
 			$row = DB::selectOne('SELECT LAST_INSERT_ID() AS id');
 			$nroCobro = (int)(isset($row->id) ? $row->id : 0);
 			$data = $request->all();
+			// Normalizar/derivar cod_tipo_cobro y concepto si no vienen del frontend
+			if (empty($data['cod_tipo_cobro'])) {
+				$obsCheck = (string)($request->input('observaciones', ''));
+				$hasItem = $request->filled('id_item');
+				$isRezagado = (preg_match('/\[\s*REZAGADO\s*\]/i', $obsCheck) === 1);
+				$isRecuperacion = (preg_match('/\[\s*PRUEBA\s+DE\s+RECUPERACI[OÓ]N\s*\]/i', $obsCheck) === 1);
+				$isReincorporacion = (preg_match('/\[\s*REINCORPORACI[OÓ]N\s*\]/i', $obsCheck) === 1);
+				if ($hasItem) { $data['cod_tipo_cobro'] = 'MATERIAL_EXTRA'; }
+				elseif ($isRezagado) { $data['cod_tipo_cobro'] = 'REZAGADOS'; }
+				elseif ($isRecuperacion) { $data['cod_tipo_cobro'] = 'PRUEBA_RECUPERACION'; }
+				elseif ($isReincorporacion) { $data['cod_tipo_cobro'] = 'REINCORPORACION'; }
+				elseif (strtoupper((string)$request->input('tipo_inscripcion', '')) === 'ARRASTRE') { $data['cod_tipo_cobro'] = 'ARRASTRE'; }
+				else { $data['cod_tipo_cobro'] = 'MENSUALIDAD'; }
+			}
+			if (!isset($data['concepto']) || trim((string)$data['concepto']) === '') {
+				if (isset($data['cod_tipo_cobro']) && $data['cod_tipo_cobro'] === 'REINCORPORACION') {
+					$data['concepto'] = 'Reincorporación';
+				} else {
+					$data['concepto'] = (string)($request->input('observaciones', 'Cobro'));
+				}
+			}
+			// Normalizar fecha_cobro a datetime (Y-m-d H:i:s) en zona America/La_Paz
+			try {
+				$fechaCobroRaw = isset($data['fecha_cobro']) ? (string)$data['fecha_cobro'] : date('Y-m-d H:i:s');
+				if (preg_match('/^\d{4}-\d{2}-\d{2}$/', $fechaCobroRaw)) {
+					$nowLaPaz = \Carbon\Carbon::now('America/La_Paz');
+					$data['fecha_cobro'] = substr($fechaCobroRaw, 0, 10) . ' ' . $nowLaPaz->format('H:i:s');
+				} else {
+					$data['fecha_cobro'] = \Carbon\Carbon::parse($fechaCobroRaw, 'America/La_Paz')->format('Y-m-d H:i:s');
+				}
+			} catch (\Throwable $e) {
+				$data['fecha_cobro'] = date('Y-m-d H:i:s');
+			}
 			$data['nro_cobro'] = $nroCobro;
 			$data['anio_cobro'] = $anioCobro;
 			$cobro = Cobro::create($data);
@@ -368,7 +403,7 @@ class CobroController extends Controller
 			$descuentosPorAsign = [];
 			try {
 				if ($asignacionesPrimarias && $asignacionesPrimarias->count() > 0) {
-					$idsDet = $asignacionesPrimarias->pluck('id_descuentoDetalle')->filter()->map(fn($v) => (int)$v)->unique()->values();
+					$idsDet = $asignacionesPrimarias->pluck('id_descuentoDetalle')->filter()->map(function($v){ return (int)$v; })->unique()->values();
 					if ($idsDet->count() > 0) {
 						$detRows = DescuentoDetalle::whereIn('id_descuento_detalle', $idsDet)->get(['id_descuento_detalle','monto_descuento']);
 						$detById = [];
@@ -380,7 +415,7 @@ class CobroController extends Controller
 						}
 					}
 					// Fallback: si no hay id_descuentoDetalle en asignacion_costos, buscar detalle por id_cuota (id_asignacion_costo)
-					$idsAsign = $asignacionesPrimarias->pluck('id_asignacion_costo')->filter()->map(fn($v) => (int)$v)->unique()->values();
+					$idsAsign = $asignacionesPrimarias->pluck('id_asignacion_costo')->filter()->map(function($v){ return (int)$v; })->unique()->values();
 					if ($idsAsign->count() > 0) {
 						$detByCuota = DescuentoDetalle::whereIn('id_cuota', $idsAsign)->get(['id_cuota','monto_descuento']);
 						$mapByCuota = [];
@@ -512,17 +547,10 @@ class CobroController extends Controller
 						->where('cod_inscrip', (int) $arrastreInscripcion->cod_inscrip)
 						->orderBy('numero_cuota')
 						->get();
-// <<<<<<< HEAD
-// 					$paidCuotaIds = $cobrosMensualidad->pluck('id_cuota')->filter()->map(function($v) { return (int)$v; })->unique()->values();
-// 					$next = null; $pendingCount = 0; $totalCuotas = $asignaciones->count();
-// 					foreach ($asignaciones as $asig) {
-// 						$tplId = (int) (isset($asig->id_cuota_template) ? $asig->id_cuota_template : 0);
-// =======
-					$paidCuotaIds = $cobrosMensualidad->pluck('id_cuota')->filter()->map(fn($v) => (int)$v)->unique()->values();
 					$next = null; $pendingCount = 0; $totalCuotas = $asignacionesArrastre->count();
 					foreach ($asignacionesArrastre as $asig) {
-						$tplId = (int) ($asig->id_cuota_template ?? 0);
-						$pagada = $tplId ? $paidCuotaIds->contains($tplId) : false;
+						$estadoPago = strtoupper((string)($asig->estado_pago ?? ''));
+						$pagada = ($estadoPago === 'COBRADO');
 						if (!$pagada) {
 							$pendingCount++;
 							if (!$next) {
@@ -530,7 +558,7 @@ class CobroController extends Controller
 									'numero_cuota' => (int) $asig->numero_cuota,
 									'monto' => (float) $asig->monto,
 									'id_asignacion_costo' => (int) $asig->id_asignacion_costo,
-									'id_cuota_template' => $tplId ?: null,
+									'id_cuota_template' => (int) ($asig->id_cuota_template ?? 0) ?: null,
 									'fecha_vencimiento' => $asig->fecha_vencimiento,
 								];
 							}
@@ -975,6 +1003,8 @@ class CobroController extends Controller
 			'items.*.id_cuota' => 'nullable|integer|exists:cuotas,id_cuota',
 			'items.*.tipo_documento' => 'nullable|in:F,R',
 			'items.*.medio_doc' => 'nullable|in:C,M',
+			'items.*.cod_tipo_cobro' => 'nullable|string|exists:tipo_cobro,cod_tipo_cobro',
+			'items.*.concepto' => 'nullable|string',
 			
 			'pagos.*.nro_cobro' => 'nullable|integer',
 			'pagos.*.monto' => 'required_with:pagos|numeric|min:0',
@@ -990,6 +1020,8 @@ class CobroController extends Controller
 			'pagos.*.id_cuota' => 'nullable|integer|exists:cuotas,id_cuota',
 			'pagos.*.tipo_documento' => 'nullable|in:F,R',
 			'pagos.*.medio_doc' => 'nullable|in:C,M',
+			'pagos.*.cod_tipo_cobro' => 'nullable|string|exists:tipo_cobro,cod_tipo_cobro',
+			'pagos.*.concepto' => 'nullable|string',
 		];
 
 		$validator = Validator::make($request->all(), $rules);
@@ -1523,7 +1555,7 @@ class CobroController extends Controller
  					// Nota: si es Rezagado o Prueba de Recuperación, NO asociar a cuotas ni afectar mensualidad/arrastre
 					$isRezagado = false; $isRecuperacion = false; $isReincorporacion = false; $isSecundario = false;
 					try {
-						$obsCheck = (string)(isset($item['observaciones']) ? $item['observaciones'] : '');
+						$obsCheck = (string)(isset($item['observaciones']) ? $item['observaciones'] : (isset($request->observaciones) ? $request->observaciones : ''));
 						if ($obsCheck !== '') {
 							$isRezagado = (preg_match('/\[\s*REZAGADO\s*\]/i', $obsCheck) === 1);
 							// Detectar variantes con o sin acento: [Prueba de recuperación]
@@ -1627,12 +1659,6 @@ class CobroController extends Controller
 								->first();
 						}
 						if ($cuotaRow) {
-// <<<<<<< HEAD
-// 							$numeroCuota = (int)(isset($cuotaRow->numero_cuota) ? $cuotaRow->numero_cuota : 0);
-// 							$prevPag = (float)(isset($cuotaRow->monto_pagado) ? $cuotaRow->monto_pagado : 0);
-// 							$totalCuota = (float)(isset($cuotaRow->monto) ? $cuotaRow->monto : 0);
-// 							$parcial = ($prevPag + (float)$item['monto']) < $totalCuota;
-// =======
 							$numeroCuota = (int)($cuotaRow->numero_cuota ?? 0);
 							$prevPag = (float)($cuotaRow->monto_pagado ?? 0);
 							$totalCuota = (float)($cuotaRow->monto ?? 0);
@@ -1649,7 +1675,6 @@ class CobroController extends Controller
 							} catch (\Throwable $e) { $descN = 0.0; }
 							$neto = max(0, $totalCuota - $descN);
 							$parcial = ($prevPag + (float)$item['monto']) < $neto;
-// >>>>>>> db8167bb0a817bf7e0af1d0732b63770d42d68e3
 							$detalle = 'Mensualidad - Cuota ' . ($numeroCuota ?: $idCuota) . ($parcial ? ' (Parcial)' : '');
 						}
 					} else {
@@ -1657,6 +1682,69 @@ class CobroController extends Controller
 							$detFromItem = (string)(isset($item['detalle']) ? $item['detalle'] : '');
 							$detalle = $detFromItem !== '' ? $detFromItem : ($detalle !== '' ? $detalle : 'Item');
 						}
+					}
+
+					// Derivar cod_tipo_cobro por ítem y normalizar fecha con hora
+					$codTipoCobroItem = isset($item['cod_tipo_cobro']) ? (string)$item['cod_tipo_cobro'] : null;
+					if (!$codTipoCobroItem) {
+						$obsCheck = (string)(isset($item['observaciones']) ? $item['observaciones'] : (isset($request->observaciones) ? $request->observaciones : ''));
+						$hasItem = isset($item['id_item']) && !empty($item['id_item']);
+						$isRezagado = ($obsCheck !== '') ? (preg_match('/\[\s*REZAGADO\s*\]/i', $obsCheck) === 1) : false;
+						$isRecuperacion = ($obsCheck !== '') ? (preg_match('/\[\s*PRUEBA\s+DE\s+RECUPERACI[OÓ]N\s*\]/i', $obsCheck) === 1) : false;
+						$isReincorporacion = ($obsCheck !== '') ? (preg_match('/\[\s*REINCORPORACI[OÓ]N\s*\]/i', $obsCheck) === 1) : false;
+						$detRaw = strtoupper(trim((string)(isset($detalle) ? $detalle : '')));
+						if (!$isReincorporacion && $detRaw !== '' && strpos($detRaw, 'REINCORPOR') !== false) { $isReincorporacion = true; }
+						if ($hasItem) { $codTipoCobroItem = 'MATERIAL_EXTRA'; }
+						elseif ($isRezagado) { $codTipoCobroItem = 'REZAGADOS'; }
+						elseif ($isRecuperacion) { $codTipoCobroItem = 'PRUEBA_RECUPERACION'; }
+						elseif ($isReincorporacion) { $codTipoCobroItem = 'REINCORPORACION'; }
+						elseif (strtoupper((string)$request->tipo_inscripcion) === 'ARRASTRE') { $codTipoCobroItem = 'ARRASTRE'; }
+						else { $codTipoCobroItem = 'MENSUALIDAD'; }
+					}
+
+					// Formatear concepto según tipo de cobro (DESPUÉS de derivar cod_tipo_cobro)
+					$mesNombre = '';
+					$numeroCuota = isset($numeroCuota) ? $numeroCuota : 0;
+					$parcial = isset($parcial) ? $parcial : false;
+					if ($numeroCuota > 0) {
+						$meses = $this->calcularMesesPorGestion(isset($request->gestion) ? $request->gestion : null);
+						if (is_array($meses)) {
+							foreach ($meses as $m) {
+								$nq = (int)(isset($m['numero_cuota']) ? $m['numero_cuota'] : 0);
+								if ($nq === (int)$numeroCuota) { $mesNombre = (string)(isset($m['mes_nombre']) ? $m['mes_nombre'] : ''); break; }
+							}
+						}
+					}
+					if ($mesNombre === '' && $detalle !== '') {
+						$mm = [];
+						if (preg_match('/\(([^)]+)\)/', $detalle, $mm) === 1) {
+							$mesNombre = (string)(isset($mm[1]) ? $mm[1] : '');
+						}
+					}
+					$conceptoOut = isset($item['concepto']) && $item['concepto'] !== '' ? (string)$item['concepto'] : '';
+					if ($conceptoOut === '') {
+						if ($codTipoCobroItem === 'ARRASTRE') {
+							$conceptoOut = 'Nivelacion' . ($parcial ? ' parcial' : '') . ($mesNombre !== '' ? " '" . $mesNombre . "'" : '');
+						} elseif ($codTipoCobroItem === 'MENSUALIDAD') {
+							$conceptoOut = 'Mensualidad' . ($parcial ? ' Parcial' : '') . ($mesNombre !== '' ? " '" . $mesNombre . "'" : '');
+						} elseif ($codTipoCobroItem === 'REINCORPORACION') {
+							$conceptoOut = 'Reincorporación';
+						} else {
+							$conceptoOut = $detalle !== '' ? (string)$detalle : ((string)(isset($item['observaciones']) ? $item['observaciones'] : (isset($request->observaciones) ? $request->observaciones : 'Cobro')));
+						}
+					}
+
+					$fechaCobroRaw = (string)(isset($item['fecha_cobro']) ? $item['fecha_cobro'] : date('Y-m-d H:i:s'));
+					$fechaCobroSave = $fechaCobroRaw;
+					try {
+						if (preg_match('/^\d{4}-\d{2}-\d{2}$/', $fechaCobroRaw)) {
+							$nowLaPaz = \Carbon\Carbon::now('America/La_Paz');
+							$fechaCobroSave = substr($fechaCobroRaw, 0, 10) . ' ' . $nowLaPaz->format('H:i:s');
+						} else {
+							$fechaCobroSave = \Carbon\Carbon::parse($fechaCobroRaw, 'America/La_Paz')->format('Y-m-d H:i:s');
+						}
+					} catch (\Throwable $e) {
+						$fechaCobroSave = date('Y-m-d H:i:s');
 					}
 
 					// Inserción en notas SGA usando el detalle correcto
@@ -1803,7 +1891,7 @@ class CobroController extends Controller
 
 					$payload = array_merge($composite, [
 						'monto' => $item['monto'],
-						'fecha_cobro' => $item['fecha_cobro'],
+						'fecha_cobro' => $fechaCobroSave,
 						'cobro_completo' => isset($item['cobro_completo']) ? $item['cobro_completo'] : null,
 						'observaciones' => isset($item['observaciones']) ? $item['observaciones'] : null,
 						'id_usuario' => (int)$request->id_usuario,
@@ -1821,6 +1909,8 @@ class CobroController extends Controller
 						'medio_doc' => $medioDoc,
 						'gestion' => isset($request->gestion) ? $request->gestion : null,
 						'cod_inscrip' => $primaryInscripcion ? (int)$primaryInscripcion->cod_inscrip : null,
+						'cod_tipo_cobro' => $codTipoCobroItem,
+						'concepto' => $conceptoOut,
 					]);
 					$created = Cobro::create($payload)->load(['usuario', 'cuota', 'formaCobro', 'cuentaBancaria', 'itemCobro']);
 

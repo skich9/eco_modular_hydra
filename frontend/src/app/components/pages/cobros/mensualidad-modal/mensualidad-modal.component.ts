@@ -150,20 +150,30 @@ export class MensualidadModalComponent implements OnInit, OnChanges {
       }
       if (this.tipo !== 'mensualidad') return Number(this.pu || 0);
       const start = this.getStartCuotaFromResumen();
-      // Precio unitario = monto (bruto) - monto_pagado (saldo sin considerar descuento)
-      const { bruto, pagado } = this.getCuotaBrutoPagadoByNumero(start);
-      return Math.max(0, Number(bruto || 0) - Number(pagado || 0));
+      // Precio unitario = saldo pendiente = (bruto - descuento) - pagado = neto - pagado
+      const src: any[] = ((this.resumen?.asignacion_costos?.items || this.resumen?.asignaciones || []) as any[]);
+      const hit = (src || []).find(a => Number(a?.numero_cuota || 0) === Number(start));
+      if (hit) {
+        const bruto = this.toNumberLoose(hit?.monto);
+        const descuento = this.toNumberLoose(hit?.descuento);
+        const pagado = this.toNumberLoose(hit?.monto_pagado);
+        const neto = Math.max(0, bruto - descuento);
+        const saldo = Math.max(0, neto - pagado);
+        return saldo > 0 ? saldo : 0;
+      }
+      return Number(this.pu || 0);
     } catch { return Number(this.pu || 0); }
   }
 
   // Máximo permitido para pago parcial según el PU efectivo
   getParcialMax(): number {
-    // Máximo permitido para parcial = (PU - descuento) = (bruto - pagado) - descuento
+    // Máximo permitido para parcial = puDisplay (que ya es neto - pagado)
     try {
       const start = this.getStartCuotaFromResumen();
-      const pu = this.puDisplay; // bruto - pagado
+      const pu = this.puDisplay; // ya es saldo real: neto - pagado
       const d = this.getDescuentoForCuota(start);
-      const max = Math.max(0, (Number(pu || 0) - Number(d || 0)));
+      // Como puDisplay ya considera el descuento, no restarlo nuevamente
+      const max = Math.max(0, Number(pu || 0));
       return (isNaN(max) || max <= 0) ? Number.MAX_SAFE_INTEGER : max;
     } catch {
       const max = this.puDisplay;
@@ -446,11 +456,9 @@ export class MensualidadModalComponent implements OnInit, OnChanges {
       } else {
         const cant = Math.max(0, Number(this.form.get('cantidad')?.value || 0));
         if (cant === 1) {
-          // Costo total = Precio unitario (monto - pagado) - descuento
-          const start = this.getStartCuotaFromResumen();
+          // Costo total = puDisplay (que ya es saldo real: neto - pagado)
           const pu = this.puDisplay;
-          const d = this.getDescuentoForCuota(start);
-          total = Math.max(0, Number(pu || 0) - Number(d || 0));
+          total = Math.max(0, Number(pu || 0));
         } else {
           const sum = this.sumNextKCuotasRestantes(cant);
           if (sum > 0) {

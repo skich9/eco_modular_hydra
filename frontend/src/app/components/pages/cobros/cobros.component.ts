@@ -188,19 +188,41 @@ export class CobrosComponent implements OnInit {
     return errors;
   }
 
-  // PU a enviar al modal: si hay saldo en la cuota inicial efectiva, usarlo; caso contrario usar mensualidadPU
+  // PU a enviar al modal: calcular desde asignacion_costos (bruto - pagado) para la próxima cuota
   getMensualidadPuForModal(): number {
     try {
       const start = this.getNextMensualidadStartCuota();
+      // 1) Si hay saldo frontal registrado, usarlo
       const val = this.frontSaldoByCuota[start];
       if (val !== undefined && val !== null) return Number(val || 0);
-      const puSemestral = Number(this.resumen?.totales?.pu_mensual || 0);
+      
+      // 2) Calcular PU desde asignacion_costos: bruto - pagado (solo si hay saldo pendiente)
+      const asignList: any[] = Array.isArray(this.resumen?.asignacion_costos?.items)
+        ? this.resumen!.asignacion_costos.items
+        : (Array.isArray(this.resumen?.asignaciones) ? this.resumen!.asignaciones : []);
+      
+      const hit = asignList.find((a: any) => Number(a?.numero_cuota || 0) === Number(start));
+      if (hit) {
+        const bruto = this.toNumber(hit?.monto);
+        const pagado = this.toNumber(hit?.monto_pagado);
+        const descuento = this.toNumber(hit?.descuento);
+        const neto = Math.max(0, bruto - descuento);
+        const saldo = Math.max(0, neto - pagado);
+        // Solo retornar si hay saldo real pendiente
+        if (saldo > 0) return saldo;
+      }
+      
+      // 3) Si mensualidad_next existe, usar su monto
       const puNext = Number(this.resumen?.mensualidad_next?.next_cuota?.monto ?? 0);
-      return puSemestral > 0 ? puSemestral : puNext;
+      if (puNext > 0) return puNext;
+      
+      // 4) Fallback: usar PU semestral nominal (para cuotas nuevas sin asignación)
+      const puSemestral = Number(this.resumen?.totales?.pu_mensual || 0);
+      return puSemestral;
     } catch {
-      const puSemestral = Number(this.resumen?.totales?.pu_mensual || 0);
       const puNext = Number(this.resumen?.mensualidad_next?.next_cuota?.monto ?? 0);
-      return puSemestral > 0 ? puSemestral : puNext;
+      const puSemestral = Number(this.resumen?.totales?.pu_mensual || 0);
+      return puNext > 0 ? puNext : puSemestral;
     }
   }
 
