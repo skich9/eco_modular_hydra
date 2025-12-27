@@ -154,21 +154,34 @@
           </ng-container>
 
           <ng-container *ngIf="tipo === 'mensualidad' || tipo === 'arrastre'; else noMensualidadOrReinc">
-            <div class="col-md-4">
-              <label class="form-label">Precio Unitario</label>
-              <input class="form-control" [value]="puDisplay | number:'1.2-2'" readonly />
-            </div>
-            <div class="col-md-4">
-              <label class="form-label">Cant. mensualidades a pagar</label>
-              <select class="form-select" formControlName="cantidad" [class.is-invalid]="form.get('cantidad')?.invalid && (form.get('cantidad')?.touched || form.get('cantidad')?.dirty)">
-                <option *ngFor="let n of getCantidadOptions()" [ngValue]="n">{{ getCantidadLabel(n) }}</option>
-              </select>
-              <div class="invalid-feedback">Seleccione una cantidad válida</div>
-            </div>
-            <div class="col-md-4">
-              <label class="form-label">Descuento / Beca</label>
-              <input type="number" step="0.01" class="form-control" formControlName="descuento" />
-            </div>
+            <ng-container *ngIf="pendientes > 0; else noCuotasPendientes">
+              <div class="col-md-4">
+                <label class="form-label">Precio Unitario</label>
+                <input class="form-control" [value]="puDisplay | number:'1.2-2'" readonly />
+              </div>
+              <div class="col-md-4">
+                <label class="form-label">Cant. mensualidades a pagar</label>
+                <select class="form-select" formControlName="cantidad" [class.is-invalid]="form.get('cantidad')?.invalid && (form.get('cantidad')?.touched || form.get('cantidad')?.dirty)">
+                  <option *ngFor="let n of getCantidadOptions()" [ngValue]="n">{{ getCantidadLabel(n) }}</option>
+                </select>
+                <div class="invalid-feedback">Seleccione una cantidad válida</div>
+              </div>
+              <div class="col-md-4">
+                <label class="form-label">Descuento / Beca</label>
+                <input type="number" step="0.01" class="form-control" formControlName="descuento" />
+              </div>
+            </ng-container>
+            <ng-template #noCuotasPendientes>
+              <div class="col-12">
+                <div class="alert alert-info d-flex align-items-center" role="alert">
+                  <i class="bi bi-check-circle-fill me-2 fs-4"></i>
+                  <div>
+                    <strong>Todas las {{ tipo === 'mensualidad' ? 'mensualidades' : 'cuotas de arrastre' }} han sido cobradas</strong>
+                    <p class="mb-0 mt-1">El estudiante no tiene {{ tipo === 'mensualidad' ? 'mensualidades' : 'cuotas de arrastre' }} pendientes de pago.</p>
+                  </div>
+                </div>
+              </div>
+            </ng-template>
           </ng-container>
           <ng-template #noMensualidadOrReinc>
             <ng-container *ngIf="tipo === 'reincorporacion'; else noMensualidad">

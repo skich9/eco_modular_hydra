@@ -2,6 +2,7 @@ import { Component, EventEmitter, Input, OnChanges, OnInit, Output, SimpleChange
 import { CommonModule } from '@angular/common';
 import { FormBuilder, FormGroup, ReactiveFormsModule, Validators, FormsModule } from '@angular/forms';
 import { ClickLockDirective } from '../../../../directives/click-lock.directive';
+import { ParametrosEconomicosService } from '../../../../services/parametros-economicos.service';
 
 @Component({
   selector: 'app-mensualidad-modal',
@@ -29,7 +30,12 @@ export class MensualidadModalComponent implements OnInit, OnChanges {
   modalAlertMessage = '';
   modalAlertType: 'success' | 'error' | 'warning' = 'warning';
 
-  constructor(private fb: FormBuilder) {
+  // Configuración de descuento automático de semestre completo
+  private descuentoSemestreActivar = false;
+  private descuentoSemestreFechaLimite: string | null = null;
+  private descuentoSemestrePorcentaje = 0;
+
+  constructor(private fb: FormBuilder, private parametrosService: ParametrosEconomicosService) {
     this.form = this.fb.group({
       metodo_pago: ['',[Validators.required]],
       cantidad: [1, [Validators.min(1)]],
@@ -98,7 +104,12 @@ export class MensualidadModalComponent implements OnInit, OnChanges {
     try {
       if (this.tipo === 'mensualidad') {
         const cantSel = Math.max(1, Number(this.form?.get('cantidad')?.value || 1));
-        const d = this.sumDescuentoNextK(cantSel);
+        let d = this.sumDescuentoNextK(cantSel);
+        // Agregar descuento automático de semestre completo si aplica
+        const descuentoAuto = this.calcularDescuentoSemestreCompleto(cantSel);
+        if (descuentoAuto > 0) {
+          d += descuentoAuto;
+        }
         this.form.get('descuento')?.setValue(d || 0, { emitEvent: false });
       }
     } catch {}
@@ -288,6 +299,7 @@ export class MensualidadModalComponent implements OnInit, OnChanges {
   }
 
   ngOnInit(): void {
+    this.cargarParametrosDescuentoSemestre();
     this.recalcTotal();
     // Recalcular total al cambiar cantidad, descuento o monto_manual
     this.form.get('cantidad')?.valueChanges.subscribe(() => { this.recalcTotal(); this.updateDescuentoDisplay(); });
@@ -499,6 +511,11 @@ export class MensualidadModalComponent implements OnInit, OnChanges {
           const sum = this.sumNextKCuotasRestantes(cant);
           if (sum > 0) {
             total = sum;
+            // Aplicar descuento automático de semestre completo si corresponde
+            const descuentoAuto = this.calcularDescuentoSemestreCompleto(cant);
+            if (descuentoAuto > 0) {
+              total = Math.max(0, total - descuentoAuto);
+            }
           } else {
             const puNext = Number(this.pu || 0);
             const avg = this.avgAsignMonto();
@@ -939,6 +956,10 @@ export class MensualidadModalComponent implements OnInit, OnChanges {
         const list = this.getOrderedCuotasRestantes().slice(0, cant);
         let nro = this.baseNro || 1;
         if (list.length > 0) {
+          // Calcular descuento automático de semestre completo
+          const descuentoAutoTotal = this.calcularDescuentoSemestreCompleto(cant);
+          const montoTotalSinDescuentoAuto = this.sumNextKCuotasRestantes(cant);
+          
           for (let i = 0; i < list.length; i++) {
             const m = Number(list[i]?.restante || 0); // neto (PU - descuento)
             const numero_cuota = Number(list[i]?.numero || 0) || null;
@@ -950,7 +971,15 @@ export class MensualidadModalComponent implements OnInit, OnChanges {
               const bp = this.getCuotaBrutoPagadoByNumero(numero_cuota);
               pu_unit = Math.max(0, Number(bp.bruto || 0) - Number(bp.pagado || 0));
             }
-            const descUnit = this.getDescuentoForCuota(Number(numero_cuota || 0)) || 0;
+            let descUnit = this.getDescuentoForCuota(Number(numero_cuota || 0)) || 0;
+            
+            // Distribuir descuento automático proporcionalmente
+            if (descuentoAutoTotal > 0 && montoTotalSinDescuentoAuto > 0) {
+              const proporcion = m / montoTotalSinDescuentoAuto;
+              const descuentoAutoCuota = descuentoAutoTotal * proporcion;
+              descUnit += descuentoAutoCuota;
+            }
+            
             pagos.push({
               id_forma_cobro: this.form.get('metodo_pago')?.value || null,
               nro_cobro: nro++,
@@ -1237,6 +1266,61 @@ export class MensualidadModalComponent implements OnInit, OnChanges {
     // QR: no exige fecha/nro/banco (autogestionado)
     // OTRO / VALES: no exige campos bancarios
     return true;
+  }
+
+  private cargarParametrosDescuentoSemestre(): void {
+    this.parametrosService.getAll().subscribe({
+      next: (res) => {
+        if (res.success && res.data) {
+          const params = res.data;
+          const activar = params.find(p => p.nombre === 'descuento_semestre_completo_activar');
+          const fecha = params.find(p => p.nombre === 'descuento_semestre_completo_fecha_limite');
+          const porcentaje = params.find(p => p.nombre === 'descuento_semestre_completo_porcentaje');
+          
+          this.descuentoSemestreActivar = activar?.valor === 'true' || activar?.valor === '1';
+          this.descuentoSemestreFechaLimite = fecha?.valor || null;
+          this.descuentoSemestrePorcentaje = Number(porcentaje?.valor || 0);
+        }
+      },
+      error: () => {
+        this.descuentoSemestreActivar = false;
+        this.descuentoSemestreFechaLimite = null;
+        this.descuentoSemestrePorcentaje = 0;
+      }
+    });
+  }
+
+  private calcularDescuentoSemestreCompleto(cantidadSeleccionada: number): number {
+    try {
+      // Verificar si el descuento está activo
+      if (!this.descuentoSemestreActivar) return 0;
+      
+      // Verificar si estamos dentro de la fecha límite
+      if (this.descuentoSemestreFechaLimite) {
+        const hoy = new Date();
+        const limite = new Date(this.descuentoSemestreFechaLimite);
+        if (hoy > limite) return 0;
+      }
+      
+      // Verificar que el porcentaje sea válido
+      if (this.descuentoSemestrePorcentaje <= 0 || this.descuentoSemestrePorcentaje > 100) return 0;
+      
+      // Obtener total de cuotas pendientes del tipo de inscripción actual
+      const totalCuotasPendientes = this.pendientes || 0;
+      
+      // Solo aplicar si se seleccionan TODAS las cuotas pendientes
+      if (cantidadSeleccionada !== totalCuotasPendientes) return 0;
+      
+      // Calcular el monto total sin descuento
+      const montoTotal = this.sumNextKCuotasRestantes(cantidadSeleccionada);
+      
+      // Aplicar el porcentaje de descuento
+      const descuento = (montoTotal * this.descuentoSemestrePorcentaje) / 100;
+      
+      return Math.max(0, descuento);
+    } catch {
+      return 0;
+    }
   }
 
   private buildObservaciones(): string {

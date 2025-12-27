@@ -16,7 +16,7 @@ class DescuentoController extends Controller
 	public function index(Request $request)
 	{
 		try {
-			$query = Descuento::query();
+			$query = Descuento::with(['definicion', 'beca', 'detalles']);
 			if ($request->has('estado')) {
 				$query->where('estado', filter_var($request->get('estado'), FILTER_VALIDATE_BOOLEAN));
 			}
@@ -30,6 +30,33 @@ class DescuentoController extends Controller
 				$query->where('cod_inscrip', $request->get('cod_inscrip'));
 			}
 			$descuentos = $query->orderByDesc('id_descuentos')->get();
+			
+			// Agregar tipo_descuento y cuotas calculados
+			$descuentos->each(function($d) {
+				// El campo 'beca' en def_descuentos_beca: 1=BECA, 0=DESCUENTO
+				if ($d->beca && isset($d->beca->beca)) {
+					$d->tipo_descuento = $d->beca->beca ? 'BECA' : 'DESCUENTO';
+				} else {
+					$d->tipo_descuento = 'BECA'; // fallback
+				}
+				
+				// Obtener números de cuota desde detalles
+				$cuotasNums = [];
+				if ($d->detalles && $d->detalles->count() > 0) {
+					foreach ($d->detalles as $det) {
+						// Buscar numero_cuota desde asignacion_costos usando id_cuota
+						if ($det->id_cuota) {
+							$asig = AsignacionCostos::find($det->id_cuota);
+							if ($asig && $asig->numero_cuota) {
+								$cuotasNums[] = (int)$asig->numero_cuota;
+							}
+						}
+					}
+				}
+				sort($cuotasNums);
+				$d->cuotas = implode(', ', $cuotasNums);
+			});
+			
 			return response()->json(['success' => true, 'data' => $descuentos]);
 		} catch (\Exception $e) {
 			return response()->json(['success' => false, 'message' => 'Error al obtener descuentos: ' . $e->getMessage()], 500);
@@ -201,6 +228,28 @@ class DescuentoController extends Controller
 			]);
 			if ($validator->fails()) {
 				return response()->json(['success' => false, 'message' => 'Error de validación', 'errors' => $validator->errors()], 422);
+			}
+
+			// Validar que las cuotas no tengan ya un descuento asignado (id_descuentoDetalle no debe estar lleno)
+			$codPensum = (string)$request->input('cod_pensum');
+			$codInscrip = (int)$request->input('cod_inscrip');
+			$cuotasRequest = (array)$request->input('cuotas', []);
+			$numerosCuotas = array_map(function($c) { return (int)($c['numero_cuota'] ?? 0); }, $cuotasRequest);
+			
+			// Verificar si alguna de las cuotas ya tiene un descuento asignado
+			$cuotasConDescuento = AsignacionCostos::where('cod_pensum', $codPensum)
+				->where('cod_inscrip', $codInscrip)
+				->whereIn('numero_cuota', $numerosCuotas)
+				->whereNotNull('id_descuentoDetalle')
+				->pluck('numero_cuota')
+				->toArray();
+			
+			if (!empty($cuotasConDescuento)) {
+				$cuotasStr = implode(', ', $cuotasConDescuento);
+				return response()->json([
+					'success' => false,
+					'message' => "El estudiante ya tiene un descuento o beca activo en las cuotas: {$cuotasStr}. No se puede asignar más de uno por cuota."
+				], 422);
 			}
 
 			$insc = Inscripcion::find((int)$request->input('cod_inscrip'));
