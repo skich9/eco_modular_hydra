@@ -84,6 +84,7 @@ export class CobrosComponent implements OnInit {
   @ViewChild(RecuperacionModalComponent) recuperacionDlg?: RecuperacionModalComponent;
   @ViewChild(BusquedaEstudianteModalComponent) buscarDlg?: BusquedaEstudianteModalComponent;
   // Ref del panel QR para delegar acciones (guardar en espera)
+  @ViewChild('kardexDlg') kardexDlg?: KardexModalComponent;
   @ViewChild('qrPanel') qrPanel?: QrPanelComponent;
 
   // Modal de éxito (registro realizado)
@@ -170,19 +171,58 @@ export class CobrosComponent implements OnInit {
     });
   }
 
-  // PU a enviar al modal: si hay saldo en la cuota inicial efectiva, usarlo; caso contrario usar mensualidadPU
+  // Helper method to extract form errors for debugging
+  private getFormErrors(form: FormGroup): any {
+    const errors: any = {};
+    Object.keys(form.controls).forEach(key => {
+      const control = form.get(key);
+      if (control instanceof FormGroup) {
+        const nestedErrors = this.getFormErrors(control);
+        if (Object.keys(nestedErrors).length > 0) {
+          errors[key] = nestedErrors;
+        }
+      } else if (control && control.errors) {
+        errors[key] = control.errors;
+      }
+    });
+    return errors;
+  }
+
+  // PU a enviar al modal: calcular desde asignacion_costos (bruto - pagado) para la próxima cuota
   getMensualidadPuForModal(): number {
     try {
       const start = this.getNextMensualidadStartCuota();
+      // 1) Si hay saldo frontal registrado, usarlo
       const val = this.frontSaldoByCuota[start];
       if (val !== undefined && val !== null) return Number(val || 0);
-      const puSemestral = Number(this.resumen?.totales?.pu_mensual || 0);
+      
+      // 2) Calcular PU desde asignacion_costos: bruto - pagado (solo si hay saldo pendiente)
+      const asignList: any[] = Array.isArray(this.resumen?.asignacion_costos?.items)
+        ? this.resumen!.asignacion_costos.items
+        : (Array.isArray(this.resumen?.asignaciones) ? this.resumen!.asignaciones : []);
+      
+      const hit = asignList.find((a: any) => Number(a?.numero_cuota || 0) === Number(start));
+      if (hit) {
+        const bruto = this.toNumber(hit?.monto);
+        const pagado = this.toNumber(hit?.monto_pagado);
+        const descuento = this.toNumber(hit?.descuento);
+        const neto = Math.max(0, bruto - descuento);
+        const saldo = Math.max(0, neto - pagado);
+        // Solo retornar si hay saldo real pendiente
+        if (saldo > 0) return saldo;
+      }
+      
+      // 3) Si mensualidad_next existe, usar su monto
       const puNext = Number(this.resumen?.mensualidad_next?.next_cuota?.monto ?? 0);
-      return puSemestral > 0 ? puSemestral : puNext;
+      if (puNext > 0) return puNext;
+      
+      // 4) Fallback: usar PU semestral nominal (para cuotas nuevas sin asignación)
+      const puSemestral = Number(this.resumen?.totales?.pu_mensual || 0);
+      return puSemestral;
     } catch {
-      const puSemestral = Number(this.resumen?.totales?.pu_mensual || 0);
       const puNext = Number(this.resumen?.mensualidad_next?.next_cuota?.monto ?? 0);
-      return puSemestral > 0 ? puSemestral : puNext;
+      const puSemestral = Number(this.resumen?.totales?.pu_mensual || 0);
+      return puNext > 0 ? puNext : puSemestral;
     }
   }
 
@@ -296,7 +336,7 @@ export class CobrosComponent implements OnInit {
                 console.error('Error generando QR:', err);
               }
             }
-            
+
             generateQuickFacturaPdf({
             anio,
             nro,
@@ -1301,7 +1341,58 @@ export class CobrosComponent implements OnInit {
   }
 
   onSuccessClose(): void {
-    // Limpiar todo como si fuera la primera carga
+    // Recargar datos del resumen antes de limpiar para mostrar actualizados
+    const cod = (this.searchForm.get('cod_ceta')?.value || '').toString().trim();
+    const gestion = (this.searchForm.get('gestion')?.value || '').toString().trim();
+
+    if (cod) {
+      this.cobrosService.getResumen(cod, gestion).subscribe({
+        next: (res) => {
+          if (res?.success) {
+            this.resumen = res.data;
+            this.showOpciones = true;
+            // Limpiar solo el formulario de cobros, pero mantener el resumen actualizado
+            this.limpiarFormularioCobros();
+            this.showAlert('Datos actualizados. Puede ver los nuevos pagos en el Kardex económico.', 'success');
+          } else {
+            // Si falla la recarga, limpiar todo como antes
+            this.limpiarTodo();
+          }
+        },
+        error: () => {
+          // Si falla la recarga, limpiar todo como antes
+          this.limpiarTodo();
+        }
+      });
+    } else {
+      // Si no hay código, limpiar todo
+      this.limpiarTodo();
+    }
+
+    // Cerrar modal
+    const modalEl = document.getElementById('successModal');
+    const bs = (window as any).bootstrap;
+    if (modalEl && bs?.Modal) {
+      const instance = bs.Modal.getInstance(modalEl) || new bs.Modal(modalEl);
+      instance.hide();
+    }
+  }
+
+  private limpiarFormularioCobros(): void {
+    try {
+      (this.batchForm.get('pagos') as FormArray).clear();
+      this.batchForm.reset({ cabecera: { id_forma_cobro: '', id_cuentas_bancarias: '' }, pagos: [] });
+      this.identidadForm.reset({ nombre_completo: '', tipo_identidad: 1, ci: '', complemento_habilitado: false, complemento_ci: '', razon_social: '', email_habilitado: false, email: '', turno: '' });
+      this.modalIdentidadForm.reset({ tipo_identidad: 1, ci: '', complemento_habilitado: false, complemento_ci: '', razon_social: '' });
+      this.mensualidadModalForm.reset({ metodo_pago: '', cantidad: 1, costo_total: 0, observaciones: '' });
+      this.alertMessage = '';
+      this.metodoPagoLocked = false;
+      this.successSummary = null;
+      try { (this.batchForm.get('cabecera.codigo_sin') as any)?.enable?.({ emitEvent: false }); } catch {}
+    } catch {}
+  }
+
+  private limpiarTodo(): void {
     try {
       (this.batchForm.get('pagos') as FormArray).clear();
       this.batchForm.reset({ cabecera: { id_forma_cobro: '', id_cuentas_bancarias: '' }, pagos: [] });
@@ -1313,18 +1404,9 @@ export class CobrosComponent implements OnInit {
       this.showOpciones = false;
       this.alertMessage = '';
       this.metodoPagoLocked = false;
-      try { (this.batchForm.get('cabecera.codigo_sin') as any)?.enable?.({ emitEvent: false }); } catch {}
       this.successSummary = null;
+      try { (this.batchForm.get('cabecera.codigo_sin') as any)?.enable?.({ emitEvent: false }); } catch {}
     } catch {}
-
-    // Cerrar modal si hay instancia y recargar para estado inicial real
-    const modalEl = document.getElementById('successModal');
-    const bs = (window as any).bootstrap;
-    if (modalEl && bs?.Modal) {
-      const instance = bs.Modal.getInstance(modalEl) || new bs.Modal(modalEl);
-      instance.hide();
-    }
-    try { setTimeout(() => { window.location.reload(); }, 150); } catch {}
   }
 
   openQrSavedWaitingConfirmModal(): void {
@@ -1682,7 +1764,7 @@ export class CobrosComponent implements OnInit {
           }
           // Prefill identidad/razón social
           const est = this.resumen?.estudiante || {};
-          const fullName = [est.nombres, est.ap_paterno, est.ap_materno].filter(Boolean).join(' ');
+          const fullName = [est.ap_paterno, est.ap_materno, est.nombres ].filter(Boolean).join(' ');
           this.identidadForm.patchValue({
             nombre_completo: fullName,
             tipo_identidad: 1,
@@ -2071,7 +2153,7 @@ export class CobrosComponent implements OnInit {
     }
   }
 
-  
+
 
   openRazonSocialModal(): void {
     const modalEl = document.getElementById('razonSocialModal');
@@ -2099,6 +2181,8 @@ export class CobrosComponent implements OnInit {
     const cabecera = this.batchForm.get('cabecera') as FormGroup;
     const cod_ceta = cabecera?.get('cod_ceta')?.value;
     const gestion = cabecera?.get('gestion')?.value || '';
+
+    console.log('[Cobros] buscarPorCodCetaCabecera xxxssasdd', { cod_ceta, gestion });
     if (!cod_ceta) {
       this.showAlert('Ingrese el Codigo CETA para buscar', 'warning');
       return;
@@ -2639,17 +2723,30 @@ export class CobrosComponent implements OnInit {
   }
 
   submitBatch(): void {
+    console.log('HOIla');
     if (this.loading) {
       console.warn('[Cobros] submitBatch() ignored because loading=true');
       return;
     }
+
     console.log('[Cobros] submitBatch() called', {
-      valid: this.batchForm.valid,
-      pagosLen: this.pagos.length,
+      loading: this.loading,
+      formValid: this.batchForm.valid,
+      pagosLength: this.pagos.length,
+      qrPanelStatus: this.qrPanelStatus,
       cabecera: (this.batchForm.get('cabecera') as FormGroup)?.getRawValue?.() || null
     });
+    console.log('HOIla 2');
+    if (this.loading) {
+      console.warn('[Cobros] submitBatch() ignored because loading=true');
+      return;
+    }
     const cab = this.batchForm.get('cabecera') as FormGroup;
     // 1) cod_ceta: desde resumen o searchForm si falta
+
+    console.log('[Cobros] submitBatch() pre-patch cabecera', cab?.getRawValue?.() || null);
+    console.log('LOS PAGOS QUE LLEGAN SON:', this.pagos.getRawValue() || null);
+    console.log('EL RESUMEN ES:', this.resumen || null);
     try {
       const currentCod = cab?.get('cod_ceta')?.value;
       if (!currentCod) {
@@ -2659,6 +2756,7 @@ export class CobrosComponent implements OnInit {
         if (codFinal) cab.patchValue({ cod_ceta: codFinal }, { emitEvent: false });
       }
     } catch {}
+    console.log('HOIla 3');
     // 1.1) cod_pensum / tipo_inscripcion / gestion desde resumen.inscripcion si faltan
     try {
       const ins = (this.resumen as any)?.inscripcion || (this.resumen as any)?.inscripciones?.[0] || null;
@@ -2692,6 +2790,7 @@ export class CobrosComponent implements OnInit {
         if (metodo) cab.patchValue({ id_forma_cobro: String(metodo) }, { emitEvent: false });
       }
     } catch {}
+    console.log('HOIla 4');
     // 3) id_usuario: desde AuthService o localStorage current_user
     try {
       const currentUser = this.auth.getCurrentUser();
@@ -2705,6 +2804,7 @@ export class CobrosComponent implements OnInit {
         }
       }
     } catch {}
+    console.log('HOIla 5');
     // Pre-completar fecha/monto y ASIGNAR nro_cobro único en cliente (hasta que backend lo haga atómico)
     try {
       const hoy = new Date().toISOString().slice(0, 10);
@@ -2719,13 +2819,19 @@ export class CobrosComponent implements OnInit {
       });
       this.batchForm.updateValueAndValidity({ onlySelf: false, emitEvent: false });
     } catch {}
+    console.log('HOIla 6');
     // Forzar visualización de errores de validación en el formulario
     try { this.batchForm.markAllAsTouched(); } catch {}
     if (!this.batchForm.valid || this.pagos.length === 0) {
-      console.warn('[Cobros] submitBatch() invalid form or empty pagos');
+      console.warn('[Cobros] submitBatch() invalid form or empty pagos', {
+        formValid: this.batchForm.valid,
+        pagosLength: this.pagos.length,
+        formErrors: this.getFormErrors(this.batchForm)
+      });
       this.showAlert('Complete los datos y agregue al menos un pago', 'warning');
       return;
     }
+    console.log('HOIla 7');
     const hasQrRows = (this.pagos.controls || []).some(ctrl => this.isFormaIdQR((ctrl as FormGroup).get('id_forma_cobro')?.value));
     if (hasQrRows && this.qrPanelStatus !== 'completado') {
       const cod = (this.batchForm.get('cabecera.cod_ceta') as any)?.value || '';
@@ -2740,6 +2846,7 @@ export class CobrosComponent implements OnInit {
       }
       return;
     }
+    console.log('HOIla 8');
     // Enviar todas las filas (incluida la QR) cuando el estado QR es 'completado';
     // el backend ya no inserta desde callback
     const baseCtrls = (this.pagos.controls || []);
@@ -2763,6 +2870,7 @@ export class CobrosComponent implements OnInit {
       }
       return item;
     });
+    console.log('HOIla 9');
     // Normalizar tipo_documento y medio_doc para todos los items
     const pagos = pagosRaw.map((it: any) => {
       const tipo = this.normalizeDocFromPayload(it);
@@ -2806,6 +2914,7 @@ export class CobrosComponent implements OnInit {
         (payload as any).pagos = ((payload as any).pagos || []).map((p: any) => ({ ...p, id_forma_cobro: uni }));
       }
     } catch {}
+    console.log('HOIla 10');
     // Forzar bandera emitir_online si hay al menos una Factura Computarizada
     try {
       const shouldEmitOnline = pagos.some((p: any) => (p?.tipo_documento === 'F') && (p?.medio_doc === 'C'));
@@ -2886,6 +2995,7 @@ export class CobrosComponent implements OnInit {
         this.loading = false;
       }
     });
+    console.log('HOIla 11');
   }
 
   // ====== Totales estilo sistema antiguo ======
@@ -3088,7 +3198,7 @@ export class CobrosComponent implements OnInit {
     return s > 0 ? s : 0;
   }
 
-  private getCurrentGestion(): string {
+  public getCurrentGestion(): string {
     try {
       const cab = (this.batchForm.get('cabecera') as FormGroup);
       const fromResumen = (this.resumen as any)?.gestion || (this.resumen as any)?.inscripcion?.gestion || (this.resumen as any)?.inscripciones?.[0]?.gestion || '';

@@ -32,6 +32,7 @@ services:
       dockerfile: dockerfiles/php.dockerfile
     volumes:
       - ./src:/var/www/html
+      - ./php/custom.ini:/usr/local/etc/php/conf.d/custom.ini
     container_name: angular_laravel_php
     networks:
       - angular_laravel_network
@@ -107,7 +108,9 @@ services:
       - "4200:4200"
     environment:
       - NODE_ENV=development
-    command: sh -c "npm install && npm start -- --host 0.0.0.0 --port 4200"
+
+    command: sh -c "npm install --legacy-peer-deps && npx ng serve --host 0.0.0.0 --port 4200 --live-reload --poll 500"
+
     networks:
       - angular_laravel_network
 
