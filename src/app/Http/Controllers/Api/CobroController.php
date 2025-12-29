@@ -12,6 +12,8 @@ use App\Models\Gestion;
 use App\Models\ParametroCosto;
 use App\Models\Cuota;
 use App\Models\DescuentoDetalle;
+use App\Models\Descuento;
+use App\Models\ParametrosEconomicos;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\Validator;
 use Illuminate\Support\Facades\DB;
@@ -1166,6 +1168,179 @@ class CobroController extends Controller
 						->values();
 				}
 				// Eliminamos tracking por asignación única; usaremos $batchPaidByTpl para decidir la siguiente cuota
+				
+				// APLICAR DESCUENTO AUTOMÁTICO DE SEMESTRE COMPLETO ANTES DE PROCESAR COBROS
+				Log::info('batchStore: INICIO verificación descuento automático');
+				try {
+					// Obtener parámetros económicos
+					$descActivar = ParametrosEconomicos::where('nombre', 'descuento_semestre_completo_activar')->where('estado', true)->first();
+					$descFechaLimite = ParametrosEconomicos::where('nombre', 'descuento_semestre_completo_fecha_limite')->where('estado', true)->first();
+					$descPorcentaje = ParametrosEconomicos::where('nombre', 'descuento_semestre_completo_porcentaje')->where('estado', true)->first();
+					
+					$activar = $descActivar && ($descActivar->valor === 'true' || $descActivar->valor === '1');
+					$fechaLimite = $descFechaLimite ? $descFechaLimite->valor : null;
+					$porcentaje = $descPorcentaje ? (float)$descPorcentaje->valor : 0;
+					
+					Log::info('batchStore: parámetros descuento', [
+						'activar' => $activar,
+						'porcentaje' => $porcentaje,
+						'tiene_inscripcion' => $primaryInscripcion ? true : false,
+					]);
+					
+					// Verificar si está activo y dentro de fecha
+					if ($activar && $porcentaje > 0 && $primaryInscripcion) {
+						Log::info('batchStore: condiciones iniciales OK');
+						$dentroFecha = true;
+						if ($fechaLimite) {
+							$hoy = now();
+							$limite = \Carbon\Carbon::parse($fechaLimite);
+							$dentroFecha = $hoy->lte($limite);
+						}
+						
+						if ($dentroFecha) {
+							Log::info('batchStore: dentro de fecha OK');
+							// Contar cuotas totales pendientes (sin descuento previo y sin cobrar)
+							$cuotasPendientes = AsignacionCostos::where('cod_pensum', $codPensumCtx)
+								->where('cod_inscrip', $primaryInscripcion->cod_inscrip)
+								->whereNull('id_descuentoDetalle')
+								->where(function($q) {
+									$q->where('estado_pago', 'pendiente')
+									  ->orWhere('estado_pago', 'PARCIAL')
+									  ->orWhereNull('estado_pago');
+								})
+								->get();
+							
+							$cuotasTotales = $cuotasPendientes->count();
+							
+							// Obtener IDs de cuotas que se van a pagar en este batch
+							$cuotasPagadasBatch = collect($items)
+								->filter(fn($it) => isset($it['id_asignacion_costo']) && $it['id_asignacion_costo'])
+								->pluck('id_asignacion_costo')
+								->unique()
+								->values();
+							
+							$cantidadPagadasBatch = $cuotasPagadasBatch->count();
+							
+							Log::info('batchStore: conteo cuotas', [
+								'cuotas_totales' => $cuotasTotales,
+								'cuotas_batch' => $cantidadPagadasBatch,
+								'ids' => $cuotasPagadasBatch->toArray(),
+							]);
+							
+							// Si se van a pagar todas las cuotas pendientes, crear asignación automática
+							if ($cuotasTotales > 0 && $cantidadPagadasBatch >= $cuotasTotales) {
+								Log::info('batchStore: CONDICIÓN CUMPLIDA - creando descuento');
+								// Buscar el descuento "Descuento Pago Semestre completo" (cod_beca = 40)
+								$codBeca = 40;
+								$defDescuento = DB::table('def_descuentos_beca')->where('cod_beca', $codBeca)->first();
+								
+								if ($defDescuento) {
+									// Verificar que no exista ya una asignación de este descuento
+									$existeAsignacion = Descuento::where('cod_ceta', $codCetaCtx)
+										->where('cod_pensum', $codPensumCtx)
+										->where('cod_inscrip', $primaryInscripcion->cod_inscrip)
+										->where('cod_beca', $codBeca)
+										->where('estado', true)
+										->exists();
+									
+									if (!$existeAsignacion) {
+										// Crear el descuento principal
+										$descuento = Descuento::create([
+											'cod_ceta' => $codCetaCtx,
+											'cod_pensum' => $codPensumCtx,
+											'cod_inscrip' => $primaryInscripcion->cod_inscrip,
+											'cod_beca' => $codBeca,
+											'id_usuario' => (int)$request->id_usuario,
+											'nombre' => $defDescuento->nombre_beca ?? 'Descuento Pago Semestre completo',
+											'observaciones' => 'Asignación automática por pago de semestre completo',
+											'porcentaje' => $porcentaje,
+											'tipo' => $primaryInscripcion->tipo_inscripcion ?? 'NORMAL',
+											'estado' => true,
+										]);
+										
+										// Extraer turno y semestre del código de pensum
+										$turno = null;
+										$semestre = null;
+										if ($codPensumCtx) {
+											// Formato: EEA-101N → semestre=1, turno=N
+											$parts = explode('-', $codPensumCtx);
+											if (count($parts) >= 2) {
+												$codigo = $parts[1];
+												// Extraer semestre (primer dígito después del guion)
+												if (preg_match('/^(\d)/', $codigo, $matches)) {
+													$semestre = (int)$matches[1];
+												}
+												// Extraer turno (última letra: M=mañana, T=tarde, N=noche)
+												$ultimaLetra = strtoupper(substr($codigo, -1));
+												if (in_array($ultimaLetra, ['M', 'T', 'N'])) {
+													$turno = $ultimaLetra;
+												}
+											}
+										}
+										
+										// Crear detalles para cada cuota que se va a pagar
+										foreach ($cuotasPagadasBatch as $idAsignCosto) {
+											try {
+												$asignCosto = AsignacionCostos::find($idAsignCosto);
+												if ($asignCosto && !$asignCosto->id_descuentoDetalle) {
+													$montoDescuento = round(($asignCosto->monto * $porcentaje) / 100, 2);
+													
+													$detalle = DescuentoDetalle::create([
+														'id_descuento' => $descuento->id_descuentos,
+														'id_usuario' => (int)$request->id_usuario,
+														'id_inscripcion' => $primaryInscripcion->cod_inscrip,
+														'id_cuota' => $idAsignCosto,
+														'monto_descuento' => $montoDescuento,
+														'fecha_registro' => now(),
+														'fecha_solicitud' => now(),
+														'observaciones' => 'Descuento automático de semestre completo',
+														'tipo_inscripcion' => $primaryInscripcion->tipo_inscripcion ?? 'NORMAL',
+														'turno' => $turno,
+														'semestre' => $semestre,
+														'estado' => true,
+													]);
+													
+													// Actualizar asignacion_costos con el id_descuentoDetalle
+													$asignCosto->id_descuentoDetalle = $detalle->id_descuento_detalle;
+													$asignCosto->save();
+													
+													Log::info('batchStore: descuento detalle creado', [
+														'id_descuento_detalle' => $detalle->id_descuento_detalle,
+														'id_asignacion_costo' => $idAsignCosto,
+														'monto_descuento' => $montoDescuento,
+													]);
+												}
+											} catch (\Throwable $eDetalle) {
+												Log::error('batchStore: error al crear detalle de descuento', [
+													'id_asignacion_costo' => $idAsignCosto,
+													'error' => $eDetalle->getMessage(),
+												]);
+											}
+										}
+										
+										// Recargar asignaciones para que tengan los descuentos actualizados
+										$asignPrimarias = AsignacionCostos::where('cod_pensum', $codPensumCtx)
+											->where('cod_inscrip', $primaryInscripcion->cod_inscrip)
+											->orderBy('numero_cuota')
+											->get();
+										
+										Log::info('batchStore: descuento automático aplicado', [
+											'id_descuento' => $descuento->id_descuentos,
+											'porcentaje' => $porcentaje,
+											'cuotas_procesadas' => $cantidadPagadasBatch,
+										]);
+									}
+								}
+							}
+						}
+					}
+				} catch (\Throwable $e) {
+					Log::error('batchStore: error al aplicar descuento automático', [
+						'error' => $e->getMessage(),
+						'line' => $e->getLine(),
+					]);
+				}
+				
 				// Preparar nickname de usuario y forma de cobro para anotar en notas
 				$usuarioNick = (string) (DB::table('usuarios')->where('id_usuario', (int)$request->id_usuario)->value('nickname') ? DB::table('usuarios')->where('id_usuario', (int)$request->id_usuario)->value('nickname') : '');
 				$formaRow = DB::table('formas_cobro')->where('id_forma_cobro', (string)$request->id_forma_cobro)->first();

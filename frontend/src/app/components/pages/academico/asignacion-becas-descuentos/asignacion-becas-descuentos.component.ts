@@ -31,6 +31,7 @@ interface AsignacionPreview {
 	valor: string;
 	inscripcion: string;
 	estado: 'Activo' | 'Inactivo';
+	cuotas: string;
 }
 
 @Component({
@@ -76,9 +77,9 @@ export class AsignacionBecasDescuentosComponent implements OnInit {
 	gestionesCatalogo: string[] = [];
 	carrerasCatalogo: Array<{ codigo_carrera: string; nombre: string }> = [];
 	tipoInscripcionOptions: string[] = [];
-	cuotas: Array<{ numero_cuota: number; monto: number; estado_pago: string; observacion: string; selected: boolean; id_cuota?: number | null; monto_pagado?: number; descuento_existente?: number; monto_neto?: number }> = [];
-	private cuotasNormal: Array<{ numero_cuota: number; monto: number; estado_pago: string; observacion: string; selected: boolean; id_cuota?: number | null; monto_pagado?: number; descuento_existente?: number; monto_neto?: number }> = [];
-	private cuotasArrastre: Array<{ numero_cuota: number; monto: number; estado_pago: string; observacion: string; selected: boolean; id_cuota?: number | null; monto_pagado?: number; descuento_existente?: number; monto_neto?: number }> = [];
+	cuotas: Array<{ numero_cuota: number; monto: number; monto_bruto: number; estado_pago: string; observacion: string; selected: boolean; id_cuota?: number | null; monto_pagado?: number; descuento_existente?: number; monto_neto?: number }> = [];
+	private cuotasNormal: Array<{ numero_cuota: number; monto: number; monto_bruto: number; estado_pago: string; observacion: string; selected: boolean; id_cuota?: number | null; monto_pagado?: number; descuento_existente?: number; monto_neto?: number }> = [];
+	private cuotasArrastre: Array<{ numero_cuota: number; monto: number; monto_bruto: number; estado_pago: string; observacion: string; selected: boolean; id_cuota?: number | null; monto_pagado?: number; descuento_existente?: number; monto_neto?: number }> = [];
 	allSelected: boolean = false;
 
 	constructor(private fb: FormBuilder, private cobrosService: CobrosService,private auth:AuthService) {
@@ -206,7 +207,7 @@ export class AsignacionBecasDescuentosComponent implements OnInit {
 		return this.definicionesFiltradas.find(r => this.keyOf(r as any) === this.selectedRowKey) as any || null;
 	}
 
-	descuentoPorCuota(c: { numero_cuota: number; monto: number; estado_pago: string; monto_pagado?: number; descuento_existente?: number; monto_neto?: number }, defOverride?: any): number {
+	descuentoPorCuota(c: { numero_cuota: number; monto: number; monto_bruto?: number; estado_pago: string; monto_pagado?: number; descuento_existente?: number; monto_neto?: number }, defOverride?: any): number {
 		const def = defOverride || this.getSelectedDef();
 		if (!def) return 0;
 		const sel = this.consideredCuotas();
@@ -226,7 +227,7 @@ export class AsignacionBecasDescuentosComponent implements OnInit {
 		return this.round2(defMonto);
 	}
 
-	totalPorCuota(c: { numero_cuota: number; monto: number; estado_pago: string; monto_pagado?: number; descuento_existente?: number; monto_neto?: number }): number {
+	totalPorCuota(c: { numero_cuota: number; monto: number; monto_bruto?: number; estado_pago: string; monto_pagado?: number; descuento_existente?: number; monto_neto?: number }): number {
 		const ref = this.refMonto(c);
 		const d = this.descuentoPorCuota(c);
 		const total = Math.max(ref - d, 0);
@@ -237,7 +238,7 @@ export class AsignacionBecasDescuentosComponent implements OnInit {
 		return this.cuotas.filter(c => this.isSelectable(c) && !!c.selected).length;
 	}
 
-	private consideredCuotas(): Array<{ numero_cuota: number; monto: number; estado_pago: string; observacion: string; selected: boolean; id_cuota?: number | null; monto_pagado?: number; descuento_existente?: number; monto_neto?: number }>{
+	private consideredCuotas(): Array<{ numero_cuota: number; monto: number; monto_bruto: number; estado_pago: string; observacion: string; selected: boolean; id_cuota?: number | null; monto_pagado?: number; descuento_existente?: number; monto_neto?: number }>{
 		const sel = this.cuotas.filter(c => !!c.selected);
 		if (sel.length > 0) return sel;
 		return this.cuotas.filter(c => ['PENDIENTE', 'PARCIAL'].includes(String(c.estado_pago || '').toUpperCase()));
@@ -360,7 +361,8 @@ export class AsignacionBecasDescuentosComponent implements OnInit {
 			const saldo = Math.max(0, neto - pag);
 			return {
 				numero_cuota: Number(a?.numero_cuota || 0) || 0,
-				monto: saldo, // Monto referencial real a mostrar por fila
+				monto: saldo,
+				monto_bruto: bruto, // Monto bruto sin descuento para referencia
 				estado_pago: String(a?.estado_pago || ''),
 				observacion: '',
 				selected,
@@ -384,6 +386,7 @@ export class AsignacionBecasDescuentosComponent implements OnInit {
 			return {
 				numero_cuota: Number(a?.numero_cuota || 0) || 0,
 				monto: saldo,
+				monto_bruto: bruto, // Monto bruto sin descuento para referencia
 				estado_pago: String(a?.estado_pago || ''),
 				observacion: '',
 				selected,
@@ -427,12 +430,9 @@ export class AsignacionBecasDescuentosComponent implements OnInit {
 		this.loadDescuentosAsignados();
 	}
 
-	refMonto(c: { monto: number; monto_pagado?: number; descuento_existente?: number; monto_neto?: number }): number {
-		const neto = (c.monto_neto !== undefined && c.monto_neto !== null)
-			? Number(c.monto_neto || 0)
-			: Math.max(0, (Number(c.monto || 0) || 0) - (Number(c.descuento_existente || 0) || 0));
-		const pag = Number(c.monto_pagado || 0) || 0;
-		return Math.max(0, neto - pag);
+	refMonto(c: { monto: number; monto_bruto?: number; monto_pagado?: number; descuento_existente?: number; monto_neto?: number }): number {
+		// Monto referencial = monto BRUTO (sin descuento aplicado)
+		return Number(c.monto_bruto || c.monto || 0) || 0;
 	}
 
 	private resetResumenState(err?: any): void {
@@ -459,15 +459,20 @@ export class AsignacionBecasDescuentosComponent implements OnInit {
 		this.cobrosService.getDescuentos({ cod_ceta: codCeta, cod_pensum: this.codPensumSelected, estado: undefined as any }).subscribe({
 			next: (res) => {
 				const items = Array.isArray(res?.data) ? res.data : [];
-				this.asignaciones = items.map((it: any, idx: number) => ({
-					id: it?.id_descuentos,
-					nro: idx + 1,
-					tipo: (it?.cod_beca ? 'BECA' : 'DESCUENTO') as 'BECA' | 'DESCUENTO',
-					nombre: it?.nombre || (it?.beca?.nombre_beca || it?.definicion?.nombre_descuento || ''),
-					valor: `${Number(it?.porcentaje ?? 0)} Bs`,
-					inscripcion: String((it?.tipo ?? it?.tipo_inscripcion ?? '') || '').toUpperCase(),
-					estado: (it?.estado ? 'Activo' : 'Inactivo') as 'Activo' | 'Inactivo'
-				}));
+				this.asignaciones = items.map((it: any, idx: number) => {
+					// Usar tipo_descuento calculado por el backend
+					const tipo = (it?.tipo_descuento || 'BECA') as 'BECA' | 'DESCUENTO';
+					return {
+						id: it?.id_descuentos,
+						nro: idx + 1,
+						tipo: tipo,
+						nombre: it?.nombre || (it?.beca?.nombre_beca || it?.definicion?.nombre_descuento || ''),
+						valor: `${Number(it?.porcentaje ?? 0)} Bs`,
+						inscripcion: String((it?.tipo ?? it?.tipo_inscripcion ?? '') || '').toUpperCase(),
+						estado: (it?.estado ? 'Activo' : 'Inactivo') as 'Activo' | 'Inactivo',
+						cuotas: String(it?.cuotas || '')
+					};
+				});
 			},
 			error: () => { this.asignaciones = []; }
 		});
@@ -519,11 +524,14 @@ export class AsignacionBecasDescuentosComponent implements OnInit {
 
 		this.cobrosService.assignDescuento(payload).subscribe({
 			next: () => {
-				this.limpiarFormulario(); // dejar la página lista para una nueva búsqueda
+				this.limpiarFormulario();
 				this.submitted = false;
 			},
 			error: (err) => {
 				console.error('Error asignando descuento', err);
+				const msg = err?.error?.message || 'Error al asignar descuento';
+				this.defSelectError = msg;
+				this.submitted = false;
 			}
 		});
 	}
