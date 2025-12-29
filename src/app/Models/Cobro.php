@@ -39,6 +39,8 @@ class Cobro extends Model
 		'id_asignacion_costo',
 		'tipo_documento',
 		'medio_doc',
+		'cod_tipo_cobro',
+		'concepto',
 	];
 
 	protected $casts = [
@@ -49,7 +51,7 @@ class Cobro extends Model
 		'monto' => 'decimal:2',
 		'pu_mensualidad' => 'decimal:2',
 		'cobro_completo' => 'boolean',
-		'fecha_cobro' => 'date',
+		'fecha_cobro' => 'datetime',
 	];
 
 	// Manejo de clave primaria compuesta
