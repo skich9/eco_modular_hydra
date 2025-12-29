@@ -41,6 +41,7 @@ class Cobro extends Model
 		'medio_doc',
 		'cod_tipo_cobro',
 		'concepto',
+		'reposicion_factura',
 	];
 
 	protected $casts = [
@@ -52,6 +53,7 @@ class Cobro extends Model
 		'pu_mensualidad' => 'decimal:2',
 		'cobro_completo' => 'boolean',
 		'fecha_cobro' => 'datetime',
+		'reposicion_factura' => 'boolean',
 	];
 
 	// Manejo de clave primaria compuesta
