@@ -166,7 +166,7 @@
 											</span>
 										</td>
 										<td class="text-center">{{ (m?.fecha_pago | date:'dd/MM/yyyy') || '-' }}</td>
-										<td>{{ m?.razon_social || '-' }} {{ m?.nit ? '/' + m.nit : '' }}</td>
+										<td class="text-center">{{ getRazonSocialNIT(m) }}</td>
 										<td class="text-center">{{ getNombreFormaCobro(m?.id_forma_cobro) }}</td>
 										<td>{{ getObservacionesExtendidas(m) }}</td>
 									</tr>
@@ -260,8 +260,8 @@
 										<th class="text-center">Recibo</th>
 										<th class="text-center">Pago Total</th>
 										<th class="text-center">Fecha</th>
-										<th>Razón Social / NIT</th>
-										<th>Obs.</th>
+										<th class="text-center">Razón Social / NIT</th>
+										<th class="text-center">Obs.</th>
 									</tr>
 								</thead>
 								<tbody>
@@ -278,7 +278,7 @@
 											<span class="badge bg-success">Completo</span>
 										</td>
 										<td class="text-center">{{ it?.fecha_cobro | date:'dd/MM/yyyy' }}</td>
-										<td>{{ it?.razon_social || '-' }} {{ it?.nit ? '/' + it.nit : '' }}</td>
+										<td class="text-center">{{ getRazonSocialNIT(it) }}</td>
 										<td>{{ getObservacionesExtendidas(it) }}</td>
 									</tr>
 									<tr *ngIf="(r?.cobros | filterReincorporacion)?.length === 0" class="text-center">
@@ -324,7 +324,7 @@
                         				<td class="text-center">{{ it?.nro_factura || '0' }}</td>
                         				<td class="text-center">{{ it?.nro_recibo || '0' }}</td>
                         				<td class="text-center">{{ it?.fecha_cobro | date:'dd/MM/yyyy' }}</td>
-                        				<td>{{ it?.razon_social || '-' }} {{ it?.nit ? '/' + it.nit : '' }}</td>
+                        				<td class="text-center">{{ getRazonSocialNIT(it) }}</td>
                         				<td class="text-center">{{ getNombreFormaCobro(it?.id_forma_cobro) }}</td>
 									</tr>
 									<tr *ngIf="(r?.cobros | filterNonMensualidades)?.length === 0" class="text-center">

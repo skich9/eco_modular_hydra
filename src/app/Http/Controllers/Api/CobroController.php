@@ -299,6 +299,16 @@ class CobroController extends Controller
 					$join->on('dp.cod_ceta', '=', 'estudiantes.cod_ceta'); 
 				})
 				->find($codCeta);
+			
+			// Debug para verificar que se obtenga el estudiante correcto
+			Log::info('Estudiante obtenido:', [
+				'cod_ceta_buscado' => $codCeta,
+				'estudiante_cod_ceta' => $estudiante?->cod_ceta,
+				'estudiante_nombre' => $estudiante?->nombre,
+				'estudiante_apellido' => $estudiante?->apellido,
+				'estudiante_completo' => $estudiante?->toArray()
+			]);
+			
 			if (!$estudiante) {
 				return response()->json([
 					'success' => false,
@@ -451,9 +461,9 @@ class CobroController extends Controller
 			}
 			
 			$cobrosMensualidad = clone $cobrosBase;
-			$cobrosMensualidad = $cobrosMensualidad->get();
+			$cobrosMensualidad = $cobrosMensualidad->with(['recibo', 'factura'])->get();
 			$cobrosItems = clone $cobrosBase;
-			$cobrosItems = $cobrosItems->get();
+			$cobrosItems = $cobrosItems->with(['recibo', 'factura'])->get();
 			$totalMensualidad = $cobrosMensualidad->sum('monto');
 			$totalItems = 0; // Ya están incluidos en totalMensualidad
 			
@@ -474,6 +484,7 @@ class CobroController extends Controller
 			$cobrosMensualidadConParciales = clone $cobrosBase;
 			$cobrosMensualidadConParciales = $cobrosMensualidadConParciales
 				->whereNull('id_item') // Capturar todos los cobros que no son de items adicionales
+				->with(['recibo', 'factura'])
 				->get();
 			$totalMensualidadConParciales = $cobrosMensualidadConParciales->sum('monto');
 
@@ -677,7 +688,22 @@ class CobroController extends Controller
 			$totalDescuentos = 0.0;
 			if (!empty($descuentosPorAsign)) { foreach ($descuentosPorAsign as $v) { $totalDescuentos += (float)$v; } }
 			$montoSemestreNeto = isset($montoSemestre) ? max(0, (float)$montoSemestre - (float)$totalDescuentos) : null;
-			$saldoMensualidad = $montoSemestreNeto !== null ? (float)$montoSemestreNeto - (float)$totalMensualidad : null;
+			// Corrección: Usar solo mensualidades completas para el saldo
+			$saldoMensualidad = $montoSemestreNeto !== null ? (float)$montoSemestreNeto - (float)$totalMensualidadCompletas : null;
+			
+			// Debug para el cálculo del saldo
+			Log::info('Cálculo de saldo de mensualidad:', [
+				'cod_ceta' => $codCeta,
+				'montoSemestre' => $montoSemestre,
+				'totalDescuentos' => $totalDescuentos,
+				'montoSemestreNeto' => $montoSemestreNeto,
+				'totalMensualidad' => $totalMensualidad,
+				'totalMensualidadCompletas' => $totalMensualidadCompletas,
+				'totalMensualidadConParciales' => $totalMensualidadConParciales,
+				'saldoMensualidad' => $saldoMensualidad,
+				'formula_usada' => 'montoSemestreNeto - totalMensualidadCompletas'
+			]);
+			
 			$puMensualFromNext = $mensualidadNext ? round((float) ($mensualidadNext['monto'] ?? 0), 2) : null;
 // >>>>>>> db8167bb0a817bf7e0af1d0732b63770d42d68e3
 			$puMensualFromAsignacion = $asignacionesPrimarias->count() > 0 ? round((float) $asignacionesPrimarias->avg('monto'), 2) : null;
@@ -778,6 +804,17 @@ class CobroController extends Controller
 			$estudianteData = $estudiante->toArray();
 			// Agregar nombre_completo desde el accessor
 			$estudianteData['nombre_completo'] = $estudiante->nombre_completo;
+			
+			// Debug para verificar datos del estudiante antes de devolver
+			Log::info('Datos del estudiante a devolver:', [
+				'cod_ceta' => $estudianteData['cod_ceta'] ?? 'no existe',
+				'nombre' => $estudianteData['nombre'] ?? 'no existe',
+				'apellido' => $estudianteData['apellido'] ?? 'no existe',
+				'nombre_completo' => $estudianteData['nombre_completo'] ?? 'no existe',
+				'ci_original' => $estudianteData['ci'] ?? 'no existe',
+				'ci_dp' => $estudiante->dp->ci_doc ?? 'no existe dp'
+			]);
+			
 			if (isset($estudiante->dp)) {
 				$estudianteData['ci'] = $estudiante->dp->ci_doc ?: ($estudiante->ci ?: '');
 				$estudianteData['telefono'] = $estudiante->dp->telefono_doc ?: '';
@@ -933,12 +970,24 @@ class CobroController extends Controller
 						'mensualidad' => [
 							'total' => (float) $totalMensualidad,
 							'count' => $cobrosMensualidad->count(),
-							'items' => $cobrosMensualidad,
+							'items' => $cobrosMensualidad->map(function($cobro) {
+								$cobroArray = $cobro->toArray();
+								// Agregar datos de razón social/NIT desde recibo o factura
+								$cobroArray['cliente'] = $cobro->recibo?->cliente ?? $cobro->factura?->cliente ?? null;
+								$cobroArray['nro_documento_cobro'] = $cobro->recibo?->nro_documento_cobro ?? $cobro->factura?->nro_documento_cobro ?? null;
+								return $cobroArray;
+							}),
 						],
 						'items' => [
 							'total' => (float) $totalItems,
 							'count' => $cobrosItems->count(),
-							'items' => $cobrosItems,
+							'items' => $cobrosItems->map(function($cobro) {
+								$cobroArray = $cobro->toArray();
+								// Agregar datos de razón social/NIT desde recibo o factura
+								$cobroArray['cliente'] = $cobro->recibo?->cliente ?? $cobro->factura?->cliente ?? null;
+								$cobroArray['nro_documento_cobro'] = $cobro->recibo?->nro_documento_cobro ?? $cobro->factura?->nro_documento_cobro ?? null;
+								return $cobroArray;
+							}),
 						],
 					],
 					'mensualidad_next' => $mensualidadNext ? [

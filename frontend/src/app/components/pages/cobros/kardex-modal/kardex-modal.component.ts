@@ -13,8 +13,8 @@ interface CobroItem {
     id_forma_cobro?: string;       
     nro_factura?: string | null;   
     nro_recibo?: string | number;
-    razon_social?: string;
-    nit?: string;
+    cliente?: string;
+    nro_documento_cobro?: string;
 }
 
 @Pipe({
@@ -42,7 +42,7 @@ export class FilterNonMensualidadesPipe implements PipeTransform {
             return [];
         }
 
-        console.log('Estructura del primer item:', JSON.parse(JSON.stringify(items[0])));
+        console.log('Estructura del primer item (REINCORPORACION):', items[0] ? JSON.parse(JSON.stringify(items[0])) : 'No hay primer item');
         
         const filtered = items.filter((item: CobroItem, index: number) => {
             const isMaterialExtra = item?.cod_tipo_cobro === 'MATERIAL_EXTRA';
@@ -99,7 +99,7 @@ export class FilterReincorporacionPipe implements PipeTransform {
             return [];
         }
 
-        console.log('Estructura del primer item:', JSON.parse(JSON.stringify(items[0])));
+        console.log('Estructura del primer item (REINCORPORACION):', items[0] ? JSON.parse(JSON.stringify(items[0])) : 'No hay primer item');
         
         const filtered = items.filter((item: CobroItem, index: number) => {
             const isReincorporacion = item?.cod_tipo_cobro === 'REINCORPORACION';
@@ -111,10 +111,12 @@ export class FilterReincorporacionPipe implements PipeTransform {
                     concepto: item?.concepto,
                     monto: item?.monto,
                     fecha_cobro: item?.fecha_cobro,
-                    razon_social: item?.razon_social,
-                    nit: item?.nit,
-                    observaciones: item?.observaciones,
-                    todasLasPropiedades: Object.keys(item)
+                    nro_factura: item?.nro_factura,
+                    nro_recibo: item?.nro_recibo,
+                    cliente: item?.cliente,
+                    nro_documento_cobro: item?.nro_documento_cobro,
+                    todasLasPropiedades: Object.keys(item),
+                    objetoCompleto: item
                 });
             }
             
@@ -454,6 +456,21 @@ export class KardexModalComponent implements OnChanges {
 		if (tipoPago === 'PAGO_INDIVIDUAL') return 'Efectivo: PAGO INDIVIDUAL';
 		if (tipoPago === 'PENDIENTE') return 'Efectivo: PENDIENTE DE PAGO';
 		return 'Efectivo:';
+	}
+
+	// Método para obtener razón social/NIT desde factura o recibo
+	getRazonSocialNIT(cobro: any): string {
+		// Usar cliente/nro_documento_cobro (campos que vendrán del backend)
+		const cliente = cobro?.cliente || '-';
+		const nroDoc = cobro?.nro_documento_cobro || '';
+		const resultado = nroDoc ? `${cliente} / ${nroDoc}` : cliente;
+		
+		// Debug temporal para verificar que lleguen los datos
+		if (cobro?.cliente || cobro?.nro_documento_cobro) {
+			console.log('✅ Razón Social/NIT encontrado:', resultado);
+		}
+		
+		return resultado;
 	}
 
 	// Obtener nombre completo del método de pago a partir del código

@@ -1735,8 +1735,15 @@ export class CobrosComponent implements OnInit {
     if (!this.searchForm.valid) return;
     this.loading = true;
     const { cod_ceta, gestion } = this.searchForm.value;
+    
+    // Limpiar datos anteriores pero mantener estado de opciones
+    this.resumen = null;
+    
     this.cobrosService.getResumen(cod_ceta, gestion).subscribe({
       next: (res) => {
+        console.log('[Cobros] Respuesta del backend:', res);
+        console.log('[Cobros] Estudiante recibido:', res?.data?.estudiante);
+        
         if (res.success) {
           this.resumen = res.data;
           try {
@@ -1754,16 +1761,31 @@ export class CobrosComponent implements OnInit {
           // Prefill identidad/razón social
           const est = this.resumen?.estudiante || {};
           const fullName = [est.ap_paterno, est.ap_materno, est.nombres ].filter(Boolean).join(' ');
-          this.identidadForm.patchValue({
-            nombre_completo: fullName,
-            tipo_identidad: 1,
-            ci: est.ci || '',
-            complemento_habilitado: false,
-            complemento_ci: '',
-            razon_social: est.ap_paterno || fullName,
-            email_habilitado: false,
-            email: est.email || ''
+          
+          console.log('[Cobros] Datos del estudiante para llenar formulario:', {
+            estudiante: est,
+            fullName: fullName,
+            ci: est.ci,
+            cod_ceta: est.cod_ceta
           });
+          
+          // Limpiar formulario antes de llenar con nuevos datos con un pequeño delay
+          setTimeout(() => {
+            console.log('[Cobros] Limpiando y llenando formulario...');
+            this.identidadForm.reset();
+            this.identidadForm.patchValue({
+              nombre_completo: fullName,
+              tipo_identidad: 1,
+              ci: est.ci || '',
+              complemento_habilitado: false,
+              complemento_ci: '',
+              razon_social: est.ap_paterno || fullName,
+              email_habilitado: false,
+              email: est.email || ''
+            });
+            
+            console.log('[Cobros] Formulario después de llenar:', this.identidadForm.value);
+          }, 50);
 
           // Autocompletar desde documentos presentados si el backend envió documento_identidad
           const docId = this.resumen?.documento_identidad || null;
@@ -1848,6 +1870,12 @@ export class CobrosComponent implements OnInit {
       },
       error: (err) => {
         console.error('Resumen error:', err);
+        
+        // No limpiar el formulario aquí para permitir mostrar datos si la carga es exitosa
+        this.resumen = null;
+        this.reincorporacion = null;
+        this.showOpciones = false;
+        
         const status = Number(err?.status || 0);
         const backendMsg = (err?.error?.message || err?.message || '').toString();
         // Fallback: si la gestión solicitada no aplica, reintentar con la última inscripción del estudiante
