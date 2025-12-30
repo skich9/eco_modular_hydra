@@ -58,7 +58,26 @@ Route::middleware('auth:sanctum')->get('/user', function (Request $request) {
 
 // ===================== SGA Proxy (Reincorporación) =====================
 Route::match(['get','post'], 'sga/eco_hydra/Reincorporacion/estado', function (Request $request) {
-    $base = env('SGA_BASE_URL');
+    // Seleccionar URL SGA según codigo_carrera del pensum
+    $codPensum = $request->input('cod_pensum');
+    $base = env('SGA_BASE_URL'); // default Electrónica
+    
+    if ($codPensum) {
+        try {
+            $pensum = \App\Models\Pensum::where('cod_pensum', $codPensum)->first();
+            if ($pensum && $pensum->codigo_carrera) {
+                $carrera = strtoupper($pensum->codigo_carrera);
+                // MEA = Mecánica Automotriz -> usar URL de Mecánica
+                if ($carrera === 'MEA') {
+                    $base = env('SGA_MECANICA_URL', env('SGA_BASE_URL'));
+                }
+                // EEA = Electricidad y Electrónica -> usar URL de Electrónica (default)
+            }
+        } catch (\Throwable $e) {
+            \Log::warning('Error determinando URL SGA por carrera', ['error' => $e->getMessage()]);
+        }
+    }
+    
     try {
         if ($base) {
             $url = rtrim($base, '/') . '/eco_hydra/Reincorporacion/estado';

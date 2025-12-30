@@ -524,6 +524,17 @@
       (addRecuperacion)="onAddPagosFromModal($event)"
     ></app-recuperacion-modal>
 
+    <!-- Modal: Reincorporación -->
+    <app-reincorporacion-modal
+      [resumen]="resumen"
+      [formasCobro]="modalFormasCobro"
+      [cuentasBancarias]="cuentasBancarias"
+      [baseNro]="getNextCobroNro()"
+      [defaultMetodoPago]="modalFormasCobro[0]?.id_forma_cobro || selectedFormaCobroId"
+      [costoReincorporacion]="reincorporacionCosto || 0"
+      (addReincorporacion)="onAddPagosFromModal($event)"
+    ></app-reincorporacion-modal>
+
     <!-- Modal: Búsqueda de Estudiante -->
     <app-busqueda-estudiante-modal
       [loading]="busquedaLoading"
