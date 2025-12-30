@@ -946,11 +946,47 @@ class CobroController extends Controller
 							
 							return $item;
 						})->values(),
-						'adeudadas' => $asignacionesPrimarias->filter(function($a){
-							// Incluir PARCIAL (deben mostrar el saldo restante) y otros estados no cobrados
-							// Incluir todas las cuotas no cobradas (vencidas y no vencidas)
+						'adeudadas' => collect()
+							// Agregar asignaciones primarias adeudadas
+							->concat($asignacionesPrimarias->filter(function($a){
+								// Incluir PARCIAL (deben mostrar el saldo restante) y otros estados no cobrados
+								// Incluir todas las cuotas no cobradas (vencidas y no vencidas)
+								return $a->estado_pago !== 'COBRADO';
+							})->values())
+							// Agregar asignaciones de arrastre adeudadas
+							->concat($asignacionesArrastre ? $asignacionesArrastre->filter(function($a){
+								// Incluir solo las que no estén cobradas
+								return ($a->estado_pago ?? '') !== 'COBRADO';
+							})->map(function($a) use ($descuentosPorAsignArrastre){
+								// Formatear asignaciones de arrastre con la misma estructura que las primarias
+								return [
+									'numero_cuota' => (int) ($a->numero_cuota ?? 0),
+									'monto' => (float) ($a->monto ?? 0),
+									'descuento' => (float) ($descuentosPorAsignArrastre[(int)($a->id_asignacion_costo ?? 0)] ?? 0),
+									'monto_neto' => max(0, (float) ($a->monto ?? 0) - (float) ($descuentosPorAsignArrastre[(int)($a->id_asignacion_costo ?? 0)] ?? 0)),
+									'monto_pagado' => (float) ($a->monto_pagado ?? 0),
+									'estado_pago' => (string) ($a->estado_pago ?? ''),
+									'id_asignacion_costo' => (int) ($a->id_asignacion_costo ?? 0) ?: null,
+									'id_cuota_template' => isset($a->id_cuota_template) ? ((int)$a->id_cuota_template ?: null) : null,
+									'fecha_vencimiento' => $a->fecha_vencimiento,
+									'tipo_inscripcion' => 'ARRASTRE', // Marcar como arrastre
+								];
+							})->values() : collect())
+							// Ordenar por número de cuota
+							->sortBy('numero_cuota')
+							->values(),
+					
+					// Debug para verificar adeudadas
+					'adeudadas_debug' => [
+						'asignaciones_primarias_count' => $asignacionesPrimarias->count(),
+						'asignaciones_arrastre_count' => $asignacionesArrastre ? $asignacionesArrastre->count() : 0,
+						'adeudadas_primarias' => $asignacionesPrimarias->filter(function($a){
 							return $a->estado_pago !== 'COBRADO';
-						})->values(),
+						})->count(),
+						'adeudadas_arrastre' => $asignacionesArrastre ? $asignacionesArrastre->filter(function($a){
+							return ($a->estado_pago ?? '') !== 'COBRADO';
+						})->count() : 0,
+					],
 					],
 					'asignaciones_arrastre' => ($asignacionesArrastre && $asignacionesArrastre->count() > 0) ? $asignacionesArrastre->map(function($a) use ($descuentosPorAsignArrastre){
 						return [
