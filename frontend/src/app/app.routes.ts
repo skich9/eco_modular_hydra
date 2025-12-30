@@ -83,6 +83,11 @@ export const routes: Routes = [
 				path: 'cobros',
 				loadComponent: () => import('./components/pages/cobros/cobros.component').then(m => m.CobrosComponent)
 			},
+			// Reimpresión: Facturación posterior
+			{
+				path: 'reimpresion/facturacion-posterior',
+				loadComponent: () => import('./components/pages/reimpresion/facturacion-posterior/facturacion-posterior.component').then(m => m.FacturacionPosteriorComponent)
+			},
 			// Ruta para Configuraciones Generales
 			{
 				path: 'configuraciones-generales',

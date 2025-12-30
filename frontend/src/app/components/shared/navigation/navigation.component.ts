@@ -50,6 +50,13 @@ export class NavigationComponent implements OnInit {
 				{ name: 'Reportes', icon: 'fa-chart-bar', route: '/reportes' }
 			]
 		},
+		{
+			name: 'Reimpresión',
+			icon: 'fas fa-print',
+			submenu: [
+				{ name: 'Facturación posterior', icon: 'fa-file-invoice-dollar', route: '/reimpresion/facturacion-posterior' }
+			]
+		},
         {
             name: 'Académico',
             icon: 'fas fa-graduation-cap',

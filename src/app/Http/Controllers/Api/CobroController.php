@@ -1727,8 +1727,8 @@ class CobroController extends Controller
 					}
 					// Inserción en notas SGA: después de resolver id_asign/id_cuota para formar el detalle correcto
  					// Derivar id_asignacion_costo / id_cuota cuando no vienen en el payload
- 					// Nota: si es Rezagado o Prueba de Recuperación, NO asociar a cuotas ni afectar mensualidad/arrastre
-					$isRezagado = false; $isRecuperacion = false; $isReincorporacion = false; $isSecundario = false;
+ 					// Nota: si es Rezagado, Prueba de Recuperación, Reincorporación o Reposición de Factura, NO asociar a cuotas ni afectar mensualidad/arrastre
+					$isRezagado = false; $isRecuperacion = false; $isReincorporacion = false; $isReposicionFactura = false; $isSecundario = false;
 					try {
 						$obsCheck = (string)(isset($item['observaciones']) ? $item['observaciones'] : (isset($request->observaciones) ? $request->observaciones : ''));
 						if ($obsCheck !== '') {
@@ -1744,7 +1744,9 @@ class CobroController extends Controller
 							if ($detRaw !== '' && strpos($detRaw, 'REINCORPOR') !== false) { $isReincorporacion = true; }
 						}
 						$hasItem = isset($item['id_item']) && !empty($item['id_item']);
-						$isSecundario = ($isRezagado || $isRecuperacion || $isReincorporacion || $hasItem);
+						// Detectar reposición de factura desde el item
+						$isReposicionFactura = isset($item['reposicion_factura']) && ($item['reposicion_factura'] === true || $item['reposicion_factura'] === 1 || $item['reposicion_factura'] === '1');
+						$isSecundario = ($isRezagado || $isRecuperacion || $isReincorporacion || $hasItem || $isReposicionFactura);
 					} catch (\Throwable $e) {}
 					$idAsign = isset($item['id_asignacion_costo']) ? $item['id_asignacion_costo'] : null;
 					$idCuota = isset($item['id_cuota']) ? $item['id_cuota'] : null;
@@ -1819,6 +1821,7 @@ class CobroController extends Controller
 							} catch (\Throwable $e) {}
 						}
 					}
+					// Si es secundario (incluye reposición de factura), limpiar asignaciones para no afectarlas
 					if ($isSecundario) { $idAsign = null; $idCuota = null; }
 					$order = isset($item['order']) ? (int)$item['order'] : ($idx + 1);
 
@@ -2086,6 +2089,7 @@ class CobroController extends Controller
 						'cod_inscrip' => $primaryInscripcion ? (int)$primaryInscripcion->cod_inscrip : null,
 						'cod_tipo_cobro' => $codTipoCobroItem,
 						'concepto' => $conceptoOut,
+						'reposicion_factura' => $isReposicionFactura ? 1 : null,
 					]);
 					$created = Cobro::create($payload)->load(['usuario', 'cuota', 'formaCobro', 'cuentaBancaria', 'itemCobro']);
 
@@ -2116,8 +2120,8 @@ class CobroController extends Controller
 						$batchPaidByTpl[$idCuota] = (isset($batchPaidByTpl[$idCuota]) ? $batchPaidByTpl[$idCuota] : 0) + (float)$item['monto'];
 						try { Log::info('batchStore:paidByTpl', [ 'idx' => $idx, 'tpl' => $idCuota, 'batch_paid' => $batchPaidByTpl[$idCuota] ]); } catch (\Throwable $e) {}
 					}
-					// Actualizar estado de pago de la asignación
-					if (!$isSecundario && $idAsign) {
+					// Actualizar estado de pago de la asignación (solo si NO es secundario ni reposición)
+					if (!$isSecundario && !$isReposicionFactura && $idAsign) {
 						// Releer siempre desde DB para evitar usar un snapshot desactualizado cuando hay múltiples ítems a la misma cuota
 						$toUpd = AsignacionCostos::find((int)$idAsign);
 						if ($toUpd) {

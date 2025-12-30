@@ -1,0 +1,229 @@
+<div class="container-fluid py-3">
+	<h4 class="mb-3">Reimpresión • Facturación posterior</h4>
+
+	<!-- Búsqueda por Código CETA -->
+	<div class="card mb-3">
+		<div class="card-body">
+			<form [formGroup]="searchForm" (ngSubmit)="buscarPorCodCeta()">
+				<div class="row g-3 align-items-end">
+					<div class="col-sm-4">
+						<label class="form-label">Código CETA</label>
+						<div class="input-group">
+							<input type="text" class="form-control" formControlName="cod_ceta" />
+							<button type="submit" class="btn btn-primary"><i class="fas fa-search me-1"></i>Buscar</button>
+						</div>
+
+<!-- Modal Detalle de Recibo -->
+<div class="modal fade" id="detalleReciboModal" tabindex="-1" aria-labelledby="detalleReciboModalLabel" aria-hidden="true">
+	<div class="modal-dialog modal-lg">
+		<div class="modal-content">
+			<div class="modal-header">
+				<h5 class="modal-title" id="detalleReciboModalLabel">Detalle del recibo</h5>
+				<button type="button" class="btn-close" data-bs-dismiss="modal" aria-label="Close"></button>
+			</div>
+			<div class="modal-body">
+				<div *ngIf="detalleRow">
+					<div class="row mb-3">
+						<div class="col-sm-3"><strong>Gestión:</strong> {{ detalleRow.gestion }}</div>
+						<div class="col-sm-3"><strong>Fecha:</strong> {{ detalleRow.fecha | date:'dd/MM/yyyy HH:mm' }}</div>
+						<div class="col-sm-3"><strong>Factura:</strong> {{ detalleRow.factura || '-' }}</div>
+						<div class="col-sm-3"><strong>Recibo:</strong> {{ detalleRow.recibo || '-' }}</div>
+					</div>
+					<div class="row mb-3">
+						<div class="col-sm-9"><strong>Glosa:</strong> {{ detalleRow.glosa }}</div>
+						<div class="col-sm-3 text-end"><strong>Importe total:</strong> {{ detalleRow.importe | number:'1.2-2' }}</div>
+					</div>
+					<div class="row mb-3">
+						<div class="col-sm-6"><strong>Usuario:</strong> {{ detalleRow.usuario || '-' }}</div>
+					</div>
+
+					<div class="table-responsive">
+						<table class="table table-sm table-striped">
+							<thead>
+								<tr>
+									<th>Tipo</th>
+									<th>Fecha</th>
+									<th>Factura</th>
+									<th>Recibo</th>
+									<th class="text-end">Monto</th>
+									<th>Observaciones</th>
+								</tr>
+							</thead>
+							<tbody>
+								<tr *ngFor="let it of detalleItems">
+									<td>{{ it?.id_item ? 'Item' : 'Mensualidad' }}</td>
+									<td>{{ (it?.fecha_cobro || it?.created_at) | date:'dd/MM/yyyy HH:mm' }}</td>
+									<td>{{ it?.nro_factura || '' }}</td>
+									<td>{{ it?.nro_recibo || '' }}</td>
+									<td class="text-end">{{ (it?.monto || 0) | number:'1.2-2' }}</td>
+									<td>{{ it?.observaciones || '' }}</td>
+								</tr>
+							</tbody>
+						</table>
+					</div>
+				</div>
+			</div>
+			<div class="modal-footer">
+				<button type="button" class="btn btn-secondary" (click)="cerrarDetalle()">Cerrar</button>
+			</div>
+		</div>
+	</div>
+</div>
+					</div>
+					<div class="col-sm-4">
+						<label class="form-label">Apellido paterno</label>
+						<input type="text" class="form-control" [value]="student.ap_paterno" disabled />
+					</div>
+					<div class="col-sm-4">
+						<label class="form-label">Apellido materno</label>
+						<input type="text" class="form-control" [value]="student.ap_materno" disabled />
+					</div>
+					<div class="col-sm-4">
+						<label class="form-label">Nombres</label>
+						<input type="text" class="form-control" [value]="student.nombres" disabled />
+					</div>
+					<div class="col-sm-4">
+						<label class="form-label">Pensum</label>
+						<input type="text" class="form-control" [value]="student.pensum" disabled />
+					</div>
+					<div class="col-sm-4">
+						<label class="form-label">Gestión</label>
+						<select class="form-select" formControlName="gestion" (change)="onGestionChange()">
+							<option value="">Seleccione...</option>
+							<option *ngFor="let g of gestionesCatalogo" [value]="g">{{ g }}</option>
+						</select>
+					</div>
+					<div class="col-12">
+						<label class="form-label">Grupo</label>
+						<div class="d-flex flex-wrap gap-2">
+							<ng-container *ngFor="let gd of student.grupos">
+								<span class="badge bg-primary">{{ gd }}</span>
+							</ng-container>
+							<span *ngIf="!student.grupos.length" class="text-muted">Sin grupos</span>
+						</div>
+					</div>
+					<div class="col-12" *ngIf="noInscrito">
+						<div class="alert alert-warning py-2 mb-0">El estudiante no está inscrito en ninguna gestión.</div>
+					</div>
+				</div>
+			</form>
+			<div class="d-flex justify-content-end mt-2">
+				<button type="button" class="btn btn-outline-danger" (click)="limpiarFormulario()"><i class="fas fa-eraser me-1"></i>Limpiar</button>
+			</div>
+		</div>
+	</div>
+
+	<!-- Tabla de cobros previos -->
+	<div *ngIf="cobros.length > 0; else noCobrosInfo" class="card">
+		<div class="card-header">
+			<span>Tabla de cobros previos</span>
+		</div>
+		<div class="card-body">
+			<div class="table-responsive">
+				<table class="table table-sm table-striped align-middle">
+					<thead>
+						<tr>
+							<th>Glosa</th>
+							<th>Gestión</th>
+							<th>Fecha</th>
+							<th>Factura</th>
+							<th>Recibo</th>
+							<th class="text-end">Importe</th>
+							<th>Usuario</th>
+							<th style="width: 60px;">Sel</th>
+							<th style="width: 120px;">Acciones</th>
+						</tr>
+					</thead>
+					<tbody>
+						<tr *ngFor="let r of cobros; let i = index">
+							<td>{{ r.glosa }}</td>
+							<td>{{ r.gestion }}</td>
+							<td>{{ r.fecha | date:'dd/MM/yyyy HH:mm' }}</td>
+							<td>{{ r.factura || '' }}</td>
+							<td>{{ r.recibo || '' }}</td>
+							<td class="text-end">{{ r.importe | number:'1.2-2' }}</td>
+							<td>{{ r.usuario }}</td>
+							<td>
+								<input type="checkbox" [(ngModel)]="r.selected" />
+							</td>
+							<td>
+								<button type="button" class="btn btn-sm btn-outline-secondary" (click)="openDetalle(r)">
+									<i class="fas fa-eye me-1"></i> Detalle
+								</button>
+							</td>
+						</tr>
+					</tbody>
+				</table>
+			</div>
+			<!-- Observaciones debajo de la tabla de cobros previos -->
+			<div class="mt-3">
+				<label class="form-label">Observaciones</label>
+				<textarea class="form-control" [ngClass]="{ 'is-invalid': isObsInvalid() }" rows="2" [(ngModel)]="observaciones" placeholder="Ingrese observaciones para la reposición de factura..."></textarea>
+				<div class="invalid-feedback">Debe ingresar observaciones para poder mostrar la tabla.</div>
+			</div>
+			<div class="d-flex justify-content-end">
+				<button class="btn btn-primary" [disabled]="!hasSelection() || isObsInvalid()" (click)="mostrarItems()">
+					<i class="fas fa-list-ul me-1"></i> Mostrar en tabla
+				</button>
+			</div>
+		</div>
+	</div>
+
+	<!-- Card Detalle factura (construido desde la selección) -->
+	<div *ngIf="detalleFacturaVisible" class="card mt-3">
+		<div class="card-header">
+			<span>Detalle factura</span>
+		</div>
+		<div class="card-body">
+			<div class="table-responsive">
+				<table class="table table-sm table-bordered align-middle">
+					<thead>
+						<tr>
+							<th style="width: 70px;">Cant.</th>
+							<th>Detalle</th>
+							<th style="width: 110px;">P/U</th>
+							<th style="width: 120px;">Descuento</th>
+							<th style="width: 120px;">Sub total</th>
+							<th style="width: 50px;">M</th>
+							<th style="width: 50px;">D</th>
+							<th style="width: 160px;">Obs.</th>
+						</tr>
+					</thead>
+					<tbody>
+						<tr *ngFor="let it of detalleFactura">
+							<td>{{ it.cantidad }}</td>
+							<td>{{ it.detalle }}</td>
+							<td class="text-end">{{ it.pu | number:'1.2-2' }}</td>
+							<td class="text-end">{{ it.descuento | number:'1.2-2' }}</td>
+							<td class="text-end">{{ it.subtotal | number:'1.2-2' }}</td>
+							<td class="text-center">{{ it.m || '' }}</td>
+							<td class="text-center">{{ it.d || '' }}</td>
+							<td>{{ it.obs || '' }}</td>
+						</tr>
+						<tr>
+							<td colspan="4" class="fw-semibold">Subtotales:</td>
+							<td class="text-end fw-semibold">{{ detalleFacturaTotales.subtotal | number:'1.2-2' }}</td>
+							<td colspan="3"></td>
+						</tr>
+						<tr>
+							<td colspan="4" class="fw-semibold">Total Cobro:</td>
+							<td class="text-end fw-semibold">{{ detalleFacturaTotales.subtotal | number:'1.2-2' }}</td>
+							<td colspan="3"></td>
+						</tr>
+					</tbody>
+				</table>
+			</div>
+		</div>
+		<div class="card-footer d-flex justify-content-end gap-2">
+			<button type="button" class="btn btn-success" (click)="reponerFactura()">
+				<i class="fas fa-file-invoice-dollar me-1"></i> Reponer factura
+			</button>
+		</div>
+	</div>
+	<ng-template #noCobrosInfo>
+		<div class="alert alert-info">
+			<i class="fas fa-info-circle me-2"></i>
+			Use el buscador para seleccionar un estudiante y gestión. Aquí se listarán los cobros para reimpresión/facturación posterior.
+		</div>
+	</ng-template>
+</div>
