@@ -14,6 +14,8 @@ class Recibo extends Model
 		'nro_recibo',
 		'anio',
 		'id_usuario',
+		'cliente',
+		'nro_documento_cobro',
 		'cod_ceta',
 		'complemento',
 		'cod_tipo_doc_identidad',

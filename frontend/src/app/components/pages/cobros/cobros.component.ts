@@ -7,6 +7,7 @@ import { AuthService } from '../../../services/auth.service';
 import { MensualidadModalComponent } from './mensualidad-modal/mensualidad-modal.component';
 import { RezagadoModalComponent } from './rezagado-modal/rezagado-modal.component';
 import { RecuperacionModalComponent } from './recuperacion-modal/recuperacion-modal.component';
+import { ReincorporacionModalComponent } from './reincorporacion-modal/reincorporacion-modal.component';
 import { ItemsModalComponent } from './items-modal/items-modal.component';
 import { KardexModalComponent } from './kardex-modal/kardex-modal.component';
 import { BusquedaEstudianteModalComponent } from './busqueda-estudiante-modal/busqueda-estudiante-modal.component';
@@ -20,7 +21,7 @@ import { ActivatedRoute } from '@angular/router';
 @Component({
   selector: 'app-cobros-page',
   standalone: true,
-  imports: [CommonModule, ReactiveFormsModule, FormsModule, MensualidadModalComponent, ItemsModalComponent, RezagadoModalComponent, RecuperacionModalComponent, BusquedaEstudianteModalComponent, KardexModalComponent, QrPanelComponent, ClickLockDirective],
+  imports: [CommonModule, ReactiveFormsModule, FormsModule, MensualidadModalComponent, ItemsModalComponent, RezagadoModalComponent, RecuperacionModalComponent, ReincorporacionModalComponent, BusquedaEstudianteModalComponent, KardexModalComponent, QrPanelComponent, ClickLockDirective],
   templateUrl: './cobros.component.html',
   styleUrls: ['./cobros.component.scss']
 })
@@ -49,7 +50,7 @@ export class CobrosComponent implements OnInit {
   mensualidadesPendientes = 0;
   mensualidadPU = 0;
   // Tipo de modal activo
-  modalTipo: 'mensualidad' | 'rezagado' | 'recuperacion' | 'arrastre' = 'mensualidad';
+  modalTipo: 'mensualidad' | 'rezagado' | 'recuperacion' | 'arrastre' | 'reincorporacion' = 'mensualidad';
 
   // Datos
   resumen: any = null;
@@ -592,23 +593,11 @@ export class CobrosComponent implements OnInit {
       return;
     }
     if (!this.ensureMetodoPagoPermitido(['EFECTIVO','TARJETA','CHEQUE','DEPOSITO','TRANSFERENCIA','QR','OTRO'])) return;
-    // Configurar modal reutilizable
-    this.modalTipo = 'reincorporacion' as any;
-    this.mensualidadPU = monto; // precio bloqueado
-    // Recalcular lista filtrada y escoger default coherente
     this.computeModalFormasFromSelection();
-    const defaultMetodo = (this.batchForm.get('cabecera.id_forma_cobro') as any)?.value || '';
-    const firstAllowed = (this.modalFormasCobro[0]?.id_forma_cobro || '').toString();
-    this.mensualidadModalForm.patchValue({
-      metodo_pago: firstAllowed || defaultMetodo,
-      cantidad: 1,
-      costo_total: monto,
-      pago_parcial: false,
-      monto_parcial: 0
-    }, { emitEvent: false });
-    // Abrir modal
+    this.modalTipo = 'reincorporacion';
+    // Abrir modal de Reincorporación
     try {
-      const modalEl = document.getElementById('mensualidadModal');
+      const modalEl = document.getElementById('reincorporacionModal');
       const bs = (window as any).bootstrap;
       if (modalEl && bs?.Modal) {
         const modal = bs.Modal.getInstance(modalEl) || new bs.Modal(modalEl);
@@ -2550,6 +2539,7 @@ export class CobrosComponent implements OnInit {
     const headerPatch = Array.isArray(payload) ? null : (payload?.cabecera || null);
     const isMensualidad = this.modalTipo === 'mensualidad';
     const isArrastre = this.modalTipo === 'arrastre';
+    const isReincorporacion = this.modalTipo === 'reincorporacion';
     // Enforce un único tipo de documento en el detalle
     const existingDoc = this.getCurrentDocTipoInForm(); // 'F' | 'R' | '' | 'MIXED'
     if (existingDoc === 'MIXED') {
@@ -2613,16 +2603,25 @@ export class CobrosComponent implements OnInit {
         ? `Mensualidad - Cuota ${numeroCuota}${mesSuffix}`
         : (isArrastre
             ? `Mensualidad (Arrastre) - Cuota ${numeroCuota ?? ''}${mesSuffix}`.trim()
-            : (p.detalle || ''));
+            : (isReincorporacion
+                ? 'Reincorporación'
+                : (p.detalle || '')));
       const detalle = esParcial ? `${baseDetalle} (Parcial)` : baseDetalle;
-      const pu = Number(p.pu_mensualidad ?? this.mensualidadPU ?? 0);
+      
+      // Para mensualidad/arrastre: calcular desde PU y descuento
+      // Para otros (Reincorporación, Rezagado, etc.): usar monto directo del payload
+      const pu = isMensualidad || isArrastre 
+        ? Number(p.pu_mensualidad ?? this.mensualidadPU ?? 0)
+        : Number(p.pu_mensualidad ?? p.monto ?? 0);
       const cant = 1;
       const desc = Number(p.descuento ?? 0) || 0;
-      // Parcial: el monto es el ingresado por el usuario (validado en el modal contra el neto PU - descuento).
-      // No volver a restar el descuento para evitar doble aplicación.
-      const monto = esParcial
-        ? Math.max(0, Number(p.monto || 0))
-        : Math.max(0, cant * pu - (isNaN(desc) ? 0 : desc));
+      
+      // Calcular monto según el tipo
+      const monto = (isMensualidad || isArrastre)
+        ? (esParcial
+            ? Math.max(0, Number(p.monto || 0))
+            : Math.max(0, cant * pu - (isNaN(desc) ? 0 : desc)))
+        : Math.max(0, Number(p.monto || 0));
       // Inferir turno desde identidad/resumen
       const turnoVal = (() => {
         let t = ((this.identidadForm.get('turno') as any)?.value || this.resumen?.inscripcion?.turno || this.resumen?.estudiante?.turno || '').toString().trim().toUpperCase();
