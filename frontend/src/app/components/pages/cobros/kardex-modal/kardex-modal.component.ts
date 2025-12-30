@@ -1,25 +1,164 @@
 import { Component, Input, OnChanges, Pipe, PipeTransform } from '@angular/core';
 import { CommonModule } from '@angular/common';
 
+interface CobroItem {
+    id_cobro?: number;
+    id?: number;
+    cod_tipo_cobro?: string;
+    concepto?: string;
+    monto?: string | number;
+    fecha_cobro?: string;
+    nro_cobro?: number | string;  
+    observaciones?: string;        
+    id_forma_cobro?: string;       
+    nro_factura?: string | null;   
+    nro_recibo?: string | number;
+    razon_social?: string;
+    nit?: string;
+}
+
 @Pipe({
-	name: 'filterNonMensualidades',
-	standalone: true
+    name: 'filterNonMensualidades',
+    standalone: true
 })
 export class FilterNonMensualidadesPipe implements PipeTransform {
-	transform(items: any[]): any[] {
-		if (!Array.isArray(items)) return [];
-		return items.filter(item => !item?.id_designacion_costo);
-	}
+    transform(data: any): CobroItem[] {
+        console.group('=== FILTRO MATERIAL EXTRA ===');
+        
+        if (!data) {
+            console.log('No hay datos');
+            console.groupEnd();
+            return [];
+        }
+
+        // Extraer el array de items del objeto
+        const items: CobroItem[] = Array.isArray(data) ? data : (data.items || []);
+        
+        console.log('Total de items a filtrar:', items.length);
+        
+        if (items.length === 0) {
+            console.log('El array de items está vacío');
+            console.groupEnd();
+            return [];
+        }
+
+        console.log('Estructura del primer item:', JSON.parse(JSON.stringify(items[0])));
+        
+        const filtered = items.filter((item: CobroItem, index: number) => {
+            const isMaterialExtra = item?.cod_tipo_cobro === 'MATERIAL_EXTRA';
+            
+            if (isMaterialExtra) {
+                console.log(`Item ${index} - MATERIAL EXTRA ENCONTRADO:`, {
+                    id: item?.id_cobro || item?.id,
+                    cod_tipo_cobro: item?.cod_tipo_cobro,
+                    concepto: item?.concepto,
+                    monto: item?.monto,
+                    fecha_cobro: item?.fecha_cobro
+                });
+            }
+            
+            return isMaterialExtra;
+        });
+        
+        console.log(`Total de items filtrados (MATERIAL_EXTRA): ${filtered.length} de ${items.length}`);
+        
+        if (filtered.length === 0) {
+            console.warn('No se encontraron registros con cod_tipo_cobro = "MATERIAL_EXTRA"');
+            console.log('Tipos de cobro encontrados:', 
+                [...new Set(items.map((item: CobroItem) => item?.cod_tipo_cobro))]
+            );
+        }
+        
+        console.groupEnd();
+        return filtered;
+    }
+}
+
+@Pipe({
+    name: 'filterReincorporacion',
+    standalone: true
+})
+export class FilterReincorporacionPipe implements PipeTransform {
+    transform(data: any): CobroItem[] {
+        console.group('=== FILTRO REINCORPORACION ===');
+        
+        if (!data) {
+            console.log('No hay datos');
+            console.groupEnd();
+            return [];
+        }
+
+        // Extraer el array de items del objeto
+        const items: CobroItem[] = Array.isArray(data) ? data : (data.items || []);
+        
+        console.log('Total de items a filtrar:', items.length);
+        
+        if (items.length === 0) {
+            console.log('El array de items está vacío');
+            console.groupEnd();
+            return [];
+        }
+
+        console.log('Estructura del primer item:', JSON.parse(JSON.stringify(items[0])));
+        
+        const filtered = items.filter((item: CobroItem, index: number) => {
+            const isReincorporacion = item?.cod_tipo_cobro === 'REINCORPORACION';
+            
+            if (isReincorporacion) {
+                console.log(`Item ${index} - REINCORPORACION ENCONTRADO:`, {
+                    id: item?.id_cobro || item?.id,
+                    cod_tipo_cobro: item?.cod_tipo_cobro,
+                    concepto: item?.concepto,
+                    monto: item?.monto,
+                    fecha_cobro: item?.fecha_cobro,
+                    razon_social: item?.razon_social,
+                    nit: item?.nit,
+                    observaciones: item?.observaciones,
+                    todasLasPropiedades: Object.keys(item)
+                });
+            }
+            
+            return isReincorporacion;
+        });
+        
+        console.log(`Total de items filtrados (REINCORPORACION): ${filtered.length} de ${items.length}`);
+        
+        if (filtered.length === 0) {
+            console.warn('No se encontraron registros con cod_tipo_cobro = "REINCORPORACION"');
+            console.log('Tipos de cobro encontrados:', 
+                [...new Set(items.map((item: CobroItem) => item?.cod_tipo_cobro))]
+            );
+        }
+        
+        console.groupEnd();
+        return filtered;
+    }
 }
 
 @Component({
 	selector: 'app-kardex-modal',
 	standalone: true,
-	imports: [CommonModule, FilterNonMensualidadesPipe],
+	imports: [CommonModule, FilterNonMensualidadesPipe, FilterReincorporacionPipe],
 	templateUrl: './kardex-modal.component.html',
 	styleUrls: ['./kardex-modal.component.scss']
 })
 export class KardexModalComponent implements OnChanges {
+	// Método para calcular el total de material extra
+	calcularTotalMaterialExtra(items: any[]): number {
+		if (!Array.isArray(items)) return 0;
+		return items
+			.filter(item => item?.cod_tipo_cobro === 'MATERIAL_EXTRA')
+			.reduce((sum, item) => sum + (parseFloat(item?.monto) || 0), 0);
+	}
+
+	// Método para calcular el total de matrícula o reincorporación
+	calcularTotalReincorporacion(items: any[]): number {
+		if (!Array.isArray(items)) return 0;
+		return items
+			.filter(item => item?.cod_tipo_cobro === 'REINCORPORACION')
+			.reduce((sum, item) => sum + (parseFloat(item?.monto) || 0), 0);
+	}
+
 	@Input() resumen: any = null;
 	@Input() gestion: string = '';
 	
@@ -318,7 +457,9 @@ export class KardexModalComponent implements OnChanges {
 	}
 
 	// Obtener nombre completo del método de pago a partir del código
-	getNombreFormaCobro(idFormaCobro: string): string {
+	getNombreFormaCobro(idFormaCobro: string | undefined | null): string {
+		if (!idFormaCobro) return 'EFECTIVO';
+		
 		const metodosPago: { [key: string]: string } = {
 			'EF': 'EFECTIVO',
 			'TA': 'TARJETA',
@@ -326,10 +467,15 @@ export class KardexModalComponent implements OnChanges {
 			'DE': 'DEPOSITO',
 			'TR': 'TRANSFERENCIA',
 			'QR': 'QR',
-			'OT': 'OTRO'
+			'OT': 'OTRO',
+			'E': 'EFECTIVO',
+			'C': 'CHEQUE',
+			'D': 'DEPOSITO',
+			'T': 'TARJETA'
 		};
 		
-		return metodosPago[idFormaCobro] || 'EFECTIVO';
+		const codigo = idFormaCobro.toUpperCase();
+		return metodosPago[codigo] || 'EFECTIVO';
 	}
 
 	// Obtener observaciones extendidas según el método de pago

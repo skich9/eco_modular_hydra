@@ -138,6 +138,7 @@
 										<th>Recibo</th>
 										<th>Pago Total</th>
 										<th>Fecha</th>
+										<th>Razón Social / NIT</th>
 										<th>Tipo de Pago</th>
 										<th>Observaciones</th>
 									</tr>
@@ -165,6 +166,7 @@
 											</span>
 										</td>
 										<td class="text-center">{{ (m?.fecha_pago | date:'dd/MM/yyyy') || '-' }}</td>
+										<td>{{ m?.razon_social || '-' }} {{ m?.nit ? '/' + m.nit : '' }}</td>
 										<td class="text-center">{{ getNombreFormaCobro(m?.id_forma_cobro) }}</td>
 										<td>{{ getObservacionesExtendidas(m) }}</td>
 									</tr>
@@ -242,6 +244,54 @@
 					</div>
 				</div>
 
+				<!-- Matrícula o Reincorporación -->
+				<div class="card mb-4">
+					<div class="card-header bg-info text-white">
+						<h6 class="mb-0">Matrícula o Reincorporación</h6>
+					</div>
+					<div class="card-body">
+						<div class="table-responsive">
+							<table class="table table-sm table-bordered align-middle reincorporacion-table">
+								<thead class="table-light">
+									<tr>
+										<th class="text-center">Pago</th>
+										<th class="text-end">Monto</th>
+										<th class="text-center">Factura</th>
+										<th class="text-center">Recibo</th>
+										<th class="text-center">Pago Total</th>
+										<th class="text-center">Fecha</th>
+										<th>Razón Social / NIT</th>
+										<th>Obs.</th>
+									</tr>
+								</thead>
+								<tbody>
+									<tr *ngFor="let it of (r?.cobros?.items | filterReincorporacion); let i = index">
+										<td class="text-center">{{ i + 1 }}</td>
+										<td class="text-end">
+											<span class="status-indicator paid">
+												{{ it?.monto | number:'1.0-0' }}
+											</span>
+										</td>
+										<td class="text-center">{{ it?.nro_factura || '-' }}</td>
+										<td class="text-center">{{ it?.nro_recibo || '-' }}</td>
+										<td class="text-center">
+											<span class="badge bg-success">Completo</span>
+										</td>
+										<td class="text-center">{{ it?.fecha_cobro | date:'dd/MM/yyyy' }}</td>
+										<td>{{ it?.razon_social || '-' }} {{ it?.nit ? '/' + it.nit : '' }}</td>
+										<td>{{ getObservacionesExtendidas(it) }}</td>
+									</tr>
+									<tr *ngIf="(r?.cobros | filterReincorporacion)?.length === 0" class="text-center">
+										<td colspan="8" class="text-muted py-3">
+											No hay registros de matrícula o reincorporación
+										</td>
+									</tr>
+								</tbody>
+							</table>
+						</div>
+					</div>
+				</div>
+				
 				<!-- Material Extra -->
 				<div class="card mb-4">
 					<div class="card-header bg-primary text-white">
@@ -252,33 +302,37 @@
 							<table class="table table-sm table-bordered align-middle material-table">
 								<thead class="table-light">
 									<tr>
-										<th>Fecha</th>
-										<th>Nro Cobro</th>
-										<th>Item</th>
-										<th>Descripción</th>
-										<th>Monto</th>
-										<th>Forma</th>
-										<th>Obs.</th>
+										<th class="text-center">Nº</th>
+                        				<th>Concepto</th>
+                        				<th class="text-end">Monto</th>
+                        				<th class="text-center">Factura</th>
+                        				<th class="text-center">Recibo</th>
+                        				<th class="text-center">Fecha</th>
+                        				<th>Razón Social / NIT</th>
+                        				<th>Método de Pago</th>
 									</tr>
 								</thead>
 								<tbody>
-									<tr *ngFor="let it of (r?.cobros?.items | filterNonMensualidades)">
-										<td>{{ it?.fecha_cobro | date:'yyyy-MM-dd' }}</td>
-										<td>{{ it?.nro_cobro }}</td>
-										<td>{{ it?.id_item || '-' }}</td>
-										<td>{{ it?.descripcion || it?.id_item || '-' }}</td>
-										<td>{{ it?.monto | number:'1.2-2' }}</td>
-										<td>{{ it?.id_forma_cobro }}</td>
-										<td>{{ it?.observaciones }}</td>
+									<tr *ngFor="let it of (r?.cobros?.items | filterNonMensualidades); let i = index">
+										<td class="text-center">{{ i + 1 }}</td>
+                        				<td>{{ it?.concepto || 'Material Extra' }}</td>
+                        				<td class="text-end">
+											<span class="status-indicator paid">
+												{{ it?.monto | number:'1.0-0' }}
+											</span>
+										</td>
+                        				<td class="text-center">{{ it?.nro_factura || '0' }}</td>
+                        				<td class="text-center">{{ it?.nro_recibo || '0' }}</td>
+                        				<td class="text-center">{{ it?.fecha_cobro | date:'dd/MM/yyyy' }}</td>
+                        				<td>{{ it?.razon_social || '-' }} {{ it?.nit ? '/' + it.nit : '' }}</td>
+                        				<td class="text-center">{{ getNombreFormaCobro(it?.id_forma_cobro) }}</td>
+									</tr>
+									<tr *ngIf="(r?.cobros | filterNonMensualidades)?.length === 0" class="text-center">
+										<td colspan="8" class="text-muted py-3">
+											No hay registros de material extra
+										</td>
 									</tr>
 								</tbody>
-								<tfoot>
-									<tr>
-										<th colspan="4" class="text-end">Total Material Extra</th>
-										<th class="text-info">{{ r?.cobros?.items?.total | number:'1.2-2' }}</th>
-										<th colspan="2"></th>
-									</tr>
-								</tfoot>
 							</table>
 						</div>
 					</div>

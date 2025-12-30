@@ -13,9 +13,9 @@
 }
 
 .modal-header {
-  background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+  background: linear-gradient(135deg, #669fea 0%, #020e53 100%);
   border: none;
-  padding: 1.5rem 2rem;
+  padding: 1rem;
   
   .modal-title {
     color: white;
@@ -64,7 +64,7 @@
     border: none;
     
     &.bg-primary {
-      background: linear-gradient(135deg, #667eea 0%, #764ba2 100%) !important;
+      background: linear-gradient(135deg, #669fea 0%, #020e53 100%) !important;
     }
     
     &.bg-success {
@@ -73,6 +73,10 @@
     
     &.bg-danger {
       background: linear-gradient(135deg, #dc3545 0%, #e74c3c 100%) !important;
+    }
+    
+    &.bg-info {
+      background: linear-gradient(135deg, #17a2b8 0%, #138496 100%) !important;
     }
     
     h6 {
@@ -215,6 +219,13 @@
       font-weight: 600;
       color: #28a745;
     }
+    
+    th:nth-child(11), // Columna "Observaciones" header
+    td:nth-child(11) { // Columna "Observaciones" content
+      width: 25%;
+      min-width: 200px;
+      max-width: 300px;
+    }
   }
   
   &.adeudadas-table {
@@ -234,6 +245,15 @@
       color: #6f42c1;
     }
   }
+  
+  &.reincorporacion-table {
+    td:nth-child(2), // Columna "Monto"
+    td:nth-child(5) { // Columna "Total"
+      text-align: right;
+      font-weight: 600;
+      color: #17a2b8;
+    }
+  }
 }
 
 // Enhanced badges
@@ -244,7 +264,7 @@
   border-radius: 20px;
   
   &.bg-primary {
-    background: linear-gradient(135deg, #667eea 0%, #764ba2 100%) !important;
+    background: linear-gradient(135deg, #669fea 0%, #020e53 100%) !important;
   }
   
   &.bg-warning {

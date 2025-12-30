@@ -18,11 +18,14 @@ export class CobrosService {
 
 	constructor(private http: HttpClient, @Inject(PLATFORM_ID) private platformId: Object) {
 		if (isPlatformBrowser(this.platformId)) {
+			
 			const protocol = typeof window !== 'undefined' && window.location ? (window.location.protocol || 'http:') : 'http:';
 			const host = typeof window !== 'undefined' && window.location ? (window.location.hostname || 'localhost') : 'localhost';
 			const port = environment.apiPort || '8069';
 			this.apiUrl = `${protocol}//${host}:${port}/api`;
+
 		} else {
+			
 			this.apiUrl = environment.apiUrl;
 		}
 		this.baseUrl = `${this.apiUrl}/cobros`;
@@ -35,9 +38,11 @@ export class CobrosService {
 			.set('cod_pensum', params.cod_pensum);
 		if (params.gestion) httpParams = httpParams.set('gestion', String(params.gestion));
 		const url = `${this.apiUrl}/sga/eco_hydra/Reincorporacion/estado`;
-		return this.http.get<any>(url, { params: httpParams }).pipe(
+		let respuesta:any = this.http.get<any>(url, { params: httpParams }).pipe(
 			map((res: any) => ({ success: !!res?.success, data: res?.data || res, message: res?.message }))
 		);
+		console.log('CobrosService.getReincorporacionEstado respuesta=', respuesta);
+		return respuesta;
 	}
 
 	// ===================== Segunda Instancia (local) =====================

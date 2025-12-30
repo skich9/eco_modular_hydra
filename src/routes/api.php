@@ -62,6 +62,7 @@ Route::match(['get','post'], 'sga/eco_hydra/Reincorporacion/estado', function (R
     try {
         if ($base) {
             $url = rtrim($base, '/') . '/eco_hydra/Reincorporacion/estado';
+            Log::info('SGA Reincorporacion.estado proxy to xxxxxxxxxxxx '.$url);
             $req = Http::timeout(10);
             $cookie = env('SGA_SESSION_COOKIE');
             if ($cookie) { $req = $req->withHeaders(['Cookie' => $cookie]); }
@@ -83,7 +84,7 @@ Route::match(['get','post'], 'sga/eco_hydra/Reincorporacion/estado', function (R
                     'estudiante_nuevo_1er_semestre_normal' => false,
                     'debe_reincorporacion' => false,
                 ],
-                'message' => 'SGA_BASE_URL no configurado o SGA no disponible. Respuesta local por defecto.'
+                'message' => 'SGA_BASE_URL no configurado o SGA no disponible1. Respuesta local por defecto.'
             ], 200);
         }
     } catch (\Throwable $e) {
