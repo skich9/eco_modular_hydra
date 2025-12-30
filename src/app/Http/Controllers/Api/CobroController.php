@@ -1376,6 +1376,7 @@ class CobroController extends Controller
 					// Crear una sola factura local con el total del lote
 					$cliInGroup = (array) ($request->input('cliente', []));
                     $cliNameGroup = (string)(isset($cliInGroup['razon']) ? $cliInGroup['razon'] : (isset($cliInGroup['razon_social']) ? $cliInGroup['razon_social'] : ''));
+					$cliNumeroGroup = (string)(isset($cliInGroup['numero']) ? $cliInGroup['numero'] : '');
 					$facturaService->createComputarizada($anioFacturaGroup, (int)$nroFacturaGroup, [
 						'codigo_sucursal' => $sucursal,
 						'codigo_punto_venta' => (string)$pv,
@@ -1385,6 +1386,7 @@ class CobroController extends Controller
 						'id_forma_cobro' => (string)(isset($request->id_forma_cobro) ? $request->id_forma_cobro : ''),
 						'monto_total' => (float)$factMontoTotal,
 						'cliente' => $cliNameGroup,
+						'nro_documento_cobro' => $cliNumeroGroup,
 						'codigo_cufd' => $cufdGroup,
 						'cuf' => $cufGroup,
 						'periodo_facturado' => $gestionCtx,
@@ -1455,9 +1457,14 @@ class CobroController extends Controller
 						$anio = (int) date('Y', strtotime($item['fecha_cobro']));
 						if ($medioDoc === 'C') {
 							if ($nroReciboBatch === null) {
+								$cliInRec = (array) ($request->input('cliente', []));
+								$cliNameRec = (string)(isset($cliInRec['razon']) ? $cliInRec['razon'] : (isset($cliInRec['razon_social']) ? $cliInRec['razon_social'] : ''));
+								$cliNumeroRec = (string)(isset($cliInRec['numero']) ? $cliInRec['numero'] : '');
 								$nroRecibo = $reciboService->nextReciboAtomic($anio);
 								$reciboService->create($anio, $nroRecibo, [
 									'id_usuario' => (int)$request->id_usuario,
+									'cliente' => $cliNameRec,
+									'nro_documento_cobro' => $cliNumeroRec,
 									'id_forma_cobro' => $formaIdItem,
 									'cod_ceta' => (int)$request->cod_ceta,
 									'monto_total' => (float)$item['monto'],
@@ -1482,8 +1489,13 @@ class CobroController extends Controller
 							if ($reciboService->exists($anio, (int)$nroRecibo)) {
 								throw new \RuntimeException('nro_recibo manual duplicado: ' . $nroRecibo);
 							}
+							$cliInRecM = (array) ($request->input('cliente', []));
+							$cliNameRecM = (string)(isset($cliInRecM['razon']) ? $cliInRecM['razon'] : (isset($cliInRecM['razon_social']) ? $cliInRecM['razon_social'] : ''));
+							$cliNumeroRecM = (string)(isset($cliInRecM['numero']) ? $cliInRecM['numero'] : '');
 							$reciboService->create($anio, (int)$nroRecibo, [
 								'id_usuario' => (int)$request->id_usuario,
+								'cliente' => $cliNameRecM,
+								'nro_documento_cobro' => $cliNumeroRecM,
 								'id_forma_cobro' => $formaIdItem,
 								'cod_ceta' => (int)$request->cod_ceta,
 								'monto_total' => (float)$item['monto'],
@@ -1516,6 +1528,7 @@ class CobroController extends Controller
 								Log::debug('batchStore:cuf_debug', [ 'componentes' => isset($cufData['componentes']) ? $cufData['componentes'] : [], 'decimal' => isset($cufData['decimal']) ? $cufData['decimal'] : null, 'dv' => isset($cufData['dv']) ? $cufData['dv'] : null, 'cuf_hex' => isset($cufData['cuf']) ? $cufData['cuf'] : null, 'cuf_final' => $cuf, 'codigo_control' => isset($cufd['codigo_control']) ? $cufd['codigo_control'] : null, 'fecha_emision_iso' => $fechaEmisionIso ]);
 								$cliIn2 = (array) ($request->input('cliente', []));
                                 $cliName2 = (string)(isset($cliIn2['razon']) ? $cliIn2['razon'] : (isset($cliIn2['razon_social']) ? $cliIn2['razon_social'] : ''));
+								$cliNumero2 = (string)(isset($cliIn2['numero']) ? $cliIn2['numero'] : '');
 								$facturaService->createComputarizada($anio, $nroFactura, [
 									'codigo_sucursal' => $sucursal,
 									'codigo_punto_venta' => (string)$pv,
@@ -1526,6 +1539,7 @@ class CobroController extends Controller
 									'monto_total' => (float)$item['monto'],
 									'periodo_facturado' => isset($request->gestion) ? $request->gestion : null,
 									'cliente' => $cliName2,
+									'nro_documento_cobro' => $cliNumero2,
 									'codigo_cufd' => isset($cufd['codigo_cufd']) ? $cufd['codigo_cufd'] : null,
 									'cuf' => $cuf,
 								]);
@@ -1710,6 +1724,7 @@ class CobroController extends Controller
 							} catch (\Throwable $e) {}
 							$cliInM = (array) ($request->input('cliente', []));
                             $cliNameM = (string)(isset($cliInM['razon']) ? $cliInM['razon'] : (isset($cliInM['razon_social']) ? $cliInM['razon_social'] : ''));
+							$cliNumeroM = (string)(isset($cliInM['numero']) ? $cliInM['numero'] : '');
 							$facturaService->createManual($anio, (int)$nroFactura, [
 								'codigo_sucursal' => $sucursal,
 								'codigo_punto_venta' => (string)$pv,
@@ -1720,6 +1735,7 @@ class CobroController extends Controller
 								'monto_total' => (float)$item['monto'],
 								'periodo_facturado' => isset($request->gestion) ? $request->gestion : null,
 								'cliente' => $cliNameM,
+								'nro_documento_cobro' => $cliNumeroM,
 								'codigo_cafc' => isset($range['cafc']) ? $range['cafc'] : null,
 							]);
 							try { Log::warning('batchStore: factura M creada (local)', [ 'anio' => $anio, 'nro_factura' => (int)$nroFactura, 'cafc' => isset($range['cafc']) ? $range['cafc'] : null ]); } catch (\Throwable $e) {}

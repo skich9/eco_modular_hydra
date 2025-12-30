@@ -1,0 +1,151 @@
+<div class="modal fade" id="reincorporacionModal" tabindex="-1" aria-labelledby="reincorporacionModalLabel" aria-hidden="true">
+	<div class="modal-dialog modal-lg">
+		<div class="modal-content">
+			<div class="modal-header">
+				<h5 class="modal-title" id="reincorporacionModalLabel">Pago de Reincorporación</h5>
+				<button type="button" class="btn-close" data-bs-dismiss="modal" aria-label="Close"></button>
+			</div>
+			<div class="modal-body">
+				<div *ngIf="modalAlertMessage" class="alert" [ngClass]="{
+					'alert-warning': modalAlertType === 'warning',
+					'alert-danger': modalAlertType === 'error',
+					'alert-success': modalAlertType === 'success'
+				}">{{ modalAlertMessage }}</div>
+				<div class="p-3 bg-primary bg-opacity-10 rounded mb-3">
+					<div class="row g-3 align-items-center">
+						<div class="col-md-8">
+							<div class="small fw-semibold">Datos del Estudiante</div>
+							<div class="small text-muted">{{ resumen?.estudiante?.cod_ceta }} - {{ resumen?.estudiante?.nombre_completo || resumen?.estudiante?.nombres }}</div>
+							<div class="small">Pensum: {{ resumen?.inscripcion?.cod_pensum }} | Tipo: {{ resumen?.inscripcion?.tipo_inscripcion }}</div>
+							<div class="small">Gestión: {{ resumen?.gestion }}</div>
+						</div>
+						<div class="col-md-4" [formGroup]="form">
+							<label class="form-label">Método de Pago</label>
+							<select class="form-select" formControlName="metodo_pago" [class.is-invalid]="form.get('metodo_pago')?.invalid && (form.get('metodo_pago')?.touched || form.get('metodo_pago')?.dirty)">
+								<option value="">-- Seleccione --</option>
+								<option *ngFor="let f of formasCobro" [value]="f.id_forma_cobro">{{ labelForma(f) }}</option>
+							</select>
+							<div class="invalid-feedback">Seleccione un método de pago</div>
+						</div>
+					</div>
+				</div>
+
+				<form [formGroup]="form" class="row g-3">
+					<div class="col-md-5">
+						<label class="form-label">Tipo de registro</label>
+						<div class="d-flex align-items-center gap-3">
+							<div class="form-check">
+								<input class="form-check-input" type="radio" id="compu_reinc" value="COMPUTARIZADA" formControlName="computarizada" />
+								<label class="form-check-label" for="compu_reinc">Computarizada</label>
+							</div>
+							<div class="form-check">
+								<input class="form-check-input" type="radio" id="manual_reinc" value="MANUAL" formControlName="computarizada" />
+								<label class="form-check-label" for="manual_reinc">Manual</label>
+							</div>
+						</div>
+					</div>
+					<div class="col-md-3">
+						<label class="form-label">Comprobante</label>
+						<div class="d-flex align-items-center gap-3">
+							<div class="form-check">
+								<input class="form-check-input" type="radio" id="comp_recibo_reinc" value="RECIBO" formControlName="comprobante" />
+								<label class="form-check-label" for="comp_recibo_reinc">Recibo</label>
+							</div>
+							<div class="form-check">
+								<input class="form-check-input" type="radio" id="comp_factura_reinc" value="FACTURA" formControlName="comprobante" />
+								<label class="form-check-label" for="comp_factura_reinc">Factura</label>
+							</div>
+						</div>
+					</div>
+					<div class="col-md-4">
+						<label class="form-label">Precio Reincorporación</label>
+						<input class="form-control" [value]="costoReincorporacion | number:'1.2-2'" readonly />
+					</div>
+
+					<div class="col-md-8 d-flex align-items-center gap-4">
+						<div class="form-check">
+							<input class="form-check-input" type="checkbox" id="pagoParcial_reinc" formControlName="pago_parcial" />
+							<label class="form-check-label" for="pagoParcial_reinc">Pago parcial de Reincorporación</label>
+						</div>
+					</div>
+					<div class="col-md-4" *ngIf="form.get('pago_parcial')?.value">
+						<label class="form-label">Saldo a pagar</label>
+						<input type="number" step="0.01" class="form-control"
+							[ngClass]="{ 'is-invalid': form.get('monto_parcial')?.hasError('max') && form.get('monto_parcial')?.touched }"
+							formControlName="monto_parcial" />
+						<div class="invalid-feedback" *ngIf="form.get('monto_parcial')?.hasError('max')">
+							El monto no puede exceder {{ costoReincorporacion | number:'1.2-2' }}
+						</div>
+					</div>
+
+					<div class="col-md-4">
+						<label class="form-label">Fecha de cobro</label>
+						<input type="date" class="form-control" formControlName="fecha_cobro" />
+					</div>
+
+					<!-- Datos bancarios / tarjeta -->
+					<ng-container *ngIf="showBancarioBlock">
+						<div class="col-12">
+							<div class="border rounded p-3 mb-2">
+								<div class="row g-3 align-items-end">
+									<div class="col-md-4">
+										<label class="form-label">Cuenta destino</label>
+										<select class="form-select" formControlName="id_cuentas_bancarias" [class.is-invalid]="form.get('id_cuentas_bancarias')?.invalid && (form.get('id_cuentas_bancarias')?.touched || form.get('id_cuentas_bancarias')?.dirty)">
+											<option value="">Seleccione cuenta/banco</option>
+											<option *ngFor="let c of cuentasBancarias" [value]="c.id_cuentas_bancarias">{{ c.banco }} - {{ c.numero_cuenta }}</option>
+										</select>
+										<div class="invalid-feedback">Seleccione una cuenta destino</div>
+									</div>
+									<div class="col-md-4">
+										<label class="form-label">Fecha depósito</label>
+										<input type="date" class="form-control" formControlName="fecha_deposito" [class.is-invalid]="form.get('fecha_deposito')?.invalid && (form.get('fecha_deposito')?.touched || form.get('fecha_deposito')?.dirty)" />
+										<div class="invalid-feedback">Ingrese la fecha del depósito</div>
+									</div>
+									<div class="col-md-4">
+										<label class="form-label">Num. depósito</label>
+										<input type="text" class="form-control" formControlName="nro_deposito" [class.is-invalid]="form.get('nro_deposito')?.invalid && (form.get('nro_deposito')?.touched || form.get('nro_deposito')?.dirty)" />
+										<div class="invalid-feedback">Ingrese el número de depósito</div>
+									</div>
+									<div class="col-md-4" *ngIf="isTransferencia || isTarjeta">
+										<label class="form-label">Banco Origen</label>
+										<input type="text" class="form-control" formControlName="banco_origen" placeholder="Banco origen" [class.is-invalid]="form.get('banco_origen')?.invalid && (form.get('banco_origen')?.touched || form.get('banco_origen')?.dirty)" />
+										<div class="invalid-feedback">Ingrese el banco de origen</div>
+									</div>
+									<div class="col-md-2" *ngIf="isTarjeta">
+										<label class="form-label">Tarjeta (4 primeros)</label>
+										<input class="form-control" maxlength="4" formControlName="tarjeta_first4" placeholder="4" [class.is-invalid]="form.get('tarjeta_first4')?.invalid && (form.get('tarjeta_first4')?.touched || form.get('tarjeta_first4')?.dirty)" />
+										<div class="invalid-feedback">Ingrese 4 dígitos</div>
+									</div>
+									<div class="col-md-2" *ngIf="isTarjeta">
+										<label class="form-label">Tarjeta (4 últimos)</label>
+										<input class="form-control" maxlength="4" formControlName="tarjeta_last4" placeholder="4" [class.is-invalid]="form.get('tarjeta_last4')?.invalid && (form.get('tarjeta_last4')?.touched || form.get('tarjeta_last4')?.dirty)" />
+										<div class="invalid-feedback">Ingrese 4 dígitos</div>
+									</div>
+								</div>
+							</div>
+						</div>
+					</ng-container>
+
+					<div class="col-md-12">
+						<label class="form-label">Observaciones</label>
+						<textarea class="form-control" rows="2" formControlName="observaciones"></textarea>
+					</div>
+					<div class="col-12">
+						<div class="p-3 bg-light rounded">
+							<div class="row">
+								<div class="col-md-6">
+									<div class="small text-muted">Costo total</div>
+									<div class="h5 mb-0">{{ total | number:'1.2-2' }} Bs.</div>
+								</div>
+							</div>
+						</div>
+					</div>
+					<div class="col-12 d-flex justify-content-end gap-2">
+						<button type="button" class="btn btn-success" (click)="addAndClose()"><i class="bi bi-plus-circle me-1"></i> Adicionar y Salir</button>
+						<button type="button" class="btn btn-secondary" data-bs-dismiss="modal">Cerrar</button>
+					</div>
+				</form>
+			</div>
+		</div>
+	</div>
+</div>
