@@ -46,8 +46,14 @@ export class NavigationComponent implements OnInit {
 			name: 'Cobros',
 			icon: 'fas fa-money-bill-wave',
 			submenu: [
-				{ name: 'Gestionar Cobros', icon: 'fa-cash-register', route: '/cobros' },
-				{ name: 'Reportes', icon: 'fa-chart-bar', route: '/reportes' }
+				{ name: 'Gestionar Cobros', icon: 'fa-cash-register', route: '/cobros' }
+			]
+		},
+		{
+			name: 'Reportes',
+			icon: 'fas fa-chart-bar',
+			submenu: [
+				{ name: 'Libro Diario', icon: 'fa-book', route: '/reportes/libro-diario' }
 			]
 		},
         {

@@ -99,6 +99,12 @@ export const routes: Routes = [
                 path: 'sin/contingencias',
                 loadComponent: () => import('./components/pages/sin/contingencias/contingencias.component').then(m => m.ContingenciasComponent)
             },
+            
+            // Reportes
+            {
+                path: 'reportes/libro-diario',
+                loadComponent: () => import('./components/pages/reportes/libro-diario/libro-diario.component').then(m => m.LibroDiarioComponent)
+            },
 			
 			// Ruta por defecto
 			{ path: '', redirectTo: 'dashboard', pathMatch: 'full' }
