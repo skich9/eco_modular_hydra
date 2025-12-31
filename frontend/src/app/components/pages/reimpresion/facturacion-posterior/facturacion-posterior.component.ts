@@ -99,9 +99,9 @@ export class FacturacionPosteriorComponent implements OnInit {
 			complemento_ci: [{ value: '', disabled: true }],
 			razon_social: ['']
 		});
-		// Obtener usuario actual del localStorage o sessionStorage
+		// Obtener usuario actual del localStorage (current_user)
 		try {
-			const userData = localStorage.getItem('user') || sessionStorage.getItem('user');
+			const userData = localStorage.getItem('current_user');
 			if (userData) {
 				const user = JSON.parse(userData);
 				this.currentUserNickname = user?.nickname || user?.nombre_completo || user?.nombre || 'Sistema';
@@ -189,8 +189,9 @@ export class FacturacionPosteriorComponent implements OnInit {
 			ciEstudiante = 'SIN INFORMACIÓN';
 		}
 		
+		// clienteData ya no se usa para facturación, se obtiene de identidadForm
 		this.clienteData = {
-			numero: codCeta,
+			numero: ciEstudiante,  // CI del estudiante, no cod_ceta
 			razon: nombreCompleto,
 			tipo_identidad: tipoIdentidad
 		};
@@ -218,6 +219,12 @@ export class FacturacionPosteriorComponent implements OnInit {
 		}>();
 		
 		for (const r of (listMens || [])) {
+			// Filtrar solo RECIBOS (tipo_documento='R') con reposicion_factura = 1
+			const tipoDoc = String(r?.tipo_documento || '').toUpperCase();
+			if (tipoDoc === 'R' && (r?.reposicion_factura == 1 || r?.reposicion_factura === true)) {
+				continue;
+			}
+			
 			const fechaRaw = String(r?.fecha_cobro || r?.created_at || '');
 			
 			// Extraer nickname del usuario correctamente
@@ -347,7 +354,7 @@ export class FacturacionPosteriorComponent implements OnInit {
 			const obsBase = (this.observaciones || '').toString().trim();
 			const obsConGeneradoPor = obsBase ? `${obsBase}. Generado por ${this.currentUserNickname}` : `Generado por ${this.currentUserNickname}`;
 
-			// Construir items para la factura nueva (sin reposicion_factura, sin id_asignacion_costo/id_cuota)
+			// Construir items para la factura nueva (CON reposicion_factura, SIN id_asignacion_costo/id_cuota)
 			const items = raw.map((r: any) => ({
 				monto: Number(r?.monto || 0) || 0,
 				fecha_cobro: fechaIso,
@@ -359,7 +366,34 @@ export class FacturacionPosteriorComponent implements OnInit {
 				medio_doc: 'C',
 				concepto: (r?.concepto || '').toString(),
 				observaciones: obsConGeneradoPor,
+				reposicion_factura: 1
 			}));
+
+			// Obtener datos del cliente desde identidadForm (puede haber sido modificado en modal)
+			const tipoId = Number(this.identidadForm.get('tipo_identidad')?.value || 1);
+			const ci = String(this.identidadForm.get('ci')?.value || '');
+			const razonSocial = String(this.identidadForm.get('razon_social')?.value || '');
+			const complementoHab = !!this.identidadForm.get('complemento_habilitado')?.value;
+			const complemento = complementoHab ? String(this.identidadForm.get('complemento_ci')?.value || '') : '';
+			
+			// Construir número de documento completo (CI + complemento si aplica)
+			const numeroDocumento = complemento ? `${ci}${complemento}` : ci;
+
+			// Obtener id_usuario desde localStorage
+			let idUsuario = 0;
+			if (typeof localStorage !== 'undefined') {
+				try {
+					const raw = localStorage.getItem('current_user');
+					if (raw) {
+						const parsed = JSON.parse(raw);
+						if (parsed?.id_usuario) {
+							idUsuario = Number(parsed.id_usuario);
+						}
+					}
+				} catch (e) {
+					console.error('Error obteniendo id_usuario', e);
+				}
+			}
 
 			const payload: any = {
 				cod_ceta: this.searchForm.value?.cod_ceta || '',
@@ -367,14 +401,15 @@ export class FacturacionPosteriorComponent implements OnInit {
 				tipo_inscripcion: this.ctxTipoInscripcion,
 				cod_inscrip: this.ctxCodInscrip,
 				gestion: this.ctxGestion,
+				id_usuario: idUsuario,
 				id_forma_cobro: idForma,
 				emitir_online: true,
 				items,
 				use_reposicion_user: true,
 				cliente: {
-					numero: this.clienteData.numero,
-					razon: this.clienteData.razon,
-					tipo_identidad: this.clienteData.tipo_identidad
+					numero: numeroDocumento,
+					razon: razonSocial,
+					tipo_identidad: tipoId
 				}
 			};
 
@@ -387,6 +422,37 @@ export class FacturacionPosteriorComponent implements OnInit {
 							next: (res2: any) => {
 								if (res2?.success) {
 									alert('Reposición registrada correctamente.');
+									
+									// Descargar la factura generada
+									const items = res2?.data?.items || [];
+									if (items.length > 0) {
+										// Buscar el primer item que sea factura (tipo_documento='F')
+										const facturaItem = items.find((it: any) => String(it?.tipo_documento || '').toUpperCase() === 'F');
+										
+										if (facturaItem && facturaItem.nro_factura) {
+											const nroFactura = facturaItem.nro_factura;
+											// Obtener año de la fecha de cobro o usar año actual
+											const fechaCobro = facturaItem?.cobro?.fecha_cobro || facturaItem?.cobro?.created_at;
+											const anio = fechaCobro ? new Date(fechaCobro).getFullYear() : new Date().getFullYear();
+											
+											this.cobrosService.downloadFacturaPdf(anio, nroFactura).subscribe({
+												next: (blob: Blob) => {
+													const url = window.URL.createObjectURL(blob);
+													const a = document.createElement('a');
+													a.href = url;
+													a.download = `Factura_${nroFactura}_${anio}.pdf`;
+													document.body.appendChild(a);
+													a.click();
+													document.body.removeChild(a);
+													window.URL.revokeObjectURL(url);
+												},
+												error: (err) => {
+													console.error('Error descargando factura', err);
+												}
+											});
+										}
+									}
+									
 									this.detalleFacturaVisible = false;
 									this.locked = false;
 									this.buscarPorCodCeta();
