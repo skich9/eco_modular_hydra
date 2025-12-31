@@ -3,105 +3,72 @@
 
 	<!-- Búsqueda por Código CETA -->
 	<div class="card mb-3">
+		<div class="card-header">
+			<strong>Datos del estudiante</strong>
+		</div>
 		<div class="card-body">
 			<form [formGroup]="searchForm" (ngSubmit)="buscarPorCodCeta()">
-				<div class="row g-3 align-items-end">
-					<div class="col-sm-4">
-						<label class="form-label">Código CETA</label>
-						<div class="input-group">
-							<input type="text" class="form-control" formControlName="cod_ceta" />
-							<button type="submit" class="btn btn-primary"><i class="fas fa-search me-1"></i>Buscar</button>
+				<div class="row g-3">
+					<!-- Columna izquierda -->
+					<div class="col-md-6">
+						<div class="mb-2">
+							<label class="form-label">Código CETA</label>
+							<div class="input-group">
+								<input type="text" class="form-control" formControlName="cod_ceta" (keydown.enter)="$event.preventDefault(); buscarPorCodCeta()" />
+								<button type="submit" class="btn btn-outline-secondary">
+									<i class="fas fa-search"></i>
+								</button>
+							</div>
 						</div>
 
-<!-- Modal Detalle de Recibo -->
-<div class="modal fade" id="detalleReciboModal" tabindex="-1" aria-labelledby="detalleReciboModalLabel" aria-hidden="true">
-	<div class="modal-dialog modal-lg">
-		<div class="modal-content">
-			<div class="modal-header">
-				<h5 class="modal-title" id="detalleReciboModalLabel">Detalle del recibo</h5>
-				<button type="button" class="btn-close" data-bs-dismiss="modal" aria-label="Close"></button>
-			</div>
-			<div class="modal-body">
-				<div *ngIf="detalleRow">
-					<div class="row mb-3">
-						<div class="col-sm-3"><strong>Gestión:</strong> {{ detalleRow.gestion }}</div>
-						<div class="col-sm-3"><strong>Fecha:</strong> {{ detalleRow.fecha | date:'dd/MM/yyyy HH:mm' }}</div>
-						<div class="col-sm-3"><strong>Factura:</strong> {{ detalleRow.factura || '-' }}</div>
-						<div class="col-sm-3"><strong>Recibo:</strong> {{ detalleRow.recibo || '-' }}</div>
-					</div>
-					<div class="row mb-3">
-						<div class="col-sm-9"><strong>Glosa:</strong> {{ detalleRow.glosa }}</div>
-						<div class="col-sm-3 text-end"><strong>Importe total:</strong> {{ detalleRow.importe | number:'1.2-2' }}</div>
-					</div>
-					<div class="row mb-3">
-						<div class="col-sm-6"><strong>Usuario:</strong> {{ detalleRow.usuario || '-' }}</div>
-					</div>
-
-					<div class="table-responsive">
-						<table class="table table-sm table-striped">
-							<thead>
-								<tr>
-									<th>Tipo</th>
-									<th>Fecha</th>
-									<th>Factura</th>
-									<th>Recibo</th>
-									<th class="text-end">Monto</th>
-									<th>Observaciones</th>
-								</tr>
-							</thead>
-							<tbody>
-								<tr *ngFor="let it of detalleItems">
-									<td>{{ it?.id_item ? 'Item' : 'Mensualidad' }}</td>
-									<td>{{ (it?.fecha_cobro || it?.created_at) | date:'dd/MM/yyyy HH:mm' }}</td>
-									<td>{{ it?.nro_factura || '' }}</td>
-									<td>{{ it?.nro_recibo || '' }}</td>
-									<td class="text-end">{{ (it?.monto || 0) | number:'1.2-2' }}</td>
-									<td>{{ it?.observaciones || '' }}</td>
-								</tr>
-							</tbody>
-						</table>
-					</div>
-				</div>
-			</div>
-			<div class="modal-footer">
-				<button type="button" class="btn btn-secondary" (click)="cerrarDetalle()">Cerrar</button>
-			</div>
-		</div>
-	</div>
-</div>
-					</div>
-					<div class="col-sm-4">
-						<label class="form-label">Apellido paterno</label>
-						<input type="text" class="form-control" [value]="student.ap_paterno" disabled />
-					</div>
-					<div class="col-sm-4">
-						<label class="form-label">Apellido materno</label>
-						<input type="text" class="form-control" [value]="student.ap_materno" disabled />
-					</div>
-					<div class="col-sm-4">
-						<label class="form-label">Nombres</label>
-						<input type="text" class="form-control" [value]="student.nombres" disabled />
-					</div>
-					<div class="col-sm-4">
-						<label class="form-label">Pensum</label>
-						<input type="text" class="form-control" [value]="student.pensum" disabled />
-					</div>
-					<div class="col-sm-4">
-						<label class="form-label">Gestión</label>
-						<select class="form-select" formControlName="gestion" (change)="onGestionChange()">
-							<option value="">Seleccione...</option>
-							<option *ngFor="let g of gestionesCatalogo" [value]="g">{{ g }}</option>
-						</select>
-					</div>
-					<div class="col-12">
-						<label class="form-label">Grupo</label>
-						<div class="d-flex flex-wrap gap-2">
-							<ng-container *ngFor="let gd of student.grupos">
-								<span class="badge bg-primary">{{ gd }}</span>
-							</ng-container>
-							<span *ngIf="!student.grupos.length" class="text-muted">Sin grupos</span>
+						<div [formGroup]="identidadForm" class="row g-3">
+							<div class="col-12">
+								<label class="form-label">Estudiante</label>
+								<input class="form-control" formControlName="nombre_completo" [readonly]="true" />
+							</div>
+							<div class="col-12">
+								<label class="form-label">Razón Social</label>
+								<input class="form-control" formControlName="razon_social" [readonly]="true" (click)="openRazonSocialModal()" style="cursor: pointer;" />
+							</div>
+							<div class="col-12">
+								<label class="form-label">Nro Tipo Documento</label>
+								<input class="form-control" formControlName="ci" [readonly]="true" (click)="openRazonSocialModal()" style="cursor: pointer;" />
+							</div>
+							<div class="col-12">
+								<label class="form-label">Documento de Identidad</label>
+								<select class="form-select" formControlName="tipo_identidad" [disabled]="true">
+									<option *ngFor="let d of sinDocsIdentidad" [ngValue]="d.codigo">{{ d.descripcion }}</option>
+								</select>
+							</div>
 						</div>
 					</div>
+
+					<!-- Columna derecha -->
+					<div class="col-md-6">
+						<div class="row g-3">
+							<div class="col-12">
+								<label class="form-label">Pensum</label>
+								<input type="text" class="form-control" [value]="student.pensum" disabled />
+							</div>
+							<div class="col-12">
+								<label class="form-label">Gestión</label>
+								<select class="form-select" formControlName="gestion" (change)="onGestionChange()">
+									<option value="">Seleccione...</option>
+									<option *ngFor="let g of gestionesCatalogo" [value]="g">{{ g }}</option>
+								</select>
+							</div>
+							<div class="col-12">
+								<label class="form-label">Grupos</label>
+								<div class="d-flex flex-wrap gap-2">
+									<ng-container *ngFor="let gd of student.grupos">
+										<span class="badge bg-primary">{{ gd }}</span>
+									</ng-container>
+									<span *ngIf="!student.grupos.length" class="text-muted">Sin grupos</span>
+								</div>
+							</div>
+						</div>
+					</div>
+
 					<div class="col-12" *ngIf="noInscrito">
 						<div class="alert alert-warning py-2 mb-0">El estudiante no está inscrito en ninguna gestión.</div>
 					</div>
@@ -227,3 +194,134 @@
 		</div>
 	</ng-template>
 </div>
+
+<!-- Modal Detalle de Recibo -->
+<div class="modal fade" id="detalleReciboModal" tabindex="-1" aria-labelledby="detalleReciboModalLabel" aria-hidden="true">
+	<div class="modal-dialog modal-lg">
+		<div class="modal-content">
+			<div class="modal-header">
+				<h5 class="modal-title" id="detalleReciboModalLabel">Detalle del recibo</h5>
+				<button type="button" class="btn-close" data-bs-dismiss="modal" aria-label="Close"></button>
+			</div>
+			<div class="modal-body">
+				<div *ngIf="detalleRow">
+					<div class="row mb-3">
+						<div class="col-sm-3"><strong>Gestión:</strong> {{ detalleRow.gestion }}</div>
+						<div class="col-sm-3"><strong>Fecha:</strong> {{ detalleRow.fecha | date:'dd/MM/yyyy HH:mm' }}</div>
+						<div class="col-sm-3"><strong>Factura:</strong> {{ detalleRow.factura || '-' }}</div>
+						<div class="col-sm-3"><strong>Recibo:</strong> {{ detalleRow.recibo || '-' }}</div>
+					</div>
+					<div class="row mb-3">
+						<div class="col-sm-9"><strong>Glosa:</strong> {{ detalleRow.glosa }}</div>
+						<div class="col-sm-3 text-end"><strong>Importe total:</strong> {{ detalleRow.importe | number:'1.2-2' }}</div>
+					</div>
+					<div class="row mb-3">
+						<div class="col-sm-6"><strong>Usuario:</strong> {{ detalleRow.usuario || '-' }}</div>
+					</div>
+
+					<div class="table-responsive">
+						<table class="table table-sm table-striped">
+							<thead>
+								<tr>
+									<th>Tipo</th>
+									<th>Fecha</th>
+									<th>Factura</th>
+									<th>Recibo</th>
+									<th class="text-end">Monto</th>
+									<th>Observaciones</th>
+								</tr>
+							</thead>
+							<tbody>
+								<tr *ngFor="let it of detalleItems">
+									<td>{{ it?.id_item ? 'Item' : 'Mensualidad' }}</td>
+									<td>{{ (it?.fecha_cobro || it?.created_at) | date:'dd/MM/yyyy HH:mm' }}</td>
+									<td>{{ it?.nro_factura || '' }}</td>
+									<td>{{ it?.nro_recibo || '' }}</td>
+									<td class="text-end">{{ (it?.monto || 0) | number:'1.2-2' }}</td>
+									<td>{{ it?.observaciones || '' }}</td>
+								</tr>
+							</tbody>
+						</table>
+					</div>
+				</div>
+			</div>
+			<div class="modal-footer">
+				<button type="button" class="btn btn-secondary" data-bs-dismiss="modal">Cerrar</button>
+			</div>
+		</div>
+	</div>
+</div>
+
+<!-- Modal: Razón social / Documento -->
+<div class="modal fade" id="razonSocialModal" tabindex="-1" aria-labelledby="razonSocialModalLabel" aria-hidden="true">
+	<div class="modal-dialog modal-lg">
+		<div class="modal-content">
+			<div class="modal-header">
+				<h5 class="modal-title" id="razonSocialModalLabel">Razón social</h5>
+				<button type="button" class="btn-close" data-bs-dismiss="modal" aria-label="Close"></button>
+			</div>
+			<div class="modal-body">
+				<!-- Alertas del modal -->
+				<div *ngIf="modalAlertMessage" class="alert mb-3" [ngClass]="{
+					'alert-success': modalAlertType === 'success',
+					'alert-danger': modalAlertType === 'error',
+					'alert-warning': modalAlertType === 'warning'
+				}">{{ modalAlertMessage }}</div>
+
+				<!-- Panel verde con cabecera azul -->
+				<div class="p-3 bg-success bg-opacity-10 rounded">
+					<div class="border rounded">
+						<div class="bg-primary text-white px-3 py-2 rounded-top">
+							<strong>Búsqueda de NIT y Razón Social:</strong>
+						</div>
+						<div class="p-3">
+							<form [formGroup]="modalIdentidadForm" class="row g-3 align-items-center">
+								<div class="col-md-6">
+									<label class="form-label fw-semibold text-success">Tipo de Identidad</label>
+									<select class="form-select" formControlName="tipo_identidad">
+										<option *ngFor="let d of sinDocsIdentidad" [ngValue]="d.codigo">{{ d.descripcion }}</option>
+									</select>
+								</div>
+								<div class="col-md-6">
+									<label class="form-label fw-semibold text-success">{{ docLabel }}</label>
+									<div class="input-group">
+										<input class="form-control" formControlName="ci" [placeholder]="docPlaceholder" />
+										<button class="btn btn-outline-primary" type="button" (click)="buscarPorCI()">
+											<i class="bi bi-search"></i>
+										</button>
+									</div>
+								</div>
+
+								<!-- Complemento solo para CI -->
+								<div class="col-md-6" *ngIf="showComplemento">
+									<div class="form-check mb-1">
+										<input class="form-check-input" type="checkbox" id="chkComp" formControlName="complemento_habilitado" />
+										<label class="form-check-label" for="chkComp">Complemento ci</label>
+									</div>
+									<input class="form-control" formControlName="complemento_ci" placeholder="Ej: 1A" />
+								</div>
+
+								<div class="col-md-6">
+									<label class="form-label fw-semibold text-success">Razón Social</label>
+									<div class="input-group">
+										<input class="form-control" formControlName="razon_social" [readonly]="!razonSocialEditable" />
+										<button class="btn btn-outline-secondary" type="button" (click)="editRazonSocial()" [disabled]="razonSocialEditable">
+											<i class="bi bi-pencil"></i>
+										</button>
+									</div>
+								</div>
+							</form>
+						</div>
+					</div>
+				</div>
+			</div>
+			<div class="modal-footer">
+				<button type="button" class="btn btn-primary" (click)="guardarRazonSocial()" [disabled]="loading">
+					<i class="bi bi-check2 me-1"></i> Grabar y Salir
+				</button>
+				<button type="button" class="btn btn-secondary" data-bs-dismiss="modal">Cerrar</button>
+			</div>
+		</div>
+	</div>
+</div>
+

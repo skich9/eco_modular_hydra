@@ -1108,6 +1108,10 @@ class CobroController extends Controller
 				$pv = (int) ($request->input('codigo_punto_venta', 0));
 				$sucursal = (int) ($request->input('codigo_sucursal', config('sin.sucursal')));
 				$emitirOnline = (bool) $request->boolean('emitir_online', false);
+				
+				// Detectar si es reposición de factura para usar id_usuario configurable
+				$useReposicionUser = (bool) $request->boolean('use_reposicion_user', false);
+				$idUsuarioReposicion = $useReposicionUser ? (int) config('app.reposicion_factura_user_id', 37) : null;
 				$emitirOnlineAuto = false;
 				try {
 					foreach ((array)$items as $autoIt) {
@@ -2088,7 +2092,7 @@ class CobroController extends Controller
 						'fecha_cobro' => $fechaCobroSave,
 						'cobro_completo' => isset($item['cobro_completo']) ? $item['cobro_completo'] : null,
 						'observaciones' => isset($item['observaciones']) ? $item['observaciones'] : null,
-						'id_usuario' => (int)$request->id_usuario,
+						'id_usuario' => $idUsuarioReposicion ?: (int)$request->id_usuario,
 						'id_forma_cobro' => isset($item['id_forma_cobro']) ? $item['id_forma_cobro'] : $formaIdItem,
 						'pu_mensualidad' => isset($item['pu_mensualidad']) ? $item['pu_mensualidad'] : 0,
 						'order' => $order,
@@ -2583,6 +2587,44 @@ class CobroController extends Controller
 			return response()->json([
 				'success' => false,
 				'message' => 'Error al validar impuestos: ' . $e->getMessage(),
+			], 500);
+		}
+	}
+
+	/**
+	 * Marcar un recibo como repuesto (reposicion_factura = 1)
+	 */
+	public function marcarReciboRepuesto(Request $request)
+	{
+		try {
+			$validator = Validator::make($request->all(), [
+				'nro_recibo' => 'required|integer',
+			]);
+
+			if ($validator->fails()) {
+				return response()->json([
+					'success' => false,
+					'message' => 'Validación fallida',
+					'errors' => $validator->errors()
+				], 422);
+			}
+
+			$nroRecibo = $request->input('nro_recibo');
+			
+			// Actualizar todos los cobros con ese nro_recibo
+			$updated = Cobro::where('nro_recibo', $nroRecibo)
+				->update(['reposicion_factura' => 1]);
+
+			return response()->json([
+				'success' => true,
+				'message' => "Recibo {$nroRecibo} marcado como repuesto",
+				'updated_count' => $updated
+			]);
+		} catch (\Throwable $e) {
+			Log::error('marcar-recibo-repuesto: exception', ['error' => $e->getMessage()]);
+			return response()->json([
+				'success' => false,
+				'message' => 'Error al marcar recibo: ' . $e->getMessage(),
 			], 500);
 		}
 	}

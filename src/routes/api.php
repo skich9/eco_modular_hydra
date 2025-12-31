@@ -171,6 +171,7 @@ Route::post('cobros', [CobroController::class, 'store']);
 Route::get('cobros/resumen', [CobroController::class, 'resumen']);
 Route::post('cobros/batch', [CobroController::class, 'batchStore']);
 Route::post('cobros/validar-impuestos', [CobroController::class, 'validarImpuestos']);
+Route::post('cobros/marcar-recibo-repuesto', [CobroController::class, 'marcarReciboRepuesto']);
 Route::get('cobros/{cod_ceta}/{cod_pensum}/{tipo_inscripcion}/{nro_cobro}', [CobroController::class, 'show']);
 Route::put('cobros/{cod_ceta}/{cod_pensum}/{tipo_inscripcion}/{nro_cobro}', [CobroController::class, 'update']);
 Route::delete('cobros/{cod_ceta}/{cod_pensum}/{tipo_inscripcion}/{nro_cobro}', [CobroController::class, 'destroy']);

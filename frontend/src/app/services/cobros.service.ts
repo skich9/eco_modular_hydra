@@ -140,6 +140,12 @@ export class CobrosService {
 		);
 	}
 
+	marcarReciboRepuesto(nroRecibo: number): Observable<any> {
+		return this.http.post<any>(`${this.baseUrl}/marcar-recibo-repuesto`, { nro_recibo: nroRecibo }).pipe(
+			map((res: any) => ({ success: !!res?.success, message: res?.message }))
+		);
+	}
+
 	// ===================== Descargas =====================
 	downloadReciboPdf(anio: number, nroRecibo: number): Observable<Blob> {
 		const url = `${this.apiUrl}/recibos/${anio}/${nroRecibo}/pdf`;

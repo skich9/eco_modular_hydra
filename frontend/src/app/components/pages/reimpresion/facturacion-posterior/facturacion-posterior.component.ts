@@ -1,6 +1,6 @@
 import { Component, OnInit } from '@angular/core';
 import { CommonModule } from '@angular/common';
-import { FormsModule, ReactiveFormsModule, FormBuilder, FormGroup } from '@angular/forms';
+import { FormsModule, ReactiveFormsModule, FormBuilder, FormGroup, Validators } from '@angular/forms';
 import { RouterModule } from '@angular/router';
 import { CobrosService } from '../../../../services/cobros.service';
 
@@ -13,12 +13,35 @@ import { CobrosService } from '../../../../services/cobros.service';
 })
 export class FacturacionPosteriorComponent implements OnInit {
 	searchForm: FormGroup;
+	identidadForm: FormGroup;
+	modalIdentidadForm: FormGroup;
 	observaciones: string = '';
+	
+	// Estado UI para modal de Razón Social
+	razonSocialEditable = false;
+	modalAlertMessage = '';
+	modalAlertType: 'success' | 'error' | 'warning' = 'success';
+	docLabel = 'CI';
+	docPlaceholder = 'Introduzca CI';
+	showComplemento = true;
+	loading = false;
+	
+	// Catálogo de tipos de documento de identidad
+	sinDocsIdentidad: Array<{ codigo: number; descripcion: string }> = [
+		{ codigo: 1, descripcion: 'CI - CEDULA DE IDENTIDAD' },
+		{ codigo: 2, descripcion: 'CEX - CEDULA DE IDENTIDAD DE EXTRANJERO' },
+		{ codigo: 3, descripcion: 'PAS - PASAPORTE' },
+		{ codigo: 4, descripcion: 'OD - OTRO DOCUMENTO DE IDENTIDAD' },
+		{ codigo: 5, descripcion: 'NIT - NUMERO DE IDENTIFICACION TRIBUTARIA' }
+	];
 	// Contexto para batchStore
 	private ctxCodPensum: string = '';
 	private ctxTipoInscripcion: string = '';
 	private ctxCodInscrip: number | null = null;
 	private ctxGestion: string = '';
+	private currentUserNickname: string = '';
+	// Datos del cliente (estudiante) para facturación
+	private clienteData: { numero: string; razon: string; tipo_identidad: number } = { numero: '', razon: '', tipo_identidad: 5 };
 
 	// Control de UI
 	locked: boolean = false; // bloquea selección y observaciones tras "Mostrar en tabla"
@@ -52,18 +75,54 @@ export class FacturacionPosteriorComponent implements OnInit {
 
 	// Detalle factura (render en tarjeta)
 	detalleFacturaVisible = false;
-	detalleFactura: Array<{ cantidad: number; detalle: string; pu: number; descuento: number; subtotal: number; m?: string; d?: string; obs?: string; }>=[];
+	detalleFactura: Array<{ cantidad: number; detalle: string; pu: number; descuento: number; subtotal: number; m?: string; d?: string; obs?: string; }> = [];
 	detalleFacturaTotales: { subtotal: number } = { subtotal: 0 };
 
 	constructor(private fb: FormBuilder, private cobrosService: CobrosService) {
-		this.searchForm = this.fb.group({
-			cod_ceta: [''],
-			gestion: ['']
+		this.searchForm = this.fb.group({ cod_ceta: [''], gestion: [''] });
+		
+		// Formulario de identidad (readonly, se abre modal al hacer clic)
+		this.identidadForm = this.fb.group({
+			nombre_completo: [''],
+			tipo_identidad: [5],
+			ci: [''],
+			complemento_habilitado: [false],
+			complemento_ci: [{ value: '', disabled: true }],
+			razon_social: ['']
 		});
+		
+		// Formulario del modal (separado para no sincronizar hasta guardar)
+		this.modalIdentidadForm = this.fb.group({
+			tipo_identidad: [5, Validators.required],
+			ci: [''],
+			complemento_habilitado: [false],
+			complemento_ci: [{ value: '', disabled: true }],
+			razon_social: ['']
+		});
+		// Obtener usuario actual del localStorage o sessionStorage
+		try {
+			const userData = localStorage.getItem('user') || sessionStorage.getItem('user');
+			if (userData) {
+				const user = JSON.parse(userData);
+				this.currentUserNickname = user?.nickname || user?.nombre_completo || user?.nombre || 'Sistema';
+			}
+		} catch (e) {
+			this.currentUserNickname = 'Sistema';
+		}
 	}
 
 	ngOnInit(): void {
-		// nada por ahora
+		// Suscripciones del modal: actualizar UI del documento según tipo
+		this.modalIdentidadForm.get('tipo_identidad')?.valueChanges.subscribe((v: number) => {
+			this.updateModalTipoUI(Number(v || 5));
+		});
+		this.updateModalTipoUI(Number(this.modalIdentidadForm.get('tipo_identidad')?.value || 5));
+		
+		// Habilitar/deshabilitar complemento CI en el modal
+		this.modalIdentidadForm.get('complemento_habilitado')?.valueChanges.subscribe((v: boolean) => {
+			const ctrl = this.modalIdentidadForm.get('complemento_ci');
+			if (v) ctrl?.enable(); else ctrl?.disable();
+		});
 	}
 
 	buscarPorCodCeta(): void {
@@ -112,6 +171,39 @@ export class FacturacionPosteriorComponent implements OnInit {
 		this.ctxTipoInscripcion = String(insc?.tipo_inscripcion || '');
 		this.ctxCodInscrip = insc?.cod_inscrip ? Number(insc.cod_inscrip) : null;
 		this.ctxGestion = String(res?.data?.gestion || '');
+		
+		// Guardar datos del cliente para facturación
+		const codCeta = String(est?.cod_ceta || this.searchForm.value?.cod_ceta || '');
+		const nombreCompleto = `${est?.ap_paterno || ''} ${est?.ap_materno || ''} ${est?.nombres || ''}`.trim() || 'S/N';
+		
+		// Obtener CI del estudiante (igual que en Cobros)
+		let ciEstudiante = String(est?.ci || '');
+		let tipoIdentidad = 1; // Por defecto CI
+		
+		// Autocompletar desde documento_identidad si existe en el resumen
+		const docId = res?.data?.documento_identidad || null;
+		if (docId) {
+			tipoIdentidad = Number(docId?.tipo_identidad || 0) || 1;
+			ciEstudiante = String(docId?.numero || ciEstudiante);
+		} else if (!ciEstudiante) {
+			ciEstudiante = 'SIN INFORMACIÓN';
+		}
+		
+		this.clienteData = {
+			numero: codCeta,
+			razon: nombreCompleto,
+			tipo_identidad: tipoIdentidad
+		};
+		
+		// Actualizar formulario de identidad
+		this.identidadForm.patchValue({
+			nombre_completo: nombreCompleto,
+			tipo_identidad: tipoIdentidad,
+			ci: ciEstudiante,
+			complemento_habilitado: false,
+			complemento_ci: '',
+			razon_social: est?.ap_paterno || nombreCompleto
+		});
 
 		// Reset de UI dependiente
 		this.locked = false;
@@ -238,26 +330,35 @@ export class FacturacionPosteriorComponent implements OnInit {
 			const raw = Array.isArray(selRow.rawItems) ? selRow.rawItems : [];
 			if (raw.length === 0) return;
 
-			// Usar datos del primer item como referencia
+			// Obtener nro_recibo del primer item
 			const anyIt: any = raw[0] || {};
-			const idUsuario = Number(anyIt?.id_usuario || 0) || 1;
+			const nroRecibo = anyIt?.nro_recibo ? Number(anyIt.nro_recibo) : null;
+			
+			if (!nroRecibo) {
+				alert('No se pudo identificar el número de recibo.');
+				return;
+			}
+
 			const idForma = (anyIt?.id_forma_cobro || '1').toString();
 			const now = new Date();
-			const fechaIso = now.toISOString().slice(0, 19).replace('T', ' '); // yyyy-mm-dd HH:MM:SS
+			const fechaIso = now.toISOString().slice(0, 19).replace('T', ' ');
 
-			// Construir items para batchStore evitando tocar asignaciones/cuotas
+			// Agregar "Generado por [usuario]" a las observaciones
+			const obsBase = (this.observaciones || '').toString().trim();
+			const obsConGeneradoPor = obsBase ? `${obsBase}. Generado por ${this.currentUserNickname}` : `Generado por ${this.currentUserNickname}`;
+
+			// Construir items para la factura nueva (sin reposicion_factura, sin id_asignacion_costo/id_cuota)
 			const items = raw.map((r: any) => ({
 				monto: Number(r?.monto || 0) || 0,
 				fecha_cobro: fechaIso,
 				pu_mensualidad: Number(r?.pu_mensualidad || 0) || 0,
 				descuento: Number(r?.descuento || 0) || 0,
 				order: r?.order ?? null,
-				id_item: r?.id_item ?? null, // mantener si era item; no enviar id_asignacion_costo/id_cuota
+				id_item: r?.id_item ?? null,
 				tipo_documento: 'F',
 				medio_doc: 'C',
 				concepto: (r?.concepto || '').toString(),
-				observaciones: (this.observaciones || '').toString(),
-				reposicion_factura: true,
+				observaciones: obsConGeneradoPor,
 			}));
 
 			const payload: any = {
@@ -266,26 +367,45 @@ export class FacturacionPosteriorComponent implements OnInit {
 				tipo_inscripcion: this.ctxTipoInscripcion,
 				cod_inscrip: this.ctxCodInscrip,
 				gestion: this.ctxGestion,
-				id_usuario: idUsuario,
 				id_forma_cobro: idForma,
 				emitir_online: true,
 				items,
+				use_reposicion_user: true,
+				cliente: {
+					numero: this.clienteData.numero,
+					razon: this.clienteData.razon,
+					tipo_identidad: this.clienteData.tipo_identidad
+				}
 			};
 
-			this.cobrosService.batchStore(payload).subscribe({
+			// Paso 1: Marcar el recibo original como repuesto
+			this.cobrosService.marcarReciboRepuesto(nroRecibo).subscribe({
 				next: (res: any) => {
 					if (res?.success) {
-						alert('Reposición registrada correctamente.');
-						this.detalleFacturaVisible = false;
-						this.locked = false;
-						this.buscarPorCodCeta();
+						// Paso 2: Crear la factura nueva con id_usuario=37
+						this.cobrosService.batchStore(payload).subscribe({
+							next: (res2: any) => {
+								if (res2?.success) {
+									alert('Reposición registrada correctamente.');
+									this.detalleFacturaVisible = false;
+									this.locked = false;
+									this.buscarPorCodCeta();
+								} else {
+									alert(res2?.message || 'No se pudo registrar la reposición.');
+								}
+							},
+							error: (err) => {
+								console.error('Error creando factura', err);
+								alert('Error al crear la factura.');
+							}
+						});
 					} else {
-						alert(res?.message || 'No se pudo registrar la reposición.');
+						alert(res?.message || 'No se pudo marcar el recibo.');
 					}
 				},
 				error: (err) => {
-					console.error('Error reponerFactura', err);
-					alert('Error al registrar la reposición.');
+					console.error('Error marcando recibo', err);
+					alert('Error al marcar el recibo como repuesto.');
 				}
 			});
 		} catch (e) {
@@ -326,5 +446,149 @@ export class FacturacionPosteriorComponent implements OnInit {
 	onToggleSel(row: any, idx: number): void {
 		if (this.locked) return;
 		this.cobros.forEach((c, i) => { c.selected = (i === idx) ? !c.selected : false; });
+	}
+
+	// ============ MÉTODOS PARA MODAL DE RAZÓN SOCIAL ============
+
+	openRazonSocialModal(): void {
+		const modalEl = document.getElementById('razonSocialModal');
+		if (modalEl && (window as any).bootstrap?.Modal) {
+			this.modalAlertMessage = '';
+			const tipo = Number(this.identidadForm.get('tipo_identidad')?.value || 5);
+			this.modalIdentidadForm.patchValue({
+				tipo_identidad: tipo,
+				ci: this.identidadForm.get('ci')?.value || '',
+				complemento_habilitado: !!this.identidadForm.get('complemento_habilitado')?.value,
+				complemento_ci: this.identidadForm.get('complemento_ci')?.value || '',
+				razon_social: this.identidadForm.get('razon_social')?.value || ''
+			}, { emitEvent: false });
+			this.updateModalTipoUI(tipo);
+			this.razonSocialEditable = false;
+			const modal = new (window as any).bootstrap.Modal(modalEl);
+			modal.show();
+		}
+	}
+
+	updateModalTipoUI(tipo: number): void {
+		if (tipo === 1) {
+			this.docLabel = 'CI';
+			this.docPlaceholder = 'Introduzca CI';
+			this.showComplemento = true;
+		} else if (tipo === 2) {
+			this.docLabel = 'CEX';
+			this.docPlaceholder = 'Introduzca CEX';
+			this.showComplemento = false;
+		} else if (tipo === 3) {
+			this.docLabel = 'Pasaporte';
+			this.docPlaceholder = 'Introduzca Pasaporte';
+			this.showComplemento = false;
+		} else if (tipo === 4) {
+			this.docLabel = 'Otro Documento';
+			this.docPlaceholder = 'Introduzca documento';
+			this.showComplemento = false;
+		} else {
+			this.docLabel = 'NIT';
+			this.docPlaceholder = 'Introduzca NIT';
+			this.showComplemento = false;
+		}
+	}
+
+	buscarPorCI(): void {
+		const ci = (this.modalIdentidadForm.get('ci')?.value || '').toString().trim();
+		const tipoId = Number(this.modalIdentidadForm.get('tipo_identidad')?.value || 5);
+		if (!ci) {
+			this.showModalAlert('Ingrese el número de documento para buscar', 'warning');
+			return;
+		}
+		this.loading = true;
+		this.cobrosService.buscarRazonSocial(ci, tipoId).subscribe({
+			next: (res) => {
+				if (res?.success && res?.data) {
+					const data = res.data;
+					const tipoEncontrado = Number(data.id_tipo_doc_identidad || tipoId);
+					if (tipoEncontrado && tipoEncontrado !== tipoId) {
+						this.modalIdentidadForm.patchValue({ tipo_identidad: tipoEncontrado }, { emitEvent: true });
+						this.updateModalTipoUI(tipoEncontrado);
+						this.showModalAlert('Documento encontrado con un tipo diferente. Se ajustó automáticamente el tipo.', 'warning');
+					}
+					this.modalIdentidadForm.patchValue({
+						razon_social: data.razon_social || '',
+						complemento_ci: data.complemento || ''
+					});
+					this.razonSocialEditable = false;
+				} else {
+					this.razonSocialEditable = true;
+					this.modalIdentidadForm.patchValue({ razon_social: '' }, { emitEvent: false });
+					this.identidadForm.patchValue({ razon_social: '' }, { emitEvent: false });
+					this.showModalAlert('No existe registro, puede ingresar la razón social y guardar', 'warning');
+				}
+				this.loading = false;
+			},
+			error: () => {
+				this.loading = false;
+				this.showModalAlert('Error al buscar', 'error');
+			}
+		});
+	}
+
+	guardarRazonSocial(): void {
+		const ci = (this.modalIdentidadForm.get('ci')?.value || '').toString().trim();
+		const tipoId = Number(this.modalIdentidadForm.get('tipo_identidad')?.value || 5);
+		const razon = (this.modalIdentidadForm.get('razon_social')?.value || '').toString().trim();
+		const complemento = (this.modalIdentidadForm.get('complemento_ci')?.value || '').toString().trim() || null;
+		if (!ci) {
+			this.showModalAlert('El número de documento es obligatorio', 'warning');
+			return;
+		}
+		if (!razon) {
+			this.showModalAlert('La razón social es obligatoria', 'warning');
+			return;
+		}
+		this.loading = true;
+		this.cobrosService.guardarRazonSocial({ nit: ci, tipo_id: tipoId, razon_social: razon || null, complemento }).subscribe({
+			next: (res) => {
+				if (res?.success) {
+					this.showModalAlert('Razón social guardada', 'success');
+					this.razonSocialEditable = false;
+					this.identidadForm.patchValue({
+						tipo_identidad: tipoId,
+						ci: ci,
+						complemento_habilitado: !!this.modalIdentidadForm.get('complemento_habilitado')?.value,
+						complemento_ci: complemento || '',
+						razon_social: razon || (res?.data?.razon_social || '')
+					}, { emitEvent: false });
+					
+					// Actualizar clienteData con los nuevos valores
+					this.clienteData = {
+						numero: ci,
+						razon: razon,
+						tipo_identidad: tipoId
+					};
+					
+					const modalEl = document.getElementById('razonSocialModal');
+					if (modalEl && (window as any).bootstrap?.Modal) {
+						const modal = (window as any).bootstrap.Modal.getInstance(modalEl);
+						if (modal) modal.hide();
+					}
+				} else {
+					this.showModalAlert(res?.message || 'Error al guardar', 'error');
+				}
+				this.loading = false;
+			},
+			error: () => {
+				this.loading = false;
+				this.showModalAlert('Error al guardar', 'error');
+			}
+		});
+	}
+
+	editRazonSocial(): void {
+		this.razonSocialEditable = true;
+		this.modalAlertMessage = '';
+	}
+
+	showModalAlert(message: string, type: 'success' | 'error' | 'warning'): void {
+		this.modalAlertMessage = message;
+		this.modalAlertType = type;
 	}
 }

@@ -1,0 +1,57 @@
+<div class="modal-dialog modal-lg">
+	<div class="modal-content success-modal">
+		<div class="modal-header">
+			<h5 class="modal-title">Reposición registrada correctamente</h5>
+			<button type="button" class="btn-close" data-bs-dismiss="modal" aria-label="Close" id="btnSuccessCloseX"></button>
+		</div>
+		<div class="modal-body">
+			<div class="border rounded overflow-hidden mb-3">
+				<div class="panel-header">Datos del Estudiante:</div>
+				<div class="panel-body">
+					<div class="row g-3">
+						<div class="col-9">
+							<div><strong>Código:</strong> <span id="successCodCeta"></span></div>
+							<div><strong>Estudiante:</strong> <span id="successEstudiante"></span></div>
+							<div><strong>Carrera:</strong> <span id="successCarrera"></span></div>
+							<div><strong>Gestión:</strong> <span id="successGestion"></span></div>
+						</div>
+						<div class="col-3 d-flex align-items-center justify-content-center">
+							<i class="bi bi-person-circle" style="font-size:48px; opacity:.5"></i>
+						</div>
+					</div>
+				</div>
+			</div>
+			<div class="border rounded overflow-hidden">
+				<div class="panel-header">Se realizó el registro de los siguientes datos</div>
+				<div class="panel-body">
+					<div class="table-responsive">
+						<table class="table table-sm table-bordered align-middle mb-2">
+							<thead class="table-light">
+								<tr>
+									<th style="width:8%">Cant.</th>
+									<th>Detalle</th>
+									<th style="width:14%">P/u</th>
+									<th style="width:14%">Descuento</th>
+									<th style="width:18%">Sub total</th>
+								</tr>
+							</thead>
+							<tbody id="successTableBody">
+							</tbody>
+							<tfoot>
+								<tr class="table-success">
+									<th colspan="4" class="text-end">Subtotales:</th>
+									<th class="text-end" id="successTotal"></th>
+								</tr>
+							</tfoot>
+						</table>
+					</div>
+					<div id="successFacturas"></div>
+				</div>
+			</div>
+		</div>
+		<div class="modal-footer">
+			<button type="button" class="btn btn-primary" id="btnSuccessPrint"><i class="bi bi-printer me-1"></i> Imprimir</button>
+			<button type="button" class="btn btn-danger" id="btnSuccessClose" data-bs-dismiss="modal">Cerrar</button>
+		</div>
+	</div>
+</div>
