@@ -19,6 +19,9 @@ export class LibroDiarioComponent implements OnInit {
   loading = false;
   mostrarResultados = false;
   usuarioActual: string = '';
+  currentUser: any = null;
+  alertMessage: string = '';
+  alertType: 'success' | 'error' | 'warning' = 'success';
 
   constructor(
     private fb: FormBuilder,
@@ -34,12 +37,36 @@ export class LibroDiarioComponent implements OnInit {
   ngOnInit(): void {
     this.cargarUsuarios();
     this.cargarUsuarioActual();
+    this.mostrarFechaActual();
+  }
+
+  /**
+   * Muestra la fecha actual en el header
+   */
+  mostrarFechaActual(): void {
+    const fechaActual = new Date();
+    const opciones: Intl.DateTimeFormatOptions = { 
+      weekday: 'long', 
+      year: 'numeric', 
+      month: 'long', 
+      day: 'numeric' 
+    };
+    const fechaFormateada = fechaActual.toLocaleDateString('es-ES', opciones);
+    
+    // Actualizar el span con id fechaActual
+    setTimeout(() => {
+      const elementoFecha = document.getElementById('fechaActual');
+      if (elementoFecha) {
+        elementoFecha.textContent = fechaFormateada.charAt(0).toUpperCase() + fechaFormateada.slice(1);
+      }
+    }, 100);
   }
 
   cargarUsuarioActual(): void {
     // Obtener el usuario actual del servicio de autenticación
     this.authService.currentUser$.subscribe(user => {
       if (user) {
+        this.currentUser = user;
         this.usuarioActual = String(user.nombre || user.id_usuario || '');
         // Pre-seleccionar el usuario actual si está en la lista
         if (this.usuarioActual) {
@@ -118,13 +145,36 @@ export class LibroDiarioComponent implements OnInit {
   }
 
   limpiarFiltros(): void {
-    this.filtroForm.reset({
-      usuario: this.usuarioActual || '',
+    this.filtroForm.reset();
+    this.filtroForm.patchValue({
+      usuario: '',
       fecha: new Date().toISOString().split('T')[0]
     });
-    this.datosLibroDiario = [];
     this.mostrarResultados = false;
+    this.datosLibroDiario = [];
     this.totales = { ingresos: 0, egresos: 0 };
+    this.limpiarAlerta();
+  }
+
+  /**
+   * Muestra una alerta
+   */
+  mostrarAlerta(mensaje: string, tipo: 'success' | 'error' | 'warning' = 'success'): void {
+    this.alertMessage = mensaje;
+    this.alertType = tipo;
+    
+    // Auto limpiar después de 5 segundos
+    setTimeout(() => {
+      this.limpiarAlerta();
+    }, 5000);
+  }
+
+  /**
+   * Limpia la alerta actual
+   */
+  limpiarAlerta(): void {
+    this.alertMessage = '';
+    this.alertType = 'success';
   }
 
   imprimirLibroDiario(): void {
@@ -209,6 +259,35 @@ export class LibroDiarioComponent implements OnInit {
       `;
     });
     return html;
+  }
+
+  /**
+   * Calcula totales por método de pago
+   */
+  getMetodoPagoTotal(tipo: string): number {
+    if (!this.datosLibroDiario || this.datosLibroDiario.length === 0) {
+      return 0;
+    }
+
+    switch (tipo) {
+      case 'efectivo':
+        return this.datosLibroDiario
+          .filter(item => item.ingreso > 0 && item.observaciones && item.observaciones.toLowerCase().includes('efectivo'))
+          .reduce((sum, item) => sum + item.ingreso, 0);
+      
+      case 'tarjeta':
+        return this.datosLibroDiario
+          .filter(item => item.ingreso > 0 && item.observaciones && item.observaciones.toLowerCase().includes('tarjeta'))
+          .reduce((sum, item) => sum + item.ingreso, 0);
+      
+      case 'efectivo_egresos':
+        return this.datosLibroDiario
+          .filter(item => item.egreso > 0)
+          .reduce((sum, item) => sum + item.egreso, 0);
+      
+      default:
+        return 0;
+    }
   }
 
   /**

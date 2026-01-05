@@ -1,73 +1,65 @@
-<div class="container-fluid">
-	<div class="row">
-		<div class="col-12">
-			<h2 class="mb-4">
-				<i class="fas fa-book me-2"></i>
-				Libro Diario
-			</h2>
+<div class="container py-3">
+	<div class="d-flex justify-content-between align-items-center mb-4">
+		<h2 class="mb-0">Libro Diario</h2>
+		<div class="text-muted" *ngIf="currentUser">
+			<i class="fas fa-user me-2"></i>
+			{{ currentUser.nombre_completo }}
 		</div>
 	</div>
-	
-	<!-- Formulario de filtro (estilo SGA) -->
-	<div class="row">
-		<div class="col-md-10 col-md-offset-1 col-lg-8 col-lg-offset-3">
-			<div class="card panel-primary">
-				<div class="card-header bg-primary text-white">
-					<h5 class="card-title mb-0">
-						<i class="fas fa-filter me-2"></i>
-						Filtros de Búsqueda - Libro Diario
-					</h5>
+
+	<!-- Alertas -->
+	<div *ngIf="alertMessage" class="alert mb-3" [ngClass]="{
+		'alert-success': alertType === 'success',
+		'alert-danger': alertType === 'error',
+		'alert-warning': alertType === 'warning'
+	}">{{ alertMessage }}</div>
+
+	<!-- Formulario de Búsqueda -->
+	<div class="row g-3">
+		<div class="col-12">
+			<div class="card mb-4 shadow-sm">
+				<div class="card-header d-flex justify-content-between align-items-center">
+					<strong>Filtros de Búsqueda</strong>
+					<button type="button" class="btn btn-sm btn-outline-secondary" (click)="limpiarFiltros()" [disabled]="loading">
+						<i class="fas fa-redo me-1"></i>Limpiar
+					</button>
 				</div>
 				<div class="card-body">
 					<form [formGroup]="filtroForm" (ngSubmit)="buscarLibroDiario()">
-						<div class="row">
+						<div class="row g-3">
 							<div class="col-md-4">
-								<div class="form-group">
-									<label for="usuario" class="form-label fw-bold">
-										<i class="fas fa-user me-1"></i>
-										Usuario
-									</label>
-									<select class="form-control" id="usuario" formControlName="usuario">
-										<option value="">Seleccione un usuario</option>
-										<option *ngFor="let user of usuarios" [value]="user.id_usuario">
-											{{ user.id_usuario }} {{ user.nombre ? '- ' + user.nombre : '' }}
-										</option>
-									</select>
-									<small *ngIf="filtroForm.get('usuario')?.invalid && filtroForm.get('usuario')?.touched" class="text-danger">
-										Debe seleccionar un usuario
-									</small>
+								<label class="form-label">Usuario</label>
+								<select class="form-select" id="usuario" formControlName="usuario">
+									<option value="">Seleccione un usuario</option>
+									<option *ngFor="let user of usuarios" [value]="user.id_usuario">
+										{{ user.id_usuario }} {{ user.nombre ? '- ' + user.nombre : '' }}
+									</option>
+								</select>
+								<div *ngIf="filtroForm.get('usuario')?.invalid && filtroForm.get('usuario')?.touched" 
+									 class="invalid-feedback">
+									Debe seleccionar un usuario
 								</div>
 							</div>
 							<div class="col-md-4">
-								<div class="form-group">
-									<label for="fecha" class="form-label fw-bold">
-										<i class="fas fa-calendar me-1"></i>
-										Fecha
-									</label>
-									<input 
-										type="date" 
-										class="form-control" 
-										id="fecha" 
-										formControlName="fecha"
-									>
-									<small *ngIf="filtroForm.get('fecha')?.invalid && filtroForm.get('fecha')?.touched" class="text-danger">
-										Debe seleccionar una fecha
-									</small>
+								<label class="form-label">Fecha</label>
+								<input 
+									type="date" 
+									class="form-control" 
+									id="fecha" 
+									formControlName="fecha"
+								>
+								<div *ngIf="filtroForm.get('fecha')?.invalid && filtroForm.get('fecha')?.touched" 
+									 class="invalid-feedback">
+									Debe seleccionar una fecha
 								</div>
 							</div>
 							<div class="col-md-4">
-								<div class="form-group">
-									<label class="form-label d-block">&nbsp;</label>
-									<div class="d-flex gap-2">
-										<button type="submit" class="btn btn-primary" [disabled]="loading || filtroForm.invalid">
-											<i class="fas" [ngClass]="loading ? 'fa-spinner fa-spin' : 'fa-search'"></i>
-											{{ loading ? 'Buscando...' : 'Buscar' }}
-										</button>
-										<button type="button" class="btn btn-secondary" (click)="limpiarFiltros()" [disabled]="loading">
-											<i class="fas fa-times"></i>
-											Limpiar
-										</button>
-									</div>
+								<label class="form-label d-block">&nbsp;</label>
+								<div class="d-flex gap-2">
+									<button type="submit" class="btn btn-primary" [disabled]="loading || filtroForm.invalid">
+										<i class="fas" [ngClass]="loading ? 'fa-spinner fa-spin' : 'fa-search'"></i>
+										{{ loading ? 'Buscando...' : 'Buscar' }}
+									</button>
 								</div>
 							</div>
 						</div>
@@ -77,127 +69,169 @@
 		</div>
 	</div>
 
-	<!-- Resultados (estilo SGA) -->
-	<div class="row mt-4" *ngIf="mostrarResultados">
+	<!-- Resultados -->
+	<div class="row" *ngIf="mostrarResultados">
 		<div class="col-12">
-			<div class="card">
-				<div class="card-header d-flex justify-content-between align-items-center bg-info text-white">
-					<h5 class="card-title mb-0">
-						<i class="fas fa-list-alt me-2"></i>
-						Resultados del Libro Diario
-						<span *ngIf="datosLibroDiario && datosLibroDiario.length > 0" class="badge bg-light text-dark ms-2">
-							{{ datosLibroDiario.length }} movimientos
-						</span>
-					</h5>
-					<button 
-						class="btn btn-success" 
-						(click)="imprimirLibroDiario()"
-						[disabled]="!datosLibroDiario || datosLibroDiario.length === 0 || loading"
-					>
-						<i class="fas fa-print me-1"></i>
-						Imprimir y Cerrar
-					</button>
+			<!-- Loading State -->
+			<div *ngIf="loading" class="text-center py-5">
+				<div class="spinner-border text-primary" role="status">
+					<span class="visually-hidden">Cargando...</span>
 				</div>
-				<div class="card-body">
-					<!-- Loading -->
-					<div *ngIf="loading" class="text-center py-5">
-						<div class="spinner-border text-primary" role="status">
-							<span class="visually-hidden">Cargando...</span>
-						</div>
-						<p class="mt-3 text-muted">
-							<i class="fas fa-clock me-1"></i>
-							Cargando datos del libro diario...
-						</p>
+				<p class="mt-3 text-muted">
+					<i class="fas fa-clock me-1"></i>
+					Cargando datos del libro diario...
+				</p>
+			</div>
+
+			<!-- Datos Encontrados -->
+			<div *ngIf="!loading && datosLibroDiario && datosLibroDiario.length > 0">
+				<!-- Tabla de Movimientos estilo SGA -->
+				<div class="card shadow-sm">
+					<div class="card-header d-flex justify-content-between align-items-center">
+						<strong>Libro Diario - {{ filtroForm.value.fecha | date:'dd/MM/yyyy' }}</strong>
+						<button 
+							class="btn btn-success btn-sm"
+							(click)="imprimirLibroDiario()"
+							[disabled]="!datosLibroDiario || datosLibroDiario.length === 0 || loading"
+						>
+							<i class="fas fa-print me-1"></i>
+							Imprimir y Cerrar Caja
+						</button>
 					</div>
-					
-					<!-- Datos -->
-					<div *ngIf="!loading && datosLibroDiario && datosLibroDiario.length > 0">
+					<div class="card-body p-0">
 						<div class="table-responsive">
-							<table class="table table-bordered table-striped table-hover">
-								<thead class="table-dark">
+							<table class="table table-bordered table-sm align-middle libro-diario-table">
+								<thead class="table-light">
 									<tr class="text-center">
-										<th width="30">Nº</th>
-										<th width="80">Recibo</th>
-										<th width="80">Factura</th>
-										<th>Concepto / Razón Social / NIT / Código CETA</th>
-										<th width="60">Hora</th>
-										<th width="80">Ingresos</th>
-										<th width="80">Egresos</th>
+										<th width="40">Pago</th>
+										<th width="40">Nº</th>
+										<th width="60">Recibo</th>
+										<th width="60">Factura</th>
+										<th>razon</th>
+										<th width="80">nit</th>
+										<th>concepto</th>
+										<th>observaciones</th>
+										<th width="80">cod_ceta</th>
+										<th width="60">hora</th>
+										<th width="80">ingreso</th>
 									</tr>
 								</thead>
 								<tbody>
+									<!-- Movimientos -->
 									<tr *ngFor="let item of datosLibroDiario; let i = index" 
-										[class.table-warning]="item.egreso > 0"
-										[class.table-success]="item.ingreso > 0">
+										[class.text-danger]="item.egreso > 0">
+										<td class="text-center fw-bold">{{ item.tipo_pago || 'E' }}</td>
 										<td class="text-center fw-bold">{{ i + 1 }}</td>
 										<td class="text-center">{{ item.recibo }}</td>
 										<td class="text-center">{{ item.factura }}</td>
-										<td>
-											<div class="fw-semibold">{{ item.concepto }}</div>
-											<small class="text-muted">
-												{{ item.razon }}
-												<span *ngIf="item.nit && item.nit !== '0'" class="ms-2">
-													/ <i class="fas fa-id-card"></i> {{ item.nit }}
-												</span>
-												<span *ngIf="item.cod_ceta && item.cod_ceta !== '0'" class="ms-2">
-													/ <i class="fas fa-hashtag"></i> {{ item.cod_ceta }}
-												</span>
-											</small>
-										</td>
-										<td class="text-center">
-											<span *ngIf="item.hora && item.hora !== '00:00:00'" class="badge bg-secondary">
-												{{ item.hora }}
-											</span>
-										</td>
-										<td class="text-right fw-bold text-success">
-											{{ item.ingreso | number:'1.2-2' }}
-										</td>
-										<td class="text-right fw-bold text-danger">
-											{{ item.egreso | number:'1.2-2' }}
+										<td>{{ item.razon }}</td>
+										<td class="text-center">{{ item.nit }}</td>
+										<td>{{ item.concepto }}</td>
+										<td>{{ item.observaciones || '' }}</td>
+										<td class="text-center">{{ item.cod_ceta }}</td>
+										<td class="text-center">{{ item.hora }}</td>
+										<td class="text-end fw-bold">
+											{{ item.ingreso > 0 ? (item.ingreso | number:'1.2-2') : '' }}
 										</td>
 									</tr>
 								</tbody>
 							</table>
 						</div>
 						
-						<!-- Totales (estilo SGA) -->
-						<div class="row mt-4">
-							<div class="col-md-6 offset-md-6">
-								<div class="card border-danger">
-									<div class="card-header bg-danger text-white">
-										<h6 class="card-title mb-0">
-											<i class="fas fa-calculator me-2"></i>
-											Resumen del Día
-										</h6>
-									</div>
-									<div class="card-body">
-										<table class="table table-sm table-bordered mb-0">
-											<tr class="table-secondary">
-												<th class="text-end">Sub Totales:</th>
-												<th class="text-end text-success" width="120">{{ totales.ingresos | number:'1.2-2' }}</th>
-												<th class="text-end text-danger" width="120">{{ totales.egresos | number:'1.2-2' }}</th>
-											</tr>
-											<tr class="table-dark">
-												<th class="text-end">TOTAL:</th>
-												<th class="text-end fw-bold" colspan="2">
-													<span class="badge bg-light text-dark fs-6">
-														{{ (totales.ingresos - totales.egresos) | number:'1.2-2' }}
-													</span>
-												</th>
-											</tr>
-										</table>
-									</div>
-								</div>
-							</div>
+						<!-- Resumen de métodos de pago -->
+						<div class="p-3 border-top">
+							<h6 class="mb-3">Resumen de Métodos de Pago</h6>
+							<table class="table table-sm table-bordered">
+								<thead class="table-light">
+									<tr>
+										<th>Factura</th>
+										<th>Recibo</th>
+										<th class="text-end">Ingresos</th>
+										<th class="text-end">Egresos</th>
+									</tr>
+								</thead>
+								<tbody>
+									<tr>
+										<td>Transpaso</td>
+										<td></td>
+										<td class="text-end">0.00</td>
+										<td class="text-end">0.00</td>
+									</tr>
+									<tr>
+										<td>Deposito</td>
+										<td></td>
+										<td class="text-end">0.00</td>
+										<td class="text-end">0.00</td>
+									</tr>
+									<tr>
+										<td>Efectivo</td>
+										<td></td>
+										<td class="text-end fw-bold">{{ getMetodoPagoTotal('efectivo') | number:'1.2-2' }}</td>
+										<td class="text-end fw-bold">{{ getMetodoPagoTotal('efectivo_egresos') | number:'1.2-2' }}</td>
+									</tr>
+									<tr>
+										<td>Cheque</td>
+										<td></td>
+										<td class="text-end">0.00</td>
+										<td class="text-end">0.00</td>
+									</tr>
+									<tr>
+										<td>Tarjeta</td>
+										<td></td>
+										<td class="text-end fw-bold">{{ getMetodoPagoTotal('tarjeta') | number:'1.2-2' }}</td>
+										<td class="text-end">0.00</td>
+									</tr>
+									<tr>
+										<td>Transferencia Bancaria</td>
+										<td></td>
+										<td class="text-end">0.00</td>
+										<td class="text-end">0.00</td>
+									</tr>
+									<tr>
+										<td>Otro</td>
+										<td></td>
+										<td class="text-end">0.00</td>
+										<td class="text-end">0.00</td>
+									</tr>
+									<tr class="table-info fw-bold">
+										<td>Total Parcial</td>
+										<td></td>
+										<td class="text-end">{{ (getMetodoPagoTotal('efectivo') + getMetodoPagoTotal('tarjeta')) | number:'1.2-2' }}</td>
+										<td class="text-end">{{ getMetodoPagoTotal('efectivo_egresos') | number:'1.2-2' }}</td>
+									</tr>
+									<tr class="table-success fw-bold">
+										<td>Total Efectivo</td>
+										<td></td>
+										<td class="text-end" colspan="3">{{ (getMetodoPagoTotal('efectivo') + getMetodoPagoTotal('efectivo_egresos')) | number:'1.2-2' }}</td>
+									</tr>
+									<tr class="table-primary fw-bold">
+										<td>Total General</td>
+										<td></td>
+										<td class="text-end" colspan="3">{{ (getMetodoPagoTotal('efectivo') + getMetodoPagoTotal('tarjeta') + getMetodoPagoTotal('efectivo_egresos')) | number:'1.2-2' }}</td>
+									</tr>
+								</tbody>
+							</table>
 						</div>
 					</div>
-					
-					<!-- Sin datos -->
-					<div *ngIf="!loading && (!datosLibroDiario || datosLibroDiario.length === 0)" class="text-center py-5">
-						<div class="alert alert-warning">
-							<i class="fas fa-info-circle fa-2x mb-3"></i>
-							<h5>No existen Movimientos</h5>
-							<p class="mb-0">No se encontraron movimientos para la fecha y usuario seleccionados.</p>
+				</div>
+			</div>
+
+			<!-- Sin Datos -->
+			<div *ngIf="!loading && (!datosLibroDiario || datosLibroDiario.length === 0)" class="text-center py-5">
+				<div class="card shadow-sm">
+					<div class="card-body text-center py-5">
+						<div class="text-muted mb-3">
+							<i class="fas fa-inbox fa-3x"></i>
+						</div>
+						<h5 class="text-muted">No existen Movimientos</h5>
+						<p class="text-muted">
+							No se encontraron movimientos para la fecha y usuario seleccionados.
+						</p>
+						<div class="mt-3">
+							<button class="btn btn-outline-primary" (click)="limpiarFiltros()">
+								<i class="fas fa-sync me-2"></i>
+								Intentar con otros filtros
+							</button>
 						</div>
 					</div>
 				</div>

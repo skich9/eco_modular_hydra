@@ -21,6 +21,8 @@ export interface LibroDiarioItem {
 	hora: string;
 	ingreso: number;
 	egreso: number;
+	tipo_pago?: string; // E, L, etc.
+	observaciones?: string; // Efectivo, Tarjeta, etc.
 }
 
 export interface LibroDiarioResponse {
@@ -127,22 +129,69 @@ export class LibroDiarioService {
 					} as LibroDiarioResponse);
 				}
 				
-				// Obtener datos de los endpoints que existen y tabla cobro con diferentes nombres
+				// Obtener datos de los endpoints que existen
 				return forkJoin({
+					cobro: this.http.get<any>(`${this.apiUrl}/cobros`, {
+						params: { id_usuario: idUsuario, fecha: fechaFormateada }
+					}),
 					facturas: this.http.get<any>(`${this.apiUrl}/facturas`, {
 						params: { id_usuario: idUsuario, fecha: fechaFormateada }
 					}),
 					transactions: this.http.get<any>(`${this.apiUrl}/qr/transactions`, {
 						params: { id_usuario: idUsuario, fecha: fechaFormateada }
 					}),
-					cobro: this.http.get<any>(`${this.apiUrl}/cobros`, {
-						params: { id_usuario: idUsuario, fecha: fechaFormateada }
-					})
+					todasFacturas: this.http.get<any>(`${this.apiUrl}/facturas`), // Obtener todas las facturas para buscar clientes
+					recibos: this.http.get<any>(`${this.apiUrl}/recibos`).pipe(
+						catchError(error => {
+							console.log('Endpoint /recibos no disponible, intentando /recibo:', error);
+							// Intentar endpoint singular
+							return this.http.get<any>(`${this.apiUrl}/recibo`).pipe(
+								catchError(error2 => {
+									console.log('Endpoint /recibo tampoco disponible, intentando /voucher:', error2);
+									// Intentar otro nombre posible
+									return this.http.get<any>(`${this.apiUrl}/voucher`).pipe(
+										catchError(error3 => {
+											console.log('Ningún endpoint de recibos disponible, usando array vacío:', error3);
+											return of([]); // Devolver array vacío si ningún endpoint funciona
+										})
+									);
+								})
+							);
+						})
+					)
 				}).pipe(
-					map(({ facturas, transactions, cobro }) => {
+					map(({ cobro, facturas, transactions, todasFacturas, recibos }) => {
+						const datosCobro = cobro?.data || cobro || [];
 						const datosFacturas = facturas?.data || facturas || [];
 						const datosTransactions = transactions?.data?.items || transactions?.items || [];
-						const datosCobro = cobro?.data || cobro || [];
+						const todasLasFacturas = todasFacturas?.data || todasFacturas || [];
+						const todosLosRecibos = recibos?.data || recibos || [];
+						
+						// Crear mapa de facturas para buscar clientes por número de factura
+						const mapaFacturas = new Map();
+						todasLasFacturas.forEach((factura: any) => {
+							if (factura.nro_factura && factura.cliente) {
+								mapaFacturas.set(String(factura.nro_factura), {
+									cliente: factura.cliente,
+									nro_documento_cobro: factura.nro_documento_cobro || '0'
+								});
+							}
+						});
+						
+						// Crear mapa de recibos para buscar clientes por número de recibo
+						const mapaRecibos = new Map();
+						todosLosRecibos.forEach((recibo: any) => {
+							if (recibo.nro_recibo && recibo.cliente) {
+								mapaRecibos.set(String(recibo.nro_recibo), {
+									cliente: recibo.cliente,
+									nro_documento_cobro: recibo.nro_documento_cobro || '0'
+								});
+							}
+						});
+						
+						console.log('Mapa de facturas creado:', mapaFacturas);
+						console.log('Mapa de recibos creado:', mapaRecibos);
+						console.log('Datos de recibos recibidos:', todosLosRecibos);
 						
 						const datosFacturasFiltrados = datosFacturas.filter((factura: any) => {
 							const fechaFactura = factura.fecha_emision ? factura.fecha_emision.split(' ')[0] : '';
@@ -169,49 +218,147 @@ export class LibroDiarioService {
 						];
 						
 						console.log('Transacciones combinadas:', todasLasTransacciones.length);
+						console.log('=== DATOS CRUDOS DE BACKEND ===');
+						console.log('Facturas completas:', facturas);
+						console.log('Cobros completos:', cobro);
+						console.log('Transactions completas:', transactions);
+						console.log('=== DATOS FILTRADOS ===');
+						console.log('Datos de facturas:', datosFacturasFiltrados);
+						console.log('Datos de cobros:', datosCobroFiltrados);
+						console.log('Datos de transactions:', datosTransactionsFiltrados);
+						
+						// Mostrar estructura del primer elemento de cada tipo para depuración
+						if (datosFacturasFiltrados.length > 0) {
+							console.log('Estructura primera factura:', Object.keys(datosFacturasFiltrados[0]));
+							console.log('Datos primera factura:', datosFacturasFiltrados[0]);
+							// Buscar específicamente campos de cliente
+							console.log('¿Tiene campo cliente?', 'cliente' in datosFacturasFiltrados[0]);
+							console.log('¿Tiene campo nro_documento_cobro?', 'nro_documento_cobro' in datosFacturasFiltrados[0]);
+						}
+						if (datosCobroFiltrados.length > 0) {
+							console.log('Estructura primer cobro:', Object.keys(datosCobroFiltrados[0]));
+							console.log('Datos primer cobro:', datosCobroFiltrados[0]);
+							// Buscar específicamente campos de cliente
+							console.log('¿Tiene campo cliente?', 'cliente' in datosCobroFiltrados[0]);
+							console.log('¿Tiene campo nro_documento_cobro?', 'nro_documento_cobro' in datosCobroFiltrados[0]);
+							
+							// Mostrar datos anidados que podrían tener el cliente
+							const primerCobro = datosCobroFiltrados[0];
+							console.log('Datos de usuario en cobro:', primerCobro.usuario);
+							console.log('Datos de item_cobro en cobro:', primerCobro.item_cobro);
+							console.log('Datos de cuota en cobro:', primerCobro.cuota);
+							
+							// Buscar campos posibles en objetos anidados
+							if (primerCobro.usuario) {
+								console.log('Campos en usuario:', Object.keys(primerCobro.usuario));
+							}
+							if (primerCobro.item_cobro) {
+								console.log('Campos en item_cobro:', Object.keys(primerCobro.item_cobro));
+							}
+						}
+						if (datosTransactionsFiltrados.length > 0) {
+							console.log('Estructura primera transaction:', Object.keys(datosTransactionsFiltrados[0]));
+							console.log('Datos primera transaction:', datosTransactionsFiltrados[0]);
+							// Buscar específicamente campos de cliente
+							console.log('¿Tiene campo cliente?', 'cliente' in datosTransactionsFiltrados[0]);
+							console.log('¿Tiene campo nro_documento_cobro?', 'nro_documento_cobro' in datosTransactionsFiltrados[0]);
+						}
+						
+						// Si no hay datos de facturas, mostrar la estructura cruda para ver qué hay
+						if (todasLasFacturas && todasLasFacturas.length > 0) {
+							console.log('Estructura primera factura cruda:', Object.keys(todasLasFacturas[0]));
+							console.log('Datos primera factura cruda:', todasLasFacturas[0]);
+							// Buscar específicamente campos de cliente en todas las facturas
+							console.log('¿Tiene campo cliente en todas las facturas?', 'cliente' in todasLasFacturas[0]);
+							console.log('¿Tiene campo nro_documento_cobro en todas las facturas?', 'nro_documento_cobro' in todasLasFacturas[0]);
+							
+							// Buscar otros campos posibles para el documento
+							const posiblesCamposDocumento = ['nro_documento_cobro', 'nit', 'ci', 'documento', 'nro_documento'];
+							posiblesCamposDocumento.forEach(campo => {
+								if (campo in todasLasFacturas[0]) {
+									console.log(`Campo encontrado: ${campo} =`, todasLasFacturas[0][campo]);
+								}
+							});
+						}
 						
 						// Transformar al formato del libro diario
 						const items: LibroDiarioItem[] = todasLasTransacciones.map((trans: any, index: number) => {
 							// Mapeo específico según la fuente de datos
 							if (trans.fuente === 'factura') {
+								console.log('Factura:', trans);
 								return {
 									numero: index + 1,
 									recibo: '0', // Las facturas no tienen recibo
 									factura: String(trans.nro_factura || '0'),
 									concepto: 'Factura',
-									razon: trans.cliente || '',
-									nit: '0', // Las facturas no tienen NIT en los datos mostrados
+									razon: trans.cliente || 'SIN DATOS',
+									nit: trans.nro_documento_cobro || '0',
 									cod_ceta: trans.cod_ceta || '0',
 									hora: trans.fecha_emision ? new Date(trans.fecha_emision).toTimeString().substring(0, 8) : '',
-									ingreso: 0, // Las facturas no tienen monto en los datos mostrados
-									egreso: 0
+									ingreso: parseFloat(trans.monto_total || 0),
+									egreso: 0,
+									tipo_pago: 'F', // F = Factura
+									observaciones: trans.metodo_pago || 'Efectivo'
 								};
 							} else if (trans.fuente === 'cobro') {
+								console.log('Cobro:', trans);
+								
+								// Lógica correcta: buscar en factura o recibo según corresponda
+								let datosCliente = null;
+								
+								// Si tiene nro_factura, buscar en tabla factura
+								if (trans.nro_factura && trans.nro_factura !== '0') {
+									datosCliente = mapaFacturas.get(String(trans.nro_factura));
+									console.log('Buscando en factura por nro_factura:', trans.nro_factura);
+								}
+								
+								// Si no encuentra en factura, buscar en recibo por nro_recibo
+								if (!datosCliente && trans.nro_recibo && trans.nro_recibo !== '0') {
+									datosCliente = mapaRecibos.get(String(trans.nro_recibo));
+									console.log('Buscando en recibo por nro_recibo:', trans.nro_recibo);
+								}
+								
+								// Si no encuentra en ninguna tabla, dejar campos vacíos
+								if (!datosCliente) {
+									console.log('No se encontró cliente ni en factura ni en recibo. Campos quedarán vacíos.');
+									datosCliente = {
+										cliente: '', // Campo vacío
+										nro_documento_cobro: '' // Campo vacío
+									};
+								}
+								
+								console.log('Datos de cliente para cobro:', datosCliente);
+								
 								return {
 									numero: index + 1,
 									recibo: String(trans.nro_recibo || '0'),
 									factura: String(trans.nro_factura || '0'),
 									concepto: trans.concepto || trans.observaciones || 'Cobro',
-									razon: trans.usuario?.nombre || '',
-									nit: trans.usuario?.ci || '0',
+									razon: datosCliente?.cliente || '',
+									nit: datosCliente?.nro_documento_cobro || '',
 									cod_ceta: String(trans.cod_ceta || '0'),
 									hora: trans.fecha_cobro ? new Date(trans.fecha_cobro).toTimeString().substring(0, 8) : '',
 									ingreso: parseFloat(trans.monto || 0),
-									egreso: 0
+									egreso: 0,
+									tipo_pago: 'E', // E = Efectivo
+									observaciones: trans.forma_cobro?.nombre || 'Efectivo'
 								};
 							} else if (trans.fuente === 'transaction') {
+								console.log('Transaction:', trans);
 								// Los datos de transaction ya están en el nivel correcto
 								return {
 									numero: index + 1,
 									recibo: String(trans.id_qr_transaccion || '0'),
 									factura: String(trans.nro_factura || '0'),
 									concepto: trans.detalle_glosa || 'Transacción QR',
-									razon: trans.nombre_cliente || '',
-									nit: String(trans.documento_cliente || '0'),
+									razon: trans.cliente || 'SIN DATOS',
+									nit: trans.nro_documento_cobro || '0',
 									cod_ceta: String(trans.cod_ceta || '0'),
 									hora: trans.fecha_generacion ? new Date(trans.fecha_generacion).toTimeString().substring(0, 8) : '',
 									ingreso: parseFloat(trans.monto_total || 0),
-									egreso: 0
+									egreso: 0,
+									tipo_pago: trans.metodo_pago === 'TARJETA' ? 'L' : 'E', // L = Tarjeta, E = Efectivo
+									observaciones: trans.metodo_pago || 'Efectivo'
 								};
 							}
 							
@@ -221,12 +368,14 @@ export class LibroDiarioService {
 								recibo: '0',
 								factura: '0',
 								concepto: 'Desconocido',
-								razon: '',
+								razon: 'SIN DATOS',
 								nit: '0',
 								cod_ceta: '0',
 								hora: '',
 								ingreso: 0,
-								egreso: 0
+								egreso: 0,
+								tipo_pago: 'E',
+								observaciones: ''
 							};
 						});
 

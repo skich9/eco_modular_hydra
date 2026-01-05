@@ -1,76 +1,208 @@
-.table th {
-	border: 1px solid #dc3545 !important;
-	background-color: #343a40 !important;
-	color: white !important;
-	font-weight: bold;
+// Estilos consistentes con el sistema (similar a cobros)
+.card {
+	border-radius: .5rem;
 }
 
-.table td {
-	border: 1px dotted #dc3545 !important;
+.table td, .table th {
 	vertical-align: middle;
 }
 
-.card {
-	box-shadow: 0 2px 4px rgba(0,0,0,0.1);
+.btn + .btn {
+	margin-left: .5rem;
 }
 
-.btn:disabled {
-	cursor: not-allowed;
-	opacity: 0.6;
+// Estilos específicos para Libro Diario
+.libro-diario-header {
+	.form-label {
+		font-weight: 500;
+		margin-bottom: .25rem;
+	}
+
+	.input-group > .btn {
+		padding-inline: .75rem;
+	}
 }
 
-.spinner-border {
-	width: 3rem;
-	height: 3rem;
+// Tabla de movimientos con colores diferenciados
+.table {
+	&.table-sm {
+		th, td {
+			padding: .5rem;
+		}
+	}
+
+	// Colores para tipos de movimiento
+	tr.table-success {
+		background-color: rgba(25, 135, 84, 0.1) !important;
+		border-left: 3px solid #198754;
+		
+		&:hover {
+			background-color: rgba(25, 135, 84, 0.15) !important;
+		}
+	}
+
+	tr.table-warning {
+		background-color: rgba(255, 193, 7, 0.1) !important;
+		border-left: 3px solid #ffc107;
+		
+		&:hover {
+			background-color: rgba(255, 193, 7, 0.15) !important;
+		}
+	}
+
+	tr.table-info {
+		background-color: rgba(13, 202, 240, 0.1) !important;
+		
+		&:hover {
+			background-color: rgba(13, 202, 240, 0.15) !important;
+		}
+	}
+
+	// Headers con estilo consistente
+	thead.table-light {
+		background-color: #f8f9fa;
+		
+		th {
+			font-weight: 600;
+			text-transform: uppercase;
+			font-size: 0.875rem;
+			letter-spacing: 0.5px;
+			border-bottom: 2px solid #dee2e6;
+		}
+	}
+
+	// Totales en footer
+	tfoot {
+		tr {
+			font-weight: 700;
+			
+			&.table-success {
+				background-color: #d1e7dd !important;
+				color: #0f5132;
+			}
+			
+			&.table-info {
+				background-color: #cff4fc !important;
+				color: #055160;
+			}
+		}
+	}
 }
 
+// Resumen económico
+.resumen-economico {
+	.d-flex {
+		padding: 0.5rem 0;
+		border-bottom: 1px solid #e9ecef;
+		
+		&:last-child {
+			border-bottom: none;
+		}
+		
+		span {
+			font-weight: 500;
+		}
+		
+		strong {
+			font-weight: 700;
+		}
+	}
+}
+
+// Badges mejorados
 .badge {
-	font-size: 0.8em;
-}
-
-.form-label {
-	color: #495057;
 	font-weight: 600;
+	
+	&.bg-secondary {
+		background-color: #6c757d !important;
+	}
 }
 
-.panel-primary .card-header {
-	background-color: #0275d8 !important;
-	border-color: #0275d8 !important;
+// Estados vacíos
+.empty-state {
+	.text-muted {
+		opacity: 0.6;
+	}
+	
+	h5 {
+		font-weight: 600;
+		margin-bottom: 1rem;
+	}
+	
+	p {
+		font-size: 1rem;
+		margin-bottom: 1.5rem;
+	}
 }
 
-/* Estilos específicos para el estilo SGA */
-.table-success {
-	background-color: rgba(25, 135, 84, 0.1) !important;
+// Loading state
+.loading-container {
+	.spinner-border {
+		width: 3rem;
+		height: 3rem;
+	}
 }
 
-.table-warning {
-	background-color: rgba(255, 193, 7, 0.1) !important;
-}
-
-.border-danger {
-	border-color: #dc3545 !important;
-}
-
-.bg-danger {
-	background-color: #dc3545 !important;
-}
-
-.text-success {
-	color: #198754 !important;
-}
-
-.text-danger {
-	color: #dc3545 !important;
-}
-
-/* Responsive */
+// Responsive
 @media (max-width: 768px) {
-	.table-responsive {
+	.container {
+		padding: 1rem !important;
+	}
+	
+	.table {
 		font-size: 0.875rem;
+		
+		&.table-sm {
+			th, td {
+				padding: .4rem;
+			}
+		}
+	}
+	
+	.resumen-economico {
+		.row {
+			.col-md-3 {
+				margin-bottom: 0.5rem;
+				border-bottom: 1px solid #e9ecef;
+				padding-bottom: 0.5rem;
+				
+				&:last-child {
+					border-bottom: none;
+					margin-bottom: 0;
+					padding-bottom: 0;
+				}
+			}
+		}
+	}
+	
+	.d-flex.justify-content-between {
+		flex-direction: column;
+		align-items: flex-start !important;
+		
+		> * {
+			margin-bottom: 0.5rem;
+			
+			&:last-child {
+				margin-bottom: 0;
+			}
+		}
+	}
+}
+
+@media (max-width: 576px) {
+	.table {
+		th, td {
+			font-size: 0.8rem;
+			padding: 0.3rem !important;
+		}
 	}
 	
 	.btn {
 		font-size: 0.875rem;
-		padding: 0.375rem 0.75rem;
+		padding: 0.5rem 1rem;
+	}
+	
+	.form-control, .form-select {
+		font-size: 0.875rem;
 	}
 }
