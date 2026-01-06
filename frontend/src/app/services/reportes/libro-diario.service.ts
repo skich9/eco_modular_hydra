@@ -330,6 +330,9 @@ export class LibroDiarioService {
 								} as LibroDiarioItem;
 							} else if (trans.fuente === 'cobro') {
 								console.log('Cobro:', trans);
+console.log('id_forma_cobro:', trans.id_forma_cobro);
+console.log('forma_cobro:', trans.forma_cobro);
+console.log('forma_cobro.nombre:', trans.forma_cobro?.nombre);
 								
 								// Lógica mejorada: usar datos directos del cobro como lo hace el kardex
 								let datosCliente = null;
@@ -438,6 +441,27 @@ export class LibroDiarioService {
 								console.log('Razón social final:', datosCliente?.razon_social || 'SIN DATOS');
 								console.log('NIT final:', datosCliente?.nit || 'SIN DATOS');
 								
+								// Determinar tipo_pago basado en id_forma_cobro
+								let tipoPago = 'E'; // Por defecto Efectivo
+								if (trans.id_forma_cobro) {
+									const formaCobro = String(trans.id_forma_cobro).toUpperCase();
+									if (formaCobro === 'E' || formaCobro.includes('EFECTIVO')) {
+										tipoPago = 'E'; // Efectivo
+									} else if (formaCobro === 'T' || formaCobro.includes('TARJETA')) {
+										tipoPago = 'L'; // Tarjeta (L = Ledger/Tarjeta)
+									} else if (formaCobro === 'D' || formaCobro.includes('DEPOSITO')) {
+										tipoPago = 'D'; // Deposito (D = Deposito)
+									} else if (formaCobro === 'C' || formaCobro.includes('CHEQUE')) {
+										tipoPago = 'C'; // Cheque (C = Cheque)
+									} else if (formaCobro === 'B' || formaCobro.includes('TRANSFERENCIA') || formaCobro.includes('BANCARIA')) {
+										tipoPago = 'B'; // Transferencia Bancaria (B = Bancario)
+									} else {
+										tipoPago = 'O'; // Otro para cualquier forma no estándar
+									}
+								}
+								
+								console.log('Forma de cobro detectada:', trans.id_forma_cobro, '→ tipo_pago:', tipoPago);
+								
 								return {
 									numero: index + 1,
 									recibo: String(trans.nro_recibo || '0'),
@@ -449,8 +473,8 @@ export class LibroDiarioService {
 									hora: trans.fecha_cobro ? new Date(trans.fecha_cobro).toTimeString().substring(0, 8) : '',
 									ingreso: parseFloat(trans.monto || 0),
 									egreso: 0,
-									tipo_pago: 'E', // E = Efectivo
-									observaciones: trans.forma_cobro?.nombre || 'Efectivo'
+									tipo_pago: tipoPago,
+									observaciones: trans.forma_cobro?.nombre || trans.id_forma_cobro || 'Efectivo'
 								} as LibroDiarioItem;
 							} else if (trans.fuente === 'transaction') {
 								console.log('=== PROCESANDO TRANSACTION QR ===');

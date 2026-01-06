@@ -266,9 +266,17 @@ export class LibroDiarioComponent implements OnInit {
 
     let total = 0;
     this.datosLibroDiario.forEach(item => {
-      if (tipo === 'efectivo' && item.observaciones && item.observaciones.toLowerCase().includes('efectivo')) {
+      if (tipo === 'efectivo' && item.tipo_pago === 'E') {
         total += item.ingreso;
-      } else if (tipo === 'tarjeta' && item.observaciones && item.observaciones.toLowerCase().includes('tarjeta')) {
+      } else if (tipo === 'tarjeta' && item.tipo_pago === 'L') {
+        total += item.ingreso;
+      } else if (tipo === 'deposito' && item.tipo_pago === 'D') {
+        total += item.ingreso;
+      } else if (tipo === 'cheque' && item.tipo_pago === 'C') {
+        total += item.ingreso;
+      } else if (tipo === 'transferencia' && item.tipo_pago === 'B') {
+        total += item.ingreso;
+      } else if (tipo === 'otro' && item.tipo_pago === 'O') {
         total += item.ingreso;
       }
     });

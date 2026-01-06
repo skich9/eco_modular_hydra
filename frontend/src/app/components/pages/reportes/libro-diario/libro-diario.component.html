@@ -160,7 +160,7 @@
 									<tr>
 										<td>Deposito</td>
 										<td></td>
-										<td class="text-end">0.00</td>
+										<td class="text-end fw-bold">{{ getMetodoPagoTotal('deposito') | number:'1.2-2' }}</td>
 										<td class="text-end">0.00</td>
 									</tr>
 									<tr>
@@ -190,13 +190,13 @@
 									<tr>
 										<td>Otro</td>
 										<td></td>
-										<td class="text-end">0.00</td>
+										<td class="text-end fw-bold">{{ getMetodoPagoTotal('otro') | number:'1.2-2' }}</td>
 										<td class="text-end">0.00</td>
 									</tr>
 									<tr class="table-info fw-bold">
 										<td>Total Parcial</td>
 										<td></td>
-										<td class="text-end">{{ (getMetodoPagoTotal('efectivo') + getMetodoPagoTotal('tarjeta')) | number:'1.2-2' }}</td>
+										<td class="text-end">{{ (getMetodoPagoTotal('efectivo') + getMetodoPagoTotal('tarjeta') + getMetodoPagoTotal('deposito') + getMetodoPagoTotal('otro')) | number:'1.2-2' }}</td>
 										<td class="text-end">{{ getMetodoPagoTotal('efectivo_egresos') | number:'1.2-2' }}</td>
 									</tr>
 									<tr class="table-success fw-bold">
@@ -207,7 +207,7 @@
 									<tr class="table-primary fw-bold">
 										<td>Total General</td>
 										<td></td>
-										<td class="text-end" colspan="3">{{ (getMetodoPagoTotal('efectivo') + getMetodoPagoTotal('tarjeta') + getMetodoPagoTotal('efectivo_egresos')) | number:'1.2-2' }}</td>
+										<td class="text-end" colspan="3">{{ (getMetodoPagoTotal('efectivo') + getMetodoPagoTotal('tarjeta') + getMetodoPagoTotal('deposito') + getMetodoPagoTotal('otro') + getMetodoPagoTotal('efectivo_egresos')) | number:'1.2-2' }}</td>
 									</tr>
 								</tbody>
 							</table>
