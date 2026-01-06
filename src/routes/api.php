@@ -179,6 +179,11 @@ Route::delete('cobros/{cod_ceta}/{cod_pensum}/{tipo_inscripcion}/{nro_cobro}', [
 // QR: guardar lote en espera y actualizar snapshot
 Route::post('qr/save-lote', [QrController::class, 'saveLote']);
 
+// Recibos: API endpoints
+Route::get('recibos', [ReciboController::class, 'index']);
+Route::get('recibo/{anio}/{nro_recibo}', [ReciboController::class, 'show'])
+    ->where(['anio' => '\\d{4}', 'nro_recibo' => '\\d+']);
+
 // Recibos: PDF
 Route::get('recibos/{anio}/{nro_recibo}/pdf', [ReciboController::class, 'pdf'])
     ->where(['anio' => '\\d{4}', 'nro_recibo' => '\\d+']);

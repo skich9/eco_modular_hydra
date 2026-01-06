@@ -187,8 +187,8 @@ export class LibroDiarioComponent implements OnInit {
       usuario: this.filtroForm.value.usuario,
       fecha: this.formatearFechaSGA(this.filtroForm.value.fecha),
       t_ingresos: this.totales.ingresos.toFixed(2),
-      t_egresos: this.totales.egresos.toFixed(2),
-      totales: (this.totales.ingresos - this.totales.egresos).toFixed(2)
+      t_egresos: "0.00",
+      totales: this.totales.ingresos.toFixed(2)
     };
 
     // Mostrar confirmación (como lo hace el SGA)
@@ -196,10 +196,8 @@ export class LibroDiarioComponent implements OnInit {
       this.loading = true;
 
       // Primero cerrar la caja
-      this.libroDiarioService.cerrarCaja({
-        usuario: this.filtroForm.value.usuario,
-        fecha: this.formatearFechaSGA(this.filtroForm.value.fecha)
-      }).subscribe({
+      this.libroDiarioService.cerrarCaja(this.filtroForm.value.usuario)
+      .subscribe({
         next: (cierreResponse) => {
           if (cierreResponse.success) {
             // Luego generar el PDF
@@ -261,33 +259,21 @@ export class LibroDiarioComponent implements OnInit {
     return html;
   }
 
-  /**
-   * Calcula totales por método de pago
-   */
   getMetodoPagoTotal(tipo: string): number {
     if (!this.datosLibroDiario || this.datosLibroDiario.length === 0) {
       return 0;
     }
 
-    switch (tipo) {
-      case 'efectivo':
-        return this.datosLibroDiario
-          .filter(item => item.ingreso > 0 && item.observaciones && item.observaciones.toLowerCase().includes('efectivo'))
-          .reduce((sum, item) => sum + item.ingreso, 0);
-      
-      case 'tarjeta':
-        return this.datosLibroDiario
-          .filter(item => item.ingreso > 0 && item.observaciones && item.observaciones.toLowerCase().includes('tarjeta'))
-          .reduce((sum, item) => sum + item.ingreso, 0);
-      
-      case 'efectivo_egresos':
-        return this.datosLibroDiario
-          .filter(item => item.egreso > 0)
-          .reduce((sum, item) => sum + item.egreso, 0);
-      
-      default:
-        return 0;
-    }
+    let total = 0;
+    this.datosLibroDiario.forEach(item => {
+      if (tipo === 'efectivo' && item.observaciones && item.observaciones.toLowerCase().includes('efectivo')) {
+        total += item.ingreso;
+      } else if (tipo === 'tarjeta' && item.observaciones && item.observaciones.toLowerCase().includes('tarjeta')) {
+        total += item.ingreso;
+      }
+    });
+
+    return total;
   }
 
   /**
