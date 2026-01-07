@@ -31,14 +31,111 @@ use Carbon\Carbon;
 
 class CobroController extends Controller
 {
-	public function index()
+	public function index(Request $request)
 	{
 		try {
-			$cobros = Cobro::with(['usuario', 'cuota', 'formaCobro', 'cuentaBancaria', 'itemCobro', 'detalleRegular', 'detalleMulta'])
-				->get();
+			// Cargar cobros con relaciones básicas y aplicar filtros opcionales
+			$query = Cobro::with(['usuario', 'cuota', 'formaCobro', 'cuentaBancaria', 'itemCobro', 'detalleRegular', 'detalleMulta', 'recibo', 'factura']);
+			
+			// Filtro por id_usuario (usado por el libro diario)
+			$idUsuario = $request->query('id_usuario');
+			if ($idUsuario !== null && $idUsuario !== '') {
+				$query->where('id_usuario', (int) $idUsuario);
+			}
+			
+			// Filtro por fecha (Y-m-d) sobre fecha_cobro
+			$fecha = $request->query('fecha');
+			if ($fecha) {
+				$query->whereDate('fecha_cobro', $fecha);
+			}
+			
+			$cobros = $query->get();
+			
+			// Mapas de nota_bancaria por nro_recibo y nro_factura
+			$nbByRecibo = [];
+			$nbByFactura = [];
+			try {
+				if (Schema::hasTable('nota_bancaria')) {
+					$nroRecibos = $cobros->pluck('nro_recibo')
+						->filter(function($v){
+							return $v !== null && $v !== '';
+						})
+						->map(function($v){
+							return (string)$v;
+						})
+						->unique()
+						->values();
+					$nroFacturas = $cobros->pluck('nro_factura')
+						->filter(function($v){
+							return $v !== null && $v !== '';
+						})
+						->map(function($v){
+							return (string)$v;
+						})
+						->unique()
+						->values();
+					if ($nroRecibos->count() > 0 || $nroFacturas->count() > 0) {
+						$nbRows = DB::table('nota_bancaria')
+							->when($nroRecibos->count() > 0, function($q) use ($nroRecibos) {
+								$q->whereIn('nro_recibo', $nroRecibos->all());
+							})
+							->when($nroFacturas->count() > 0, function($q) use ($nroFacturas) {
+								$q->orWhereIn('nro_factura', $nroFacturas->all());
+							})
+							->orderBy('fecha_nota','desc')
+							->get();
+						foreach ($nbRows as $nb) {
+							$reciboKey = (string)($nb->nro_recibo ?? '');
+							if ($reciboKey !== '' && !isset($nbByRecibo[$reciboKey])) {
+								$nbByRecibo[$reciboKey] = $nb;
+							}
+							$facturaKey = (string)($nb->nro_factura ?? '');
+							if ($facturaKey !== '' && !isset($nbByFactura[$facturaKey])) {
+								$nbByFactura[$facturaKey] = $nb;
+							}
+						}
+					}
+				}
+			} catch (\Throwable $e) {
+				$nbByRecibo = [];
+				$nbByFactura = [];
+			}
+			
+			// Enriquecer cada cobro con datos bancarios y de cliente (si existen) y aplanar a array
+			$cobrosEnriquecidos = $cobros->map(function($cobro) use ($nbByRecibo, $nbByFactura) {
+				$cobroArray = $cobro->toArray();
+				
+				// Agregar datos de razón social / NIT desde recibo o factura
+				// Igual que en resumen(): prioridad recibo y luego factura
+				try {
+					$cobroArray['cliente'] = $cobro->recibo?->cliente ?? $cobro->factura?->cliente ?? null;
+					$cobroArray['nro_documento_cobro'] = $cobro->recibo?->nro_documento_cobro ?? $cobro->factura?->nro_documento_cobro ?? null;
+				} catch (\Throwable $e) {
+					// Si algo falla, dejar los campos como vienen del modelo
+				}
+				
+				// Enlazar nota_bancaria por nro_recibo o nro_factura
+				$nroReciboKey = (string)($cobro->nro_recibo ?? '');
+				$nroFacturaKey = (string)($cobro->nro_factura ?? '');
+				$nb = null;
+				if ($nroReciboKey !== '' && isset($nbByRecibo[$nroReciboKey])) {
+					$nb = $nbByRecibo[$nroReciboKey];
+				} elseif ($nroFacturaKey !== '' && isset($nbByFactura[$nroFacturaKey])) {
+					$nb = $nbByFactura[$nroFacturaKey];
+				}
+				if ($nb) {
+					$cobroArray['banco_nb'] = isset($nb->banco) ? $nb->banco : null;
+					$cobroArray['nro_transaccion'] = isset($nb->nro_transaccion) ? $nb->nro_transaccion : null;
+					$cobroArray['fecha_deposito'] = isset($nb->fecha_deposito) ? $nb->fecha_deposito : null;
+					$cobroArray['fecha_nota'] = isset($nb->fecha_nota) ? (string)$nb->fecha_nota : null;
+					$cobroArray['correlativo_nb'] = isset($nb->correlativo) ? $nb->correlativo : null;
+				}
+				return $cobroArray;
+			});
+			
 			return response()->json([
 				'success' => true,
-				'data' => $cobros
+				'data' => $cobrosEnriquecidos
 			]);
 		} catch (\Exception $e) {
 			return response()->json([
@@ -299,6 +396,16 @@ class CobroController extends Controller
 					$join->on('dp.cod_ceta', '=', 'estudiantes.cod_ceta'); 
 				})
 				->find($codCeta);
+			
+			// Debug para verificar que se obtenga el estudiante correcto
+			Log::info('Estudiante obtenido:', [
+				'cod_ceta_buscado' => $codCeta,
+				'estudiante_cod_ceta' => $estudiante?->cod_ceta,
+				'estudiante_nombre' => $estudiante?->nombre,
+				'estudiante_apellido' => $estudiante?->apellido,
+				'estudiante_completo' => $estudiante?->toArray()
+			]);
+			
 			if (!$estudiante) {
 				return response()->json([
 					'success' => false,
@@ -451,9 +558,61 @@ class CobroController extends Controller
 			}
 			
 			$cobrosMensualidad = clone $cobrosBase;
-			$cobrosMensualidad = $cobrosMensualidad->get();
+			$cobrosMensualidad = $cobrosMensualidad->with(['recibo', 'factura'])->get();
 			$cobrosItems = clone $cobrosBase;
-			$cobrosItems = $cobrosItems->get();
+			$cobrosItems = $cobrosItems->with(['recibo', 'factura'])->get();
+
+			$nbByRecibo = [];
+			$nbByFactura = [];
+			try {
+				if (Schema::hasTable('nota_bancaria')) {
+					$nroRecibos = $cobrosMensualidad->pluck('nro_recibo')
+						->merge($cobrosItems->pluck('nro_recibo'))
+						->filter(function($v){
+							return $v !== null && $v !== '';
+						})
+						->map(function($v){
+							return (string)$v;
+						})
+						->unique()
+						->values();
+					$nroFacturas = $cobrosMensualidad->pluck('nro_factura')
+						->merge($cobrosItems->pluck('nro_factura'))
+						->filter(function($v){
+							return $v !== null && $v !== '';
+						})
+						->map(function($v){
+							return (string)$v;
+						})
+						->unique()
+						->values();
+					if ($nroRecibos->count() > 0 || $nroFacturas->count() > 0) {
+						$nbRows = DB::table('nota_bancaria')
+							->when($nroRecibos->count() > 0, function($q) use ($nroRecibos) {
+								$q->whereIn('nro_recibo', $nroRecibos->all());
+							})
+							->when($nroFacturas->count() > 0, function($q) use ($nroFacturas) {
+								$q->orWhereIn('nro_factura', $nroFacturas->all());
+							})
+							->orderBy('fecha_nota','desc')
+							->get();
+						foreach ($nbRows as $nb) {
+							$reciboKey = (string)($nb->nro_recibo ?? '');
+							if ($reciboKey !== '' && !isset($nbByRecibo[$reciboKey])) {
+								$nbByRecibo[$reciboKey] = $nb;
+							}
+							$facturaKey = (string)($nb->nro_factura ?? '');
+							if ($facturaKey !== '' && !isset($nbByFactura[$facturaKey])) {
+								$nbByFactura[$facturaKey] = $nb;
+							}
+						}
+					}
+				}
+			} catch (\Throwable $e) {
+				$nbByRecibo = [];
+				$nbByFactura = [];
+			}
+
 			$totalMensualidad = $cobrosMensualidad->sum('monto');
 			$totalItems = 0; // Ya están incluidos en totalMensualidad
 			
@@ -474,7 +633,9 @@ class CobroController extends Controller
 			$cobrosMensualidadConParciales = clone $cobrosBase;
 			$cobrosMensualidadConParciales = $cobrosMensualidadConParciales
 				->whereNull('id_item') // Capturar todos los cobros que no son de items adicionales
+				->with(['recibo', 'factura'])
 				->get();
+			// Este total incluye todos los cobros de mensualidad (completos y parciales)
 			$totalMensualidadConParciales = $cobrosMensualidadConParciales->sum('monto');
 
 			// Próxima mensualidad a pagar con prioridad a PARCIAL; exponer 'parcial_count'
@@ -670,14 +831,28 @@ class CobroController extends Controller
 				: (($asignacionesPrimarias->count() > 0 ? (float) $asignacionesPrimarias->sum('monto') : null)
 					?: (optional($costoSemestral)->monto_semestre
 						?: ($paramMonto ? (float) $paramMonto->valor : null)));
-// <<<<<<< HEAD
-// 			$saldoMensualidad = isset($montoSemestre) ? (float) $montoSemestre - (float) $totalMensualidadCompletas : null;
-// 			$puMensualFromNext = $mensualidadNext ? round((float) (isset($mensualidadNext['monto']) ? $mensualidadNext['monto'] : 0), 2) : null;
-// =======
 			$totalDescuentos = 0.0;
 			if (!empty($descuentosPorAsign)) { foreach ($descuentosPorAsign as $v) { $totalDescuentos += (float)$v; } }
 			$montoSemestreNeto = isset($montoSemestre) ? max(0, (float)$montoSemestre - (float)$totalDescuentos) : null;
-			$saldoMensualidad = $montoSemestreNeto !== null ? (float)$montoSemestreNeto - (float)$totalMensualidad : null;
+			// Corrección: el saldo debe considerar todos los cobros de mensualidad (completos y parciales)
+			// para coincidir con la suma de la tabla de cobros del kardex.
+			$saldoMensualidad = $montoSemestreNeto !== null
+				? max(0, (float)$montoSemestreNeto - (float)$totalMensualidadConParciales)
+				: null;
+			
+			// Debug para el cálculo del saldo
+			Log::info('Cálculo de saldo de mensualidad:', [
+				'cod_ceta' => $codCeta,
+				'montoSemestre' => $montoSemestre,
+				'totalDescuentos' => $totalDescuentos,
+				'montoSemestreNeto' => $montoSemestreNeto,
+				'totalMensualidad' => $totalMensualidad,
+				'totalMensualidadCompletas' => $totalMensualidadCompletas,
+				'totalMensualidadConParciales' => $totalMensualidadConParciales,
+				'saldoMensualidad' => $saldoMensualidad,
+				'formula_usada' => 'montoSemestreNeto - totalMensualidadConParciales'
+			]);
+			
 			$puMensualFromNext = $mensualidadNext ? round((float) ($mensualidadNext['monto'] ?? 0), 2) : null;
 // >>>>>>> db8167bb0a817bf7e0af1d0732b63770d42d68e3
 			$puMensualFromAsignacion = $asignacionesPrimarias->count() > 0 ? round((float) $asignacionesPrimarias->avg('monto'), 2) : null;
@@ -778,6 +953,17 @@ class CobroController extends Controller
 			$estudianteData = $estudiante->toArray();
 			// Agregar nombre_completo desde el accessor
 			$estudianteData['nombre_completo'] = $estudiante->nombre_completo;
+			
+			// Debug para verificar datos del estudiante antes de devolver
+			Log::info('Datos del estudiante a devolver:', [
+				'cod_ceta' => $estudianteData['cod_ceta'] ?? 'no existe',
+				'nombre' => $estudianteData['nombre'] ?? 'no existe',
+				'apellido' => $estudianteData['apellido'] ?? 'no existe',
+				'nombre_completo' => $estudianteData['nombre_completo'] ?? 'no existe',
+				'ci_original' => $estudianteData['ci'] ?? 'no existe',
+				'ci_dp' => $estudiante->dp->ci_doc ?? 'no existe dp'
+			]);
+			
 			if (isset($estudiante->dp)) {
 				$estudianteData['ci'] = $estudiante->dp->ci_doc ?: ($estudiante->ci ?: '');
 				$estudianteData['telefono'] = $estudiante->dp->telefono_doc ?: '';
@@ -909,11 +1095,47 @@ class CobroController extends Controller
 							
 							return $item;
 						})->values(),
-						'adeudadas' => $asignacionesPrimarias->filter(function($a){
-							// Incluir PARCIAL (deben mostrar el saldo restante) y otros estados no cobrados
-							// Incluir todas las cuotas no cobradas (vencidas y no vencidas)
+						'adeudadas' => collect()
+							// Agregar asignaciones primarias adeudadas
+							->concat($asignacionesPrimarias->filter(function($a){
+								// Incluir PARCIAL (deben mostrar el saldo restante) y otros estados no cobrados
+								// Incluir todas las cuotas no cobradas (vencidas y no vencidas)
+								return $a->estado_pago !== 'COBRADO';
+							})->values())
+							// Agregar asignaciones de arrastre adeudadas
+							->concat($asignacionesArrastre ? $asignacionesArrastre->filter(function($a){
+								// Incluir solo las que no estén cobradas
+								return ($a->estado_pago ?? '') !== 'COBRADO';
+							})->map(function($a) use ($descuentosPorAsignArrastre){
+								// Formatear asignaciones de arrastre con la misma estructura que las primarias
+								return [
+									'numero_cuota' => (int) ($a->numero_cuota ?? 0),
+									'monto' => (float) ($a->monto ?? 0),
+									'descuento' => (float) ($descuentosPorAsignArrastre[(int)($a->id_asignacion_costo ?? 0)] ?? 0),
+									'monto_neto' => max(0, (float) ($a->monto ?? 0) - (float) ($descuentosPorAsignArrastre[(int)($a->id_asignacion_costo ?? 0)] ?? 0)),
+									'monto_pagado' => (float) ($a->monto_pagado ?? 0),
+									'estado_pago' => (string) ($a->estado_pago ?? ''),
+									'id_asignacion_costo' => (int) ($a->id_asignacion_costo ?? 0) ?: null,
+									'id_cuota_template' => isset($a->id_cuota_template) ? ((int)$a->id_cuota_template ?: null) : null,
+									'fecha_vencimiento' => $a->fecha_vencimiento,
+									'tipo_inscripcion' => 'ARRASTRE', // Marcar como arrastre
+								];
+							})->values() : collect())
+							// Ordenar por número de cuota
+							->sortBy('numero_cuota')
+							->values(),
+					
+					// Debug para verificar adeudadas
+					'adeudadas_debug' => [
+						'asignaciones_primarias_count' => $asignacionesPrimarias->count(),
+						'asignaciones_arrastre_count' => $asignacionesArrastre ? $asignacionesArrastre->count() : 0,
+						'adeudadas_primarias' => $asignacionesPrimarias->filter(function($a){
 							return $a->estado_pago !== 'COBRADO';
-						})->values(),
+						})->count(),
+						'adeudadas_arrastre' => $asignacionesArrastre ? $asignacionesArrastre->filter(function($a){
+							return ($a->estado_pago ?? '') !== 'COBRADO';
+						})->count() : 0,
+					],
 					],
 					'asignaciones_arrastre' => ($asignacionesArrastre && $asignacionesArrastre->count() > 0) ? $asignacionesArrastre->map(function($a) use ($descuentosPorAsignArrastre){
 						return [
@@ -933,12 +1155,54 @@ class CobroController extends Controller
 						'mensualidad' => [
 							'total' => (float) $totalMensualidad,
 							'count' => $cobrosMensualidad->count(),
-							'items' => $cobrosMensualidad,
+							'items' => $cobrosMensualidad->map(function($cobro) use ($nbByRecibo, $nbByFactura) {
+								$cobroArray = $cobro->toArray();
+								// Agregar datos de razón social/NIT desde recibo o factura
+								$cobroArray['cliente'] = $cobro->recibo?->cliente ?? $cobro->factura?->cliente ?? null;
+								$cobroArray['nro_documento_cobro'] = $cobro->recibo?->nro_documento_cobro ?? $cobro->factura?->nro_documento_cobro ?? null;
+								$nroReciboKey = (string)($cobro->nro_recibo ?? '');
+								$nroFacturaKey = (string)($cobro->nro_factura ?? '');
+								$nb = null;
+								if ($nroReciboKey !== '' && isset($nbByRecibo[$nroReciboKey])) {
+									$nb = $nbByRecibo[$nroReciboKey];
+								} elseif ($nroFacturaKey !== '' && isset($nbByFactura[$nroFacturaKey])) {
+									$nb = $nbByFactura[$nroFacturaKey];
+								}
+								if ($nb) {
+									$cobroArray['banco_nb'] = isset($nb->banco) ? $nb->banco : null;
+									$cobroArray['nro_transaccion'] = isset($nb->nro_transaccion) ? $nb->nro_transaccion : null;
+									$cobroArray['fecha_deposito'] = isset($nb->fecha_deposito) ? $nb->fecha_deposito : null;
+									$cobroArray['fecha_nota'] = isset($nb->fecha_nota) ? (string)$nb->fecha_nota : null;
+									$cobroArray['correlativo_nb'] = isset($nb->correlativo) ? $nb->correlativo : null;
+								}
+								return $cobroArray;
+							}),
 						],
 						'items' => [
 							'total' => (float) $totalItems,
 							'count' => $cobrosItems->count(),
-							'items' => $cobrosItems,
+							'items' => $cobrosItems->map(function($cobro) use ($nbByRecibo, $nbByFactura) {
+								$cobroArray = $cobro->toArray();
+								// Agregar datos de razón social/NIT desde recibo o factura
+								$cobroArray['cliente'] = $cobro->recibo?->cliente ?? $cobro->factura?->cliente ?? null;
+								$cobroArray['nro_documento_cobro'] = $cobro->recibo?->nro_documento_cobro ?? $cobro->factura?->nro_documento_cobro ?? null;
+								$nroReciboKey = (string)($cobro->nro_recibo ?? '');
+								$nroFacturaKey = (string)($cobro->nro_factura ?? '');
+								$nb = null;
+								if ($nroReciboKey !== '' && isset($nbByRecibo[$nroReciboKey])) {
+									$nb = $nbByRecibo[$nroReciboKey];
+								} elseif ($nroFacturaKey !== '' && isset($nbByFactura[$nroFacturaKey])) {
+									$nb = $nbByFactura[$nroFacturaKey];
+								}
+								if ($nb) {
+									$cobroArray['banco_nb'] = isset($nb->banco) ? $nb->banco : null;
+									$cobroArray['nro_transaccion'] = isset($nb->nro_transaccion) ? $nb->nro_transaccion : null;
+									$cobroArray['fecha_deposito'] = isset($nb->fecha_deposito) ? $nb->fecha_deposito : null;
+									$cobroArray['fecha_nota'] = isset($nb->fecha_nota) ? (string)$nb->fecha_nota : null;
+									$cobroArray['correlativo_nb'] = isset($nb->correlativo) ? $nb->correlativo : null;
+								}
+								return $cobroArray;
+							}),
 						],
 					],
 					'mensualidad_next' => $mensualidadNext ? [
@@ -952,7 +1216,8 @@ class CobroController extends Controller
 						'descuentos' => (float) $totalDescuentos,
 						'saldo_mensualidad' => $saldoMensualidad,
 						'total_pagado' => (float) $totalPagadoDesdeAsignaciones,
-						'total_pagado_v2' => (float) $totalMensualidadCompletas,
+						// total_pagado_v2: suma de todos los cobros de mensualidad (completos y parciales)
+						'total_pagado_v2' => (float) $totalMensualidadConParciales,
 						'nro_cuotas' => $nroCuotas,
 						'pu_mensual' => $puMensual,
 						'pu_mensual_nominal' => $puMensualNominal,

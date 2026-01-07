@@ -1,0 +1,250 @@
+<div class="container py-3">
+	<div class="d-flex justify-content-between align-items-center mb-4">
+		<h2 class="mb-0">Libro Diario</h2>
+		<div class="text-muted" *ngIf="currentUser">
+			<i class="fas fa-user me-2"></i>
+			{{ currentUser.nombre_completo }}
+		</div>
+	</div>
+
+	<!-- Alertas -->
+	<div *ngIf="alertMessage" class="alert mb-3" [ngClass]="{
+		'alert-success': alertType === 'success',
+		'alert-danger': alertType === 'error',
+		'alert-warning': alertType === 'warning'
+	}">{{ alertMessage }}</div>
+
+	<!-- Formulario de Búsqueda -->
+	<div class="row g-3">
+		<div class="col-12">
+			<div class="card mb-4 shadow-sm">
+				<div class="card-header d-flex justify-content-between align-items-center">
+					<strong>Filtros de Búsqueda</strong>
+					<button type="button" class="btn btn-sm btn-outline-secondary" (click)="limpiarFiltros()" [disabled]="loading">
+						<i class="fas fa-redo me-1"></i>Limpiar
+					</button>
+				</div>
+				<div class="card-body">
+					<form [formGroup]="filtroForm" (ngSubmit)="buscarLibroDiario()">
+						<div class="row g-3">
+							<div class="col-md-4">
+								<label class="form-label">Usuario</label>
+								<select class="form-select" id="usuario" formControlName="usuario">
+									<option value="">Seleccione un usuario</option>
+									<option *ngFor="let user of usuarios" [value]="user.id_usuario">
+										{{ user.id_usuario }} {{ user.nombre ? '- ' + user.nombre : '' }}
+									</option>
+								</select>
+								<div *ngIf="filtroForm.get('usuario')?.invalid && filtroForm.get('usuario')?.touched" 
+									 class="invalid-feedback">
+									Debe seleccionar un usuario
+								</div>
+							</div>
+							<div class="col-md-4">
+								<label class="form-label">Fecha</label>
+								<input 
+									type="date" 
+									class="form-control" 
+									id="fecha" 
+									formControlName="fecha"
+								>
+								<div *ngIf="filtroForm.get('fecha')?.invalid && filtroForm.get('fecha')?.touched" 
+									 class="invalid-feedback">
+									Debe seleccionar una fecha
+								</div>
+							</div>
+							<div class="col-md-4">
+								<label class="form-label d-block">&nbsp;</label>
+								<div class="d-flex gap-2">
+									<button type="submit" class="btn btn-primary" [disabled]="loading || filtroForm.invalid">
+										<i class="fas" [ngClass]="loading ? 'fa-spinner fa-spin' : 'fa-search'"></i>
+										{{ loading ? 'Buscando...' : 'Buscar' }}
+									</button>
+								</div>
+							</div>
+						</div>
+					</form>
+				</div>
+			</div>
+		</div>
+	</div>
+
+	<!-- Resultados -->
+	<div class="row" *ngIf="mostrarResultados">
+		<div class="col-12">
+			<!-- Loading State -->
+			<div *ngIf="loading" class="text-center py-5">
+				<div class="spinner-border text-primary" role="status">
+					<span class="visually-hidden">Cargando...</span>
+				</div>
+				<p class="mt-3 text-muted">
+					<i class="fas fa-clock me-1"></i>
+					Cargando datos del libro diario...
+				</p>
+			</div>
+
+			<!-- Datos Encontrados -->
+			<div *ngIf="!loading && datosLibroDiario && datosLibroDiario.length > 0">
+				<!-- Tabla de Movimientos estilo SGA -->
+				<div class="card shadow-sm">
+					<div class="card-header d-flex justify-content-between align-items-center">
+						<strong>Libro Diario - {{ filtroForm.value.fecha | date:'dd/MM/yyyy' }}</strong>
+						<button 
+							class="btn btn-success btn-sm"
+							(click)="imprimirLibroDiario()"
+							[disabled]="!datosLibroDiario || datosLibroDiario.length === 0 || loading"
+						>
+							<i class="fas fa-print me-1"></i>
+							Imprimir y Cerrar Caja
+						</button>
+					</div>
+					<div class="card-body p-0">
+						<div class="table-responsive">
+							<table class="table table-bordered table-sm align-middle libro-diario-table">
+								<thead class="table-light">
+									<tr class="text-center">
+										<th width="40">Pago</th>
+										<th width="40">Nº</th>
+										<th width="60">Recibo</th>
+										<th width="60">Factura</th>
+										<th>razon</th>
+										<th width="80">nit</th>
+										<th>concepto</th>
+										<th>observaciones</th>
+										<th width="80">cod_ceta</th>
+										<th width="60">hora</th>
+										<th width="80">ingreso</th>
+									</tr>
+								</thead>
+								<tbody>
+									<!-- Movimientos -->
+									<tr *ngFor="let item of datosLibroDiario; let i = index" 
+										[class.text-danger]="item.egreso > 0">
+										<td class="text-center fw-bold">{{ item.tipo_pago || 'E' }}</td>
+										<td class="text-center fw-bold">{{ i + 1 }}</td>
+										<td class="text-center">{{ item.recibo }}</td>
+										<td class="text-center">{{ item.factura }}</td>
+										<td>{{ item.razon }}</td>
+										<td class="text-center">{{ item.nit }}</td>
+										<td>{{ item.concepto }}</td>
+										<td>{{ item.observaciones || '' }}</td>
+										<td class="text-center">{{ item.cod_ceta }}</td>
+										<td class="text-center">{{ item.hora }}</td>
+										<td class="text-end fw-bold">
+											{{ item.ingreso > 0 ? (item.ingreso | number:'1.2-2') : '' }}
+										</td>
+									</tr>
+								</tbody>
+							</table>
+						</div>
+						
+						<!-- Resumen de métodos de pago -->
+						<div class="p-3 border-top d-flex justify-content-end">
+							<div style="width: 50%;">
+								<h6 class="mb-3">Resumen de Métodos de Pago</h6>
+								<table class="table table-sm table-bordered">
+									<thead class="table-light">
+										<tr>
+											<th>Tipo de pago</th>
+											<th class="text-end">Recibo</th>
+											<th class="text-end">Factura</th>
+										</tr>
+									</thead>
+								<tbody>
+									<tr>
+										<td>Transpaso</td>
+										<td class="text-end">0.00</td>
+										<td class="text-end">0.00</td>
+									</tr>
+									<tr>
+										<td>Deposito</td>
+										<td class="text-end fw-bold">{{ getMetodoPagoTotalByType('deposito', 'recibo') | number:'1.2-2' }}</td>
+										<td class="text-end fw-bold">{{ getMetodoPagoTotalByType('deposito', 'factura') | number:'1.2-2' }}</td>
+									</tr>
+									<tr>
+										<td>Efectivo</td>
+										<td class="text-end fw-bold">{{ getMetodoPagoTotalByType('efectivo', 'recibo') | number:'1.2-2' }}</td>
+										<td class="text-end fw-bold">{{ getMetodoPagoTotalByType('efectivo', 'factura') | number:'1.2-2' }}</td>
+									</tr>
+									<tr>
+										<td>Cheque</td>
+										<td class="text-end">0.00</td>
+										<td class="text-end">0.00</td>
+									</tr>
+									<tr>
+										<td>Tarjeta</td>
+										<td class="text-end fw-bold">{{ getMetodoPagoTotalByType('tarjeta', 'recibo') | number:'1.2-2' }}</td>
+										<td class="text-end fw-bold">{{ getMetodoPagoTotalByType('tarjeta', 'factura') | number:'1.2-2' }}</td>
+									</tr>
+									<tr>
+										<td>Transferencia Bancaria</td>
+										<td class="text-end fw-bold">{{ getMetodoPagoTotalByType('transferencia', 'recibo') | number:'1.2-2' }}</td>
+										<td class="text-end fw-bold">{{ getMetodoPagoTotalByType('transferencia', 'factura') | number:'1.2-2' }}</td>
+									</tr>
+									<tr>
+										<td>Otro</td>
+										<td class="text-end fw-bold">{{ getMetodoPagoTotalByType('otro', 'recibo') | number:'1.2-2' }}</td>
+										<td class="text-end fw-bold">{{ getMetodoPagoTotalByType('otro', 'factura') | number:'1.2-2' }}</td>
+									</tr>
+									<tr class="table-info fw-bold">
+										<td>Total Parcial</td>
+										<td class="text-end">{{ (getMetodoPagoTotalByType('deposito', 'recibo') + getMetodoPagoTotalByType('efectivo', 'recibo') + getMetodoPagoTotalByType('tarjeta', 'recibo') + getMetodoPagoTotalByType('transferencia', 'recibo') + getMetodoPagoTotalByType('otro', 'recibo')) | number:'1.2-2' }}</td>
+										<td class="text-end">{{ (getMetodoPagoTotalByType('deposito', 'factura') + getMetodoPagoTotalByType('efectivo', 'factura') + getMetodoPagoTotalByType('tarjeta', 'factura') + getMetodoPagoTotalByType('transferencia', 'factura') + getMetodoPagoTotalByType('otro', 'factura')) | number:'1.2-2' }}</td>
+									</tr>
+									<!-- Separador visual entre totales parciales y totales finales -->
+									<tr>
+										<td colspan="3"></td>
+									</tr>
+									<tr class="table-success fw-bold">
+										<td>Total Efectivo</td>
+										<td class="text-end" colspan="2">
+											{{ (getMetodoPagoTotalByType('efectivo', 'recibo') + getMetodoPagoTotalByType('efectivo', 'factura')) | number:'1.2-2' }}
+										</td>
+									</tr>
+									<tr class="table-primary fw-bold">
+										<td>Total General</td>
+										<td class="text-end" colspan="2">
+											{{ (
+												getMetodoPagoTotalByType('deposito', 'recibo') +
+												getMetodoPagoTotalByType('efectivo', 'recibo') +
+												getMetodoPagoTotalByType('tarjeta', 'recibo') +
+												getMetodoPagoTotalByType('transferencia', 'recibo') +
+												getMetodoPagoTotalByType('otro', 'recibo') +
+												getMetodoPagoTotalByType('deposito', 'factura') +
+												getMetodoPagoTotalByType('efectivo', 'factura') +
+												getMetodoPagoTotalByType('tarjeta', 'factura') +
+												getMetodoPagoTotalByType('transferencia', 'factura') +
+												getMetodoPagoTotalByType('otro', 'factura')
+											) | number:'1.2-2' }}
+										</td>
+									</tr>
+								</tbody>
+							</table>
+						</div>
+					</div>
+				</div>
+			</div>
+
+			<!-- Sin Datos -->
+			<div *ngIf="!loading && (!datosLibroDiario || datosLibroDiario.length === 0)" class="text-center py-5">
+				<div class="card shadow-sm">
+					<div class="card-body text-center py-5">
+						<div class="text-muted mb-3">
+							<i class="fas fa-inbox fa-3x"></i>
+						</div>
+						<h5 class="text-muted">No existen Movimientos</h5>
+						<p class="text-muted">
+							No se encontraron movimientos para la fecha y usuario seleccionados.
+						</p>
+						<div class="mt-3">
+							<button class="btn btn-outline-primary" (click)="limpiarFiltros()">
+								<i class="fas fa-sync me-2"></i>
+								Intentar con otros filtros
+							</button>
+						</div>
+					</div>
+				</div>
+			</div>
+		</div>
+	</div>
+</div>

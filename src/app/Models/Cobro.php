@@ -120,4 +120,15 @@ class Cobro extends Model
 	{
 		return $this->hasOne(CobrosDetalleMulta::class, 'nro_cobro', 'nro_cobro');
 	}
+
+	// Relaciones con recibo y factura para obtener razón social/NIT
+	public function recibo()
+	{
+		return $this->belongsTo(Recibo::class, 'nro_recibo', 'nro_recibo');
+	}
+
+	public function factura()
+	{
+		return $this->belongsTo(Factura::class, 'nro_factura', 'nro_factura');
+	}
 }

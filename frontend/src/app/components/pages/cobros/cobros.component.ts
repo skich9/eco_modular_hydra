@@ -142,7 +142,8 @@ export class CobrosComponent implements OnInit {
         codigo_sin: [''],
         id_forma_cobro: ['', Validators.required],
         id_cuentas_bancarias: [''],
-        id_usuario: ['', Validators.required]
+        id_usuario: ['', Validators.required],
+        nro_recibo: ['']
       }),
       pagos: this.fb.array([])
     });
@@ -1896,7 +1897,12 @@ export class CobrosComponent implements OnInit {
       cantidad: [1, [Validators.required, Validators.min(1)]],
       detalle: [''],
       m_marca: [false],
-      d_marca: [false]
+      d_marca: [false],
+      // Campos adicionales para observaciones de transferencia/tarjeta
+      banco: [''],
+      nro_deposito: [''],
+      fecha_deposito: [''],
+      nro_referencia: ['']
     }));
   }
 
@@ -1947,8 +1953,15 @@ export class CobrosComponent implements OnInit {
     if (!this.searchForm.valid) return;
     this.loading = true;
     const { cod_ceta, gestion } = this.searchForm.value;
+    
+    // Limpiar datos anteriores pero mantener estado de opciones
+    this.resumen = null;
+    
     this.cobrosService.getResumen(cod_ceta, gestion).subscribe({
       next: (res) => {
+        console.log('[Cobros] Respuesta del backend:', res);
+        console.log('[Cobros] Estudiante recibido:', res?.data?.estudiante);
+        
         if (res.success) {
           this.resumen = res.data;
           try {
@@ -1966,16 +1979,31 @@ export class CobrosComponent implements OnInit {
           // Prefill identidad/razón social
           const est = this.resumen?.estudiante || {};
           const fullName = [est.ap_paterno, est.ap_materno, est.nombres ].filter(Boolean).join(' ');
-          this.identidadForm.patchValue({
-            nombre_completo: fullName,
-            tipo_identidad: 1,
-            ci: est.ci || '',
-            complemento_habilitado: false,
-            complemento_ci: '',
-            razon_social: est.ap_paterno || fullName,
-            email_habilitado: false,
-            email: est.email || ''
+          
+          console.log('[Cobros] Datos del estudiante para llenar formulario:', {
+            estudiante: est,
+            fullName: fullName,
+            ci: est.ci,
+            cod_ceta: est.cod_ceta
           });
+          
+          // Limpiar formulario antes de llenar con nuevos datos con un pequeño delay
+          setTimeout(() => {
+            console.log('[Cobros] Limpiando y llenando formulario...');
+            this.identidadForm.reset();
+            this.identidadForm.patchValue({
+              nombre_completo: fullName,
+              tipo_identidad: 1,
+              ci: est.ci || '',
+              complemento_habilitado: false,
+              complemento_ci: '',
+              razon_social: est.ap_paterno || fullName,
+              email_habilitado: false,
+              email: est.email || ''
+            });
+            
+            console.log('[Cobros] Formulario después de llenar:', this.identidadForm.value);
+          }, 50);
 
           // Autocompletar desde documentos presentados si el backend envió documento_identidad
           const docId = this.resumen?.documento_identidad || null;
@@ -2060,6 +2088,12 @@ export class CobrosComponent implements OnInit {
       },
       error: (err) => {
         console.error('Resumen error:', err);
+        
+        // No limpiar el formulario aquí para permitir mostrar datos si la carga es exitosa
+        this.resumen = null;
+        this.reincorporacion = null;
+        this.showOpciones = false;
+        
         const status = Number(err?.status || 0);
         const backendMsg = (err?.error?.message || err?.message || '').toString();
         // Fallback: si la gestión solicitada no aplica, reintentar con la última inscripción del estudiante
@@ -2631,10 +2665,6 @@ export class CobrosComponent implements OnInit {
       const n = Number(it?.nro_cobro || 0);
       if (n > max) max = n;
     }
-    for (const ctrl of (this.pagos.controls || [])) {
-      const n = Number((ctrl as FormGroup).get('nro_cobro')?.value || 0);
-      if (n > max) max = n;
-    }
     return max;
   }
 
@@ -2742,6 +2772,11 @@ export class CobrosComponent implements OnInit {
       if (idx >= 0 && idx < base.length) return this.monthName(base[idx]);
       return null;
     } catch { return null; }
+  }
+
+  private formatObservacionesByPaymentMethod(pago: any): string {
+    const raw = (pago?.observaciones ?? '').toString();
+    return raw.trim();
   }
 
   onAddPagosFromModal(payload: any): void {
@@ -3015,6 +3050,15 @@ export class CobrosComponent implements OnInit {
         }
       }
     } catch {}
+    // 3.1) nro_recibo: asignar número único para el lote (independiente de nro_cobro)
+    try {
+      const currentNroRecibo = cab?.get('nro_recibo')?.value;
+      if (!currentNroRecibo) {
+        const nextReciboNro = this.getNextCobroNro();
+        cab.patchValue({ nro_recibo: nextReciboNro }, { emitEvent: false });
+        console.log('nro_recibo asignado al lote:', nextReciboNro);
+      }
+    } catch {}
     console.log('HOIla 5');
     // Pre-completar fecha/monto y ASIGNAR nro_cobro único en cliente (hasta que backend lo haga atómico)
     try {
@@ -3025,8 +3069,10 @@ export class CobrosComponent implements OnInit {
         const raw: any = fg.getRawValue();
         const subtotal = this.calcRowSubtotal(idx);
         const fecha = raw?.fecha_cobro || hoy;
-        const nro = raw?.nro_cobro ? Number(raw.nro_cobro) : (next++);
-        fg.patchValue({ fecha_cobro: fecha, monto: subtotal, nro_cobro: nro }, { emitEvent: false });
+        
+        // NO asignar nro_cobro, dejar que backend lo genere
+        fg.patchValue({ fecha_cobro: fecha, monto: subtotal }, { emitEvent: false });
+        console.log(`Pago ${idx} - nro_cobro será generado por backend`);
       });
       this.batchForm.updateValueAndValidity({ onlySelf: false, emitEvent: false });
     } catch {}
@@ -3069,16 +3115,28 @@ export class CobrosComponent implements OnInit {
     const { cabecera } = this.batchForm.value as any;
     // Asegurar codigo_sin base para SIAT (QR variante -> base)
     const siatCodigoSin = this.codigoSinBaseSelected || (cabecera?.codigo_sin || '');
-    // Mapear pagos para enviar solo con 'monto' calculado y fallbacks de nro/fecha
+    // Mapear pagos para enviar solo con 'monto' calculado, SIN nro_cobro (backend lo genera)
     const hoy = new Date().toISOString().slice(0, 10);
+    console.log('Creando pagosRaw - SIN nro_cobro, backend generará con AUTO_INCREMENT');
+    
     const pagosRaw = (baseCtrls || []).map((ctrl, idx) => {
       const raw = (ctrl as FormGroup).getRawValue() as any;
       const subtotal = this.calcRowSubtotal(idx);
       const fecha = raw.fecha_cobro || hoy;
-      const item: any = { ...raw, fecha_cobro: fecha, monto: subtotal, nro_cobro: Number(raw?.nro_cobro || 0) };
-      if (!item.nro_cobro || item.nro_cobro <= 0) {
-        item.nro_cobro = this.getNextCobroNro();
-      }
+      
+      // NO incluir nro_cobro, dejar que backend lo genere
+      const item: any = { 
+        ...raw, 
+        fecha_cobro: fecha, 
+        monto: subtotal,
+        // Asegurar que cada pago tenga el id_forma_cobro de la cabecera
+        id_forma_cobro: cabecera?.id_forma_cobro || raw?.id_forma_cobro
+      };
+      
+      // Eliminar nro_cobro si existe para que backend lo genere
+      delete item.nro_cobro;
+      
+      console.log(`pagosRaw ${idx} - nro_cobro será generado por backend`);
       return item;
     });
     console.log('HOIla 9');
@@ -3092,8 +3150,25 @@ export class CobrosComponent implements OnInit {
         if (md === 'C' || comp === 'COMPUTARIZADA') return 'C';
         return 'C';
       })();
-      return { ...it, tipo_documento: tipo || 'R', medio_doc: medio || 'C' };
+      
+      // Formatear observaciones sólo respetando lo que venga de los formularios
+      console.log('Procesando pago para formatear observaciones (sin defaults automáticos):', it);
+      const observacionesFinal = this.formatObservacionesByPaymentMethod(it);
+      console.log('Observaciones finales a enviar al backend:', observacionesFinal);
+      
+      return { ...it, tipo_documento: tipo || 'R', medio_doc: medio || 'C', observaciones: observacionesFinal };
     });
+    
+    console.log('HOIla 10 - Payload final con observaciones formateadas:', {
+      pagos: pagos.map(p => ({
+        id_forma_cobro: p.id_forma_cobro,
+        observaciones: p.observaciones,
+        banco: p.banco,
+        nro_deposito: p.nro_deposito,
+        fecha_deposito: p.fecha_deposito
+      }))
+    });
+    
     const payload = {
       ...cabecera,
       codigo_sin: siatCodigoSin,
