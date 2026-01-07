@@ -2563,78 +2563,8 @@ export class CobrosComponent implements OnInit {
   }
 
   private formatObservacionesByPaymentMethod(pago: any): string {
-    console.log('formatObservacionesByPaymentMethod - pago completo:', pago);
-    const idFormaCobro = pago?.id_forma_cobro || '';
-    const obsOriginal = pago?.observaciones || '';
-    
-    // Extraer campos adicionales del pago
-    const banco = pago?.banco || '';
-    const nroDeposito = pago?.nro_deposito || '';
-    const fechaDeposito = pago?.fecha_deposito || '';
-    const nroReferencia = pago?.nro_referencia || '';
-    
-    console.log('Campos extraídos:', { 
-      idFormaCobro, 
-      obsOriginal, 
-      banco, 
-      nroDeposito, 
-      fechaDeposito, 
-      nroReferencia 
-    });
-    
-    // Obtener el método de pago para determinar si es TARJETA (por nombre)
-    const formaCobro = this.formasCobro.find((f: any) => 
-      `${f?.id_forma_cobro}` === `${idFormaCobro}` || 
-      `${f?.codigo_sin}` === `${idFormaCobro}`
-    );
-    
-    // Para TRANSFERENCIA, detectar por código 'B'
-    if (idFormaCobro === 'B') {
-      console.log('Transferencia detectada - datos:', { banco, nroDeposito, fechaDeposito, nroReferencia });
-      
-      if (banco && nroDeposito && fechaDeposito) {
-        // Formato: Transferencia: Banco Sol-211020251035-21/10/2025-6281
-        const formatted = `Transferencia: ${banco}-${nroDeposito}-${fechaDeposito}-${nroReferencia}`;
-        console.log('Observaciones formateadas (Transferencia):', formatted);
-        return formatted;
-      } else {
-        console.log('Faltan datos para transferencia. Usando observaciones con tipo de pago.');
-        const formaCobroNombre = formaCobro?.descripcion_sin || formaCobro?.nombre || formaCobro?.name || formaCobro?.descripcion || formaCobro?.label || 'Transferencia';
-        return obsOriginal ? `${obsOriginal} (${formaCobroNombre})` : formaCobroNombre;
-      }
-    }
-    
-    if (!formaCobro) {
-      console.log('No se encontró forma de cobro para:', idFormaCobro);
-      return obsOriginal || 'Pago registrado';
-    }
-    
-    const nombreForma = (formaCobro?.descripcion_sin || formaCobro?.nombre || formaCobro?.name || formaCobro?.descripcion || formaCobro?.label || '').toString().trim().toUpperCase();
-    console.log('Nombre forma cobro:', nombreForma);
-    
-    // Para TARJETA (detectar por nombre)
-    if (nombreForma.includes('TARJETA')) {
-      console.log('Tarjeta detectada - datos:', { banco, nroDeposito, fechaDeposito });
-      
-      if (banco && nroDeposito && fechaDeposito) {
-        // Formato: Tarjeta: Banco Ganadero link-LINKSER082-17/11/2025 NL:0
-        const formatted = `Tarjeta: ${banco} link-${nroDeposito}-${fechaDeposito} NL:0`;
-        console.log('Observaciones formateadas (Tarjeta):', formatted);
-        return formatted;
-      } else {
-        console.log('Faltan datos para tarjeta. Usando observaciones con tipo de pago.');
-        const formaCobroNombre = formaCobro?.descripcion_sin || formaCobro?.nombre || formaCobro?.name || formaCobro?.descripcion || formaCobro?.label || 'Tarjeta';
-        return obsOriginal ? `${obsOriginal} (${formaCobroNombre})` : formaCobroNombre;
-      }
-    }
-    
-    // Para otros métodos, incluir al menos el tipo de pago en las observaciones
-    const formaCobroNombre = formaCobro?.descripcion_sin || formaCobro?.nombre || formaCobro?.name || formaCobro?.descripcion || formaCobro?.label || 'Método de pago';
-    const observacionesConTipo = obsOriginal ? `${obsOriginal} (${formaCobroNombre})` : formaCobroNombre;
-    console.log('Usando observaciones con tipo de pago:', observacionesConTipo);
-    
-    // Asegurar que nunca retorne null/undefined/vacío
-    return observacionesConTipo || 'Pago registrado';
+    const raw = (pago?.observaciones ?? '').toString();
+    return raw.trim();
   }
 
   onAddPagosFromModal(payload: any): void {
@@ -2982,7 +2912,7 @@ export class CobrosComponent implements OnInit {
       const subtotal = this.calcRowSubtotal(idx);
       const fecha = raw.fecha_cobro || hoy;
       
-      // NO incluir nro_cobro, dejar que backend lo genere con AUTO_INCREMENT
+      // NO incluir nro_cobro, dejar que backend lo genere
       const item: any = { 
         ...raw, 
         fecha_cobro: fecha, 
@@ -3009,14 +2939,10 @@ export class CobrosComponent implements OnInit {
         return 'C';
       })();
       
-      // Formatear observaciones para TARJETA y TRANSFERENCIA
-      console.log('Procesando pago para formatear observaciones:', it);
-      const observacionesFormateadas = this.formatObservacionesByPaymentMethod(it);
-      console.log('Resultado observaciones formateadas:', observacionesFormateadas);
-      
-      // Asegurar que las observaciones nunca estén vacías
-      const observacionesFinal = observacionesFormateadas || 'Pago registrado';
-      console.log('Observaciones finales (con fallback):', observacionesFinal);
+      // Formatear observaciones sólo respetando lo que venga de los formularios
+      console.log('Procesando pago para formatear observaciones (sin defaults automáticos):', it);
+      const observacionesFinal = this.formatObservacionesByPaymentMethod(it);
+      console.log('Observaciones finales a enviar al backend:', observacionesFinal);
       
       return { ...it, tipo_documento: tipo || 'R', medio_doc: medio || 'C', observaciones: observacionesFinal };
     });

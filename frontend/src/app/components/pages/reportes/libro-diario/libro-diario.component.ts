@@ -310,9 +310,28 @@ export class LibroDiarioComponent implements OnInit {
 
       // Si es el método de pago correcto, filtrar por tipo de comprobante
       if (esMetodoPagoCorrecto) {
-        if (tipoComprobante === 'recibo' && item.recibo && item.recibo !== '0' && item.recibo !== '') {
+        const tipoDocRaw = (item as any).tipo_doc ? String((item as any).tipo_doc).toUpperCase() : '';
+        const tieneFacturaValida = !!item.factura && item.factura !== '0' && item.factura !== '';
+
+        let esFacturaDoc = false;
+        let esReciboDoc = false;
+
+        if (tipoDocRaw === 'F') {
+          esFacturaDoc = true;
+        } else if (tipoDocRaw === 'R') {
+          esReciboDoc = true;
+        } else {
+          // Fallback: si no tenemos tipo_doc, usar la presencia de factura válida
+          if (tieneFacturaValida) {
+            esFacturaDoc = true;
+          } else {
+            esReciboDoc = true;
+          }
+        }
+
+        if (tipoComprobante === 'factura' && esFacturaDoc) {
           total += item.ingreso;
-        } else if (tipoComprobante === 'factura' && item.factura && item.factura !== '0' && item.factura !== '') {
+        } else if (tipoComprobante === 'recibo' && esReciboDoc) {
           total += item.ingreso;
         }
       }

@@ -22,6 +22,7 @@ export interface LibroDiarioItem {
 	hora: string;
 	ingreso: number;
 	egreso: number;
+	tipo_doc?: string; // 'F' factura, 'R' recibo, u otro
 	tipo_pago?: string; // E, L, etc.
 	observaciones?: string; // Efectivo, Tarjeta, etc.
 }
@@ -341,22 +342,43 @@ export class LibroDiarioService {
 								// Determinar tipo_pago para la factura según su método de pago
 								// Usar los mismos códigos que en cobros: D Deposito, E Efectivo, T Traspaso, C Cheque, L Tarjeta, B Transferencia, O Otro
 								let tipoPagoFactura = 'E';
-								const metodoFactura = (trans.metodo_pago || '').toString().toUpperCase();
-								if (metodoFactura.includes('EFECTIVO')) {
-									tipoPagoFactura = 'E';
-								} else if (metodoFactura.includes('TARJETA')) {
-									tipoPagoFactura = 'L';
-								} else if (metodoFactura.includes('DEPOSITO')) {
-									tipoPagoFactura = 'D';
-								} else if (metodoFactura.includes('CHEQUE')) {
-									tipoPagoFactura = 'C';
-								} else if (metodoFactura.includes('TRANSFERENCIA') || metodoFactura.includes('BANCARIA')) {
-									tipoPagoFactura = 'B';
-								} else if (metodoFactura.includes('TRASPASO')) {
-									tipoPagoFactura = 'T';
-								} else if (metodoFactura) {
-									// Si tiene algún texto pero no coincide con los anteriores, marcar como Otro
-									tipoPagoFactura = 'O';
+								const idFormaFactura = (trans.id_forma_cobro || '').toString().toUpperCase();
+								if (idFormaFactura) {
+									// Mapear códigos de forma de cobro de factura a los códigos del libro diario
+									if (idFormaFactura === 'E' || idFormaFactura === 'EF' || idFormaFactura.includes('EFECT')) {
+										tipoPagoFactura = 'E'; // Efectivo
+									} else if (idFormaFactura === 'L' || idFormaFactura === 'TA' || idFormaFactura.includes('TARJ')) {
+										tipoPagoFactura = 'L'; // Tarjeta
+									} else if (idFormaFactura === 'D' || idFormaFactura === 'DE' || idFormaFactura.includes('DEPOS')) {
+										tipoPagoFactura = 'D'; // Depósito
+									} else if (idFormaFactura === 'C' || idFormaFactura === 'CH' || idFormaFactura.includes('CHEQ')) {
+										tipoPagoFactura = 'C'; // Cheque
+									} else if (idFormaFactura === 'B' || idFormaFactura === 'TR' || idFormaFactura.includes('TRANS') || idFormaFactura.includes('BANC')) {
+										tipoPagoFactura = 'B'; // Transferencia bancaria
+									} else if (idFormaFactura === 'T' || idFormaFactura.includes('TRASP')) {
+										tipoPagoFactura = 'T'; // Traspaso
+									} else {
+										tipoPagoFactura = 'O'; // Otro
+									}
+								} else {
+									// Fallback: intentar deducir desde un texto de método de pago si existiera
+									const metodoFactura = (trans.metodo_pago || '').toString().toUpperCase();
+									if (metodoFactura.includes('EFECTIVO')) {
+										tipoPagoFactura = 'E';
+									} else if (metodoFactura.includes('TARJETA')) {
+										tipoPagoFactura = 'L';
+									} else if (metodoFactura.includes('DEPOSITO') || metodoFactura.includes('DEPÓSITO')) {
+										tipoPagoFactura = 'D';
+									} else if (metodoFactura.includes('CHEQUE')) {
+										tipoPagoFactura = 'C';
+									} else if (metodoFactura.includes('TRANSFERENCIA') || metodoFactura.includes('BANCARIA')) {
+										tipoPagoFactura = 'B';
+									} else if (metodoFactura.includes('TRASPASO')) {
+										tipoPagoFactura = 'T';
+									} else if (metodoFactura) {
+										// Si tiene algún texto pero no coincide con los anteriores, marcar como Otro
+										tipoPagoFactura = 'O';
+									}
 								}
 								
 								return {
@@ -370,6 +392,7 @@ export class LibroDiarioService {
 									hora: trans.fecha_emision ? new Date(trans.fecha_emision).toTimeString().substring(0, 8) : '',
 									ingreso: parseFloat(trans.monto_total || 0),
 									egreso: 0,
+									tipo_doc: 'F',
 									tipo_pago: tipoPagoFactura,
 									observaciones: trans.metodo_pago || 'Efectivo'
 								} as LibroDiarioItem;
@@ -492,17 +515,24 @@ export class LibroDiarioService {
 								let tipoPago = 'E'; // Por defecto Efectivo
 								if (trans.id_forma_cobro) {
 									const formaCobro = String(trans.id_forma_cobro).toUpperCase();
-									if (formaCobro === 'E' || formaCobro.includes('EFECTIVO')) {
+									// Mapear los mismos códigos que en facturas:
+									//  - EF, E, "EFECTIVO" -> E (Efectivo)
+									//  - TC, L, "TARJ"    -> L (Tarjeta)
+									//  - D, DE, "DEPOS"   -> D (Depósito)
+									//  - C, CH, "CHEQ"    -> C (Cheque)
+									//  - B, TR, "TRANS"   -> B (Transferencia)
+									//  - T, "TRASP"       -> T (Traspaso)
+									if (formaCobro === 'E' || formaCobro === 'EF' || formaCobro.includes('EFECT')) {
 										tipoPago = 'E'; // Efectivo
-									} else if (formaCobro === 'L' || formaCobro.includes('TARJETA')) {
+									} else if (formaCobro === 'L' || formaCobro === 'TC' || formaCobro.includes('TARJ')) {
 										tipoPago = 'L'; // Tarjeta
-									} else if (formaCobro === 'D' || formaCobro.includes('DEPOSITO')) {
+									} else if (formaCobro === 'D' || formaCobro === 'DE' || formaCobro.includes('DEPOS')) {
 										tipoPago = 'D'; // Depósito
-									} else if (formaCobro === 'C' || formaCobro.includes('CHEQUE')) {
+									} else if (formaCobro === 'C' || formaCobro === 'CH' || formaCobro.includes('CHEQ')) {
 										tipoPago = 'C'; // Cheque
-									} else if (formaCobro === 'B' || formaCobro.includes('TRANSFERENCIA') || formaCobro.includes('BANCARIA')) {
+									} else if (formaCobro === 'B' || formaCobro === 'TR' || formaCobro.includes('TRANS') || formaCobro.includes('BANC')) {
 										tipoPago = 'B'; // Transferencia bancaria
-									} else if (formaCobro === 'T' || formaCobro.includes('TRASPASO')) {
+									} else if (formaCobro === 'T' || formaCobro.includes('TRASP')) {
 										tipoPago = 'T'; // Traspaso
 									} else {
 										tipoPago = 'O'; // Otro para cualquier forma no estándar
@@ -525,6 +555,14 @@ export class LibroDiarioService {
 									hora: trans.fecha_cobro ? String(trans.fecha_cobro).substring(11, 19) : '',
 									ingreso: parseFloat(trans.monto || 0),
 									egreso: 0,
+									tipo_doc: ((): string => {
+										const raw = (trans.tipo_documento || '').toString().toUpperCase();
+										if (raw === 'F' || raw === 'R') { return raw; }
+										// Fallback: si tiene nro_factura>0, tratar como Factura; caso contrario como Recibo
+										const nroFac = String(trans.nro_factura || '0');
+										if (nroFac && nroFac !== '0') { return 'F'; }
+										return 'R';
+									})(),
 									tipo_pago: tipoPago,
 									observaciones: observacionesExt || (trans.forma_cobro?.nombre || trans.id_forma_cobro || 'Efectivo')
 								} as LibroDiarioItem;
@@ -565,6 +603,7 @@ export class LibroDiarioService {
 									ingreso: parseFloat(trans.monto_total || 0),
 									egreso: 0,
 									tipo_pago: trans.metodo_pago === 'TARJETA' ? 'L' : 'E', // L = Tarjeta, E = Efectivo
+									tipo_doc: 'F',
 									observaciones: trans.metodo_pago || 'Efectivo'
 								} as LibroDiarioItem;
 							} else {
