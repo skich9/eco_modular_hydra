@@ -284,6 +284,43 @@ export class LibroDiarioComponent implements OnInit {
     return total;
   }
 
+  getMetodoPagoTotalByType(metodoPago: string, tipoComprobante: string): number {
+    if (!this.datosLibroDiario || this.datosLibroDiario.length === 0) {
+      return 0;
+    }
+
+    let total = 0;
+    this.datosLibroDiario.forEach(item => {
+      let esMetodoPagoCorrecto = false;
+      
+      // Determinar si el item corresponde al método de pago
+      if (metodoPago === 'efectivo' && item.tipo_pago === 'E') {
+        esMetodoPagoCorrecto = true;
+      } else if (metodoPago === 'tarjeta' && item.tipo_pago === 'L') {
+        esMetodoPagoCorrecto = true;
+      } else if (metodoPago === 'deposito' && item.tipo_pago === 'D') {
+        esMetodoPagoCorrecto = true;
+      } else if (metodoPago === 'cheque' && item.tipo_pago === 'C') {
+        esMetodoPagoCorrecto = true;
+      } else if (metodoPago === 'transferencia' && item.tipo_pago === 'B') {
+        esMetodoPagoCorrecto = true;
+      } else if (metodoPago === 'otro' && item.tipo_pago === 'O') {
+        esMetodoPagoCorrecto = true;
+      }
+
+      // Si es el método de pago correcto, filtrar por tipo de comprobante
+      if (esMetodoPagoCorrecto) {
+        if (tipoComprobante === 'recibo' && item.recibo && item.recibo !== '0' && item.recibo !== '') {
+          total += item.ingreso;
+        } else if (tipoComprobante === 'factura' && item.factura && item.factura !== '0' && item.factura !== '') {
+          total += item.ingreso;
+        }
+      }
+    });
+
+    return total;
+  }
+
   /**
    * Formatea la fecha al formato que espera el SGA (d/m/Y)
    */

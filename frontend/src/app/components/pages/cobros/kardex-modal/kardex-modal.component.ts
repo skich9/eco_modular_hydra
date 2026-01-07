@@ -383,6 +383,11 @@ export class KardexModalComponent implements OnChanges {
 			for (const [idAsignacion, pagos] of pagosRealesPorAsignacion.entries()) {
 				console.log(`[Kardex] Asignación ${idAsignacion} tiene ${pagos.length} pagos reales`);
 				
+				// Buscar información de la asignación para obtener número de cuota, tipo y estado de pago
+				const asignacion = asignaciones.find((a: any) => a?.id_asignacion_costo == idAsignacion);
+				const estadoCuota = (asignacion?.estado_pago || '').toString().toUpperCase();
+				const cuotaEsCompleta = estadoCuota === 'COBRADO';
+				
 				// Ordenar pagos por fecha
 				pagos.sort((a: any, b: any) => {
 					const fechaA = new Date(a?.fecha_cobro || a?.fecha_pago || 0);
@@ -394,9 +399,8 @@ export class KardexModalComponent implements OnChanges {
 				for (let i = 0; i < pagos.length; i++) {
 					const pago = pagos[i];
 					const esUltimoPago = i === pagos.length - 1;
-					
-					// Buscar información de la asignación para obtener número de cuota y tipo
-					const asignacion = asignaciones.find((a: any) => a?.id_asignacion_costo == idAsignacion);
+					// El pago total solo se marca como completo si la cuota está COBRADA y es el último pago
+					const esCompleto = (cuotaEsCompleta && esUltimoPago) ? 'Si' : 'No';
 					
 					const pagoExpandido = {
 						...pago,
@@ -404,7 +408,9 @@ export class KardexModalComponent implements OnChanges {
 						numero_pago: i + 1,
 						tipo_inscripcion: asignacion?.tipo_inscripcion || 'NORMAL',
 						es_multipago: pagos.length > 1,
-						es_completo: esUltimoPago ? 'Si' : 'No',
+						es_completo: esCompleto,
+						// Propagar el estado de la cuota para poder marcar pagos parciales en la tabla
+						estado_pago: estadoCuota || pago?.estado_pago || '',
 						fecha_pago: pago?.fecha_cobro || pago?.fecha_pago || null,
 						monto_pagado: pago?.monto || 0,
 						nro_factura: pago?.nro_factura || '-',
@@ -478,27 +484,71 @@ export class KardexModalComponent implements OnChanges {
 		if (!idFormaCobro) return 'EFECTIVO';
 		
 		const metodosPago: { [key: string]: string } = {
+			// Códigos "nuevos" de varias letras
 			'EF': 'EFECTIVO',
-			'TA': 'TARJETA',
-			'CH': 'CHEQUE',
-			'DE': 'DEPOSITO',
 			'TR': 'TRANSFERENCIA',
+			'TA': 'TARJETA',
+			'TC': 'TARJETA',
+			'DE': 'DEPOSITO',
+			'CH': 'CHEQUE',
 			'QR': 'QR',
 			'OT': 'OTRO',
-			'E': 'EFECTIVO',
-			'C': 'CHEQUE',
-			'D': 'DEPOSITO',
-			'T': 'TARJETA'
+			// Códigos de una letra que se usan en la tabla cobro
+			'E': 'EFECTIVO',      // Efectivo
+			'D': 'DEPOSITO',      // Depósito bancario
+			'C': 'CHEQUE',        // Cheque
+			'L': 'TARJETA',       // Tarjeta débito/crédito
+			'B': 'TRANSFERENCIA', // Transferencia bancaria
+			'O': 'OTRO',          // Otro
+			'T': 'TRASPASO',      // Traspaso de carrera
 		};
 		
 		const codigo = idFormaCobro.toUpperCase();
 		return metodosPago[codigo] || 'EFECTIVO';
 	}
 
+	// Obtener solo el nombre del banco (sin número de cuenta)
+	private getBancoSoloNombre(pago: any): string {
+		try {
+			const raw = (pago?.banco_nb || pago?.banco || '').toString().trim();
+			if (!raw) return '';
+			// En nota_bancaria se guarda como "BANCO X - 123456"; nos quedamos con la parte antes de " - "
+			const partes = raw.split(' - ');
+			return (partes[0] || raw).trim();
+		} catch {
+			return '';
+		}
+	}
+
 	// Obtener observaciones extendidas según el método de pago
 	getObservacionesExtendidas(pago: any): string {
-		const idFormaCobro = pago?.id_forma_cobro;
+		let idFormaCobro = pago?.id_forma_cobro;
 		const obsOriginal = pago?.observaciones || '';
+		
+		// Normalizar códigos antiguos de forma de cobro a los códigos nuevos
+		let codigo = (idFormaCobro || '').toString().toUpperCase();
+		switch (codigo) {
+			case 'E':
+				codigo = 'EF';
+				break;
+			case 'T':
+				codigo = 'TA';
+				break;
+			case 'D':
+				codigo = 'DE';
+				break;
+			case 'C':
+				codigo = 'CH';
+				break;
+			case 'L':
+			case 'TC':
+				codigo = 'TA';
+				break;
+			case 'B':
+				codigo = 'TR';
+				break;
+		}
+		idFormaCobro = codigo;
 		
 		// Si es efectivo, solo mostrar observaciones si existen
 		if (idFormaCobro === 'EF') {
@@ -510,16 +560,39 @@ export class KardexModalComponent implements OnChanges {
 		
 		switch (idFormaCobro) {
 			case 'TA': // TARJETA
-				infoAdicional = `Tarjeta: ${pago?.nro_tarjeta || 'N/A'} - Autorización: ${pago?.nro_autorizacion || 'N/A'}`;
+				const bancoTarjeta = this.getBancoSoloNombre(pago);
+				const nroTransaccionTarjeta = (pago?.nro_transaccion || pago?.nro_deposito || '').toString();
+				const fechaDepositoTarjeta = (pago?.fecha_deposito || pago?.fecha_nota || '').toString();
+				
+				if (bancoTarjeta && nroTransaccionTarjeta && fechaDepositoTarjeta) {
+					infoAdicional = `Tarjeta: ${bancoTarjeta}-${nroTransaccionTarjeta}-${fechaDepositoTarjeta} NL:0`;
+				} else {
+					infoAdicional = `Tarjeta: ${pago?.nro_tarjeta || 'N/A'} - Autorización: ${pago?.nro_autorizacion || 'N/A'}`;
+				}
 				break;
 			case 'CH': // CHEQUE
-				infoAdicional = `Cheque N°: ${pago?.nro_cheque || 'N/A'} - Banco: ${pago?.banco || 'N/A'}`;
+				infoAdicional = `Cheque N°: ${pago?.nro_cheque || 'N/A'} - Banco: ${this.getBancoSoloNombre(pago) || 'N/A'}`;
 				break;
 			case 'DE': // DEPOSITO
-				infoAdicional = `Depósito - N° Cuenta: ${pago?.nro_cuenta || 'N/A'} - Banco: ${pago?.banco || 'N/A'} - Referencia: ${pago?.nro_referencia || 'N/A'}`;
+				infoAdicional = `Depósito - N° Cuenta: ${pago?.nro_cuenta || 'N/A'} - Banco: ${this.getBancoSoloNombre(pago) || 'N/A'} - Referencia: ${pago?.nro_referencia || 'N/A'}`;
 				break;
 			case 'TR': // TRANSFERENCIA
-				infoAdicional = `Transferencia - N° Cuenta: ${pago?.nro_cuenta || 'N/A'} - Banco: ${pago?.banco || 'N/A'} - Referencia: ${pago?.nro_referencia || 'N/A'}`;
+				const bancoTransferencia = this.getBancoSoloNombre(pago);
+				const nroTransferencia = (pago?.nro_transaccion || pago?.nro_deposito || '').toString();
+				const fechaTransferencia = (pago?.fecha_deposito || pago?.fecha_nota || '').toString();
+				let correlativoNb = (pago?.correlativo_nb || pago?.nro_referencia || '').toString();
+				// Limpiar prefijos tipo "NB:" o "NB " que puedan venir desde nro_referencia para no duplicar
+				if (correlativoNb) {
+					correlativoNb = correlativoNb.replace(/^NB[:\s]*/i, '').trim();
+				}
+				
+				if (bancoTransferencia && nroTransferencia && fechaTransferencia) {
+					infoAdicional = correlativoNb
+						? `Transferencia: ${bancoTransferencia}-${nroTransferencia}-${fechaTransferencia} NB:${correlativoNb}`
+						: `Transferencia: ${bancoTransferencia}-${nroTransferencia}-${fechaTransferencia}`;
+				} else {
+					infoAdicional = `Transferencia - N° Cuenta: ${pago?.nro_cuenta || 'N/A'} - Banco: ${this.getBancoSoloNombre(pago) || 'N/A'} - Referencia: ${pago?.nro_referencia || 'N/A'}`;
+				}
 				break;
 			case 'QR': // QR
 				infoAdicional = `QR - Código: ${pago?.codigo_qr || 'N/A'} - Fecha: ${pago?.fecha_qr || 'N/A'}`;
@@ -530,12 +603,12 @@ export class KardexModalComponent implements OnChanges {
 		}
 		
 		// Combinar observaciones originales con información adicional
-		if (obsOriginal && infoAdicional) {
-			return `${obsOriginal} | ${infoAdicional}`;
-		} else if (infoAdicional) {
+		// Regla:
+		// - Si existe infoAdicional (formato bancario), mostrar SOLO ese texto para evitar duplicados.
+		// - Si no hay infoAdicional, mostrar las observaciones originales.
+		if (infoAdicional) {
 			return infoAdicional;
-		} else {
-			return obsOriginal || '';
 		}
+		return obsOriginal || '';
 	}
 }

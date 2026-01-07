@@ -464,6 +464,58 @@ class CobroController extends Controller
 			$cobrosMensualidad = $cobrosMensualidad->with(['recibo', 'factura'])->get();
 			$cobrosItems = clone $cobrosBase;
 			$cobrosItems = $cobrosItems->with(['recibo', 'factura'])->get();
+
+			$nbByRecibo = [];
+			$nbByFactura = [];
+			try {
+				if (Schema::hasTable('nota_bancaria')) {
+					$nroRecibos = $cobrosMensualidad->pluck('nro_recibo')
+						->merge($cobrosItems->pluck('nro_recibo'))
+						->filter(function($v){
+							return $v !== null && $v !== '';
+						})
+						->map(function($v){
+							return (string)$v;
+						})
+						->unique()
+						->values();
+					$nroFacturas = $cobrosMensualidad->pluck('nro_factura')
+						->merge($cobrosItems->pluck('nro_factura'))
+						->filter(function($v){
+							return $v !== null && $v !== '';
+						})
+						->map(function($v){
+							return (string)$v;
+						})
+						->unique()
+						->values();
+					if ($nroRecibos->count() > 0 || $nroFacturas->count() > 0) {
+						$nbRows = DB::table('nota_bancaria')
+							->when($nroRecibos->count() > 0, function($q) use ($nroRecibos) {
+								$q->whereIn('nro_recibo', $nroRecibos->all());
+							})
+							->when($nroFacturas->count() > 0, function($q) use ($nroFacturas) {
+								$q->orWhereIn('nro_factura', $nroFacturas->all());
+							})
+							->orderBy('fecha_nota','desc')
+							->get();
+						foreach ($nbRows as $nb) {
+							$reciboKey = (string)($nb->nro_recibo ?? '');
+							if ($reciboKey !== '' && !isset($nbByRecibo[$reciboKey])) {
+								$nbByRecibo[$reciboKey] = $nb;
+							}
+							$facturaKey = (string)($nb->nro_factura ?? '');
+							if ($facturaKey !== '' && !isset($nbByFactura[$facturaKey])) {
+								$nbByFactura[$facturaKey] = $nb;
+							}
+						}
+					}
+				}
+			} catch (\Throwable $e) {
+				$nbByRecibo = [];
+				$nbByFactura = [];
+			}
+
 			$totalMensualidad = $cobrosMensualidad->sum('monto');
 			$totalItems = 0; // Ya están incluidos en totalMensualidad
 			
@@ -1006,22 +1058,52 @@ class CobroController extends Controller
 						'mensualidad' => [
 							'total' => (float) $totalMensualidad,
 							'count' => $cobrosMensualidad->count(),
-							'items' => $cobrosMensualidad->map(function($cobro) {
+							'items' => $cobrosMensualidad->map(function($cobro) use ($nbByRecibo, $nbByFactura) {
 								$cobroArray = $cobro->toArray();
 								// Agregar datos de razón social/NIT desde recibo o factura
 								$cobroArray['cliente'] = $cobro->recibo?->cliente ?? $cobro->factura?->cliente ?? null;
 								$cobroArray['nro_documento_cobro'] = $cobro->recibo?->nro_documento_cobro ?? $cobro->factura?->nro_documento_cobro ?? null;
+								$nroReciboKey = (string)($cobro->nro_recibo ?? '');
+								$nroFacturaKey = (string)($cobro->nro_factura ?? '');
+								$nb = null;
+								if ($nroReciboKey !== '' && isset($nbByRecibo[$nroReciboKey])) {
+									$nb = $nbByRecibo[$nroReciboKey];
+								} elseif ($nroFacturaKey !== '' && isset($nbByFactura[$nroFacturaKey])) {
+									$nb = $nbByFactura[$nroFacturaKey];
+								}
+								if ($nb) {
+									$cobroArray['banco_nb'] = isset($nb->banco) ? $nb->banco : null;
+									$cobroArray['nro_transaccion'] = isset($nb->nro_transaccion) ? $nb->nro_transaccion : null;
+									$cobroArray['fecha_deposito'] = isset($nb->fecha_deposito) ? $nb->fecha_deposito : null;
+									$cobroArray['fecha_nota'] = isset($nb->fecha_nota) ? (string)$nb->fecha_nota : null;
+									$cobroArray['correlativo_nb'] = isset($nb->correlativo) ? $nb->correlativo : null;
+								}
 								return $cobroArray;
 							}),
 						],
 						'items' => [
 							'total' => (float) $totalItems,
 							'count' => $cobrosItems->count(),
-							'items' => $cobrosItems->map(function($cobro) {
+							'items' => $cobrosItems->map(function($cobro) use ($nbByRecibo, $nbByFactura) {
 								$cobroArray = $cobro->toArray();
 								// Agregar datos de razón social/NIT desde recibo o factura
 								$cobroArray['cliente'] = $cobro->recibo?->cliente ?? $cobro->factura?->cliente ?? null;
 								$cobroArray['nro_documento_cobro'] = $cobro->recibo?->nro_documento_cobro ?? $cobro->factura?->nro_documento_cobro ?? null;
+								$nroReciboKey = (string)($cobro->nro_recibo ?? '');
+								$nroFacturaKey = (string)($cobro->nro_factura ?? '');
+								$nb = null;
+								if ($nroReciboKey !== '' && isset($nbByRecibo[$nroReciboKey])) {
+									$nb = $nbByRecibo[$nroReciboKey];
+								} elseif ($nroFacturaKey !== '' && isset($nbByFactura[$nroFacturaKey])) {
+									$nb = $nbByFactura[$nroFacturaKey];
+								}
+								if ($nb) {
+									$cobroArray['banco_nb'] = isset($nb->banco) ? $nb->banco : null;
+									$cobroArray['nro_transaccion'] = isset($nb->nro_transaccion) ? $nb->nro_transaccion : null;
+									$cobroArray['fecha_deposito'] = isset($nb->fecha_deposito) ? $nb->fecha_deposito : null;
+									$cobroArray['fecha_nota'] = isset($nb->fecha_nota) ? (string)$nb->fecha_nota : null;
+									$cobroArray['correlativo_nb'] = isset($nb->correlativo) ? $nb->correlativo : null;
+								}
 								return $cobroArray;
 							}),
 						],

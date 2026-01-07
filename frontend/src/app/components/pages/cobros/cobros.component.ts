@@ -136,7 +136,8 @@ export class CobrosComponent implements OnInit {
         codigo_sin: [''],
         id_forma_cobro: ['', Validators.required],
         id_cuentas_bancarias: [''],
-        id_usuario: ['', Validators.required]
+        id_usuario: ['', Validators.required],
+        nro_recibo: ['']
       }),
       pagos: this.fb.array([])
     });
@@ -1684,7 +1685,12 @@ export class CobrosComponent implements OnInit {
       cantidad: [1, [Validators.required, Validators.min(1)]],
       detalle: [''],
       m_marca: [false],
-      d_marca: [false]
+      d_marca: [false],
+      // Campos adicionales para observaciones de transferencia/tarjeta
+      banco: [''],
+      nro_deposito: [''],
+      fecha_deposito: [''],
+      nro_referencia: ['']
     }));
   }
 
@@ -2447,10 +2453,6 @@ export class CobrosComponent implements OnInit {
       const n = Number(it?.nro_cobro || 0);
       if (n > max) max = n;
     }
-    for (const ctrl of (this.pagos.controls || [])) {
-      const n = Number((ctrl as FormGroup).get('nro_cobro')?.value || 0);
-      if (n > max) max = n;
-    }
     return max;
   }
 
@@ -2558,6 +2560,81 @@ export class CobrosComponent implements OnInit {
       if (idx >= 0 && idx < base.length) return this.monthName(base[idx]);
       return null;
     } catch { return null; }
+  }
+
+  private formatObservacionesByPaymentMethod(pago: any): string {
+    console.log('formatObservacionesByPaymentMethod - pago completo:', pago);
+    const idFormaCobro = pago?.id_forma_cobro || '';
+    const obsOriginal = pago?.observaciones || '';
+    
+    // Extraer campos adicionales del pago
+    const banco = pago?.banco || '';
+    const nroDeposito = pago?.nro_deposito || '';
+    const fechaDeposito = pago?.fecha_deposito || '';
+    const nroReferencia = pago?.nro_referencia || '';
+    
+    console.log('Campos extraídos:', { 
+      idFormaCobro, 
+      obsOriginal, 
+      banco, 
+      nroDeposito, 
+      fechaDeposito, 
+      nroReferencia 
+    });
+    
+    // Obtener el método de pago para determinar si es TARJETA (por nombre)
+    const formaCobro = this.formasCobro.find((f: any) => 
+      `${f?.id_forma_cobro}` === `${idFormaCobro}` || 
+      `${f?.codigo_sin}` === `${idFormaCobro}`
+    );
+    
+    // Para TRANSFERENCIA, detectar por código 'B'
+    if (idFormaCobro === 'B') {
+      console.log('Transferencia detectada - datos:', { banco, nroDeposito, fechaDeposito, nroReferencia });
+      
+      if (banco && nroDeposito && fechaDeposito) {
+        // Formato: Transferencia: Banco Sol-211020251035-21/10/2025-6281
+        const formatted = `Transferencia: ${banco}-${nroDeposito}-${fechaDeposito}-${nroReferencia}`;
+        console.log('Observaciones formateadas (Transferencia):', formatted);
+        return formatted;
+      } else {
+        console.log('Faltan datos para transferencia. Usando observaciones con tipo de pago.');
+        const formaCobroNombre = formaCobro?.descripcion_sin || formaCobro?.nombre || formaCobro?.name || formaCobro?.descripcion || formaCobro?.label || 'Transferencia';
+        return obsOriginal ? `${obsOriginal} (${formaCobroNombre})` : formaCobroNombre;
+      }
+    }
+    
+    if (!formaCobro) {
+      console.log('No se encontró forma de cobro para:', idFormaCobro);
+      return obsOriginal || 'Pago registrado';
+    }
+    
+    const nombreForma = (formaCobro?.descripcion_sin || formaCobro?.nombre || formaCobro?.name || formaCobro?.descripcion || formaCobro?.label || '').toString().trim().toUpperCase();
+    console.log('Nombre forma cobro:', nombreForma);
+    
+    // Para TARJETA (detectar por nombre)
+    if (nombreForma.includes('TARJETA')) {
+      console.log('Tarjeta detectada - datos:', { banco, nroDeposito, fechaDeposito });
+      
+      if (banco && nroDeposito && fechaDeposito) {
+        // Formato: Tarjeta: Banco Ganadero link-LINKSER082-17/11/2025 NL:0
+        const formatted = `Tarjeta: ${banco} link-${nroDeposito}-${fechaDeposito} NL:0`;
+        console.log('Observaciones formateadas (Tarjeta):', formatted);
+        return formatted;
+      } else {
+        console.log('Faltan datos para tarjeta. Usando observaciones con tipo de pago.');
+        const formaCobroNombre = formaCobro?.descripcion_sin || formaCobro?.nombre || formaCobro?.name || formaCobro?.descripcion || formaCobro?.label || 'Tarjeta';
+        return obsOriginal ? `${obsOriginal} (${formaCobroNombre})` : formaCobroNombre;
+      }
+    }
+    
+    // Para otros métodos, incluir al menos el tipo de pago en las observaciones
+    const formaCobroNombre = formaCobro?.descripcion_sin || formaCobro?.nombre || formaCobro?.name || formaCobro?.descripcion || formaCobro?.label || 'Método de pago';
+    const observacionesConTipo = obsOriginal ? `${obsOriginal} (${formaCobroNombre})` : formaCobroNombre;
+    console.log('Usando observaciones con tipo de pago:', observacionesConTipo);
+    
+    // Asegurar que nunca retorne null/undefined/vacío
+    return observacionesConTipo || 'Pago registrado';
   }
 
   onAddPagosFromModal(payload: any): void {
@@ -2831,6 +2908,15 @@ export class CobrosComponent implements OnInit {
         }
       }
     } catch {}
+    // 3.1) nro_recibo: asignar número único para el lote (independiente de nro_cobro)
+    try {
+      const currentNroRecibo = cab?.get('nro_recibo')?.value;
+      if (!currentNroRecibo) {
+        const nextReciboNro = this.getNextCobroNro();
+        cab.patchValue({ nro_recibo: nextReciboNro }, { emitEvent: false });
+        console.log('nro_recibo asignado al lote:', nextReciboNro);
+      }
+    } catch {}
     console.log('HOIla 5');
     // Pre-completar fecha/monto y ASIGNAR nro_cobro único en cliente (hasta que backend lo haga atómico)
     try {
@@ -2841,8 +2927,10 @@ export class CobrosComponent implements OnInit {
         const raw: any = fg.getRawValue();
         const subtotal = this.calcRowSubtotal(idx);
         const fecha = raw?.fecha_cobro || hoy;
-        const nro = raw?.nro_cobro ? Number(raw.nro_cobro) : (next++);
-        fg.patchValue({ fecha_cobro: fecha, monto: subtotal, nro_cobro: nro }, { emitEvent: false });
+        
+        // NO asignar nro_cobro, dejar que backend lo genere
+        fg.patchValue({ fecha_cobro: fecha, monto: subtotal }, { emitEvent: false });
+        console.log(`Pago ${idx} - nro_cobro será generado por backend`);
       });
       this.batchForm.updateValueAndValidity({ onlySelf: false, emitEvent: false });
     } catch {}
@@ -2885,16 +2973,28 @@ export class CobrosComponent implements OnInit {
     const { cabecera } = this.batchForm.value as any;
     // Asegurar codigo_sin base para SIAT (QR variante -> base)
     const siatCodigoSin = this.codigoSinBaseSelected || (cabecera?.codigo_sin || '');
-    // Mapear pagos para enviar solo con 'monto' calculado y fallbacks de nro/fecha
+    // Mapear pagos para enviar solo con 'monto' calculado, SIN nro_cobro (backend lo genera)
     const hoy = new Date().toISOString().slice(0, 10);
+    console.log('Creando pagosRaw - SIN nro_cobro, backend generará con AUTO_INCREMENT');
+    
     const pagosRaw = (baseCtrls || []).map((ctrl, idx) => {
       const raw = (ctrl as FormGroup).getRawValue() as any;
       const subtotal = this.calcRowSubtotal(idx);
       const fecha = raw.fecha_cobro || hoy;
-      const item: any = { ...raw, fecha_cobro: fecha, monto: subtotal, nro_cobro: Number(raw?.nro_cobro || 0) };
-      if (!item.nro_cobro || item.nro_cobro <= 0) {
-        item.nro_cobro = this.getNextCobroNro();
-      }
+      
+      // NO incluir nro_cobro, dejar que backend lo genere con AUTO_INCREMENT
+      const item: any = { 
+        ...raw, 
+        fecha_cobro: fecha, 
+        monto: subtotal,
+        // Asegurar que cada pago tenga el id_forma_cobro de la cabecera
+        id_forma_cobro: cabecera?.id_forma_cobro || raw?.id_forma_cobro
+      };
+      
+      // Eliminar nro_cobro si existe para que backend lo genere
+      delete item.nro_cobro;
+      
+      console.log(`pagosRaw ${idx} - nro_cobro será generado por backend`);
       return item;
     });
     console.log('HOIla 9');
@@ -2908,8 +3008,29 @@ export class CobrosComponent implements OnInit {
         if (md === 'C' || comp === 'COMPUTARIZADA') return 'C';
         return 'C';
       })();
-      return { ...it, tipo_documento: tipo || 'R', medio_doc: medio || 'C' };
+      
+      // Formatear observaciones para TARJETA y TRANSFERENCIA
+      console.log('Procesando pago para formatear observaciones:', it);
+      const observacionesFormateadas = this.formatObservacionesByPaymentMethod(it);
+      console.log('Resultado observaciones formateadas:', observacionesFormateadas);
+      
+      // Asegurar que las observaciones nunca estén vacías
+      const observacionesFinal = observacionesFormateadas || 'Pago registrado';
+      console.log('Observaciones finales (con fallback):', observacionesFinal);
+      
+      return { ...it, tipo_documento: tipo || 'R', medio_doc: medio || 'C', observaciones: observacionesFinal };
     });
+    
+    console.log('HOIla 10 - Payload final con observaciones formateadas:', {
+      pagos: pagos.map(p => ({
+        id_forma_cobro: p.id_forma_cobro,
+        observaciones: p.observaciones,
+        banco: p.banco,
+        nro_deposito: p.nro_deposito,
+        fecha_deposito: p.fecha_deposito
+      }))
+    });
+    
     const payload = {
       ...cabecera,
       codigo_sin: siatCodigoSin,
