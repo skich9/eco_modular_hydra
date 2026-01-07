@@ -326,76 +326,48 @@ export class KardexModalComponent implements OnChanges {
 			let cobrosItems: any[] = [];
 			try {
 				const cobrosData = this.resumen?.cobros?.items;
-				console.log('[Kardex] ESTRUCTURA COMPLETA de cobros.items:', cobrosData);
-				console.log('[Kardex] Tipo de cobrosData:', typeof cobrosData);
-				console.log('[Kardex] ¿Es Array?:', Array.isArray(cobrosData));
-				
 				if (cobrosData?.items && Array.isArray(cobrosData.items)) {
 					// La estructura es {total, count, items: Array}
 					cobrosItems = cobrosData.items;
-					console.log('[Kardex] cobrosItems desde cobros.items.items:', cobrosItems.length, 'elementos');
-					cobrosItems.forEach((item, index) => {
-						console.log(`[Kardex] cobrosItems[${index}]:`, item);
-					});
 				} else if (Array.isArray(cobrosData)) {
 					// Si directamente es un array
 					cobrosItems = cobrosData;
-					console.log('[Kardex] cobrosItems es array con', cobrosItems.length, 'elementos');
-					cobrosItems.forEach((item, index) => {
-						console.log(`[Kardex] cobrosItems[${index}]:`, item);
-					});
 				} else if (cobrosData && typeof cobrosData === 'object') {
 					// Si es objeto pero no array, intentar convertir
-					console.log('[Kardex] cobrosData es objeto, claves:', Object.keys(cobrosData));
-					cobrosItems = Object.values(cobrosData).filter(item => item && typeof item === 'object');
-					console.log('[Kardex] cobrosItems convertidos:', cobrosItems.length, 'elementos');
+					cobrosItems = Object.values(cobrosData).filter((item: any) => item && typeof item === 'object');
 				}
-				console.log('[Kardex] cobrosItems procesados:', cobrosItems.length, cobrosItems);
 			} catch (error) {
 				console.warn('[Kardex] Error procesando cobros.items:', error);
 				cobrosItems = [];
 			}
 			
 			const expandidos: any[] = [];
-			
 			// Agrupar pagos reales por id_asignacion_costo
-			const pagosRealesPorAsignacion = new Map();
-			
-			// Procesar SOLO los cobros individuales que tengan id_asignacion_costo
+			const pagosRealesPorAsignacion = new Map<any, any[]>();
 			for (const cobro of cobrosItems) {
-				const idDesignacion = cobro?.id_asignacion_costo;
-				
-				// SOLO procesar cobros que tengan id_asignacion_costo (son de mensualidades)
-				if (!idDesignacion) {
-					console.log('[Kardex] Cobro sin id_asignacion_costo, ignorando (no es mensualidad):', cobro?.tipo_cobro);
-					continue;
+				const idAsignacion = cobro?.id_asignacion_costo;
+				if (!idAsignacion) {
+					continue; // Solo mensualidades
 				}
-				
-				// Agrupar por asignación
-				if (!pagosRealesPorAsignacion.has(idDesignacion)) {
-					pagosRealesPorAsignacion.set(idDesignacion, []);
+				if (!pagosRealesPorAsignacion.has(idAsignacion)) {
+					pagosRealesPorAsignacion.set(idAsignacion, []);
 				}
-				
-				pagosRealesPorAsignacion.get(idDesignacion).push(cobro);
+				pagosRealesPorAsignacion.get(idAsignacion)!.push(cobro);
 			}
 			
-			// Procesar los pagos reales agrupados
+			// Procesar pagos agrupados por asignación
 			for (const [idAsignacion, pagos] of pagosRealesPorAsignacion.entries()) {
-				console.log(`[Kardex] Asignación ${idAsignacion} tiene ${pagos.length} pagos reales`);
-				
-				// Buscar información de la asignación para obtener número de cuota, tipo y estado de pago
 				const asignacion = asignaciones.find((a: any) => a?.id_asignacion_costo == idAsignacion);
 				const estadoCuota = (asignacion?.estado_pago || '').toString().toUpperCase();
 				const cuotaEsCompleta = estadoCuota === 'COBRADO';
 				
 				// Ordenar pagos por fecha
 				pagos.sort((a: any, b: any) => {
-					const fechaA = new Date(a?.fecha_cobro || a?.fecha_pago || 0);
-					const fechaB = new Date(b?.fecha_cobro || b?.fecha_pago || 0);
-					return fechaA.getTime() - fechaB.getTime();
+					const fechaA = new Date(a?.fecha_cobro || a?.fecha_pago || 0).getTime();
+					const fechaB = new Date(b?.fecha_cobro || b?.fecha_pago || 0).getTime();
+					return fechaA - fechaB;
 				});
 				
-				// Mostrar cada pago como fila separada
 				for (let i = 0; i < pagos.length; i++) {
 					const pago = pagos[i];
 					const esUltimoPago = i === pagos.length - 1;
@@ -409,20 +381,13 @@ export class KardexModalComponent implements OnChanges {
 						tipo_inscripcion: asignacion?.tipo_inscripcion || 'NORMAL',
 						es_multipago: pagos.length > 1,
 						es_completo: esCompleto,
-						// Propagar el estado de la cuota para poder marcar pagos parciales en la tabla
 						estado_pago: estadoCuota || pago?.estado_pago || '',
 						fecha_pago: pago?.fecha_cobro || pago?.fecha_pago || null,
 						monto_pagado: pago?.monto || 0,
 						nro_factura: pago?.nro_factura || '-',
 						nro_recibo: pago?.nro_recibo || '0',
-						observaciones: this.getObservacionesExtendidas(pago)
+						observaciones: this.getObservacionesExtendidas(pago),
 					};
-					
-					console.log(`[Kardex] Pago real #${pagoExpandido.numero_pago} de cuota ${pagoExpandido.numero_cuota}:`, {
-						monto: pagoExpandido.monto_pagado,
-						fecha: pagoExpandido.fecha_pago,
-						es_completo: pagoExpandido.es_completo
-					});
 					
 					expandidos.push(pagoExpandido);
 				}
@@ -436,9 +401,6 @@ export class KardexModalComponent implements OnChanges {
 				return (a.numero_pago || 0) - (b.numero_pago || 0);
 			});
 			
-			console.log('[Kardex] Resultado final expandidos:', expandidos);
-			
-			// Guardar en cache
 			this._pagosExpandidosCache = expandidos;
 			return expandidos;
 		} catch (error) {
@@ -560,6 +522,7 @@ export class KardexModalComponent implements OnChanges {
 		
 		switch (idFormaCobro) {
 			case 'TA': // TARJETA
+				// {Tipo de Pago}: {banco}-{nro_transaccion}-{fecha_deposito} NL:0
 				const bancoTarjeta = this.getBancoSoloNombre(pago);
 				const nroTransaccionTarjeta = (pago?.nro_transaccion || pago?.nro_deposito || '').toString();
 				const fechaDepositoTarjeta = (pago?.fecha_deposito || pago?.fecha_nota || '').toString();
@@ -574,9 +537,25 @@ export class KardexModalComponent implements OnChanges {
 				infoAdicional = `Cheque N°: ${pago?.nro_cheque || 'N/A'} - Banco: ${this.getBancoSoloNombre(pago) || 'N/A'}`;
 				break;
 			case 'DE': // DEPOSITO
-				infoAdicional = `Depósito - N° Cuenta: ${pago?.nro_cuenta || 'N/A'} - Banco: ${this.getBancoSoloNombre(pago) || 'N/A'} - Referencia: ${pago?.nro_referencia || 'N/A'}`;
+				// Deposito: {banco}-{nro_transaccion}-{fecha_deposito} ND:{correlativo}
+				const bancoDeposito = this.getBancoSoloNombre(pago);
+				const nroDeposito = (pago?.nro_transaccion || pago?.nro_deposito || '').toString();
+				const fechaDeposito = (pago?.fecha_deposito || pago?.fecha_nota || '').toString();
+				let correlativoNd = (pago?.correlativo_nb || pago?.nro_referencia || '').toString();
+				// Limpiar prefijos tipo "NB:", "ND:" o similares para no duplicar
+				if (correlativoNd) {
+					correlativoNd = correlativoNd.replace(/^N[BD][:\s]*/i, '').trim();
+				}
+				if (bancoDeposito && nroDeposito && fechaDeposito) {
+					infoAdicional = correlativoNd
+						? `Deposito: ${bancoDeposito}-${nroDeposito}-${fechaDeposito} ND:${correlativoNd}`
+						: `Deposito: ${bancoDeposito}-${nroDeposito}-${fechaDeposito}`;
+				} else {
+					infoAdicional = `Depósito - N° Cuenta: ${pago?.nro_cuenta || 'N/A'} - Banco: ${this.getBancoSoloNombre(pago) || 'N/A'} - Referencia: ${pago?.nro_referencia || 'N/A'}`;
+				}
 				break;
 			case 'TR': // TRANSFERENCIA
+				// {Tipo de Pago}: {banco}-{nro_transaccion}-{fecha_deposito} NB:{correlativo}
 				const bancoTransferencia = this.getBancoSoloNombre(pago);
 				const nroTransferencia = (pago?.nro_transaccion || pago?.nro_deposito || '').toString();
 				const fechaTransferencia = (pago?.fecha_deposito || pago?.fecha_nota || '').toString();
@@ -611,4 +590,5 @@ export class KardexModalComponent implements OnChanges {
 		}
 		return obsOriginal || '';
 	}
+
 }
