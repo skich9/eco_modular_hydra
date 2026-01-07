@@ -178,7 +178,7 @@ export class LibroDiarioService {
 							if (factura.nro_factura && factura.cliente) {
 								mapaFacturas.set(String(factura.nro_factura), {
 									razon_social: factura.cliente, // Razón social desde factura
-									nit: factura.nro_documento_cobro || '0' // NIT desde factura
+									nit: factura.nit || factura.nro_documento_cobro || '0' // NIT desde factura
 								});
 							}
 						});
@@ -200,6 +200,11 @@ export class LibroDiarioService {
 						
 						const datosFacturasFiltrados = datosFacturas.filter((factura: any) => {
 							const fechaFactura = factura.fecha_emision ? factura.fecha_emision.split(' ')[0] : '';
+							const nroFactura = factura.nro_factura ? String(factura.nro_factura) : '';
+							// Solo considerar facturas con número válido (>0) para el libro diario
+							if (!nroFactura || nroFactura === '0') {
+								return false;
+							}
 							return fechaFactura === fechaFormateada;
 						});
 						
@@ -211,13 +216,32 @@ export class LibroDiarioService {
 							return fechaCobro === fechaFormateada;
 						});
 						
+						// Evitar duplicados: si una factura ya tiene un cobro asociado con el mismo nro_factura,
+						// solo debe mostrarse la línea del cobro en el libro diario.
+						const facturasConCobro = new Set<string>();
+						datosCobroFiltrados.forEach((cobro: any) => {
+							if (cobro.nro_factura && cobro.nro_factura !== '0') {
+								facturasConCobro.add(String(cobro.nro_factura));
+							}
+						});
+						
+						const datosFacturasSinCobro = datosFacturasFiltrados.filter((factura: any) => {
+							const nro = factura.nro_factura ? String(factura.nro_factura) : '';
+							// Nunca incluir facturas sin número en el libro diario
+							if (!nro || nro === '0') {
+								return false;
+							}
+							return !facturasConCobro.has(nro);
+						});
+						
 						const datosTransactionsFiltrados = datosTransactions.filter((transaction: any) => {
 							const fechaTransaction = transaction.fecha_generacion ? transaction.fecha_generacion.split(' ')[0] : '';
 							return fechaTransaction === fechaFormateada;
 						});
 						
 						const todasLasTransacciones = [
-							...datosFacturasFiltrados.map((item: any) => ({ ...item, fuente: 'factura' })),
+							// Usar solo facturas que no tienen un cobro asociado para evitar filas duplicadas
+							...datosFacturasSinCobro.map((item: any) => ({ ...item, fuente: 'factura' })),
 							...datosTransactionsFiltrados.map((item: any) => ({ ...item, fuente: 'transaction' })),
 							...datosCobroFiltrados.map((item: any) => ({ ...item, fuente: 'cobro' }))
 						];
@@ -498,7 +522,7 @@ export class LibroDiarioService {
 									razon: datosCliente?.razon_social || '',
 									nit: datosCliente?.nit || '',
 									cod_ceta: String(trans.cod_ceta || '0'),
-									hora: trans.fecha_cobro ? new Date(trans.fecha_cobro).toTimeString().substring(0, 8) : '',
+									hora: trans.fecha_cobro ? String(trans.fecha_cobro).substring(11, 19) : '',
 									ingreso: parseFloat(trans.monto || 0),
 									egreso: 0,
 									tipo_pago: tipoPago,
@@ -752,9 +776,18 @@ export class LibroDiarioService {
 		}
 		idFormaCobro = codigo;
 		
-		// Si es efectivo, solo mostrar observaciones si existen o el nombre del método
+		// Si es efectivo, y existen observaciones, usar formato "{Tipo de Pago}: {Observaciones}"
 		if (idFormaCobro === 'EF') {
-			return obsOriginal || (trans.forma_cobro?.nombre || 'EFECTIVO');
+			const tipoPagoEf = trans.forma_cobro?.nombre || 'EFECTIVO';
+			if (obsOriginal) {
+				const obsTrim = obsOriginal.toString().trim();
+				// Evitar duplicar si ya viene con el tipo de pago al inicio
+				if (obsTrim.toUpperCase().startsWith(tipoPagoEf.toString().toUpperCase())) {
+					return obsTrim;
+				}
+				return `${tipoPagoEf}: ${obsTrim}`;
+			}
+			return tipoPagoEf;
 		}
 		
 		// Para otros métodos, concatenar información adicional
@@ -762,22 +795,29 @@ export class LibroDiarioService {
 		
 		switch (idFormaCobro) {
 			case 'TA': // TARJETA
-				// {Tipo de Pago}: {banco}-{nro_transaccion}-{fecha_deposito} NL:0
+				// Tarjeta: {banco}-{nro_transaccion}-{fecha_deposito} NL:0 {observaciones}
 				const bancoTarjeta = this.getBancoSoloNombreLibro(trans);
 				const nroTransaccionTarjeta = (trans?.nro_transaccion || trans?.nro_deposito || '').toString();
 				const fechaDepositoTarjeta = (trans?.fecha_deposito || trans?.fecha_nota || '').toString();
+				const obsTarjeta = obsOriginal ? obsOriginal.toString().trim() : '';
 				
 				if (bancoTarjeta && nroTransaccionTarjeta && fechaDepositoTarjeta) {
 					infoAdicional = `Tarjeta: ${bancoTarjeta}-${nroTransaccionTarjeta}-${fechaDepositoTarjeta} NL:0`;
+					if (obsTarjeta) {
+						infoAdicional += ` ${obsTarjeta}`;
+					}
 				} else {
 					infoAdicional = `Tarjeta: ${trans?.nro_tarjeta || 'N/A'} - Autorización: ${trans?.nro_autorizacion || 'N/A'}`;
+					if (obsTarjeta) {
+						infoAdicional += ` ${obsTarjeta}`;
+					}
 				}
 				break;
 			case 'CH': // CHEQUE
 				infoAdicional = `Cheque N°: ${trans?.nro_cheque || 'N/A'} - Banco: ${this.getBancoSoloNombreLibro(trans) || 'N/A'}`;
 				break;
 			case 'DE': // DEPOSITO
-				// Deposito: {banco}-{nro_transaccion}-{fecha_deposito} ND:{correlativo}
+				// Deposito: {banco}-{nro_transaccion}-{fecha_deposito} ND:{correlativo} {observaciones}
 				const bancoDeposito = this.getBancoSoloNombreLibro(trans);
 				const nroDeposito = (trans?.nro_transaccion || trans?.nro_deposito || '').toString();
 				const fechaDeposito = (trans?.fecha_deposito || trans?.fecha_nota || '').toString();
@@ -786,16 +826,23 @@ export class LibroDiarioService {
 				if (correlativoNd) {
 					correlativoNd = correlativoNd.replace(/^N[BD][:\s]*/i, '').trim();
 				}
+				const obsDeposito = obsOriginal ? obsOriginal.toString().trim() : '';
 				if (bancoDeposito && nroDeposito && fechaDeposito) {
 					infoAdicional = correlativoNd
 						? `Deposito: ${bancoDeposito}-${nroDeposito}-${fechaDeposito} ND:${correlativoNd}`
 						: `Deposito: ${bancoDeposito}-${nroDeposito}-${fechaDeposito}`;
+					if (obsDeposito) {
+						infoAdicional += ` ${obsDeposito}`;
+					}
 				} else {
 					infoAdicional = `Depósito - N° Cuenta: ${trans?.nro_cuenta || 'N/A'} - Banco: ${this.getBancoSoloNombreLibro(trans) || 'N/A'} - Referencia: ${trans?.nro_referencia || 'N/A'}`;
+					if (obsDeposito) {
+						infoAdicional += ` ${obsDeposito}`;
+					}
 				}
 				break;
 			case 'TR': // TRANSFERENCIA
-				// {Tipo de Pago}: {banco}-{nro_transaccion}-{fecha_deposito} NB:{correlativo}
+				// Transferencia: {banco}-{nro_transaccion}-{fecha_deposito} NB:{correlativo} {observaciones}
 				const bancoTransferencia = this.getBancoSoloNombreLibro(trans);
 				const nroTransferencia = (trans?.nro_transaccion || trans?.nro_deposito || '').toString();
 				const fechaTransferencia = (trans?.fecha_deposito || trans?.fecha_nota || '').toString();
@@ -804,13 +851,20 @@ export class LibroDiarioService {
 				if (correlativoNb) {
 					correlativoNb = correlativoNb.replace(/^NB[:\s]*/i, '').trim();
 				}
+				const obsTransferencia = obsOriginal ? obsOriginal.toString().trim() : '';
 				
 				if (bancoTransferencia && nroTransferencia && fechaTransferencia) {
 					infoAdicional = correlativoNb
 						? `Transferencia: ${bancoTransferencia}-${nroTransferencia}-${fechaTransferencia} NB:${correlativoNb}`
 						: `Transferencia: ${bancoTransferencia}-${nroTransferencia}-${fechaTransferencia}`;
+					if (obsTransferencia) {
+						infoAdicional += ` ${obsTransferencia}`;
+					}
 				} else {
 					infoAdicional = `Transferencia - N° Cuenta: ${trans?.nro_cuenta || 'N/A'} - Banco: ${this.getBancoSoloNombreLibro(trans) || 'N/A'} - Referencia: ${trans?.nro_referencia || 'N/A'}`;
+					if (obsTransferencia) {
+						infoAdicional += ` ${obsTransferencia}`;
+					}
 				}
 				break;
 			case 'QR': // QR
@@ -824,17 +878,34 @@ export class LibroDiarioService {
 		// Combinar observaciones originales con información adicional
 		// Regla:
 		// - Si existe infoAdicional (formato bancario), mostrar SOLO ese texto para evitar duplicados.
-		// - Si no hay infoAdicional, mostrar las observaciones originales o el nombre del método.
+		// - Si no hay infoAdicional pero hay observaciones, usar "{Tipo de Pago}: {Observaciones}".
+		// - Si no hay nada, mostrar solo el nombre del método o el código.
+		const tipoPago = trans.forma_cobro?.nombre || trans.id_forma_cobro || '';
+		
 		if (infoAdicional) {
 			return infoAdicional;
 		}
-		return obsOriginal || (trans.forma_cobro?.nombre || trans.id_forma_cobro || '');
+		
+		if (obsOriginal) {
+			const obsTrim = obsOriginal.toString().trim();
+			if (tipoPago) {
+				// Evitar duplicar si ya empieza con el tipo de pago
+				if (obsTrim.toUpperCase().startsWith(tipoPago.toString().toUpperCase())) {
+					return obsTrim;
+				}
+				return `${tipoPago}: ${obsTrim}`;
+			}
+			return obsTrim;
+		}
+		
+		return tipoPago;
 	}
 
 	/**
 	 * Método para obtener razón social/NIT desde cobro (igual que el kardex)
+	 * Devuelve las claves razon_social y nit para ser compatible con el resto del código.
 	 */
-	private getRazonSocialNIT(cobro: any): { cliente: string; nro_documento_cobro: string } {
+	private getRazonSocialNIT(cobro: any): { razon_social: string; nit: string } {
 		// Usar cliente/nro_documento_cobro (campos que vendrán del backend)
 		const cliente = cobro?.cliente || 'SIN DATOS';
 		const nroDoc = cobro?.nro_documento_cobro || '0';
@@ -845,8 +916,8 @@ export class LibroDiarioService {
 		}
 		
 		return {
-			cliente: cliente,
-			nro_documento_cobro: nroDoc
+			razon_social: cliente,
+			nit: nroDoc
 		};
 	}
 

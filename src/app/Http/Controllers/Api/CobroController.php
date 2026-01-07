@@ -31,12 +31,25 @@ use Carbon\Carbon;
 
 class CobroController extends Controller
 {
-	public function index()
+	public function index(Request $request)
 	{
 		try {
-			// Cargar cobros con relaciones básicas
-			$cobros = Cobro::with(['usuario', 'cuota', 'formaCobro', 'cuentaBancaria', 'itemCobro', 'detalleRegular', 'detalleMulta', 'recibo', 'factura'])
-				->get();
+			// Cargar cobros con relaciones básicas y aplicar filtros opcionales
+			$query = Cobro::with(['usuario', 'cuota', 'formaCobro', 'cuentaBancaria', 'itemCobro', 'detalleRegular', 'detalleMulta', 'recibo', 'factura']);
+			
+			// Filtro por id_usuario (usado por el libro diario)
+			$idUsuario = $request->query('id_usuario');
+			if ($idUsuario !== null && $idUsuario !== '') {
+				$query->where('id_usuario', (int) $idUsuario);
+			}
+			
+			// Filtro por fecha (Y-m-d) sobre fecha_cobro
+			$fecha = $request->query('fecha');
+			if ($fecha) {
+				$query->whereDate('fecha_cobro', $fecha);
+			}
+			
+			$cobros = $query->get();
 			
 			// Mapas de nota_bancaria por nro_recibo y nro_factura
 			$nbByRecibo = [];
@@ -88,9 +101,20 @@ class CobroController extends Controller
 				$nbByFactura = [];
 			}
 			
-			// Enriquecer cada cobro con datos bancarios (si existen) y aplanar a array
+			// Enriquecer cada cobro con datos bancarios y de cliente (si existen) y aplanar a array
 			$cobrosEnriquecidos = $cobros->map(function($cobro) use ($nbByRecibo, $nbByFactura) {
 				$cobroArray = $cobro->toArray();
+				
+				// Agregar datos de razón social / NIT desde recibo o factura
+				// Igual que en resumen(): prioridad recibo y luego factura
+				try {
+					$cobroArray['cliente'] = $cobro->recibo?->cliente ?? $cobro->factura?->cliente ?? null;
+					$cobroArray['nro_documento_cobro'] = $cobro->recibo?->nro_documento_cobro ?? $cobro->factura?->nro_documento_cobro ?? null;
+				} catch (\Throwable $e) {
+					// Si algo falla, dejar los campos como vienen del modelo
+				}
+				
+				// Enlazar nota_bancaria por nro_recibo o nro_factura
 				$nroReciboKey = (string)($cobro->nro_recibo ?? '');
 				$nroFacturaKey = (string)($cobro->nro_factura ?? '');
 				$nb = null;
