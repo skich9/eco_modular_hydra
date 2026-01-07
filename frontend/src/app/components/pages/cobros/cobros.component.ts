@@ -3,6 +3,7 @@ import { CommonModule } from '@angular/common';
 import { FormArray, FormBuilder, FormGroup, FormsModule, ReactiveFormsModule, Validators } from '@angular/forms';
 import { CobrosService } from '../../../services/cobros.service';
 import { GestionService } from '../../../services/gestion.service';
+import { ParametrosEconomicosService } from '../../../services/parametros-economicos.service';
 import { AuthService } from '../../../services/auth.service';
 import { MensualidadModalComponent } from './mensualidad-modal/mensualidad-modal.component';
 import { RezagadoModalComponent } from './rezagado-modal/rezagado-modal.component';
@@ -11,17 +12,19 @@ import { ReincorporacionModalComponent } from './reincorporacion-modal/reincorpo
 import { ItemsModalComponent } from './items-modal/items-modal.component';
 import { KardexModalComponent } from './kardex-modal/kardex-modal.component';
 import { BusquedaEstudianteModalComponent } from './busqueda-estudiante-modal/busqueda-estudiante-modal.component';
+import { DescuentoFormModalComponent } from './descuento-form-modal/descuento-form-modal.component';
 import { QrPanelComponent } from './qr-panel/qr-panel.component';
 import { ClickLockDirective } from '../../../directives/click-lock.directive';
 import { environment } from '../../../../environments/environment';
 import { saveBlobAsFile, generateQuickReciboPdf, generateQuickFacturaPdf } from '../../../utils/pdf.helpers';
 import * as QRCode from 'qrcode';
 import { ActivatedRoute } from '@angular/router';
+import { forkJoin } from 'rxjs';
 
 @Component({
   selector: 'app-cobros-page',
   standalone: true,
-  imports: [CommonModule, ReactiveFormsModule, FormsModule, MensualidadModalComponent, ItemsModalComponent, RezagadoModalComponent, RecuperacionModalComponent, ReincorporacionModalComponent, BusquedaEstudianteModalComponent, KardexModalComponent, QrPanelComponent, ClickLockDirective],
+  imports: [CommonModule, ReactiveFormsModule, FormsModule, MensualidadModalComponent, ItemsModalComponent, RezagadoModalComponent, RecuperacionModalComponent, ReincorporacionModalComponent, BusquedaEstudianteModalComponent, DescuentoFormModalComponent, KardexModalComponent, QrPanelComponent, ClickLockDirective],
   templateUrl: './cobros.component.html',
   styleUrls: ['./cobros.component.scss']
 })
@@ -44,6 +47,7 @@ export class CobrosComponent implements OnInit {
   batchForm: FormGroup;
   identidadForm: FormGroup;
   modalIdentidadForm: FormGroup;
+  descuentoForm: FormGroup;
 
   // Mensualidades
   mensualidadModalForm: FormGroup;
@@ -84,6 +88,7 @@ export class CobrosComponent implements OnInit {
   // Ref del modal de recuperación
   @ViewChild(RecuperacionModalComponent) recuperacionDlg?: RecuperacionModalComponent;
   @ViewChild(BusquedaEstudianteModalComponent) buscarDlg?: BusquedaEstudianteModalComponent;
+  @ViewChild('descuentoDlg') descuentoDlg?: DescuentoFormModalComponent;
   // Ref del panel QR para delegar acciones (guardar en espera)
   @ViewChild('kardexDlg') kardexDlg?: KardexModalComponent;
   @ViewChild('qrPanel') qrPanel?: QrPanelComponent;
@@ -120,6 +125,7 @@ export class CobrosComponent implements OnInit {
     private cobrosService: CobrosService,
     private auth: AuthService,
     private gestionService: GestionService,
+    private peService: ParametrosEconomicosService,
     private route: ActivatedRoute
   ) {
     this.searchForm = this.fb.group({
@@ -169,6 +175,14 @@ export class CobrosComponent implements OnInit {
       cantidad: [1, [Validators.required, Validators.min(1)]],
       costo_total: [{ value: 0, disabled: true }],
       observaciones: ['']
+    });
+
+    this.descuentoForm = this.fb.group({
+      cod_ceta: [''],
+      nombre: [''],
+      gestion: [''],
+      pensum: [''],
+      turno: ['']
     });
   }
 
@@ -780,6 +794,204 @@ export class CobrosComponent implements OnInit {
       const n = parseFloat(s);
       return isNaN(n) ? 0 : n;
     } catch { return 0; }
+  }
+
+  openDescuentoModal(): void {
+    try {
+      const cod = this.batchForm?.get('cabecera.cod_ceta')?.value || '';
+      const nombre = this.identidadForm?.get('nombre_completo')?.value || '';
+      const gestion = this.batchForm?.get('cabecera.gestion')?.value || (this.resumen?.gestion || '');
+      const pensum = this.batchForm?.get('cabecera.cod_pensum')?.value || (this.resumen?.pensum || '');
+      try { console.log('[Cobros] openDescuentoModal()', { cod, nombre, gestion, pensum, resumen: this.resumen }); } catch {}
+      const turno = (() => {
+        // 1) intentar desde identidad (puede ser 'M','T','N' o palabras)
+        let t = (this.identidadForm?.get('turno')?.value || '').toString().trim().toUpperCase();
+        // 2) intentar desde resumen.inscripcion.cod_curso (última letra)
+        if (!t) {
+          const codCurso = (this.resumen?.inscripcion?.cod_curso || this.resumen?.inscripciones?.[0]?.cod_curso || '').toString().trim().toUpperCase();
+          if (codCurso) t = codCurso.slice(-1);
+        }
+        // Normalizar a etiqueta visible
+        if (t === 'M' || t === 'MANANA') return 'Mañana';
+        if (t === 'T' || t === 'TARDE') return 'Tarde';
+        if (t === 'N' || t === 'NOCHE') return 'Noche';
+        return '';
+      })();
+      this.descuentoDlg?.open({ cod_ceta: cod, nombre, gestion, pensum, turno });
+    } catch {}
+  }
+
+  onGuardarDescuento(payload: { cod_ceta: string; nombre: string; gestion: string; pensum: string; turno: string }): void {
+    try {
+      try { console.log('[Cobros] onGuardarDescuento() payload', payload); } catch {}
+      // Validaciones mínimas
+      const cod_ceta = (this.batchForm?.get('cabecera.cod_ceta')?.value || '').toString();
+      const cod_pensum = (this.batchForm?.get('cabecera.cod_pensum')?.value || this.resumen?.inscripcion?.cod_pensum || '').toString();
+      const gestion = (this.batchForm?.get('cabecera.gestion')?.value || this.resumen?.gestion || '').toString();
+      const cod_inscrip = Number(this.resumen?.inscripcion?.cod_inscrip || 0);
+      try { console.log('[Cobros] contexto asignación', { cod_ceta, cod_pensum, gestion, cod_inscrip, resumen: this.resumen }); } catch {}
+      if (!cod_ceta || !cod_pensum || !cod_inscrip) {
+        this.showAlert('Debe consultar primero un estudiante/gestión antes de aplicar descuento', 'warning');
+        return;
+      }
+
+      // 1) Mapear turno -> nombre de parámetro económico
+      const key = (() => {
+        const t = (payload?.turno || '').toString().toLowerCase();
+        if (t.includes('mañana') || t === 'm' || t === 'manana') return 'dinstitucionalmanana';
+        if (t.includes('tarde') || t === 't') return 'dinstitucionaltarde';
+        if (t.includes('noche') || t === 'n') return 'dinstitucionalnoche';
+        return '';
+      })();
+      try { console.log('[Cobros] turno->parametro', { turno: payload?.turno, key }); } catch {}
+      if (!key) { this.showAlert('No se pudo determinar el turno para aplicar el descuento', 'warning'); return; }
+
+      // 2) Obtener cod_beca desde parámetros económicos (valor)
+      this.peService.getAll().subscribe({
+        next: (res) => {
+          const list = Array.isArray(res?.data) ? res.data : [];
+          try { console.log('[Cobros] ParametrosEconomicos count', list.length, list); } catch {}
+          const match = list.find(p => (p?.nombre || '').toString().trim().toLowerCase() === key);
+          const cod_beca = match ? Number(match.valor) : NaN;
+          try { console.log('[Cobros] PE match', { match, cod_beca }); } catch {}
+          if (!match || !isFinite(cod_beca)) { this.showAlert('No se encontró el parámetro económico para el turno seleccionado', 'error'); return; }
+
+          // 3) Obtener definición desde listado completo (el backend no expone GET por ID)
+          const proceed = (def: any) => {
+                // 4) Construir cuotas objetivo: pendientes/parciales de la gestión actual
+                const pendientes: any[] = Array.isArray(this.resumen?.asignaciones) ? this.resumen!.asignaciones : [];
+                const cuotasTarget = pendientes.filter((a: any) => {
+                  const st = (a?.estado_pago || '').toString().trim().toUpperCase();
+                  if (st === 'COBRADO') return false;
+                  const g = `${a?.gestion ?? a?.gestion_cuota ?? ''}`;
+                  return !gestion || `${g}` === `${gestion}`;
+                });
+                try { console.log('[Cobros] cuotas pendientes/target', { totalPend: pendientes.length, cuotasTarget }); } catch {}
+                if (!cuotasTarget.length) { this.showAlert('No hay cuotas pendientes en la gestión seleccionada', 'warning'); return; }
+
+                const toNum = (v: any) => { try { if (v == null) return 0; const n = Number(v); return isFinite(n) ? n : 0; } catch { return 0; } };
+                const isPct = !!def?.porcentaje; // si true, def.monto es %
+                const cuotasPayload = cuotasTarget.map((c: any) => {
+                  const monto = Math.max(0, toNum(c?.monto) - toNum(c?.monto_pagado));
+                  let md = 0;
+                  if (isPct) md = +(monto * (toNum(def?.monto) / 100)).toFixed(2);
+                  else md = Math.min(monto, toNum(def?.monto));
+                  return {
+                    numero_cuota: Number(c?.numero_cuota || 0),
+                    id_cuota: (c?.id_cuota != null ? Number(c.id_cuota) : null),
+                    monto_descuento: md,
+                    observaciones: 'Descuento institucional automático'
+                  };
+                }).filter((r: any) => r.numero_cuota > 0 && r.monto_descuento > 0);
+                try { console.log('[Cobros] cuotas payload', cuotasPayload); } catch {}
+                if (!cuotasPayload.length) { this.showAlert('No hay monto a descontar en las cuotas seleccionadas', 'warning'); return; }
+
+                const idUsuario = Number(this.auth?.getCurrentUser()?.id_usuario || 0);
+                const payloadAssign = {
+                  cod_ceta,
+                  cod_pensum,
+                  cod_inscrip,
+                  id_usuario: idUsuario,
+                  cod_beca: Number(def.cod_beca),
+                  nombre: String(def?.nombre_beca || 'Descuento'),
+                  porcentaje: toNum(def?.monto), // el backend usará cuotas.monto_descuento
+                  observaciones: 'Descuento institucional aplicado desde formulario',
+                  tipo_inscripcion: String(this.resumen?.inscripcion?.tipo_inscripcion || ''),
+                  cuotas: cuotasPayload
+                };
+                try { console.log('[Cobros] assignDescuento payload', payloadAssign); } catch {}
+                this.cobrosService.assignDescuento(payloadAssign).subscribe({
+                  next: () => {
+                    try { console.log('[Cobros] assignDescuento OK'); } catch {}
+                    this.showAlert('Descuento aplicado correctamente', 'success');
+                    this.cobrosService.getResumen(cod_ceta, gestion).subscribe({
+                      next: (r) => { if (r?.success) { this.resumen = r.data; } },
+                      error: () => {}
+                    });
+                  },
+                  error: (err) => {
+                    console.error('assignDescuento error', err);
+                    const msg = err?.error?.message || 'No se pudo asignar el descuento';
+                    this.showAlert(msg, 'error');
+                  }
+                });
+          };
+
+          // Combinar becas (beca=1) y descuentos (beca=0) de la misma tabla
+          forkJoin({
+            becas: this.cobrosService.getDefBecas(),
+            descuentos: this.cobrosService.getDefDescuentos()
+          }).subscribe({
+            next: ({ becas, descuentos }) => {
+              const defsBecas = Array.isArray((becas as any)?.data) ? (becas as any).data : [];
+              const defsDescuentos = Array.isArray((descuentos as any)?.data) ? (descuentos as any).data : [];
+              
+              // Normalizar descuentos al mismo esquema que becas
+              const defsDescNormalizados = defsDescuentos.map((d: any) => ({
+                cod_beca: d?.cod_descuento != null ? Number(d.cod_descuento) : d?.cod_beca,
+                nombre_beca: d?.nombre_descuento || d?.nombre_beca || '',
+                descripcion: d?.descripcion ?? null,
+                monto: d?.monto != null && d.monto !== '' ? Number(d.monto) : 0,
+                porcentaje: typeof d?.porcentaje === 'boolean' ? d.porcentaje : d?.porcentaje == 1,
+                estado: typeof d?.estado === 'boolean' ? d.estado : d?.estado == 1
+              }));
+              
+              const defs = [...defsBecas, ...defsDescNormalizados];
+              const codBecasDisponibles = defs.map((d: any) => Number(d?.cod_beca));
+              
+              try { 
+                console.log('[Cobros] Definiciones combinadas', { 
+                  totalBecas: defsBecas.length,
+                  totalDescuentos: defsDescNormalizados.length,
+                  total: defs.length, 
+                  buscando: cod_beca, 
+                  disponibles: codBecasDisponibles,
+                  todasLasDefs: defs
+                }); 
+              } catch {}
+              
+              const def = defs.find((d: any) => Number(d?.cod_beca) === Number(cod_beca));
+              try { console.log('[Cobros] Def encontrada', { cod_beca, def, encontrado: !!def }); } catch {}
+              
+              if (!def) { 
+                this.showAlert('No existe la definición de beca/descuento solicitada (cod_beca: ' + cod_beca + '). Disponibles: ' + codBecasDisponibles.join(', '), 'error'); 
+                return; 
+              }
+              proceed(def);
+            },
+            error: (err) => { 
+              console.error('[Cobros] Error al obtener definiciones', err); 
+              this.showAlert('No se pudo obtener catálogo de becas/descuentos', 'error'); 
+            }
+          });
+        },
+        error: (err) => { console.error('[Cobros] getAll ParametrosEconomicos error', err); this.showAlert('No se pudo obtener parámetros económicos', 'error'); }
+      });
+    } catch (e) {
+      console.error('[Cobros] onGuardarDescuento fatal', e);
+      this.showAlert('Error inesperado al aplicar descuento', 'error');
+    }
+  }
+
+  closeDescuentoModal(): void {
+    try {
+      const modalEl = document.getElementById('descuentoFormModal');
+      const bs = (window as any).bootstrap;
+      if (modalEl && bs?.Modal) {
+        const instance = bs.Modal.getInstance(modalEl) || new bs.Modal(modalEl);
+        instance.hide();
+      }
+    } catch {}
+  }
+
+  saveDescuentoForm(): void {
+    try {
+      const data = this.descuentoForm?.value || {};
+      this.showAlert('Formulario de descuento guardado', 'success');
+      this.closeDescuentoModal();
+    } catch {
+      this.showAlert('No se pudo guardar el formulario de descuento', 'error');
+    }
   }
 
   // ================== Búsqueda de estudiante por nombre/CI ==================

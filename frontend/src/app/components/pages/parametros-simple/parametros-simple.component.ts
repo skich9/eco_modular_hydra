@@ -58,7 +58,7 @@ export class ParametrosSimpleComponent implements OnInit {
       id_parametro_economico: [null],
       nombre: ['', [Validators.required, Validators.maxLength(20)]],
       valor: ['', [Validators.required, Validators.maxLength(255)]],
-      descripcion: ['', [Validators.required, Validators.maxLength(255)]],
+      descripcion: ['', [Validators.maxLength(255)]],
       estado: [true]
     });
 
@@ -96,6 +96,15 @@ export class ParametrosSimpleComponent implements OnInit {
   ngOnInit(): void {
     this.loadAll();
     this.loadActividades();
+    // Normalizar automáticamente el campo 'nombre' a una clave corta (<=20, sin acentos/espacios)
+    const nombreCtrl = this.parametroForm.get('nombre');
+    nombreCtrl?.valueChanges.subscribe((v: any) => {
+      const str = (v || '').toString();
+      const slug = this.slugifyKey(str).slice(0, 20);
+      if (str !== slug) {
+        nombreCtrl.setValue(slug, { emitEvent: false });
+      }
+    });
   }
 
   // CARGA DE DATOS
@@ -201,6 +210,20 @@ export class ParametrosSimpleComponent implements OnInit {
 
   // GUARDAR / ACTUALIZAR
   saveParametro(): void {
+    // Normalizar 'nombre' a una clave corta (<=20) antes de validar
+    const nombreCtrl = this.parametroForm.get('nombre');
+    const rawNombre = (nombreCtrl?.value || '').toString();
+    const slug = this.slugifyKey(rawNombre).slice(0, 20);
+    if (rawNombre !== slug) {
+      nombreCtrl?.setValue(slug, { emitEvent: false });
+    }
+    // Asegurar valor sin espacios accidentales
+    const valorCtrl = this.parametroForm.get('valor');
+    if (valorCtrl) {
+      const v = (valorCtrl.value ?? '').toString().trim();
+      if (v !== valorCtrl.value) valorCtrl.setValue(v, { emitEvent: false });
+    }
+    this.parametroForm.updateValueAndValidity();
     if (!this.parametroForm.valid) return;
     const data = this.parametroForm.value as ParametroEconomico;
     if (this.editingParam) {
@@ -409,5 +432,22 @@ export class ParametrosSimpleComponent implements OnInit {
         ctrl.markAsTouched();
       }
     });
+  }
+
+  private slugifyKey(s: string): string {
+    try {
+      return s
+        .normalize('NFD')
+        .replace(/\p{Diacritic}+/gu, '')
+        .toLowerCase()
+        .replace(/[^a-z0-9]+/g, '_')
+        .replace(/^_+|_+$/g, '')
+        .replace(/_+/g, '_');
+    } catch {
+      return s.toLowerCase()
+        .replace(/[^a-z0-9]+/g, '_')
+        .replace(/^_+|_+$/g, '')
+        .replace(/_+/g, '_');
+    }
   }
 }

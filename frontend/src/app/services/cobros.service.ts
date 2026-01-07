@@ -89,6 +89,13 @@ export class CobrosService {
 		);
 	}
 
+	// Obtener una definición específica (en la misma tabla def_descuentos_beca)
+	getDefBecaById(id: number | string): Observable<any> {
+		return this.http.get<any>(`${this.apiUrl}/def-descuentos-beca/${id}`).pipe(
+			map((res: any) => ({ success: true, data: res?.data ?? res }))
+		);
+	}
+
 	// ===================== Descuentos asignados =====================
 	getDescuentos(params: { cod_inscrip?: number; cod_ceta?: string | number; cod_pensum?: string; estado?: boolean }): Observable<any> {
 		let httpParams = new HttpParams();

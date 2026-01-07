@@ -1,0 +1,46 @@
+<div class="modal fade" id="descuentoFormModal" tabindex="-1" aria-hidden="true">
+	<div class="modal-dialog">
+		<div class="modal-content">
+			<div class="modal-header">
+				<h5 class="modal-title">Formulario de descuento</h5>
+				<button type="button" class="btn-close" data-bs-dismiss="modal" aria-label="Close"></button>
+			</div>
+			<form [formGroup]="form" (ngSubmit)="onGuardar()">
+				<div class="modal-body">
+					<div *ngIf="!hasEstudiante" class="alert alert-warning mb-0">
+						No se ha buscado ni seleccionado ningún estudiante. No es posible aplicar descuentos.
+					</div>
+					<div class="row g-3" *ngIf="hasEstudiante">
+						<div class="col-12 col-md-6">
+							<label class="form-label">Código CETA</label>
+							<input type="text" class="form-control" formControlName="cod_ceta" />
+						</div>
+						<div class="col-12 col-md-6">
+							<label class="form-label">Nombre</label>
+							<input type="text" class="form-control" formControlName="nombre" />
+						</div>
+						<div class="col-12 col-md-6">
+							<label class="form-label">Gestión</label>
+							<input type="text" class="form-control" formControlName="gestion" />
+						</div>
+						<div class="col-12 col-md-6">
+							<label class="form-label">Pensum</label>
+							<input type="text" class="form-control" formControlName="pensum" />
+						</div>
+						<div class="col-12 col-md-6">
+							<label class="form-label">Turno</label>
+							<select class="form-select" formControlName="turno">
+								<option value="">Seleccione...</option>
+								<option *ngFor="let t of turnoOptions" [value]="t">{{ t }}</option>
+							</select>
+						</div>
+					</div>
+				</div>
+				<div class="modal-footer">
+					<button type="submit" class="btn btn-primary" [disabled]="!hasEstudiante">Guardar</button>
+					<button type="button" class="btn btn-secondary" data-bs-dismiss="modal">Cancelar</button>
+				</div>
+			</form>
+		</div>
+	</div>
+</div>

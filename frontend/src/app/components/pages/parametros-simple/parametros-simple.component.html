@@ -149,7 +149,8 @@
         <div class="grid">
           <label>
             Nombre
-            <input type="text" formControlName="nombre" />
+            <input type="text" formControlName="nombre" maxlength="20" />
+            <small class="error" *ngIf="parametroForm.get('nombre')?.touched && parametroForm.get('nombre')?.hasError('maxlength')">Máximo 20 caracteres.</small>
           </label>
           <label>
             Valor
