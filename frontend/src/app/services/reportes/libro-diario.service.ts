@@ -330,9 +330,9 @@ export class LibroDiarioService {
 								} as LibroDiarioItem;
 							} else if (trans.fuente === 'cobro') {
 								console.log('Cobro:', trans);
-console.log('id_forma_cobro:', trans.id_forma_cobro);
-console.log('forma_cobro:', trans.forma_cobro);
-console.log('forma_cobro.nombre:', trans.forma_cobro?.nombre);
+								console.log('id_forma_cobro:', trans.id_forma_cobro);
+								console.log('forma_cobro:', trans.forma_cobro);
+								console.log('forma_cobro.nombre:', trans.forma_cobro?.nombre);
 								
 								// Lógica mejorada: usar datos directos del cobro como lo hace el kardex
 								let datosCliente = null;
@@ -442,25 +442,32 @@ console.log('forma_cobro.nombre:', trans.forma_cobro?.nombre);
 								console.log('NIT final:', datosCliente?.nit || 'SIN DATOS');
 								
 								// Determinar tipo_pago basado en id_forma_cobro
+								// Códigos oficiales:
+								// D Deposito, E Efectivo, T Traspaso, C Cheque, L Tarjeta, B Transferencia, O Otro
 								let tipoPago = 'E'; // Por defecto Efectivo
 								if (trans.id_forma_cobro) {
 									const formaCobro = String(trans.id_forma_cobro).toUpperCase();
 									if (formaCobro === 'E' || formaCobro.includes('EFECTIVO')) {
 										tipoPago = 'E'; // Efectivo
-									} else if (formaCobro === 'T' || formaCobro.includes('TARJETA')) {
-										tipoPago = 'L'; // Tarjeta (L = Ledger/Tarjeta)
+									} else if (formaCobro === 'L' || formaCobro.includes('TARJETA')) {
+										tipoPago = 'L'; // Tarjeta
 									} else if (formaCobro === 'D' || formaCobro.includes('DEPOSITO')) {
-										tipoPago = 'D'; // Deposito (D = Deposito)
+										tipoPago = 'D'; // Depósito
 									} else if (formaCobro === 'C' || formaCobro.includes('CHEQUE')) {
-										tipoPago = 'C'; // Cheque (C = Cheque)
+										tipoPago = 'C'; // Cheque
 									} else if (formaCobro === 'B' || formaCobro.includes('TRANSFERENCIA') || formaCobro.includes('BANCARIA')) {
-										tipoPago = 'B'; // Transferencia Bancaria (B = Bancario)
+										tipoPago = 'B'; // Transferencia bancaria
+									} else if (formaCobro === 'T' || formaCobro.includes('TRASPASO')) {
+										tipoPago = 'T'; // Traspaso
 									} else {
 										tipoPago = 'O'; // Otro para cualquier forma no estándar
 									}
 								}
 								
 								console.log('Forma de cobro detectada:', trans.id_forma_cobro, '→ tipo_pago:', tipoPago);
+								
+								// Construir observaciones extendidas similares al kardex
+								const observacionesExt = this.getObservacionesExtendidasLibroDiario(trans);
 								
 								return {
 									numero: index + 1,
@@ -474,7 +481,7 @@ console.log('forma_cobro.nombre:', trans.forma_cobro?.nombre);
 									ingreso: parseFloat(trans.monto || 0),
 									egreso: 0,
 									tipo_pago: tipoPago,
-									observaciones: trans.forma_cobro?.nombre || trans.id_forma_cobro || 'Efectivo'
+									observaciones: observacionesExt || (trans.forma_cobro?.nombre || trans.id_forma_cobro || 'Efectivo')
 								} as LibroDiarioItem;
 							} else if (trans.fuente === 'transaction') {
 								console.log('=== PROCESANDO TRANSACTION QR ===');
@@ -679,6 +686,128 @@ console.log('forma_cobro.nombre:', trans.forma_cobro?.nombre);
 				} as LibroDiarioResponse;
 			})
 		);
+	}
+
+	// Obtener solo el nombre del banco (sin número de cuenta) para libro diario
+	private getBancoSoloNombreLibro(trans: any): string {
+		try {
+			const raw = (trans?.banco_nb || trans?.banco || '').toString().trim();
+			if (!raw) return '';
+			// En nota_bancaria se guarda como "BANCO X - 123456"; nos quedamos con la parte antes de " - "
+			const partes = raw.split(' - ');
+			return (partes[0] || raw).trim();
+		} catch {
+			return '';
+		}
+	}
+
+	// Obtener observaciones extendidas para libro diario según el método de pago (igual que kardex)
+	private getObservacionesExtendidasLibroDiario(trans: any): string {
+		let idFormaCobro = trans?.id_forma_cobro;
+		const obsOriginal = trans?.observaciones || '';
+		
+		// Normalizar códigos antiguos de forma de cobro a los códigos nuevos
+		let codigo = (idFormaCobro || '').toString().toUpperCase();
+		switch (codigo) {
+			case 'E':
+				codigo = 'EF';
+				break;
+			case 'T':
+				codigo = 'TA';
+				break;
+			case 'D':
+				codigo = 'DE';
+				break;
+			case 'C':
+				codigo = 'CH';
+				break;
+			case 'L':
+			case 'TC':
+				codigo = 'TA';
+				break;
+			case 'B':
+				codigo = 'TR';
+				break;
+		}
+		idFormaCobro = codigo;
+		
+		// Si es efectivo, solo mostrar observaciones si existen o el nombre del método
+		if (idFormaCobro === 'EF') {
+			return obsOriginal || (trans.forma_cobro?.nombre || 'EFECTIVO');
+		}
+		
+		// Para otros métodos, concatenar información adicional
+		let infoAdicional = '';
+		
+		switch (idFormaCobro) {
+			case 'TA': // TARJETA
+				// {Tipo de Pago}: {banco}-{nro_transaccion}-{fecha_deposito} NL:0
+				const bancoTarjeta = this.getBancoSoloNombreLibro(trans);
+				const nroTransaccionTarjeta = (trans?.nro_transaccion || trans?.nro_deposito || '').toString();
+				const fechaDepositoTarjeta = (trans?.fecha_deposito || trans?.fecha_nota || '').toString();
+				
+				if (bancoTarjeta && nroTransaccionTarjeta && fechaDepositoTarjeta) {
+					infoAdicional = `Tarjeta: ${bancoTarjeta}-${nroTransaccionTarjeta}-${fechaDepositoTarjeta} NL:0`;
+				} else {
+					infoAdicional = `Tarjeta: ${trans?.nro_tarjeta || 'N/A'} - Autorización: ${trans?.nro_autorizacion || 'N/A'}`;
+				}
+				break;
+			case 'CH': // CHEQUE
+				infoAdicional = `Cheque N°: ${trans?.nro_cheque || 'N/A'} - Banco: ${this.getBancoSoloNombreLibro(trans) || 'N/A'}`;
+				break;
+			case 'DE': // DEPOSITO
+				// Deposito: {banco}-{nro_transaccion}-{fecha_deposito} ND:{correlativo}
+				const bancoDeposito = this.getBancoSoloNombreLibro(trans);
+				const nroDeposito = (trans?.nro_transaccion || trans?.nro_deposito || '').toString();
+				const fechaDeposito = (trans?.fecha_deposito || trans?.fecha_nota || '').toString();
+				let correlativoNd = (trans?.correlativo_nb || trans?.nro_referencia || '').toString();
+				// Limpiar prefijos tipo "NB:", "ND:" o similares para no duplicar
+				if (correlativoNd) {
+					correlativoNd = correlativoNd.replace(/^N[BD][:\s]*/i, '').trim();
+				}
+				if (bancoDeposito && nroDeposito && fechaDeposito) {
+					infoAdicional = correlativoNd
+						? `Deposito: ${bancoDeposito}-${nroDeposito}-${fechaDeposito} ND:${correlativoNd}`
+						: `Deposito: ${bancoDeposito}-${nroDeposito}-${fechaDeposito}`;
+				} else {
+					infoAdicional = `Depósito - N° Cuenta: ${trans?.nro_cuenta || 'N/A'} - Banco: ${this.getBancoSoloNombreLibro(trans) || 'N/A'} - Referencia: ${trans?.nro_referencia || 'N/A'}`;
+				}
+				break;
+			case 'TR': // TRANSFERENCIA
+				// {Tipo de Pago}: {banco}-{nro_transaccion}-{fecha_deposito} NB:{correlativo}
+				const bancoTransferencia = this.getBancoSoloNombreLibro(trans);
+				const nroTransferencia = (trans?.nro_transaccion || trans?.nro_deposito || '').toString();
+				const fechaTransferencia = (trans?.fecha_deposito || trans?.fecha_nota || '').toString();
+				let correlativoNb = (trans?.correlativo_nb || trans?.nro_referencia || '').toString();
+				// Limpiar prefijos tipo "NB:" o "NB " que puedan venir desde nro_referencia para no duplicar
+				if (correlativoNb) {
+					correlativoNb = correlativoNb.replace(/^NB[:\s]*/i, '').trim();
+				}
+				
+				if (bancoTransferencia && nroTransferencia && fechaTransferencia) {
+					infoAdicional = correlativoNb
+						? `Transferencia: ${bancoTransferencia}-${nroTransferencia}-${fechaTransferencia} NB:${correlativoNb}`
+						: `Transferencia: ${bancoTransferencia}-${nroTransferencia}-${fechaTransferencia}`;
+				} else {
+					infoAdicional = `Transferencia - N° Cuenta: ${trans?.nro_cuenta || 'N/A'} - Banco: ${this.getBancoSoloNombreLibro(trans) || 'N/A'} - Referencia: ${trans?.nro_referencia || 'N/A'}`;
+				}
+				break;
+			case 'QR': // QR
+				infoAdicional = `QR - Código: ${trans?.codigo_qr || 'N/A'} - Fecha: ${trans?.fecha_qr || 'N/A'}`;
+				break;
+			case 'OT': // OTRO
+				infoAdicional = `Otro: ${trans?.detalle_otro || 'N/A'}`;
+				break;
+		}
+		
+		// Combinar observaciones originales con información adicional
+		// Regla:
+		// - Si existe infoAdicional (formato bancario), mostrar SOLO ese texto para evitar duplicados.
+		// - Si no hay infoAdicional, mostrar las observaciones originales o el nombre del método.
+		if (infoAdicional) {
+			return infoAdicional;
+		}
+		return obsOriginal || (trans.forma_cobro?.nombre || trans.id_forma_cobro || '');
 	}
 
 	/**
