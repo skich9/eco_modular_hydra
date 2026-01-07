@@ -127,7 +127,21 @@ export class LibroDiarioComponent implements OnInit {
     this.libroDiarioService.getLibroDiario(request).subscribe({
       next: (response) => {
         if (response.success) {
-          this.datosLibroDiario = response.data.datos;
+          this.datosLibroDiario = response.data.datos || [];
+          this.datosLibroDiario.sort((a: any, b: any) => {
+            const ha = (a?.hora || '').toString();
+            const hb = (b?.hora || '').toString();
+            if (ha && hb) {
+              return ha.localeCompare(hb);
+            }
+            if (!ha && hb) {
+              return 1;
+            }
+            if (ha && !hb) {
+              return -1;
+            }
+            return 0;
+          });
           this.totales = response.data.totales;
         } else {
           this.datosLibroDiario = [];
