@@ -314,6 +314,27 @@ export class LibroDiarioService {
 								console.log('Razón social final:', datosCliente?.razon_social || 'SIN DATOS');
 								console.log('NIT final:', datosCliente?.nit || 'SIN DATOS');
 								
+								// Determinar tipo_pago para la factura según su método de pago
+								// Usar los mismos códigos que en cobros: D Deposito, E Efectivo, T Traspaso, C Cheque, L Tarjeta, B Transferencia, O Otro
+								let tipoPagoFactura = 'E';
+								const metodoFactura = (trans.metodo_pago || '').toString().toUpperCase();
+								if (metodoFactura.includes('EFECTIVO')) {
+									tipoPagoFactura = 'E';
+								} else if (metodoFactura.includes('TARJETA')) {
+									tipoPagoFactura = 'L';
+								} else if (metodoFactura.includes('DEPOSITO')) {
+									tipoPagoFactura = 'D';
+								} else if (metodoFactura.includes('CHEQUE')) {
+									tipoPagoFactura = 'C';
+								} else if (metodoFactura.includes('TRANSFERENCIA') || metodoFactura.includes('BANCARIA')) {
+									tipoPagoFactura = 'B';
+								} else if (metodoFactura.includes('TRASPASO')) {
+									tipoPagoFactura = 'T';
+								} else if (metodoFactura) {
+									// Si tiene algún texto pero no coincide con los anteriores, marcar como Otro
+									tipoPagoFactura = 'O';
+								}
+								
 								return {
 									numero: index + 1,
 									recibo: '0', // Las facturas no tienen recibo
@@ -325,7 +346,7 @@ export class LibroDiarioService {
 									hora: trans.fecha_emision ? new Date(trans.fecha_emision).toTimeString().substring(0, 8) : '',
 									ingreso: parseFloat(trans.monto_total || 0),
 									egreso: 0,
-									tipo_pago: 'F', // F = Factura
+									tipo_pago: tipoPagoFactura,
 									observaciones: trans.metodo_pago || 'Efectivo'
 								} as LibroDiarioItem;
 							} else if (trans.fuente === 'cobro') {

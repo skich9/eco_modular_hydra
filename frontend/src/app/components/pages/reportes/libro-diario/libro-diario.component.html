@@ -191,15 +191,32 @@
 										<td class="text-end">{{ (getMetodoPagoTotalByType('deposito', 'recibo') + getMetodoPagoTotalByType('efectivo', 'recibo') + getMetodoPagoTotalByType('tarjeta', 'recibo') + getMetodoPagoTotalByType('transferencia', 'recibo') + getMetodoPagoTotalByType('otro', 'recibo')) | number:'1.2-2' }}</td>
 										<td class="text-end">{{ (getMetodoPagoTotalByType('deposito', 'factura') + getMetodoPagoTotalByType('efectivo', 'factura') + getMetodoPagoTotalByType('tarjeta', 'factura') + getMetodoPagoTotalByType('transferencia', 'factura') + getMetodoPagoTotalByType('otro', 'factura')) | number:'1.2-2' }}</td>
 									</tr>
+									<!-- Separador visual entre totales parciales y totales finales -->
+									<tr>
+										<td colspan="3"></td>
+									</tr>
 									<tr class="table-success fw-bold">
 										<td>Total Efectivo</td>
-										<td class="text-end">{{ getMetodoPagoTotalByType('efectivo', 'recibo') | number:'1.2-2' }}</td>
-										<td class="text-end">{{ getMetodoPagoTotalByType('efectivo', 'factura') | number:'1.2-2' }}</td>
+										<td class="text-end" colspan="2">
+											{{ (getMetodoPagoTotalByType('efectivo', 'recibo') + getMetodoPagoTotalByType('efectivo', 'factura')) | number:'1.2-2' }}
+										</td>
 									</tr>
 									<tr class="table-primary fw-bold">
 										<td>Total General</td>
-										<td class="text-end">{{ (getMetodoPagoTotalByType('deposito', 'recibo') + getMetodoPagoTotalByType('efectivo', 'recibo') + getMetodoPagoTotalByType('tarjeta', 'recibo') + getMetodoPagoTotalByType('transferencia', 'recibo') + getMetodoPagoTotalByType('otro', 'recibo')) | number:'1.2-2' }}</td>
-										<td class="text-end">{{ (getMetodoPagoTotalByType('deposito', 'factura') + getMetodoPagoTotalByType('efectivo', 'factura') + getMetodoPagoTotalByType('tarjeta', 'factura') + getMetodoPagoTotalByType('transferencia', 'factura') + getMetodoPagoTotalByType('otro', 'factura')) | number:'1.2-2' }}</td>
+										<td class="text-end" colspan="2">
+											{{ (
+												getMetodoPagoTotalByType('deposito', 'recibo') +
+												getMetodoPagoTotalByType('efectivo', 'recibo') +
+												getMetodoPagoTotalByType('tarjeta', 'recibo') +
+												getMetodoPagoTotalByType('transferencia', 'recibo') +
+												getMetodoPagoTotalByType('otro', 'recibo') +
+												getMetodoPagoTotalByType('deposito', 'factura') +
+												getMetodoPagoTotalByType('efectivo', 'factura') +
+												getMetodoPagoTotalByType('tarjeta', 'factura') +
+												getMetodoPagoTotalByType('transferencia', 'factura') +
+												getMetodoPagoTotalByType('otro', 'factura')
+											) | number:'1.2-2' }}
+										</td>
 									</tr>
 								</tbody>
 							</table>
