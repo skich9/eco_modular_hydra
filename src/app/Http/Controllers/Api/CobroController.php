@@ -611,6 +611,7 @@ class CobroController extends Controller
 				->whereNull('id_item') // Capturar todos los cobros que no son de items adicionales
 				->with(['recibo', 'factura'])
 				->get();
+			// Este total incluye todos los cobros de mensualidad (completos y parciales)
 			$totalMensualidadConParciales = $cobrosMensualidadConParciales->sum('monto');
 
 			// Próxima mensualidad a pagar con prioridad a PARCIAL; exponer 'parcial_count'
@@ -806,15 +807,14 @@ class CobroController extends Controller
 				: (($asignacionesPrimarias->count() > 0 ? (float) $asignacionesPrimarias->sum('monto') : null)
 					?: (optional($costoSemestral)->monto_semestre
 						?: ($paramMonto ? (float) $paramMonto->valor : null)));
-// <<<<<<< HEAD
-// 			$saldoMensualidad = isset($montoSemestre) ? (float) $montoSemestre - (float) $totalMensualidadCompletas : null;
-// 			$puMensualFromNext = $mensualidadNext ? round((float) (isset($mensualidadNext['monto']) ? $mensualidadNext['monto'] : 0), 2) : null;
-// =======
 			$totalDescuentos = 0.0;
 			if (!empty($descuentosPorAsign)) { foreach ($descuentosPorAsign as $v) { $totalDescuentos += (float)$v; } }
 			$montoSemestreNeto = isset($montoSemestre) ? max(0, (float)$montoSemestre - (float)$totalDescuentos) : null;
-			// Corrección: Usar solo mensualidades completas para el saldo
-			$saldoMensualidad = $montoSemestreNeto !== null ? (float)$montoSemestreNeto - (float)$totalMensualidadCompletas : null;
+			// Corrección: el saldo debe considerar todos los cobros de mensualidad (completos y parciales)
+			// para coincidir con la suma de la tabla de cobros del kardex.
+			$saldoMensualidad = $montoSemestreNeto !== null
+				? max(0, (float)$montoSemestreNeto - (float)$totalMensualidadConParciales)
+				: null;
 			
 			// Debug para el cálculo del saldo
 			Log::info('Cálculo de saldo de mensualidad:', [
@@ -826,7 +826,7 @@ class CobroController extends Controller
 				'totalMensualidadCompletas' => $totalMensualidadCompletas,
 				'totalMensualidadConParciales' => $totalMensualidadConParciales,
 				'saldoMensualidad' => $saldoMensualidad,
-				'formula_usada' => 'montoSemestreNeto - totalMensualidadCompletas'
+				'formula_usada' => 'montoSemestreNeto - totalMensualidadConParciales'
 			]);
 			
 			$puMensualFromNext = $mensualidadNext ? round((float) ($mensualidadNext['monto'] ?? 0), 2) : null;
@@ -1192,7 +1192,8 @@ class CobroController extends Controller
 						'descuentos' => (float) $totalDescuentos,
 						'saldo_mensualidad' => $saldoMensualidad,
 						'total_pagado' => (float) $totalPagadoDesdeAsignaciones,
-						'total_pagado_v2' => (float) $totalMensualidadCompletas,
+						// total_pagado_v2: suma de todos los cobros de mensualidad (completos y parciales)
+						'total_pagado_v2' => (float) $totalMensualidadConParciales,
 						'nro_cuotas' => $nroCuotas,
 						'pu_mensual' => $puMensual,
 						'pu_mensual_nominal' => $puMensualNominal,
