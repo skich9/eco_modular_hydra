@@ -105,8 +105,8 @@
                 <label class="form-check-label" for="comp_recibo_mens">Recibo</label>
               </div>
               <div class="form-check">
-                <input class="form-check-input" type="radio" id="comp_factura_mens" value="FACTURA" formControlName="comprobante" />
-                <label class="form-check-label" for="comp_factura_mens">Factura</label>
+                <input class="form-check-input" type="radio" id="comp_factura_mens" value="FACTURA" formControlName="comprobante" [disabled]="facturaDeshabilitada" />
+                <label class="form-check-label" for="comp_factura_mens" [class.text-muted]="facturaDeshabilitada">Factura</label>
               </div>
             </div>
           </div>

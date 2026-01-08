@@ -808,6 +808,57 @@ class CobroController extends Controller
 				$estudianteData['observaciones'] = isset($primaryInscripcion->observaciones) ? $primaryInscripcion->observaciones : null;
 			}
 
+			// Obtener descuentos aplicados con sus definiciones (incluyendo d_i)
+			$descuentosAplicados = [];
+			try {
+				if ($primaryInscripcion) {
+					$descuentos = DB::table('descuentos')
+						->where('cod_ceta', $codCeta)
+						->where('cod_pensum', $codPensumToUse)
+						->where('cod_inscrip', $primaryInscripcion->cod_inscrip)
+						->where('estado', true)
+						->get();
+					
+					Log::info('[CobroController] Descuentos encontrados para cod_ceta: ' . $codCeta, [
+						'count' => $descuentos->count(),
+						'descuentos' => $descuentos->toArray()
+					]);
+					
+					foreach ($descuentos as $desc) {
+						$definicion = DB::table('def_descuentos_beca')
+							->where('cod_beca', $desc->cod_beca)
+							->first();
+						
+						Log::info('[CobroController] Definición para cod_beca: ' . $desc->cod_beca, [
+							'definicion' => $definicion ? (array)$definicion : null
+						]);
+						
+						if ($definicion) {
+							$descuentosAplicados[] = [
+								'id_descuentos' => $desc->id_descuentos,
+								'cod_beca' => $desc->cod_beca,
+								'nombre' => $desc->nombre,
+								'definicion' => [
+									'cod_beca' => $definicion->cod_beca,
+									'nombre_beca' => $definicion->nombre_beca,
+									'd_i' => $definicion->d_i ?? 0,
+									'beca' => $definicion->beca ?? 0,
+									'monto' => $definicion->monto ?? 0,
+									'porcentaje' => $definicion->porcentaje ?? 0,
+								]
+							];
+						}
+					}
+					
+					Log::info('[CobroController] Descuentos aplicados final:', [
+						'count' => count($descuentosAplicados),
+						'descuentos_aplicados' => $descuentosAplicados
+					]);
+				}
+			} catch (\Throwable $e) {
+				Log::error('Error al obtener descuentos aplicados: ' . $e->getMessage());
+			}
+
 			return response()->json([
 				'success' => true,
 				'data' => [
@@ -832,6 +883,7 @@ class CobroController extends Controller
 						'monto' => $recuperacionMonto,
 					],
 					'asignacion_costos' => $asignacion,
+					'descuentos_aplicados' => $descuentosAplicados,
 					// Exponer todas las cuotas ordenadas con datos clave para el modal 
 					'asignaciones' => $asignacionesPrimarias->map(function($a) use ($descuentosPorAsign){
 						return [

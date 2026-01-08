@@ -12,7 +12,16 @@ import { ParametrosEconomicosService } from '../../../../services/parametros-eco
   styleUrls: ['./mensualidad-modal.component.scss']
 })
 export class MensualidadModalComponent implements OnInit, OnChanges {
-  @Input() resumen: any = null;
+  private _resumen: any = null;
+  
+  @Input() 
+  set resumen(value: any) {
+    this._resumen = value;
+  }
+  get resumen(): any {
+    return this._resumen;
+  }
+  
   @Input() formasCobro: any[] = [];
   @Input() cuentasBancarias: any[] = [];
   @Input() tipo: 'mensualidad' | 'rezagado' | 'recuperacion' | 'arrastre' | 'reincorporacion' = 'mensualidad';
@@ -302,6 +311,7 @@ export class MensualidadModalComponent implements OnInit, OnChanges {
   ngOnInit(): void {
     this.cargarParametrosDescuentoSemestre();
     this.recalcTotal();
+    
     // Recalcular total al cambiar cantidad, descuento o monto_manual
     this.form.get('cantidad')?.valueChanges.subscribe(() => { this.recalcTotal(); this.updateDescuentoDisplay(); });
     this.form.get('monto_manual')?.valueChanges.subscribe(() => this.recalcTotal());
@@ -657,7 +667,33 @@ export class MensualidadModalComponent implements OnInit, OnChanges {
     } catch { return null; }
   }
 
-  // Convierte valores como '800,00' o '1.200,50' a número 800.00 / 1200.50
+  // Getter que verifica si hay descuentos con d_i=1 para deshabilitar factura
+  get facturaDeshabilitada(): boolean {
+    if (!this.resumen) return false;
+    
+    const descuentosAplicados = this.resumen?.descuentos_aplicados || [];
+    if (descuentosAplicados.length === 0) return false;
+    
+    // Verificar si algún descuento tiene d_i = 1
+    const tieneDescuentoConDI = descuentosAplicados.some((desc: any) => {
+      const definicion = desc?.definicion || desc?.def_descuento_beca || {};
+      const di = definicion?.d_i;
+      return di === 1 || di === true || di === '1';
+    });
+    
+    // Si hay descuento con d_i=1 y el comprobante actual es FACTURA, cambiarlo a RECIBO
+    if (tieneDescuentoConDI) {
+      const comprobanteActual = this.form.get('comprobante')?.value;
+      if (comprobanteActual === 'FACTURA') {
+        setTimeout(() => {
+          this.form.patchValue({ comprobante: 'RECIBO' }, { emitEvent: false });
+        }, 0);
+      }
+    }
+    
+    return tieneDescuentoConDI;
+  }
+  
   private toNumberLoose(v: any): number {
     if (typeof v === 'number') return isFinite(v) ? v : 0;
     if (v === null || v === undefined) return 0;
