@@ -361,11 +361,11 @@ export class MensualidadModalComponent implements OnInit, OnChanges {
         // Inicializar descuento en 0 para evitar parpadeo (se llenará automáticamente con el prorrateado)
         this.form.get('descuento')?.setValue(0, { emitEvent: false });
       } else {
-        // restaurar cantidad y deshabilitar monto_parcial
         this.form.get('cantidad')?.enable({ emitEvent: false });
         this.form.get('monto_parcial')?.setValue(0, { emitEvent: false });
         this.form.get('monto_parcial')?.clearValidators();
         this.form.get('monto_parcial')?.disable({ emitEvent: false });
+        this.updateDescuentoDisplay();
       }
       this.form.get('cantidad')?.updateValueAndValidity({ emitEvent: false });
       this.form.get('monto_parcial')?.updateValueAndValidity({ emitEvent: false });
@@ -380,8 +380,6 @@ export class MensualidadModalComponent implements OnInit, OnChanges {
         this.form.patchValue({ pago_parcial: false }, { emitEvent: false });
       }
       this.configureByTipo();
-      this.recalcTotal();
-      // Actualizar campo de descuento mostrado (sólo informativo) para la próxima cuota
       try {
         let d = 0;
         if (this.tipo === 'arrastre') {
@@ -445,6 +443,7 @@ export class MensualidadModalComponent implements OnInit, OnChanges {
         // Mostrar siempre el descuento aplicado a la cuota seleccionada
         this.form.get('descuento')?.setValue(d || 0, { emitEvent: false });
       } catch {}
+      this.recalcTotal();
       // Si el parcial está activo, actualizar tope y valor sugerido del monto parcial con el PU efectivo
       if (this.tipo === 'mensualidad' && this.form.get('pago_parcial')?.value) {
         this.form.get('monto_parcial')?.setValidators([Validators.required, Validators.min(0.01), Validators.max(Number(this.getParcialMax() || Number.MAX_SAFE_INTEGER))]);
@@ -530,9 +529,9 @@ export class MensualidadModalComponent implements OnInit, OnChanges {
       } else {
         const cant = Math.max(0, Number(this.form.get('cantidad')?.value || 0));
         if (cant === 1) {
-          // Costo total = puDisplay (que ya es saldo real: neto - pagado)
           const pu = this.puDisplay;
-          total = Math.max(0, Number(pu || 0));
+          const desc = Number(this.form.get('descuento')?.value || 0);
+          total = Math.max(0, Number(pu || 0) - desc);
         } else {
           const sum = this.sumNextKCuotasRestantes(cant);
           if (sum > 0) {
@@ -768,21 +767,21 @@ export class MensualidadModalComponent implements OnInit, OnChanges {
     const montoParcial = Number(this.form.get('monto_parcial')?.value || 0);
     const pagoParcial = this.form.get('pago_parcial')?.value;
 
-    if (pagoParcial && montoParcial > 0) {
-      const descuento = this.calcularDescuentoProrrateado(montoParcial);
-      // Redondear a 2 decimales para visualización y asignación
-      const descuentoRedondeado = Math.round(descuento * 100) / 100;
+    if (!pagoParcial) return 0;
+    if (montoParcial <= 0) return 0;
 
-      // Asignar automáticamente al campo descuento/beca (con 2 decimales)
-      if (descuentoRedondeado > 0) {
+    const descuento = this.calcularDescuentoProrrateado(montoParcial);
+    const descuentoRedondeado = Math.round(descuento * 100) / 100;
+
+    if (descuentoRedondeado > 0) {
+      const currentDescuento = Number(this.form.get('descuento')?.value || 0);
+      if (Math.abs(currentDescuento - descuentoRedondeado) > 0.01) {
         setTimeout(() => {
           this.form.patchValue({ descuento: descuentoRedondeado }, { emitEvent: false });
         }, 0);
       }
-      return descuentoRedondeado;
     }
-
-    return 0;
+    return descuentoRedondeado;
   }
 
   private toNumberLoose(v: any): number {
