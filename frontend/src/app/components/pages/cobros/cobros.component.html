@@ -563,6 +563,7 @@
     <app-descuento-form-modal
       #descuentoDlg
       [turnoOptions]="['Mañana','Tarde','Noche']"
+      [resumen]="resumen"
       (guardar)="onGuardarDescuento($event)"
     ></app-descuento-form-modal>
 

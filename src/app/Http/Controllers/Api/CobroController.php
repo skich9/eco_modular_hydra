@@ -293,10 +293,10 @@ class CobroController extends Controller
 					DB::raw("MAX(d.numero_doc) as any_doc")
 				)
 				->groupBy('d.cod_ceta');
-			
+
 			$estudiante = Estudiante::with('pensum')
-				->leftJoinSub($documentosQuery, 'dp', function($join){ 
-					$join->on('dp.cod_ceta', '=', 'estudiantes.cod_ceta'); 
+				->leftJoinSub($documentosQuery, 'dp', function($join){
+					$join->on('dp.cod_ceta', '=', 'estudiantes.cod_ceta');
 				})
 				->find($codCeta);
 			if (!$estudiante) {
@@ -449,14 +449,14 @@ class CobroController extends Controller
 						return isset($a->monto_pagado) ? (float)$a->monto_pagado : 0;
 					});
 			}
-			
+
 			$cobrosMensualidad = clone $cobrosBase;
 			$cobrosMensualidad = $cobrosMensualidad->get();
 			$cobrosItems = clone $cobrosBase;
 			$cobrosItems = $cobrosItems->get();
 			$totalMensualidad = $cobrosMensualidad->sum('monto');
 			$totalItems = 0; // Ya están incluidos en totalMensualidad
-			
+
 			// Calcular total solo de mensualidades pagadas completamente (estado COBRADO)
 			$cobrosMensualidadCompletas = clone $cobrosBase;
 			$cobrosMensualidadCompletas = $cobrosMensualidadCompletas
@@ -469,7 +469,7 @@ class CobroController extends Controller
 				})
 				->get();
 			$totalMensualidadCompletas = $cobrosMensualidadCompletas->sum('monto');
-			
+
 			// Calcular total de mensualidades con pagos parciales para mostrar en UI (COBRADO + PARCIAL)
 			$cobrosMensualidadConParciales = clone $cobrosBase;
 			$cobrosMensualidadConParciales = $cobrosMensualidadConParciales
@@ -663,7 +663,7 @@ class CobroController extends Controller
 						->sum('monto');
 				}
 			} catch (\Throwable $e) { /* fallback automático abajo */ }
-			
+
 			// Prioridad: 1) Cálculo real desde asignaciones, 2) Suma de asignaciones primarias, 3) Costo semestral configurado, 4) Parámetro
 			$montoSemestre = ($montoSemestralFromAsignGestion !== null && $montoSemestralFromAsignGestion > 0)
 				? $montoSemestralFromAsignGestion
@@ -787,13 +787,13 @@ class CobroController extends Controller
 				$estudianteData['telefono'] = '';
 				$estudianteData['cedula'] = $estudiante->ci ?: '';
 			}
-			
+
 			// Si tenemos ci_doc pero cedula está vacío, asignar ci_doc a cedula
 			if (empty($estudianteData['cedula']) && !empty($estudianteData['ci_doc'])) {
 				$estudianteData['cedula'] = $estudianteData['ci_doc'];
 				$estudianteData['ci'] = $estudianteData['ci_doc'];
 			}
-			
+
 			// Agregar datos de la inscripción principal al estudiante
 			if ($primaryInscripcion) {
 				$estudianteData['carrera'] = $primaryInscripcion->carrera;
@@ -818,21 +818,21 @@ class CobroController extends Controller
 						->where('cod_inscrip', $primaryInscripcion->cod_inscrip)
 						->where('estado', true)
 						->get();
-					
+
 					Log::info('[CobroController] Descuentos encontrados para cod_ceta: ' . $codCeta, [
 						'count' => $descuentos->count(),
 						'descuentos' => $descuentos->toArray()
 					]);
-					
+
 					foreach ($descuentos as $desc) {
 						$definicion = DB::table('def_descuentos_beca')
 							->where('cod_beca', $desc->cod_beca)
 							->first();
-						
+
 						Log::info('[CobroController] Definición para cod_beca: ' . $desc->cod_beca, [
 							'definicion' => $definicion ? (array)$definicion : null
 						]);
-						
+
 						if ($definicion) {
 							$descuentosAplicados[] = [
 								'id_descuentos' => $desc->id_descuentos,
@@ -849,7 +849,7 @@ class CobroController extends Controller
 							];
 						}
 					}
-					
+
 					Log::info('[CobroController] Descuentos aplicados final:', [
 						'count' => count($descuentosAplicados),
 						'descuentos_aplicados' => $descuentosAplicados
@@ -884,26 +884,43 @@ class CobroController extends Controller
 					],
 					'asignacion_costos' => $asignacion,
 					'descuentos_aplicados' => $descuentosAplicados,
-					// Exponer todas las cuotas ordenadas con datos clave para el modal 
-					'asignaciones' => $asignacionesPrimarias->map(function($a) use ($descuentosPorAsign){
+					// Exponer todas las cuotas ordenadas con datos clave para el modal
+					'asignaciones' => $asignacionesPrimarias->map(function($a) use ($descuentosPorAsign, $codCeta, $codPensumToUse){
+						$idAsignacion = (int) ($a->id_asignacion_costo ?? 0);
+						$descuentoPago = (float) ($descuentosPorAsign[$idAsignacion] ?? 0);
+						$monto = (float) ($a->monto ?? 0);
+						$montoPagado = (float) ($a->monto_pagado ?? 0);
+
+						// Calcular descuento_aplicado: sumatoria de descuentos en cobros anteriores con este id_asignacion_costo
+						$descuentoAplicado = 0.0;
+						try {
+							if ($idAsignacion > 0) {
+								$descuentoAplicado = (float) DB::table('cobro')
+									->where('id_asignacion_costo', $idAsignacion)
+									->sum(DB::raw('CAST(descuento AS DECIMAL(10,4))'));
+							}
+						} catch (\Throwable $e) {
+							// Si falla, usar 0
+						}
+
+						// Calcular total_debe_pagar: monto - descuento_pago (4 decimales)
+						$totalDebePagar = round(max(0, $monto - $descuentoPago), 4);
+
 						return [
-// <<<<<<< HEAD
-// 							'numero_cuota' => (int) (isset($a->numero_cuota) ? $a->numero_cuota : 0),
-// 							'monto' => (float) (isset($a->monto) ? $a->monto : 0),
-// 							'monto_pagado' => (float) (isset($a->monto_pagado) ? $a->monto_pagado : 0),
-// 							'estado_pago' => (string) (isset($a->estado_pago) ? $a->estado_pago : ''),
-// 							'id_asignacion_costo' => (isset($a->id_asignacion_costo) && $a->id_asignacion_costo != 0) ? (int)$a->id_asignacion_costo : null,
-// =======
 							'numero_cuota' => (int) ($a->numero_cuota ?? 0),
-							'monto' => (float) ($a->monto ?? 0),
-							'descuento' => (float) ($descuentosPorAsign[(int)($a->id_asignacion_costo ?? 0)] ?? 0),
-							'monto_neto' => max(0, (float) ($a->monto ?? 0) - (float) ($descuentosPorAsign[(int)($a->id_asignacion_costo ?? 0)] ?? 0)),
-							'monto_pagado' => (float) ($a->monto_pagado ?? 0),
+							'monto' => $monto,
+							'descuento' => $descuentoPago,
+							'monto_neto' => max(0, $monto - $descuentoPago),
+							'monto_pagado' => $montoPagado,
 							'estado_pago' => (string) ($a->estado_pago ?? ''),
-							'id_asignacion_costo' => (int) ($a->id_asignacion_costo ?? 0) ?: null,
-// >>>>>>> db8167bb0a817bf7e0af1d0732b63770d42d68e3
+							'id_asignacion_costo' => $idAsignacion ?: null,
 							'id_cuota_template' => isset($a->id_cuota_template) ? ((int)$a->id_cuota_template ?: null) : null,
 							'fecha_vencimiento' => $a->fecha_vencimiento,
+							'gestion' => $a->gestion ?? null,
+							'gestion_cuota' => $a->gestion ?? null,
+							// Datos para cálculo de descuento prorrateado
+							'descuento_aplicado' => $descuentoAplicado,
+							'total_debe_pagar' => $totalDebePagar,
 						];
 					})->values(),
 
@@ -918,21 +935,21 @@ class CobroController extends Controller
 							$estadoPago = (string) (isset($a->estado_pago) ? $a->estado_pago : 'COBRADO');
 							$numeroCuota = (int) (isset($a->numero_cuota) ? $a->numero_cuota : 0);
 							$fechaPago = $a->fecha_pago;
-							
+
 							// Logging para depuración
-							try { 
+							try {
 								Log::debug('MensualidadPagada', [
 									'numero_cuota' => $numeroCuota,
 									'monto_original' => $montoOriginal,
 									'monto_pagado' => $montoPagado,
 									'estado_pago' => $estadoPago,
 									'fecha_pago' => $fechaPago
-								]); 
+								]);
 							} catch (\Throwable $e) {}
-							
+
 							// Lógica simple: el pago con fecha más reciente es parcial, los demás son completos
 							$montoAMostrar = $montoPagado > 0 ? $montoPagado : $montoOriginal;
-							
+
 							return [
 								'numero_cuota' => $numeroCuota,
 								'monto' => (float) $montoAMostrar,
@@ -952,13 +969,13 @@ class CobroController extends Controller
 							// Simple: marcar el último como 'No', los demás como 'Si'
 							$totalItems = 3; // Asumimos 3 pagos basados en tu ejemplo
 							$esCompleto = $index === ($totalItems - 1) ? 'No' : 'Si';
-							
+
 							// Agregar múltiples campos para depuración
 							$item['es_completo'] = $esCompleto;
 							$item['completo'] = $esCompleto;
 							$item['total'] = $esCompleto;
 							$item['es_completo_flag'] = $esCompleto === 'Si';
-							
+
 							return $item;
 						})->values(),
 						'adeudadas' => $asignacionesPrimarias->filter(function($a){
@@ -1059,7 +1076,7 @@ class CobroController extends Controller
 			'items.*.medio_doc' => 'nullable|in:C,M',
 			'items.*.cod_tipo_cobro' => 'nullable|string|exists:tipo_cobro,cod_tipo_cobro',
 			'items.*.concepto' => 'nullable|string',
-			
+
 			'pagos.*.nro_cobro' => 'nullable|integer',
 			'pagos.*.monto' => 'required_with:pagos|numeric|min:0',
 			'pagos.*.fecha_cobro' => 'required_with:pagos|date',
@@ -1160,7 +1177,7 @@ class CobroController extends Controller
 				$pv = (int) ($request->input('codigo_punto_venta', 0));
 				$sucursal = (int) ($request->input('codigo_sucursal', config('sin.sucursal')));
 				$emitirOnline = (bool) $request->boolean('emitir_online', false);
-				
+
 				// Detectar si es reposición de factura para usar id_usuario configurable
 				$useReposicionUser = (bool) $request->boolean('use_reposicion_user', false);
 				$idUsuarioReposicion = $useReposicionUser ? (int) config('app.reposicion_factura_user_id', 37) : null;
@@ -1224,7 +1241,7 @@ class CobroController extends Controller
 						->values();
 				}
 				// Eliminamos tracking por asignación única; usaremos $batchPaidByTpl para decidir la siguiente cuota
-				
+
 				// APLICAR DESCUENTO AUTOMÁTICO DE SEMESTRE COMPLETO ANTES DE PROCESAR COBROS
 				Log::info('batchStore: INICIO verificación descuento automático');
 				try {
@@ -1232,17 +1249,17 @@ class CobroController extends Controller
 					$descActivar = ParametrosEconomicos::where('nombre', 'descuento_semestre_completo_activar')->where('estado', true)->first();
 					$descFechaLimite = ParametrosEconomicos::where('nombre', 'descuento_semestre_completo_fecha_limite')->where('estado', true)->first();
 					$descPorcentaje = ParametrosEconomicos::where('nombre', 'descuento_semestre_completo_porcentaje')->where('estado', true)->first();
-					
+
 					$activar = $descActivar && ($descActivar->valor === 'true' || $descActivar->valor === '1');
 					$fechaLimite = $descFechaLimite ? $descFechaLimite->valor : null;
 					$porcentaje = $descPorcentaje ? (float)$descPorcentaje->valor : 0;
-					
+
 					Log::info('batchStore: parámetros descuento', [
 						'activar' => $activar,
 						'porcentaje' => $porcentaje,
 						'tiene_inscripcion' => $primaryInscripcion ? true : false,
 					]);
-					
+
 					// Verificar si está activo y dentro de fecha
 					if ($activar && $porcentaje > 0 && $primaryInscripcion) {
 						Log::info('batchStore: condiciones iniciales OK');
@@ -1252,7 +1269,7 @@ class CobroController extends Controller
 							$limite = \Carbon\Carbon::parse($fechaLimite);
 							$dentroFecha = $hoy->lte($limite);
 						}
-						
+
 						if ($dentroFecha) {
 							Log::info('batchStore: dentro de fecha OK');
 							// Contar cuotas totales pendientes (sin descuento previo y sin cobrar)
@@ -1265,31 +1282,31 @@ class CobroController extends Controller
 									  ->orWhereNull('estado_pago');
 								})
 								->get();
-							
+
 							$cuotasTotales = $cuotasPendientes->count();
-							
+
 							// Obtener IDs de cuotas que se van a pagar en este batch
 							$cuotasPagadasBatch = collect($items)
 								->filter(fn($it) => isset($it['id_asignacion_costo']) && $it['id_asignacion_costo'])
 								->pluck('id_asignacion_costo')
 								->unique()
 								->values();
-							
+
 							$cantidadPagadasBatch = $cuotasPagadasBatch->count();
-							
+
 							Log::info('batchStore: conteo cuotas', [
 								'cuotas_totales' => $cuotasTotales,
 								'cuotas_batch' => $cantidadPagadasBatch,
 								'ids' => $cuotasPagadasBatch->toArray(),
 							]);
-							
+
 							// Si se van a pagar todas las cuotas pendientes, crear asignación automática
 							if ($cuotasTotales > 0 && $cantidadPagadasBatch >= $cuotasTotales) {
 								Log::info('batchStore: CONDICIÓN CUMPLIDA - creando descuento');
 								// Buscar el descuento "Descuento Pago Semestre completo" (cod_beca = 40)
 								$codBeca = 40;
 								$defDescuento = DB::table('def_descuentos_beca')->where('cod_beca', $codBeca)->first();
-								
+
 								if ($defDescuento) {
 									// Verificar que no exista ya una asignación de este descuento
 									$existeAsignacion = Descuento::where('cod_ceta', $codCetaCtx)
@@ -1298,7 +1315,7 @@ class CobroController extends Controller
 										->where('cod_beca', $codBeca)
 										->where('estado', true)
 										->exists();
-									
+
 									if (!$existeAsignacion) {
 										// Crear el descuento principal
 										$descuento = Descuento::create([
@@ -1313,7 +1330,7 @@ class CobroController extends Controller
 											'tipo' => $primaryInscripcion->tipo_inscripcion ?? 'NORMAL',
 											'estado' => true,
 										]);
-										
+
 										// Extraer turno y semestre del código de pensum
 										$turno = null;
 										$semestre = null;
@@ -1333,14 +1350,14 @@ class CobroController extends Controller
 												}
 											}
 										}
-										
+
 										// Crear detalles para cada cuota que se va a pagar
 										foreach ($cuotasPagadasBatch as $idAsignCosto) {
 											try {
 												$asignCosto = AsignacionCostos::find($idAsignCosto);
 												if ($asignCosto && !$asignCosto->id_descuentoDetalle) {
 													$montoDescuento = round(($asignCosto->monto * $porcentaje) / 100, 2);
-													
+
 													$detalle = DescuentoDetalle::create([
 														'id_descuento' => $descuento->id_descuentos,
 														'id_usuario' => (int)$request->id_usuario,
@@ -1355,11 +1372,11 @@ class CobroController extends Controller
 														'semestre' => $semestre,
 														'estado' => true,
 													]);
-													
+
 													// Actualizar asignacion_costos con el id_descuentoDetalle
 													$asignCosto->id_descuentoDetalle = $detalle->id_descuento_detalle;
 													$asignCosto->save();
-													
+
 													Log::info('batchStore: descuento detalle creado', [
 														'id_descuento_detalle' => $detalle->id_descuento_detalle,
 														'id_asignacion_costo' => $idAsignCosto,
@@ -1373,13 +1390,13 @@ class CobroController extends Controller
 												]);
 											}
 										}
-										
+
 										// Recargar asignaciones para que tengan los descuentos actualizados
 										$asignPrimarias = AsignacionCostos::where('cod_pensum', $codPensumCtx)
 											->where('cod_inscrip', $primaryInscripcion->cod_inscrip)
 											->orderBy('numero_cuota')
 											->get();
-										
+
 										Log::info('batchStore: descuento automático aplicado', [
 											'id_descuento' => $descuento->id_descuentos,
 											'porcentaje' => $porcentaje,
@@ -1396,7 +1413,7 @@ class CobroController extends Controller
 						'line' => $e->getLine(),
 					]);
 				}
-				
+
 				// Preparar nickname de usuario y forma de cobro para anotar en notas
 				$usuarioNick = (string) (DB::table('usuarios')->where('id_usuario', (int)$request->id_usuario)->value('nickname') ? DB::table('usuarios')->where('id_usuario', (int)$request->id_usuario)->value('nickname') : '');
 				$formaRow = DB::table('formas_cobro')->where('id_forma_cobro', (string)$request->id_forma_cobro)->first();
@@ -1636,12 +1653,12 @@ class CobroController extends Controller
 											$cufdNow = $cufdRepo->getVigenteOrCreate($pv);
 											$cufd = $cufdNow;
 											$cuisCode = isset($cufdNow['codigo_cuis']) ? $cufdNow['codigo_cuis'] : $cuisCode;
-											
+
 											// Recalcular CUF con el CUFD vigente actual
 											$gen = $cufGen->generate((int) config('sin.nit'), $fechaEmisionIso, $sucursal, (int) config('sin.modalidad'), 1, (int) config('sin.tipo_factura'), (int) config('sin.cod_doc_sector'), (int) $nroFactura, (int) $pv);
 											$cuf = ((string)(isset($gen['cuf']) ? $gen['cuf'] : '')) . (string)(isset($cufd['codigo_control']) ? $cufd['codigo_control'] : '');
 											$cufLocal = $cuf;
-											
+
 											// Persistir nuevos valores en la factura local
 											\DB::table('factura')
 												->where('anio', $anio)
@@ -1649,7 +1666,7 @@ class CobroController extends Controller
 												->where('codigo_sucursal', $sucursal)
 												->where('codigo_punto_venta', (string)$pv)
 												->update(['codigo_cufd' => (string)(isset($cufd['codigo_cufd']) ? $cufd['codigo_cufd'] : ''), 'cuf' => (string)$cuf]);
-											
+
 											Log::info('batchStore: CUFD obtenido (individual)', ['cufd' => isset($cufd['codigo_cufd']) ? $cufd['codigo_cufd'] : null, 'codigo_control' => isset($cufd['codigo_control']) ? $cufd['codigo_control'] : null, 'cuf' => $cuf]);
 										} catch (\Throwable $e) {
 											Log::error('batchStore: Error obteniendo CUFD (individual)', ['error' => $e->getMessage()]);
@@ -2084,17 +2101,17 @@ class CobroController extends Controller
 					// Si hay agrupación de factura, acumular el detalle formateado para el envío único
 					if ($hasFacturaGroup && $tipoDoc === 'F' && $medioDoc === 'C') {
 						$detalleDesc = isset($detalle) && $detalle !== '' ? (string)$detalle : ((string)(isset($item['observaciones']) ? $item['observaciones'] : 'Cobro'));
-						
-						
+
+
 						$codigoSin = 99100; // Default para SIN
 						$codigoInterno = null; // Default para PDF
 						$actividadEconomica = 853000; // Default
 						$unidadMedida = 58; // Default
-						
+
 						// Mapeo de palabras clave a nombre_servicio en items_cobro
 						$textoDetalle = strtolower($detalleDesc);
 						$nombreServicio = null;
-						
+
 						if (strpos($textoDetalle, 'mensualidad') !== false) {
 							$nombreServicio = 'mensualidad_factura';
 						} elseif (strpos($textoDetalle, 'rezagado') !== false || strpos($textoDetalle, '[rezagado]') !== false) {
@@ -2108,13 +2125,13 @@ class CobroController extends Controller
 						} elseif (strpos($textoDetalle, 'carnet') !== false) {
 							$nombreServicio = 'E9';
 						}
-						
+
 						// Buscar en items_cobro por nombre_servicio
 						if ($nombreServicio) {
 							$itemCobro = DB::table('items_cobro')
 								->where('nombre_servicio', $nombreServicio)
 								->first();
-							
+
 							if ($itemCobro) {
 								$codigoSin = (int)(isset($itemCobro->codigo_producto_impuestos) ? $itemCobro->codigo_producto_impuestos : 99100);
 								$codigoInternoRaw = isset($itemCobro->codigo_producto_interno) ? (int)$itemCobro->codigo_producto_interno : 0;
@@ -2299,12 +2316,12 @@ class CobroController extends Controller
 						'mensaje' => $mensajeLocal,
 						'cuf' => $cufLocal,
 					];
-					
+
 					// Si hay error de facturación, agregarlo al resultado
 					if (isset($facturaError)) {
 						$resultItem['factura_error'] = $facturaError;
 					}
-					
+
 					$results[] = $resultItem;
 				}
 
@@ -2344,14 +2361,14 @@ class CobroController extends Controller
 							$cufdOld = $cufdGroup;
 							$cufdGroup = (string)(isset($cufdNow['codigo_cufd']) ? $cufdNow['codigo_cufd'] : '');
 							$cuisGroup = isset($cufdNow['codigo_cuis']) ? $cufdNow['codigo_cuis'] : $cuisGroup;
-							
+
 							// Siempre recalcular CUF con el CUFD vigente actual
 							$gen = $cufGen->generate((int) config('sin.nit'), (string)$fechaEmisionIsoGroup, $sucursal, (int) config('sin.modalidad'), 1, (int) config('sin.tipo_factura'), (int) config('sin.cod_doc_sector'), (int)$nroFacturaGroup, (int)$pv);
 							$cufBase = (string)(isset($gen['cuf']) ? $gen['cuf'] : '');
 							$codigoControl = (string)(isset($cufdNow['codigo_control']) ? $cufdNow['codigo_control'] : '');
 							$cufGroup = $cufBase . $codigoControl;
 							Log::info('batchStore: CUF calculado (grupo)', ['cuf_base' => $cufBase, 'codigo_control' => $codigoControl, 'cuf_final' => $cufGroup, 'cufd' => $cufdGroup]);
-							
+
 							// Actualizar DB si el CUFD cambió
 							if ($cufdOld !== $cufdGroup) {
 								DB::table('factura')
@@ -2363,7 +2380,7 @@ class CobroController extends Controller
 								Log::warning('batchStore: CUFD rotó antes de emitir (grupo), CUF recalculado', ['cufd_old' => $cufdOld, 'cufd_new' => $cufdGroup, 'cuf_new' => $cufGroup]);
 							}
 							$cuisCode = isset($cufdNow['codigo_cuis']) ? $cufdNow['codigo_cuis'] : '';
-							
+
 							// Construir payload con los valores actualizados
 							$cliIn = (array) $request->input('cliente', []);
 							$cliente = [
@@ -2373,7 +2390,7 @@ class CobroController extends Controller
 								'complemento' => isset($cliIn['complemento']) ? $cliIn['complemento'] : null,
 								'codigo' => (string)(isset($cliIn['codigo']) ? $cliIn['codigo'] : (isset($cliIn['numero']) ? $cliIn['numero'] : '0')),
 							];
-							
+
 							// IMPORTANTE: Usar las variables actualizadas ($cufGroup, $cufdGroup, $cuisCode)
 							$payloadArgs = [
 								'nit' => (int) config('sin.nit'),
@@ -2396,7 +2413,7 @@ class CobroController extends Controller
 								'cliente' => $cliente,
 								'detalles' => $factDetalles,
 							];
-							
+
 							// Construir payload DESPUÉS de actualizar todas las variables
 							$payload = $payloadBuilder->buildRecepcionFacturaPayload($payloadArgs);
 							Log::warning('batchStore: calling recepcionFactura (grupo)', [ 'anio' => (int)$anioFacturaGroup, 'nro_factura' => (int)$nroFacturaGroup, 'punto_venta' => $pv, 'sucursal' => $sucursal, 'cuf' => $cufGroup, 'cufd' => $cufdGroup, 'cuis' => $cuisCode, 'payload_meta' => [ 'len_archivo' => isset($payload['archivo']) ? strlen($payload['archivo']) : null, 'hashArchivo' => isset($payload['hashArchivo']) ? $payload['hashArchivo'] : null ]]);
@@ -2436,7 +2453,7 @@ class CobroController extends Controller
 									->where('codigo_punto_venta', (string)$pv)
 									->update(['estado' => 'RECHAZADA']);
 								Log::warning('batchStore: recepcionFactura sin codigoRecepcion (grupo)', [ 'resp' => $resp, 'mensaje' => $mensajeRechazoGroup ]);
-								
+
 								// Agregar información de error a todos los items de factura
 								$facturaErrorGroup = [
 									'estado' => 'RECHAZADA',
@@ -2444,7 +2461,7 @@ class CobroController extends Controller
 									'anio' => (int)$anioFacturaGroup,
 									'nro_factura' => (int)$nroFacturaGroup
 								];
-								
+
 								foreach ($results as &$r) {
 									if (is_array($r) && strtoupper((string)(isset($r['tipo_documento']) ? $r['tipo_documento'] : '')) === 'F') {
 										$r['estado_factura'] = 'RECHAZADA';
@@ -2662,7 +2679,7 @@ class CobroController extends Controller
 			}
 
 			$nroRecibo = $request->input('nro_recibo');
-			
+
 			// Actualizar todos los cobros con ese nro_recibo
 			$updated = Cobro::where('nro_recibo', $nroRecibo)
 				->update(['reposicion_factura' => 1]);

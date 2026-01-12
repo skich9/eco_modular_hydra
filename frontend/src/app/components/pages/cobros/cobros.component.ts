@@ -210,12 +210,12 @@ export class CobrosComponent implements OnInit {
       // 1) Si hay saldo frontal registrado, usarlo
       const val = this.frontSaldoByCuota[start];
       if (val !== undefined && val !== null) return Number(val || 0);
-      
+
       // 2) Calcular PU desde asignacion_costos: bruto - pagado (solo si hay saldo pendiente)
       const asignList: any[] = Array.isArray(this.resumen?.asignacion_costos?.items)
         ? this.resumen!.asignacion_costos.items
         : (Array.isArray(this.resumen?.asignaciones) ? this.resumen!.asignaciones : []);
-      
+
       const hit = asignList.find((a: any) => Number(a?.numero_cuota || 0) === Number(start));
       if (hit) {
         const bruto = this.toNumber(hit?.monto);
@@ -226,11 +226,11 @@ export class CobrosComponent implements OnInit {
         // Solo retornar si hay saldo real pendiente
         if (saldo > 0) return saldo;
       }
-      
+
       // 3) Si mensualidad_next existe, usar su monto
       const puNext = Number(this.resumen?.mensualidad_next?.next_cuota?.monto ?? 0);
       if (puNext > 0) return puNext;
-      
+
       // 4) Fallback: usar PU semestral nominal (para cuotas nuevas sin asignación)
       const puSemestral = Number(this.resumen?.totales?.pu_mensual || 0);
       return puSemestral;
@@ -799,7 +799,10 @@ export class CobrosComponent implements OnInit {
   openDescuentoModal(): void {
     try {
       const cod = this.batchForm?.get('cabecera.cod_ceta')?.value || '';
-      const nombre = this.identidadForm?.get('nombre_completo')?.value || '';
+      // Construir nombre en formato: Ap. Paterno Ap. Materno Nombres
+      const est = this.resumen?.estudiante || {};
+      const nombreOrdenado = [est?.ap_paterno, est?.ap_materno, est?.nombres].filter((x: any) => !!x).join(' ').trim();
+      const nombre = nombreOrdenado || this.identidadForm?.get('nombre_completo')?.value || '';
       const gestion = this.batchForm?.get('cabecera.gestion')?.value || (this.resumen?.gestion || '');
       const pensum = this.batchForm?.get('cabecera.cod_pensum')?.value || (this.resumen?.pensum || '');
       try { console.log('[Cobros] openDescuentoModal()', { cod, nombre, gestion, pensum, resumen: this.resumen }); } catch {}
@@ -821,20 +824,20 @@ export class CobrosComponent implements OnInit {
     } catch {}
   }
 
-  onGuardarDescuento(payload: { cod_ceta: string; nombre: string; gestion: string; pensum: string; turno: string }): void {
+  onGuardarDescuento(payload: { cod_ceta: string; nombre: string; gestion: string; pensum: string; turno: string; observaciones?: string }): void {
     console.log('[Cobros] === INICIO onGuardarDescuento ===');
     console.log('[Cobros] payload recibido:', payload);
-    
+
     try {
       // Validaciones mínimas
       const cod_ceta = (this.batchForm?.get('cabecera.cod_ceta')?.value || '').toString();
       const cod_pensum = (this.batchForm?.get('cabecera.cod_pensum')?.value || this.resumen?.inscripcion?.cod_pensum || '').toString();
       const gestion = (this.batchForm?.get('cabecera.gestion')?.value || this.resumen?.gestion || '').toString();
       const cod_inscrip = Number(this.resumen?.inscripcion?.cod_inscrip || 0);
-      
+
       console.log('[Cobros] Contexto:', { cod_ceta, cod_pensum, gestion, cod_inscrip });
       console.log('[Cobros] Resumen completo:', this.resumen);
-      
+
       if (!cod_ceta || !cod_pensum || !cod_inscrip) {
         console.warn('[Cobros] Validación fallida - faltan datos');
         this.showAlert('Debe consultar primero un estudiante/gestión antes de aplicar descuento', 'warning');
@@ -849,105 +852,105 @@ export class CobrosComponent implements OnInit {
         if (t.includes('noche') || t === 'n') return 'dinstitucionalnoche';
         return '';
       })();
-      
+
       console.log('[Cobros] Mapeo turno:', { turno: payload?.turno, key });
-      
-      if (!key) { 
+
+      if (!key) {
         console.warn('[Cobros] No se pudo mapear el turno');
-        this.showAlert('No se pudo determinar el turno para aplicar el descuento', 'warning'); 
-        return; 
+        this.showAlert('No se pudo determinar el turno para aplicar el descuento', 'warning');
+        return;
       }
 
       // 2) Obtener cod_beca desde parámetros económicos (valor)
       console.log('[Cobros] Consultando parámetros económicos...');
-      
+
       this.peService.getAll().subscribe({
         next: (res) => {
           const list = Array.isArray(res?.data) ? res.data : [];
           console.log('[Cobros] Parámetros obtenidos:', list.length, 'items');
           console.log('[Cobros] Buscando parámetro:', key);
-          
+
           const match = list.find(p => (p?.nombre || '').toString().trim().toLowerCase() === key);
           const cod_beca = match ? Number(match.valor) : NaN;
-          
+
           console.log('[Cobros] Resultado búsqueda:', { match, cod_beca });
-          
-          if (!match || !isFinite(cod_beca)) { 
+
+          if (!match || !isFinite(cod_beca)) {
             console.error('[Cobros] No se encontró parámetro económico');
-            this.showAlert('No se encontró el parámetro económico para el turno seleccionado', 'error'); 
-            return; 
+            this.showAlert('No se encontró el parámetro económico para el turno seleccionado', 'error');
+            return;
           }
 
           // 3) Obtener definición desde listado completo
           console.log('[Cobros] Iniciando búsqueda de definición con cod_beca:', cod_beca);
-          
+
           const proceed = (def: any) => {
                 console.log('[Cobros] === PROCESANDO DEFINICIÓN ===');
                 console.log('[Cobros] Definición encontrada:', def);
-                
+
                 // 4) Construir cuotas objetivo: SOLO mensualidades normales (excluir arrastres)
                 const pendientes: any[] = Array.isArray(this.resumen?.asignaciones) ? this.resumen!.asignaciones : [];
                 const arrastres: any[] = Array.isArray(this.resumen?.asignaciones_arrastre) ? this.resumen!.asignaciones_arrastre : [];
-                
+
                 console.log('[Cobros] Cuotas en resumen:');
                 console.log('  - Asignaciones normales:', pendientes.length);
                 console.log('  - Arrastres:', arrastres.length);
                 console.log('  - Detalle asignaciones:', pendientes);
                 console.log('  - Detalle arrastres:', arrastres);
-                
+
                 // Filtrar solo cuotas normales pendientes
                 const cuotasTarget = pendientes.filter((a: any) => {
                   const st = (a?.estado_pago || '').toString().trim().toUpperCase();
                   const numCuota = Number(a?.numero_cuota || 0);
-                  
+
                   console.log(`[Cobros] Evaluando cuota ${numCuota}:`, {
                     estado: st,
                     cobrado: st === 'COBRADO',
                     numero_valido: numCuota >= 1
                   });
-                  
+
                   // Excluir cobradas
                   if (st === 'COBRADO') {
                     console.log(`  -> Excluida: ya cobrada`);
                     return false;
                   }
-                  
+
                   // Solo incluir mensualidades normales
                   if (numCuota < 1) {
                     console.log(`  -> Excluida: número de cuota inválido`);
                     return false;
                   }
-                  
+
                   console.log(`  -> INCLUIDA`);
                   return true;
                 });
-                
+
                 console.log('[Cobros] Resultado filtrado:');
                 console.log('  - Total pendientes:', pendientes.length);
                 console.log('  - Total filtradas:', cuotasTarget.length);
                 console.log('  - Cuotas seleccionadas:', cuotasTarget);
-                
+
                 if (!cuotasTarget.length) {
                   console.warn('[Cobros] No hay cuotas para aplicar descuento');
-                  this.showAlert('No hay cuotas de mensualidad pendientes en la gestión seleccionada', 'warning'); 
-                  return; 
+                  this.showAlert('No hay cuotas de mensualidad pendientes en la gestión seleccionada', 'warning');
+                  return;
                 }
 
                 const toNum = (v: any) => { try { if (v == null) return 0; const n = Number(v); return isFinite(n) ? n : 0; } catch { return 0; } };
                 const isPct = !!def?.porcentaje;
-                
+
                 console.log('[Cobros] Calculando descuentos:');
                 console.log('  - Es porcentaje:', isPct);
                 console.log('  - Monto/Porcentaje:', def?.monto);
-                
+
                 const cuotasPayload = cuotasTarget.map((c: any) => {
                   const monto = Math.max(0, toNum(c?.monto) - toNum(c?.monto_pagado));
                   let md = 0;
                   if (isPct) md = +(monto * (toNum(def?.monto) / 100)).toFixed(2);
                   else md = Math.min(monto, toNum(def?.monto));
-                  
+
                   console.log(`  - Cuota ${c?.numero_cuota}: monto=${monto}, descuento=${md}`);
-                  
+
                   return {
                     numero_cuota: Number(c?.numero_cuota || 0),
                     id_cuota: (c?.id_cuota != null ? Number(c.id_cuota) : null),
@@ -955,21 +958,21 @@ export class CobrosComponent implements OnInit {
                     observaciones: 'Descuento institucional automático'
                   };
                 }).filter((r: any) => r.numero_cuota > 0 && r.monto_descuento > 0);
-                
+
                 console.log('[Cobros] Payload cuotas final:', cuotasPayload);
-                
-                if (!cuotasPayload.length) { 
+
+                if (!cuotasPayload.length) {
                   console.warn('[Cobros] No hay montos a descontar');
-                  this.showAlert('No hay monto a descontar en las cuotas seleccionadas', 'warning'); 
-                  return; 
+                  this.showAlert('No hay monto a descontar en las cuotas seleccionadas', 'warning');
+                  return;
                 }
 
                 const idUsuario = Number(this.auth?.getCurrentUser()?.id_usuario || 0);
-                
+
                 // Fecha actual en formato yyyy-mm-dd
                 const now = new Date();
                 const fechaSolicitud = `${now.getFullYear()}-${String(now.getMonth() + 1).padStart(2, '0')}-${String(now.getDate()).padStart(2, '0')}`;
-                
+
                 const payloadAssign = {
                   cod_ceta,
                   cod_pensum,
@@ -978,15 +981,15 @@ export class CobrosComponent implements OnInit {
                   cod_beca: Number(def.cod_beca),
                   nombre: String(def?.nombre_beca || 'Descuento'),
                   porcentaje: toNum(def?.monto), // el backend usará cuotas.monto_descuento
-                  observaciones: 'Descuento institucional aplicado desde formulario',
+                  observaciones: (payload?.observaciones ? String(payload.observaciones).trim() : 'Descuento institucional aplicado desde formulario'),
                   tipo_inscripcion: String(this.resumen?.inscripcion?.tipo_inscripcion || ''),
                   fechaSolicitud: fechaSolicitud,
                   cuotas: cuotasPayload
                 };
-                
+
                 console.log('[Cobros] === PAYLOAD FINAL ===');
                 console.log('[Cobros] Payload assignDescuento:', payloadAssign);
-                
+
                 this.cobrosService.assignDescuento(payloadAssign).subscribe({
                   next: () => {
                     console.log('[Cobros] ✓ Descuento aplicado exitosamente');
@@ -1006,7 +1009,7 @@ export class CobrosComponent implements OnInit {
 
           // Combinar becas (beca=1) y descuentos (beca=0) de la misma tabla
           console.log('[Cobros] Consultando definiciones (becas + descuentos)...');
-          
+
           forkJoin({
             becas: this.cobrosService.getDefBecas(),
             descuentos: this.cobrosService.getDefDescuentos()
@@ -1014,11 +1017,11 @@ export class CobrosComponent implements OnInit {
             next: ({ becas, descuentos }) => {
               const defsBecas = Array.isArray((becas as any)?.data) ? (becas as any).data : [];
               const defsDescuentos = Array.isArray((descuentos as any)?.data) ? (descuentos as any).data : [];
-              
+
               console.log('[Cobros] Definiciones recibidas:');
               console.log('  - Becas (beca=1):', defsBecas.length);
               console.log('  - Descuentos (beca=0):', defsDescuentos.length);
-              
+
               // Normalizar descuentos al mismo esquema que becas
               const defsDescNormalizados = defsDescuentos.map((d: any) => ({
                 cod_beca: d?.cod_descuento != null ? Number(d.cod_descuento) : d?.cod_beca,
@@ -1028,33 +1031,33 @@ export class CobrosComponent implements OnInit {
                 porcentaje: typeof d?.porcentaje === 'boolean' ? d.porcentaje : d?.porcentaje == 1,
                 estado: typeof d?.estado === 'boolean' ? d.estado : d?.estado == 1
               }));
-              
+
               const defs = [...defsBecas, ...defsDescNormalizados];
               const codBecasDisponibles = defs.map((d: any) => Number(d?.cod_beca));
-              
+
               console.log('[Cobros] Definiciones combinadas:');
               console.log('  - Total:', defs.length);
               console.log('  - Buscando cod_beca:', cod_beca);
               console.log('  - IDs disponibles:', codBecasDisponibles);
               console.log('  - Todas las definiciones:', defs);
-              
+
               const def = defs.find((d: any) => Number(d?.cod_beca) === Number(cod_beca));
-              
+
               console.log('[Cobros] Resultado búsqueda definición:');
               console.log('  - Encontrada:', !!def);
               console.log('  - Definición:', def);
-              
+
               if (!def) {
                 console.error('[Cobros] Definición no encontrada');
-                this.showAlert('No existe la definición de beca/descuento solicitada (cod_beca: ' + cod_beca + '). Disponibles: ' + codBecasDisponibles.join(', '), 'error'); 
-                return; 
+                this.showAlert('No existe la definición de beca/descuento solicitada (cod_beca: ' + cod_beca + '). Disponibles: ' + codBecasDisponibles.join(', '), 'error');
+                return;
               }
-              
+
               proceed(def);
             },
-            error: (err) => { 
-              console.error('[Cobros] Error al obtener definiciones:', err); 
-              this.showAlert('No se pudo obtener catálogo de becas/descuentos', 'error'); 
+            error: (err) => {
+              console.error('[Cobros] Error al obtener definiciones:', err);
+              this.showAlert('No se pudo obtener catálogo de becas/descuentos', 'error');
             }
           });
         },
@@ -2912,15 +2915,15 @@ export class CobrosComponent implements OnInit {
                 ? 'Reincorporación'
                 : (p.detalle || '')));
       const detalle = esParcial ? `${baseDetalle} (Parcial)` : baseDetalle;
-      
+
       // Para mensualidad/arrastre: calcular desde PU y descuento
       // Para otros (Reincorporación, Rezagado, etc.): usar monto directo del payload
-      const pu = isMensualidad || isArrastre 
+      const pu = isMensualidad || isArrastre
         ? Number(p.pu_mensualidad ?? this.mensualidadPU ?? 0)
         : Number(p.pu_mensualidad ?? p.monto ?? 0);
       const cant = 1;
       const desc = Number(p.descuento ?? 0) || 0;
-      
+
       // Calcular monto según el tipo
       const monto = (isMensualidad || isArrastre)
         ? (esParcial
@@ -3320,7 +3323,7 @@ export class CobrosComponent implements OnInit {
   }
 
   // P/U mostrado en la tabla: para pagos parciales con descuento, mostrar
-  // pago_parcial + (pago_parcial * descuento_total_cuota / PU_efectivo);
+  // monto_parcial + descuento_prorrateado (sin regla de 3)
   // en otros casos, mostrar pu_mensualidad normal.
   getRowDisplayPU(i: number): number {
     try {
@@ -3329,45 +3332,69 @@ export class CobrosComponent implements OnInit {
       const esParcial = !!g.get('es_parcial')?.value;
       const puEff = Number(g.get('pu_mensualidad')?.value || 0);
       if (!esParcial) return puEff;
+
+      // Para pagos parciales: P/U = monto_parcial + descuento_prorrateado
       const montoParcial = Number(g.get('monto')?.value || 0);
-      const numeroCuota = Number(g.get('numero_cuota')?.value || 0) || null;
-      let descuentoTotal = 0;
-      if (numeroCuota) {
-        // Buscar descuento por número de cuota en el resumen preferentemente
-        const asignList: any[] = Array.isArray(this.resumen?.asignaciones)
-          ? this.resumen!.asignaciones
-          : (Array.isArray(this.resumen?.asignacion_costos?.items) ? this.resumen!.asignacion_costos.items : []);
-        const hit = (asignList || []).find((a: any) => Number(a?.numero_cuota || a?.numero || 0) === Number(numeroCuota));
-        if (hit) {
-          const d = (hit as any).descuento;
-          descuentoTotal = Number(d ?? 0) || 0;
-        }
-      } else {
-        // Fallback por id_asignacion_costo
-        const idAsign = Number(g.get('id_asignacion_costo')?.value || 0) || null;
-        if (idAsign) {
-          const asignList: any[] = Array.isArray(this.resumen?.asignaciones)
-            ? this.resumen!.asignaciones
-            : (Array.isArray(this.resumen?.asignacion_costos?.items) ? this.resumen!.asignacion_costos.items : []);
-          const hit = (asignList || []).find((a: any) => Number(a?.id_asignacion_costo || 0) === Number(idAsign));
-          if (hit) {
-            const d = (hit as any).descuento;
-            descuentoTotal = Number(d ?? 0) || 0;
-          }
-        }
-      }
-      if (puEff > 0 && descuentoTotal > 0 && montoParcial > 0) {
-        const acomodado = (montoParcial * descuentoTotal) / puEff;
-        return montoParcial + acomodado;
-      }
-      return puEff;
+      const descuentoProrrateado = this.calcularDescuentoProrrateadoParaFila(i);
+
+      // Usar 4 decimales internamente, redondear al final
+      const resultado = Math.round((montoParcial + descuentoProrrateado) * 10000) / 10000;
+      return resultado;
     } catch {
       return 0;
     }
   }
 
-  // Descuento mostrado en la tabla: para pagos parciales con descuento, mostrar
-  // (pago_parcial * descuento_total_cuota / PU_efectivo);
+  // Calcular descuento prorrateado para una fila específica (4 decimales)
+  calcularDescuentoProrrateadoParaFila(i: number): number {
+    try {
+      const g = this.pagos.at(i) as FormGroup;
+      if (!g) return 0;
+
+      const esParcial = !!g.get('es_parcial')?.value;
+      if (!esParcial) return 0;
+
+      const montoParcial = Number(g.get('monto')?.value || 0);
+      if (montoParcial <= 0) return 0;
+
+      const numeroCuota = Number(g.get('numero_cuota')?.value || 0) || null;
+      const idAsign = Number(g.get('id_asignacion_costo')?.value || 0) || null;
+
+      // Buscar la cuota en el resumen
+      const asignList: any[] = Array.isArray(this.resumen?.asignaciones)
+        ? this.resumen!.asignaciones
+        : (Array.isArray(this.resumen?.asignacion_costos?.items) ? this.resumen!.asignacion_costos.items : []);
+
+      let cuota: any = null;
+      if (numeroCuota) {
+        cuota = asignList.find((a: any) => Number(a?.numero_cuota || a?.numero || 0) === Number(numeroCuota));
+      } else if (idAsign) {
+        cuota = asignList.find((a: any) => Number(a?.id_asignacion_costo || 0) === Number(idAsign));
+      }
+
+      if (!cuota) return 0;
+
+      const descuentoPago = Number(cuota?.descuento || 0);
+      if (descuentoPago <= 0) return 0;
+
+      const deudaPagada = Number(cuota?.monto_pagado || 0);
+      const totalDebePagar = Number(cuota?.total_debe_pagar || 0);
+      const descuentoAplicado = Number(cuota?.descuento_aplicado || 0);
+
+      if (totalDebePagar <= 0) return 0;
+
+      // Fórmula: descuento_pago * ((monto_pago_parcial + deuda_pagada) / total_debe_pagar) - descuento_aplicado
+      const descuentoProrrateado = (descuentoPago * ((montoParcial + deudaPagada) / totalDebePagar)) - descuentoAplicado;
+
+      // Redondear a 4 decimales
+      return Math.round(Math.max(0, descuentoProrrateado) * 10000) / 10000;
+    } catch (error) {
+      console.error('[Cobros] Error al calcular descuento prorrateado para fila:', error);
+      return 0;
+    }
+  }
+
+  // Descuento mostrado en la tabla: para pagos parciales, mostrar descuento_prorrateado
   // en otros casos, mostrar el descuento normal de la fila.
   getRowDisplayDescuento(i: number): number {
     try {
@@ -3377,38 +3404,9 @@ export class CobrosComponent implements OnInit {
       if (!esParcial) {
         return Number(g.get('descuento')?.value || 0);
       }
-      const puEff = Number(g.get('pu_mensualidad')?.value || 0);
-      const montoParcial = Number(g.get('monto')?.value || 0);
-      if (!(puEff > 0 && montoParcial > 0)) return 0;
-      const numeroCuota = Number(g.get('numero_cuota')?.value || 0) || null;
-      let descuentoTotal = 0;
-      if (numeroCuota) {
-        const asignList: any[] = Array.isArray(this.resumen?.asignaciones)
-          ? this.resumen!.asignaciones
-          : (Array.isArray(this.resumen?.asignacion_costos?.items) ? this.resumen!.asignacion_costos.items : []);
-        const hit = (asignList || []).find((a: any) => Number(a?.numero_cuota || a?.numero || 0) === Number(numeroCuota));
-        if (hit) {
-          const d = (hit as any).descuento;
-          descuentoTotal = Number(d ?? 0) || 0;
-        }
-      } else {
-        const idAsign = Number(g.get('id_asignacion_costo')?.value || 0) || null;
-        if (idAsign) {
-          const asignList: any[] = Array.isArray(this.resumen?.asignaciones)
-            ? this.resumen!.asignaciones
-            : (Array.isArray(this.resumen?.asignacion_costos?.items) ? this.resumen!.asignacion_costos.items : []);
-          const hit = (asignList || []).find((a: any) => Number(a?.id_asignacion_costo || 0) === Number(idAsign));
-          if (hit) {
-            const d = (hit as any).descuento;
-            descuentoTotal = Number(d ?? 0) || 0;
-          }
-        }
-      }
-      if (descuentoTotal > 0) {
-        const descuentoParcial = (montoParcial * descuentoTotal) / puEff;
-        return descuentoParcial > 0 ? descuentoParcial : 0;
-      }
-      return 0;
+
+      // Para pagos parciales: retornar descuento prorrateado
+      return this.calcularDescuentoProrrateadoParaFila(i);
     } catch {
       return 0;
     }

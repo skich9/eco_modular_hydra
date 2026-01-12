@@ -1,5 +1,5 @@
 <div class="modal fade" id="descuentoFormModal" tabindex="-1" aria-hidden="true">
-	<div class="modal-dialog">
+	<div class="modal-dialog modal-lg">
 		<div class="modal-content">
 			<div class="modal-header">
 				<h5 class="modal-title">Formulario de descuento</h5>
@@ -10,12 +10,15 @@
 					<div *ngIf="!hasEstudiante" class="alert alert-warning mb-0">
 						No se ha buscado ni seleccionado ningún estudiante. No es posible aplicar descuentos.
 					</div>
+					<div *ngIf="hasEstudiante && hasPendingWithDiscount" class="alert alert-danger">
+						Este estudiante ya tiene descuentos en cuotas pendientes ({{ cuotasConDescuento.join(', ') }}). Contáctese con administración.
+					</div>
 					<div class="row g-3" *ngIf="hasEstudiante">
-						<div class="col-12 col-md-6">
+						<div class="col-12 col-md-4">
 							<label class="form-label">Código CETA</label>
 							<input type="text" class="form-control" formControlName="cod_ceta" />
 						</div>
-						<div class="col-12 col-md-6">
+						<div class="col-12 col-md-8">
 							<label class="form-label">Nombre</label>
 							<input type="text" class="form-control" formControlName="nombre" />
 						</div>
@@ -33,6 +36,10 @@
 								<option value="">Seleccione...</option>
 								<option *ngFor="let t of turnoOptions" [value]="t">{{ t }}</option>
 							</select>
+						</div>
+						<div class="col-12">
+							<label class="form-label">Observaciones</label>
+							<textarea class="form-control" formControlName="observaciones" rows="2" placeholder="Observaciones..."></textarea>
 						</div>
 					</div>
 				</div>

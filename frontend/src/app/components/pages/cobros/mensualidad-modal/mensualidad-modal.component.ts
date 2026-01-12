@@ -13,15 +13,15 @@ import { ParametrosEconomicosService } from '../../../../services/parametros-eco
 })
 export class MensualidadModalComponent implements OnInit, OnChanges {
   private _resumen: any = null;
-  
-  @Input() 
+
+  @Input()
   set resumen(value: any) {
     this._resumen = value;
   }
   get resumen(): any {
     return this._resumen;
   }
-  
+
   @Input() formasCobro: any[] = [];
   @Input() cuentasBancarias: any[] = [];
   @Input() tipo: 'mensualidad' | 'rezagado' | 'recuperacion' | 'arrastre' | 'reincorporacion' = 'mensualidad';
@@ -220,19 +220,34 @@ export class MensualidadModalComponent implements OnInit, OnChanges {
     } catch { return Number(this.pu || 0); }
   }
 
-  // Máximo permitido para pago parcial según el PU efectivo
+  // Máximo permitido para pago parcial: monto - descuento - lo que ya está en tabla detalle
   getParcialMax(): number {
-    // Máximo permitido para parcial = puDisplay (que ya es neto - pagado)
     try {
       const start = this.getStartCuotaFromResumen();
-      const pu = this.puDisplay; // ya es saldo real: neto - pagado
-      const d = this.getDescuentoForCuota(start);
-      // Como puDisplay ya considera el descuento, no restarlo nuevamente
-      const max = Math.max(0, Number(pu || 0));
-      return (isNaN(max) || max <= 0) ? Number.MAX_SAFE_INTEGER : max;
+      const asignaciones = this.resumen?.asignaciones || [];
+      const cuota = asignaciones.find((a: any) => Number(a?.numero_cuota) === start);
+
+      if (!cuota) {
+        return Number.MAX_SAFE_INTEGER;
+      }
+
+      const monto = Number(cuota?.monto || 0);
+      const descuento = Number(cuota?.descuento || 0);
+
+      // Calcular neto base: monto - descuento
+      let netoBase = Math.max(0, monto - descuento);
+
+      // Si hay saldo frontal (lo que ya está en la tabla detalle), restarlo del máximo
+      if (this.frontSaldos && Object.prototype.hasOwnProperty.call(this.frontSaldos, start)) {
+        const saldoFrontal = Number(this.frontSaldos[start] || 0);
+        if (isFinite(saldoFrontal) && saldoFrontal > 0) {
+          netoBase = saldoFrontal;
+        }
+      }
+
+      return (isNaN(netoBase) || netoBase <= 0) ? Number.MAX_SAFE_INTEGER : netoBase;
     } catch {
-      const max = this.puDisplay;
-      return (isNaN(max) || max <= 0) ? Number.MAX_SAFE_INTEGER : max;
+      return Number.MAX_SAFE_INTEGER;
     }
   }
 
@@ -311,7 +326,7 @@ export class MensualidadModalComponent implements OnInit, OnChanges {
   ngOnInit(): void {
     this.cargarParametrosDescuentoSemestre();
     this.recalcTotal();
-    
+
     // Recalcular total al cambiar cantidad, descuento o monto_manual
     this.form.get('cantidad')?.valueChanges.subscribe(() => { this.recalcTotal(); this.updateDescuentoDisplay(); });
     this.form.get('monto_manual')?.valueChanges.subscribe(() => this.recalcTotal());
@@ -343,6 +358,8 @@ export class MensualidadModalComponent implements OnInit, OnChanges {
         this.form.get('monto_parcial')?.setValidators([Validators.required, Validators.min(0.01), Validators.max(Number(this.getParcialMax() || Number.MAX_SAFE_INTEGER))]);
         // Prefijar el monto parcial con el neto de la cuota (PU - descuento)
         this.form.get('monto_parcial')?.setValue(this.getParcialMax() || 0, { emitEvent: false });
+        // Inicializar descuento en 0 para evitar parpadeo (se llenará automáticamente con el prorrateado)
+        this.form.get('descuento')?.setValue(0, { emitEvent: false });
       } else {
         // restaurar cantidad y deshabilitar monto_parcial
         this.form.get('cantidad')?.enable({ emitEvent: false });
@@ -667,22 +684,32 @@ export class MensualidadModalComponent implements OnInit, OnChanges {
     } catch { return null; }
   }
 
-  // Getter que verifica si hay descuentos con d_i=1 para deshabilitar factura
   get facturaDeshabilitada(): boolean {
     if (!this.resumen) return false;
-    
+
     const descuentosAplicados = this.resumen?.descuentos_aplicados || [];
-    if (descuentosAplicados.length === 0) return false;
-    
-    // Verificar si algún descuento tiene d_i = 1
-    const tieneDescuentoConDI = descuentosAplicados.some((desc: any) => {
+    const tieneDescuentoConDI = Array.isArray(descuentosAplicados) && descuentosAplicados.some((desc: any) => {
       const definicion = desc?.definicion || desc?.def_descuento_beca || {};
       const di = definicion?.d_i;
       return di === 1 || di === true || di === '1';
     });
-    
-    // Si hay descuento con d_i=1 y el comprobante actual es FACTURA, cambiarlo a RECIBO
-    if (tieneDescuentoConDI) {
+
+    let cuotaConDescuento = false;
+    try {
+      const asignaciones = this.resumen?.asignaciones || [];
+      const start = this.getStartCuotaFromResumen();
+      const cantidad = Math.max(1, Number(this.form.get('cantidad')?.value || 1));
+      for (let i = 0; i < cantidad; i++) {
+        const nro = start + i;
+        const cuota = asignaciones.find((a: any) => Number(a?.numero_cuota || 0) === Number(nro));
+        const descNum = Number(cuota?.descuento || 0);
+        if (descNum > 0) { cuotaConDescuento = true; break; }
+      }
+    } catch {}
+
+    const disabled = !!tieneDescuentoConDI || !!cuotaConDescuento;
+
+    if (disabled) {
       const comprobanteActual = this.form.get('comprobante')?.value;
       if (comprobanteActual === 'FACTURA') {
         setTimeout(() => {
@@ -690,10 +717,74 @@ export class MensualidadModalComponent implements OnInit, OnChanges {
         }, 0);
       }
     }
-    
-    return tieneDescuentoConDI;
+
+    return disabled;
   }
-  
+
+  // Calcular descuento prorrateado según la fórmula especificada (4 decimales internos)
+  calcularDescuentoProrrateado(montoPagoParcial: number): number {
+    try {
+      if (!this.resumen || !montoPagoParcial || montoPagoParcial <= 0) return 0;
+
+      const cantidad = Number(this.form.get('cantidad')?.value || 1);
+      const asignaciones = this.resumen?.asignaciones || [];
+      const startCuota = this.getStartCuotaFromResumen();
+
+      let descuentoTotal = 0;
+
+      // Calcular descuento prorrateado para cada cuota que se va a pagar
+      for (let i = 0; i < cantidad; i++) {
+        const numeroCuota = startCuota + i;
+        const cuota = asignaciones.find((a: any) => Number(a?.numero_cuota) === numeroCuota);
+
+        if (!cuota) continue;
+
+        const descuentoPago = Number(cuota?.descuento || 0);
+        if (descuentoPago <= 0) continue;
+
+        const deudaPagada = Number(cuota?.monto_pagado || 0);
+        const totalDebePagar = Number(cuota?.total_debe_pagar || 0);
+        const descuentoAplicado = Number(cuota?.descuento_aplicado || 0);
+
+        if (totalDebePagar <= 0) continue;
+
+        // Fórmula: descuento_pago * ((monto_pago_parcial + deuda_pagada) / total_debe_pagar) - descuento_aplicado
+        // Usar 4 decimales en cálculos internos
+        const descuentoProrrateado = (descuentoPago * ((montoPagoParcial + deudaPagada) / totalDebePagar)) - descuentoAplicado;
+
+        descuentoTotal += Math.max(0, descuentoProrrateado);
+      }
+
+      // Redondear a 4 decimales
+      return Math.round(descuentoTotal * 10000) / 10000;
+    } catch (error) {
+      console.error('[MensualidadModal] Error al calcular descuento prorrateado:', error);
+      return 0;
+    }
+  }
+
+  // Getter para obtener el descuento prorrateado basado en el monto actual
+  get descuentoProrrateado(): number {
+    const montoParcial = Number(this.form.get('monto_parcial')?.value || 0);
+    const pagoParcial = this.form.get('pago_parcial')?.value;
+
+    if (pagoParcial && montoParcial > 0) {
+      const descuento = this.calcularDescuentoProrrateado(montoParcial);
+      // Redondear a 2 decimales para visualización y asignación
+      const descuentoRedondeado = Math.round(descuento * 100) / 100;
+
+      // Asignar automáticamente al campo descuento/beca (con 2 decimales)
+      if (descuentoRedondeado > 0) {
+        setTimeout(() => {
+          this.form.patchValue({ descuento: descuentoRedondeado }, { emitEvent: false });
+        }, 0);
+      }
+      return descuentoRedondeado;
+    }
+
+    return 0;
+  }
+
   private toNumberLoose(v: any): number {
     if (typeof v === 'number') return isFinite(v) ? v : 0;
     if (v === null || v === undefined) return 0;
