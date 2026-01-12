@@ -119,6 +119,7 @@ export class CobrosComponent implements OnInit {
   // Forzar cuota inicial del próximo modal cuando exista saldo parcial pendiente
   private startCuotaOverrideValue: number | null = null;
   metodoPagoLocked: boolean = false;
+  descuentoInstitucionalFechaLimite: string | null = null;
 
   constructor(
     private fb: FormBuilder,
@@ -1887,6 +1888,8 @@ export class CobrosComponent implements OnInit {
       next: (res) => { if (res.success) this.cuentasBancarias = res.data; },
       error: () => {}
     });
+
+    this.cargarParametrosDescuentoInstitucional();
 
     // Leer cod_ceta (y gestion) desde querystring para soportar deep-link desde SGA
     try {
@@ -3689,6 +3692,55 @@ export class CobrosComponent implements OnInit {
       if (hasR) return 'R';
       return '';
     } catch { return null; }
+  }
+
+  private cargarParametrosDescuentoInstitucional(): void {
+    this.peService.getAll().subscribe({
+      next: (res) => {
+        if (res.success && res.data) {
+          const params = res.data;
+          const fechaParam = params.find((p: any) => {
+            const id = Number(p?.id_parametro_economico || 0);
+            const nombre = (p?.nombre || '').toString().toLowerCase().trim();
+            return id === 2 || nombre === 'descuento_semestre_completo_fecha';
+          });
+          this.descuentoInstitucionalFechaLimite = fechaParam?.valor || null;
+          console.log('[Cobros] Parámetro descuento institucional:', {
+            encontrado: !!fechaParam,
+            fecha: this.descuentoInstitucionalFechaLimite,
+            mostrarBoton: this.mostrarBotonDescuento
+          });
+        }
+      },
+      error: () => {
+        this.descuentoInstitucionalFechaLimite = null;
+      }
+    });
+  }
+
+  get mostrarBotonDescuento(): boolean {
+    if (!this.descuentoInstitucionalFechaLimite) {
+      console.log('[Cobros] No hay fecha límite configurada, mostrando botón');
+      return true;
+    }
+    try {
+      const fechaLimite = new Date(this.descuentoInstitucionalFechaLimite);
+      const hoy = new Date();
+      hoy.setHours(0, 0, 0, 0);
+      fechaLimite.setHours(0, 0, 0, 0);
+      const mostrar = hoy <= fechaLimite;
+      console.log('[Cobros] Comparación de fechas:', {
+        fechaLimiteStr: this.descuentoInstitucionalFechaLimite,
+        fechaLimite: fechaLimite.toISOString(),
+        hoy: hoy.toISOString(),
+        mostrar,
+        diferenciaDias: Math.floor((fechaLimite.getTime() - hoy.getTime()) / (1000 * 60 * 60 * 24))
+      });
+      return mostrar;
+    } catch (error) {
+      console.error('[Cobros] Error al comparar fechas:', error);
+      return true;
+    }
   }
 
   private showAlert(message: string, type: 'success' | 'error' | 'warning', durationMs: number = 4000): void {

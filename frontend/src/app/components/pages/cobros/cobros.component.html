@@ -18,7 +18,7 @@
 					<strong>Datos del estudiante</strong>
 					<div class="d-flex gap-2">
 						<button type="button" class="btn btn-sm btn-success" (click)="openBusquedaModal()">Búsqueda por nombre</button>
-						<button type="button" class="btn btn-sm btn-primary" (click)="openDescuentoModal()">Formulario descuento</button>
+						<button *ngIf="mostrarBotonDescuento" type="button" class="btn btn-sm btn-primary" (click)="openDescuentoModal()">Formulario descuento</button>
 					</div>
 				</div>
 
