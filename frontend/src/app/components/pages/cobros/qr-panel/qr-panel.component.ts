@@ -500,7 +500,29 @@ export class QrPanelComponent implements OnDestroy {
 			console.warn('[QR-Panel] generar() early return: faltan datos', { cod_ceta, cod_pensum, amount, id_usuario, id_cuentas_bancarias });
 			return;
 		}
-		this.cobrosService.initiateQr({ cod_ceta, cod_pensum, tipo_inscripcion, id_usuario, id_cuentas_bancarias, amount, detalle, moneda, gestion, items }).subscribe({
+		const tipoIdentidad = Number(this.identidad?.get?.('tipo_identidad')?.value ?? this.identidad?.tipo_identidad ?? 1);
+		const numeroDocumento = (this.identidad?.get?.('ci')?.value ?? this.identidad?.ci ?? '').toString();
+		const complemento = (this.identidad?.get?.('complemento_ci')?.value ?? this.identidad?.complemento_ci ?? '').toString();
+		const razonSocial = (this.identidad?.get?.('razon_social')?.value ?? this.identidad?.razon_social ?? '').toString();
+		const numeroCompleto = complemento ? `${numeroDocumento}-${complemento}` : numeroDocumento;
+
+		this.cobrosService.initiateQr({
+			cod_ceta,
+			cod_pensum,
+			tipo_inscripcion,
+			id_usuario,
+			id_cuentas_bancarias,
+			amount,
+			detalle,
+			moneda,
+			gestion,
+			items,
+			cliente: {
+				tipo_identidad: tipoIdentidad,
+				numero: numeroCompleto,
+				razon_social: razonSocial
+			}
+		}).subscribe({
 			next: (res: any) => {
 				this.loading = false;
 				console.log('[QR-Panel] iniciar respuesta', res);

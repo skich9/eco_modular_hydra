@@ -150,6 +150,10 @@ class QrController extends Controller
             'moneda' => 'required|string|in:BOB,USD',
             'items' => 'nullable|array',
             'gestion' => 'nullable|string',
+            'cliente' => 'nullable|array',
+            'cliente.tipo_identidad' => 'nullable|integer',
+            'cliente.numero' => 'nullable|string',
+            'cliente.razon_social' => 'nullable|string',
         ]);
 
         // Overrides de configuración por cuenta bancaria (si aplica) y validación de habilitado_QR
@@ -215,6 +219,12 @@ class QrController extends Controller
                 if ($td === 'F') { $docMarker = ' [DOC:F]'; break; }
             }
         } catch (\Throwable $e) {}
+        // Extraer datos del cliente
+        $clienteData = $validated['cliente'] ?? [];
+        $tipoIdentidad = isset($clienteData['tipo_identidad']) ? (int)$clienteData['tipo_identidad'] : null;
+        $numeroDocumento = isset($clienteData['numero']) ? (string)$clienteData['numero'] : null;
+        $razonSocial = isset($clienteData['razon_social']) ? (string)$clienteData['razon_social'] : null;
+
         DB::table('qr_transacciones')->insert([
             'id_qr_transaccion' => $idQr,
             'id_usuario' => (int)$validated['id_usuario'],
@@ -234,6 +244,9 @@ class QrController extends Controller
             'fecha_generacion' => now(),
             'fecha_expiracion' => $fechaExpiracion,
             'nro_autorizacion' => null,
+            'tipo_identidad_cliente' => $tipoIdentidad,
+            'documento_cliente' => $numeroDocumento,
+            'nombre_cliente' => $razonSocial,
             'created_at' => now(),
             'updated_at' => now(),
         ]);
@@ -250,6 +263,16 @@ class QrController extends Controller
             $montoSaldo = $it['monto_saldo'] ?? null;
             $obsVal = $it['observaciones'] ?? null;
             if (is_string($obsVal) && mb_strlen($obsVal) > 2000) { $obsVal = mb_substr($obsVal, 0, 2000); }
+            $tipoDoc = (string)($it['tipo_documento'] ?? '');
+            $medioDoc = (string)($it['medio_doc'] ?? '');
+            try {
+                Log::info('QR initiate: guardando item en qr_conceptos_detalle', [
+                    'idx' => $idx,
+                    'tipo_documento' => $tipoDoc,
+                    'medio_doc' => $medioDoc,
+                    'concepto' => $concepto
+                ]);
+            } catch (\Throwable $e) {}
             DB::table('qr_conceptos_detalle')->insert([
                 'id_qr_transaccion' => $idQr,
                 'tipo_concepto' => (string)($it['tipo_concepto'] ?? $this->classifyTipoConcepto((array)$it)),
@@ -262,6 +285,8 @@ class QrController extends Controller
                 'nro_cuota' => $nroCuota !== null ? (int)$nroCuota : null,
                 'turno' => $turno !== null ? (string)$turno : null,
                 'monto_saldo' => $montoSaldo !== null ? (int)$montoSaldo : null,
+                'tipo_documento' => $tipoDoc !== '' ? $tipoDoc : null,
+                'medio_doc' => $medioDoc !== '' ? $medioDoc : null,
                 'created_at' => now(),
                 'updated_at' => now(),
             ]);
@@ -648,6 +673,15 @@ class QrController extends Controller
                         if (stripos($obsMk, '[QR') === false) {
                             $obsMk = ($obsMk !== '' ? ($obsMk . ' | ') : '') . '[QR] alias:' . $alias;
                         }
+                        $tipoDocRecuperado = (string)($row->tipo_documento ?? '');
+                        $medioDocRecuperado = (string)($row->medio_doc ?? '');
+                        try {
+                            Log::info('QR callback: recuperando item de qr_conceptos_detalle', [
+                                'tipo_documento' => $tipoDocRecuperado,
+                                'medio_doc' => $medioDocRecuperado,
+                                'concepto' => (string)($row->concepto ?? '')
+                            ]);
+                        } catch (\Throwable $e) {}
                         $items[] = [
                             'monto' => (float)($row->subtotal ?? 0),
                             'fecha_cobro' => $today,
@@ -662,6 +696,8 @@ class QrController extends Controller
                             'nro_cuota' => isset($row->nro_cuota) ? (int)$row->nro_cuota : null,
                             'turno' => $row->turno ?? null,
                             'monto_saldo' => isset($row->monto_saldo) ? (int)$row->monto_saldo : null,
+                            'tipo_documento' => (string)($row->tipo_documento ?? ''),
+                            'medio_doc' => (string)($row->medio_doc ?? ''),
                         ];
                     }
                     // Si no hay snapshot (caso borde), crear un item por monto total
@@ -678,6 +714,52 @@ class QrController extends Controller
                         ];
                     }
 
+                    // Obtener datos del cliente desde qr_transacciones (ya guardados en initiate)
+                    // y datos del estudiante para nombreEstudiante
+                    $clienteData = [
+                        'tipo_identidad' => 1,
+                        'numero' => '',
+                        'razon_social' => '',
+                    ];
+
+                    // 1. Datos del cliente desde qr_transacciones (Razón Social y Nro Documento del formulario)
+                    try {
+                        $tipoId = isset($trx->tipo_identidad_cliente) ? (int)$trx->tipo_identidad_cliente : 1;
+                        $numeroDoc = trim((string)($trx->documento_cliente ?? ''));
+                        $razonSoc = trim((string)($trx->nombre_cliente ?? ''));
+
+                        $clienteData['tipo_identidad'] = $tipoId;
+                        if ($numeroDoc !== '') {
+                            $clienteData['numero'] = $numeroDoc;
+                        }
+                        if ($razonSoc !== '') {
+                            $clienteData['razon_social'] = $razonSoc;
+                        }
+                    } catch (\Throwable $e) {
+                        Log::warning('QR callback: error leyendo datos cliente de qr_transacciones', ['err' => $e->getMessage()]);
+                    }
+
+                    // 2. Si faltan datos, intentar desde estudiantes como fallback
+                    if (empty($clienteData['numero']) || empty($clienteData['razon_social'])) {
+                        try {
+                            $estudiante = DB::table('estudiantes')->where('cod_ceta', (int)$trx->cod_ceta)->first();
+                            if ($estudiante) {
+                                if (empty($clienteData['numero'])) {
+                                    $ci = trim((string)($estudiante->ci ?? ''));
+                                    $clienteData['numero'] = ($ci !== '' && $ci !== '0') ? $ci : (string)$trx->cod_ceta;
+                                }
+                                if (empty($clienteData['razon_social'])) {
+                                    $nombres = trim((string)($estudiante->nombres ?? ''));
+                                    $apPaterno = trim((string)($estudiante->ap_paterno ?? ''));
+                                    $apMaterno = trim((string)($estudiante->ap_materno ?? ''));
+                                    $clienteData['razon_social'] = trim("$nombres $apPaterno $apMaterno");
+                                }
+                            }
+                        } catch (\Throwable $e) {
+                            Log::warning('QR callback: error obteniendo fallback desde estudiantes', ['cod_ceta' => (int)$trx->cod_ceta, 'err' => $e->getMessage()]);
+                        }
+                    }
+
                     $payload = [
                         'cod_ceta' => (int)$trx->cod_ceta,
                         'cod_pensum' => (string)$trx->cod_pensum,
@@ -686,17 +768,22 @@ class QrController extends Controller
                         'id_usuario' => (int)$trx->id_usuario,
                         'id_cuentas_bancarias' => (string)$trx->id_cuenta_bancaria,
                         'id_forma_cobro' => (string)$formaCobro,
-                        'emitir_online' => false,
+                        'emitir_online' => true,
                         'qr_context' => true,
                         'items' => $items,
-                        'cliente' => [
-                            'tipo_identidad' => 1,
-                            'numero' => (string)($trx->documento_cliente ?? ''),
-                            'razon_social' => (string)($trx->nombre_cliente ?? ''),
-                        ],
+                        'cliente' => $clienteData,
                     ];
                     // Ejecutar batchStore vía contenedor para inyección de dependencias
-                    try { Log::info('QR callback: invoking batchStore', ['alias' => $alias, 'items' => count($items), 'cod_ceta' => (int)$trx->cod_ceta, 'forma_cobro' => $formaCobro]); } catch (\Throwable $e) {}
+                    try {
+                        Log::info('QR callback: invoking batchStore', [
+                            'alias' => $alias,
+                            'items' => count($items),
+                            'cod_ceta' => (int)$trx->cod_ceta,
+                            'forma_cobro' => $formaCobro,
+                            'emitir_online' => true,
+                            'cliente' => $clienteData,
+                        ]);
+                    } catch (\Throwable $e) {}
                     $fakeReq = new \Illuminate\Http\Request($payload);
                     $ctrl = app(\App\Http\Controllers\Api\CobroController::class);
                     $response = app()->call([$ctrl, 'batchStore'], ['request' => $fakeReq]);

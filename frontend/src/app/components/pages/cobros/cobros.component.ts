@@ -100,11 +100,11 @@ export class CobrosComponent implements OnInit {
     cod_ceta?: string;
     estudiante?: string;
     carrera?: string;
-    pensum?: string;
+    inscripcion?: string;
     gestion?: string;
     rows: Array<{ cant: number; detalle: string; pu: number; descuento: number; subtotal: number; obs?: string }>;
     total?: number;
-    docs?: Array<{ anio: number; nro_recibo?: number }>
+    docs?: Array<{ anio: number; nro_recibo?: number; nro_factura?: number; tipo?: string; codigo_recepcion?: string }>
   } | null = null;
 
   busquedaLoading = false;
@@ -1617,19 +1617,38 @@ export class CobrosComponent implements OnInit {
             next: (det: any) => {
               try {
                 const tr = det?.data?.transaccion || null;
-                const anio = Number(tr?.anio_recibo || 0);
-                const nro = Number(tr?.nro_recibo || 0);
-                if (anio && nro) {
+
+                // Intentar descargar factura si existe
+                const anioFactura = Number(tr?.anio_factura || tr?.anio || 0);
+                const nroFactura = Number(tr?.nro_factura || 0);
+                if (anioFactura && nroFactura) {
                   try {
                     if (this.successSummary) {
                       const docs = Array.isArray(this.successSummary.docs) ? this.successSummary.docs : [];
-                      if (!docs.some((x: any) => Number(x?.anio) === anio && Number(x?.nro_recibo) === nro)) {
-                        docs.push({ anio, nro_recibo: nro });
+                      if (!docs.some((x: any) => Number(x?.anio) === anioFactura && Number(x?.nro_factura) === nroFactura)) {
+                        docs.push({ anio: anioFactura, nro_factura: nroFactura });
                         this.successSummary.docs = docs as any;
                       }
                     }
                   } catch {}
-                  this.downloadReciboPdfWithFallback(anio, nro);
+                  this.downloadFacturaPdfWithFallback(anioFactura, nroFactura);
+                  return;
+                }
+
+                // Si no hay factura, intentar descargar recibo
+                const anioRecibo = Number(tr?.anio_recibo || tr?.anio || 0);
+                const nroRecibo = Number(tr?.nro_recibo || 0);
+                if (anioRecibo && nroRecibo) {
+                  try {
+                    if (this.successSummary) {
+                      const docs = Array.isArray(this.successSummary.docs) ? this.successSummary.docs : [];
+                      if (!docs.some((x: any) => Number(x?.anio) === anioRecibo && Number(x?.nro_recibo) === nroRecibo)) {
+                        docs.push({ anio: anioRecibo, nro_recibo: nroRecibo });
+                        this.successSummary.docs = docs as any;
+                      }
+                    }
+                  } catch {}
+                  this.downloadReciboPdfWithFallback(anioRecibo, nroRecibo);
                 }
               } catch {}
             },
@@ -2054,15 +2073,15 @@ export class CobrosComponent implements OnInit {
     if (!this.searchForm.valid) return;
     this.loading = true;
     const { cod_ceta, gestion } = this.searchForm.value;
-    
+
     // Limpiar datos anteriores pero mantener estado de opciones
     this.resumen = null;
-    
+
     this.cobrosService.getResumen(cod_ceta, gestion).subscribe({
       next: (res) => {
         console.log('[Cobros] Respuesta del backend:', res);
         console.log('[Cobros] Estudiante recibido:', res?.data?.estudiante);
-        
+
         if (res.success) {
           this.resumen = res.data;
           try {
@@ -2080,14 +2099,14 @@ export class CobrosComponent implements OnInit {
           // Prefill identidad/razón social
           const est = this.resumen?.estudiante || {};
           const fullName = [est.ap_paterno, est.ap_materno, est.nombres ].filter(Boolean).join(' ');
-          
+
           console.log('[Cobros] Datos del estudiante para llenar formulario:', {
             estudiante: est,
             fullName: fullName,
             ci: est.ci,
             cod_ceta: est.cod_ceta
           });
-          
+
           // Limpiar formulario antes de llenar con nuevos datos con un pequeño delay
           setTimeout(() => {
             console.log('[Cobros] Limpiando y llenando formulario...');
@@ -2102,7 +2121,7 @@ export class CobrosComponent implements OnInit {
               email_habilitado: false,
               email: est.email || ''
             });
-            
+
             console.log('[Cobros] Formulario después de llenar:', this.identidadForm.value);
           }, 50);
 
@@ -2189,12 +2208,12 @@ export class CobrosComponent implements OnInit {
       },
       error: (err) => {
         console.error('Resumen error:', err);
-        
+
         // No limpiar el formulario aquí para permitir mostrar datos si la carga es exitosa
         this.resumen = null;
         this.reincorporacion = null;
         this.showOpciones = false;
-        
+
         const status = Number(err?.status || 0);
         const backendMsg = (err?.error?.message || err?.message || '').toString();
         // Fallback: si la gestión solicitada no aplica, reintentar con la última inscripción del estudiante
@@ -3174,7 +3193,7 @@ export class CobrosComponent implements OnInit {
         const raw: any = fg.getRawValue();
         const subtotal = this.calcRowSubtotal(idx);
         const fecha = raw?.fecha_cobro || hoy;
-        
+
         // NO asignar nro_cobro, dejar que backend lo genere
         fg.patchValue({ fecha_cobro: fecha, monto: subtotal }, { emitEvent: false });
         console.log(`Pago ${idx} - nro_cobro será generado por backend`);
@@ -3223,24 +3242,24 @@ export class CobrosComponent implements OnInit {
     // Mapear pagos para enviar solo con 'monto' calculado, SIN nro_cobro (backend lo genera)
     const hoy = new Date().toISOString().slice(0, 10);
     console.log('Creando pagosRaw - SIN nro_cobro, backend generará con AUTO_INCREMENT');
-    
+
     const pagosRaw = (baseCtrls || []).map((ctrl, idx) => {
       const raw = (ctrl as FormGroup).getRawValue() as any;
       const subtotal = this.calcRowSubtotal(idx);
       const fecha = raw.fecha_cobro || hoy;
-      
+
       // NO incluir nro_cobro, dejar que backend lo genere
-      const item: any = { 
-        ...raw, 
-        fecha_cobro: fecha, 
+      const item: any = {
+        ...raw,
+        fecha_cobro: fecha,
         monto: subtotal,
         // Asegurar que cada pago tenga el id_forma_cobro de la cabecera
         id_forma_cobro: cabecera?.id_forma_cobro || raw?.id_forma_cobro
       };
-      
+
       // Eliminar nro_cobro si existe para que backend lo genere
       delete item.nro_cobro;
-      
+
       console.log(`pagosRaw ${idx} - nro_cobro será generado por backend`);
       return item;
     });
@@ -3255,15 +3274,15 @@ export class CobrosComponent implements OnInit {
         if (md === 'C' || comp === 'COMPUTARIZADA') return 'C';
         return 'C';
       })();
-      
+
       // Formatear observaciones sólo respetando lo que venga de los formularios
       console.log('Procesando pago para formatear observaciones (sin defaults automáticos):', it);
       const observacionesFinal = this.formatObservacionesByPaymentMethod(it);
       console.log('Observaciones finales a enviar al backend:', observacionesFinal);
-      
+
       return { ...it, tipo_documento: tipo || 'R', medio_doc: medio || 'C', observaciones: observacionesFinal };
     });
-    
+
     console.log('HOIla 10 - Payload final con observaciones formateadas:', {
       pagos: pagos.map(p => ({
         id_forma_cobro: p.id_forma_cobro,
@@ -3273,7 +3292,7 @@ export class CobrosComponent implements OnInit {
         fecha_deposito: p.fecha_deposito
       }))
     });
-    
+
     const payload = {
       ...cabecera,
       codigo_sin: siatCodigoSin,
