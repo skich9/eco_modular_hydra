@@ -19,6 +19,7 @@ export class DefDescuentosService {
 			monto: d?.monto != null && d.monto !== '' ? Number(d.monto) : 0,
 			porcentaje: typeof d?.porcentaje === 'boolean' ? d.porcentaje : d?.porcentaje == 1,
 			estado: typeof d?.estado === 'boolean' ? d.estado : d?.estado == 1,
+			d_i: typeof d?.d_i === 'boolean' ? d.d_i : d?.d_i == 1,
 			created_at: d?.created_at,
 			updated_at: d?.updated_at,
 		};

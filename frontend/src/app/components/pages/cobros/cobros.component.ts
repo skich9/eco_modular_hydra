@@ -68,6 +68,8 @@ export class CobrosComponent implements OnInit {
   showOpciones = false;
   // Bloqueo de cuota para pagos parciales combinados (EFECTIVO + TARJETA, etc.)
   private lockedMensualidadCuota: number | null = null;
+  // Descuentos recibidos del modal para enviar al backend
+  private descuentosFromModal: any[] = [];
   // Lista filtrada para el modal según selección en cabecera
   modalFormasCobro: any[] = [];
   // Costo de Rezagado (desde costo_semestral)
@@ -2848,6 +2850,10 @@ export class CobrosComponent implements OnInit {
     const hoy = new Date().toISOString().slice(0, 10);
     const pagos = Array.isArray(payload) ? payload : (payload?.pagos || []);
     const headerPatch = Array.isArray(payload) ? null : (payload?.cabecera || null);
+    const descuentos = Array.isArray(payload) ? [] : (payload?.descuentos || []);
+    console.log('[Cobros] Descuentos recibidos del modal:', { count: descuentos.length, descuentos });
+    // Guardar descuentos para enviarlos al backend
+    this.descuentosFromModal = descuentos;
     const isMensualidad = this.modalTipo === 'mensualidad';
     const isArrastre = this.modalTipo === 'arrastre';
     const isReincorporacion = this.modalTipo === 'reincorporacion';
@@ -3200,6 +3206,8 @@ export class CobrosComponent implements OnInit {
         ? String(cabecera.id_forma_cobro)
         : cabecera?.id_forma_cobro,
       pagos,
+      // Enviar grupos para que el backend derive turno/semestre correctamente (p.ej. EEA-19-100M)
+      grupos: (this.resumen as any)?.grupos || [],
       cliente: {
         tipo_identidad: Number(this.identidadForm.get('tipo_identidad')?.value || 0),
         numero: (this.identidadForm.get('ci')?.value || '').toString(),
@@ -3230,6 +3238,11 @@ export class CobrosComponent implements OnInit {
       const shouldEmitOnline = pagos.some((p: any) => (p?.tipo_documento === 'F') && (p?.medio_doc === 'C'));
       if (shouldEmitOnline) (payload as any).emitir_online = true;
     } catch {}
+    // Agregar descuentos del modal si existen
+    if (this.descuentosFromModal && this.descuentosFromModal.length > 0) {
+      (payload as any).descuentos = this.descuentosFromModal;
+      console.log('[Cobros] Agregando descuentos al payload:', { count: this.descuentosFromModal.length, descuentos: this.descuentosFromModal });
+    }
     this.cobrosService.batchStore(payload).subscribe({
       next: (res) => {
         if (res.success) {
@@ -3247,6 +3260,8 @@ export class CobrosComponent implements OnInit {
             } catch {}
             // Construir resumen de éxito ANTES de cualquier limpieza
             this.successSummary = this.buildSuccessSummary(items);
+            // Limpiar descuentos del modal para evitar duplicados en el siguiente cobro
+            this.descuentosFromModal = [];
             // Mostrar modal de éxito
             this.openSuccessModal();
             const seen = new Set<string>();

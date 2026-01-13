@@ -21,6 +21,7 @@ class DefDescuentoController extends Controller
 					'monto' => (int) ($r->monto ?? 0),
 					'porcentaje' => (bool) ($r->porcentaje ?? false),
 					'estado' => (bool) ($r->estado ?? false),
+					'd_i' => (bool) ($r->d_i ?? false),
 					'created_at' => $r->created_at,
 					'updated_at' => $r->updated_at,
 				];

@@ -3,6 +3,7 @@ import { CommonModule } from '@angular/common';
 import { FormBuilder, FormGroup, ReactiveFormsModule, Validators, FormsModule } from '@angular/forms';
 import { ClickLockDirective } from '../../../../directives/click-lock.directive';
 import { ParametrosEconomicosService } from '../../../../services/parametros-economicos.service';
+import { DefDescuentosService } from '../../../../services/def-descuentos.service';
 
 @Component({
   selector: 'app-mensualidad-modal',
@@ -42,9 +43,15 @@ export class MensualidadModalComponent implements OnInit, OnChanges {
   // Configuración de descuento automático de semestre completo
   private descuentoSemestreActivar = false;
   private descuentoSemestreFechaLimite: string | null = null;
-  private descuentoSemestrePorcentaje = 0;
+  private descuentoSemestreIdDefDescuento: number | null = null;
+  private defDescuentosCache: any[] = [];
 
-  constructor(private fb: FormBuilder, private parametrosService: ParametrosEconomicosService) {
+  constructor(
+    private fb: FormBuilder,
+    private parametrosService: ParametrosEconomicosService,
+    private defDescuentosService: DefDescuentosService
+  ) {
+    console.log('[MensualidadModal] Constructor ejecutado');
     this.form = this.fb.group({
       metodo_pago: ['',[Validators.required]],
       cantidad: [1, [Validators.min(1)]],
@@ -108,20 +115,23 @@ export class MensualidadModalComponent implements OnInit, OnChanges {
     } catch { return 0; }
   }
 
-  // Actualiza el campo visual de descuento al cambiar la cantidad seleccionada
   private updateDescuentoDisplay(): void {
     try {
       if (this.tipo === 'mensualidad') {
         const cantSel = Math.max(1, Number(this.form?.get('cantidad')?.value || 1));
         let d = this.sumDescuentoNextK(cantSel);
-        // Agregar descuento automático de semestre completo si aplica
-        const descuentoAuto = this.calcularDescuentoSemestreCompleto(cantSel);
-        if (descuentoAuto > 0) {
-          d += descuentoAuto;
+        const totalCuotasPendientes = this.pendientes || 0;
+        if (cantSel === totalCuotasPendientes) {
+          const descuentoAuto = this.calcularDescuentoSemestreCompleto(cantSel);
+          if (descuentoAuto > 0) {
+            d += descuentoAuto;
+          }
         }
         this.form.get('descuento')?.setValue(d || 0, { emitEvent: false });
       }
-    } catch {}
+    } catch (error) {
+      console.error('[MensualidadModal] Error en updateDescuentoDisplay:', error);
+    }
   }
 
   // Obtiene el monto BRUTO y PAGADO de una cuota por número (para PU = bruto - pagado)
@@ -324,7 +334,10 @@ export class MensualidadModalComponent implements OnInit, OnChanges {
   }
 
   ngOnInit(): void {
+    console.log('[MensualidadModal] ngOnInit ejecutado');
     this.cargarParametrosDescuentoSemestre();
+    this.cargarDefinicionesDescuentos();
+    console.log('[MensualidadModal] Cache inicial:', this.defDescuentosCache.length);
     this.recalcTotal();
 
     // Recalcular total al cambiar cantidad, descuento o monto_manual
@@ -706,7 +719,18 @@ export class MensualidadModalComponent implements OnInit, OnChanges {
       }
     } catch {}
 
-    const disabled = !!tieneDescuentoConDI || !!cuotaConDescuento;
+    const cantSel = Math.max(1, Number(this.form.get('cantidad')?.value || 1));
+    const totalCuotasPendientes = this.pendientes || 0;
+    let descuentoSemestreEsInstitucional = false;
+    if (cantSel === totalCuotasPendientes && this.descuentoSemestreIdDefDescuento) {
+      const defDescuento = this.obtenerDefinicionDescuentoDirecto(this.descuentoSemestreIdDefDescuento);
+      if (defDescuento) {
+        const di = defDescuento?.d_i;
+        descuentoSemestreEsInstitucional = di === 1 || di === true || di === '1';
+      }
+    }
+
+    const disabled = !!tieneDescuentoConDI || !!cuotaConDescuento || descuentoSemestreEsInstitucional;
 
     if (disabled) {
       const comprobanteActual = this.form.get('comprobante')?.value;
@@ -958,6 +982,7 @@ export class MensualidadModalComponent implements OnInit, OnChanges {
   }
 
   addAndClose(): void {
+    console.log('[MensualidadModal] ===== INICIO addAndClose() =====');
     // Validación explícita de TARJETA: 4 dígitos exactos en ambos campos
     if (this.isTarjeta) {
       const f4 = (this.form.get('tarjeta_first4')?.value || '').toString().trim();
@@ -996,6 +1021,7 @@ export class MensualidadModalComponent implements OnInit, OnChanges {
 
     const hoy = this.form.get('fecha_cobro')?.value || new Date().toISOString().slice(0, 10);
     const pagos: any[] = [];
+    const descuentos: any[] = [];
     const compSel = compSelRaw;
     const tipo_documento = compSel === 'FACTURA' ? 'F' : (compSel === 'RECIBO' ? 'R' : '');
     const medio_doc = (this.form.get('computarizada')?.value === 'MANUAL') ? 'M' : 'C';
@@ -1077,13 +1103,22 @@ export class MensualidadModalComponent implements OnInit, OnChanges {
           id_asignacion_costo
         });
       } else {
+        console.log('[MensualidadModal] INICIO bloque pago completo mensualidad');
         const cant = Math.max(0, Number(this.form.get('cantidad')?.value || 0));
         const list = this.getOrderedCuotasRestantes().slice(0, cant);
         let nro = this.baseNro || 1;
+        console.log('[MensualidadModal] Datos iniciales:', { cant, listLength: list.length, nro });
         if (list.length > 0) {
           // Calcular descuento automático de semestre completo
           const descuentoAutoTotal = this.calcularDescuentoSemestreCompleto(cant);
           const montoTotalSinDescuentoAuto = this.sumNextKCuotasRestantes(cant);
+          console.log('[MensualidadModal] Calculando descuentos:', {
+            cant,
+            descuentoAutoTotal,
+            montoTotalSinDescuentoAuto,
+            descuentoSemestreIdDefDescuento: this.descuentoSemestreIdDefDescuento,
+            listLength: list.length
+          });
 
           for (let i = 0; i < list.length; i++) {
             const m = Number(list[i]?.restante || 0); // neto (PU - descuento)
@@ -1103,6 +1138,25 @@ export class MensualidadModalComponent implements OnInit, OnChanges {
               const proporcion = m / montoTotalSinDescuentoAuto;
               const descuentoAutoCuota = descuentoAutoTotal * proporcion;
               descUnit += descuentoAutoCuota;
+
+              // Crear registro de descuento para esta cuota
+              console.log('[MensualidadModal] Evaluando creación de descuento:', {
+                descuentoAutoCuota,
+                id_asignacion_costo,
+                descuentoSemestreIdDefDescuento: this.descuentoSemestreIdDefDescuento,
+                cumpleCondicion: descuentoAutoCuota > 0 && id_asignacion_costo && this.descuentoSemestreIdDefDescuento
+              });
+
+              if (descuentoAutoCuota > 0 && id_asignacion_costo && this.descuentoSemestreIdDefDescuento) {
+                const descuentoItem = {
+                  id_asignacion_costo: id_asignacion_costo,
+                  cod_beca: this.descuentoSemestreIdDefDescuento,
+                  monto_descuento: Math.round(descuentoAutoCuota * 100) / 100,
+                  observaciones: 'Descuento por pago de semestre completo'
+                };
+                descuentos.push(descuentoItem);
+                console.log('[MensualidadModal] Descuento agregado:', descuentoItem);
+              }
             }
 
             pagos.push({
@@ -1248,12 +1302,27 @@ export class MensualidadModalComponent implements OnInit, OnChanges {
       });
     }
 
+    console.log('[MensualidadModal] Estado final antes de enviar:', {
+      pagosCount: pagos.length,
+      descuentosCount: descuentos.length,
+      descuentos: descuentos
+    });
+
     // Si es TARJETA / CHEQUE / DEPÓSITO / TRANSFERENCIA / QR, enviar además cabecera con la cuenta bancaria
     if (this.isTarjeta || this.isCheque || this.isDeposito || this.isTransferencia || this.isQR) {
       const header = { id_cuentas_bancarias: this.form.get('id_cuentas_bancarias')?.value };
-      this.addPagos.emit({ pagos, cabecera: header });
+      const payload: any = { pagos, cabecera: header };
+      if (descuentos.length > 0) {
+        payload.descuentos = descuentos;
+        console.log('[MensualidadModal] Enviando descuentos con cabecera:', { count: descuentos.length, descuentos });
+      }
+      this.addPagos.emit(payload);
     } else {
-      this.addPagos.emit(pagos);
+      const payload: any = descuentos.length > 0 ? { pagos, descuentos } : pagos;
+      if (descuentos.length > 0) {
+        console.log('[MensualidadModal] Enviando descuentos sin cabecera:', { count: descuentos.length, descuentos });
+      }
+      this.addPagos.emit(payload);
     }
 
     // Cerrar modal por Bootstrap si está presente
@@ -1398,53 +1467,148 @@ export class MensualidadModalComponent implements OnInit, OnChanges {
       next: (res) => {
         if (res.success && res.data) {
           const params = res.data;
-          const activar = params.find(p => p.nombre === 'descuento_semestre_completo_activar');
-          const fecha = params.find(p => p.nombre === 'descuento_semestre_completo_fecha_limite');
-          const porcentaje = params.find(p => p.nombre === 'descuento_semestre_completo_porcentaje');
+          const activar = params.find((p: any) => {
+            const id = Number(p?.id_parametro_economico || 0);
+            const nombre = (p?.nombre || '').toString().toLowerCase().trim();
+            return id === 1 || nombre === 'descuento_semestre_completo_activar';
+          });
+          const fecha = params.find((p: any) => {
+            const id = Number(p?.id_parametro_economico || 0);
+            const nombre = (p?.nombre || '').toString().toLowerCase().trim();
+            return id === 2 || nombre === 'descuento_semestre_completo_fecha';
+          });
+          const idDescuento = params.find((p: any) => {
+            const id = Number(p?.id_parametro_economico || 0);
+            const nombre = (p?.nombre || '').toString().toLowerCase().trim();
+            return id === 3 || nombre === 'descuento_semestre_completo_porcentaje';
+          });
 
-          this.descuentoSemestreActivar = activar?.valor === 'true' || activar?.valor === '1';
+          const valorActivar = String(activar?.valor || '').toLowerCase().trim();
+          this.descuentoSemestreActivar = valorActivar === 'true' || valorActivar === '1';
           this.descuentoSemestreFechaLimite = fecha?.valor || null;
-          this.descuentoSemestrePorcentaje = Number(porcentaje?.valor || 0);
+          this.descuentoSemestreIdDefDescuento = Number(idDescuento?.valor || 0) || null;
+          console.log('[MensualidadModal] Parámetros descuento semestre cargados:', {
+            activar: this.descuentoSemestreActivar,
+            fechaLimite: this.descuentoSemestreFechaLimite,
+            idDefDescuento: this.descuentoSemestreIdDefDescuento
+          });
         }
       },
       error: () => {
         this.descuentoSemestreActivar = false;
         this.descuentoSemestreFechaLimite = null;
-        this.descuentoSemestrePorcentaje = 0;
+        this.descuentoSemestreIdDefDescuento = null;
       }
     });
   }
 
   private calcularDescuentoSemestreCompleto(cantidadSeleccionada: number): number {
     try {
-      // Verificar si el descuento está activo
       if (!this.descuentoSemestreActivar) return 0;
 
-      // Verificar si estamos dentro de la fecha límite
       if (this.descuentoSemestreFechaLimite) {
         const hoy = new Date();
         const limite = new Date(this.descuentoSemestreFechaLimite);
+        hoy.setHours(0, 0, 0, 0);
+        limite.setHours(0, 0, 0, 0);
         if (hoy > limite) return 0;
       }
 
-      // Verificar que el porcentaje sea válido
-      if (this.descuentoSemestrePorcentaje <= 0 || this.descuentoSemestrePorcentaje > 100) return 0;
+      if (!this.descuentoSemestreIdDefDescuento || this.descuentoSemestreIdDefDescuento <= 0) return 0;
 
-      // Obtener total de cuotas pendientes del tipo de inscripción actual
       const totalCuotasPendientes = this.pendientes || 0;
-
-      // Solo aplicar si se seleccionan TODAS las cuotas pendientes
       if (cantidadSeleccionada !== totalCuotasPendientes) return 0;
 
-      // Calcular el monto total sin descuento
       const montoTotal = this.sumNextKCuotasRestantes(cantidadSeleccionada);
+      if (montoTotal <= 0) return 0;
 
-      // Aplicar el porcentaje de descuento
-      const descuento = (montoTotal * this.descuentoSemestrePorcentaje) / 100;
+      const defDescuento = this.obtenerDefinicionDescuentoDirecto(this.descuentoSemestreIdDefDescuento);
+      if (!defDescuento) return 0;
 
+      const esPorcentaje = defDescuento.porcentaje === true || defDescuento.porcentaje === 1;
+      const valor = Number(defDescuento.monto || 0);
+
+      if (!esPorcentaje) return Math.max(0, valor);
+      if (valor <= 0 || valor > 100) return 0;
+
+      const descuento = (montoTotal * valor) / 100;
       return Math.max(0, descuento);
-    } catch {
+    } catch (error) {
       return 0;
+    }
+  }
+
+  private validarCuotasSinDescuentoPrevio(cantidadSeleccionada: number): boolean {
+    try {
+      const asignaciones = this.resumen?.asignaciones || [];
+      const start = this.getStartCuotaFromResumen();
+      for (let i = 0; i < cantidadSeleccionada; i++) {
+        const nro = start + i;
+        const cuota = asignaciones.find((a: any) => Number(a?.numero_cuota || 0) === Number(nro));
+        const descNum = Number(cuota?.descuento || 0);
+        if (descNum > 0) return false;
+      }
+      return true;
+    } catch {
+      return false;
+    }
+  }
+
+  private cargarDefinicionesDescuentos(): void {
+    console.log('[MensualidadModal] Iniciando carga de definiciones de descuentos...');
+    this.defDescuentosService.getAll().subscribe({
+      next: (res) => {
+        console.log('[MensualidadModal] Respuesta del servicio:', res);
+        if (res.success && res.data) {
+          console.log('[MensualidadModal] Total de registros recibidos:', res.data.length);
+          console.log('[MensualidadModal] Primeros 3 registros:', res.data.slice(0, 3));
+
+          this.defDescuentosCache = res.data;
+          console.log('[MensualidadModal] Definiciones de descuentos cargadas:', {
+            descuentos: this.defDescuentosCache.length,
+            primeros3Descuentos: this.defDescuentosCache.slice(0, 3)
+          });
+        } else {
+          console.warn('[MensualidadModal] Respuesta sin éxito o sin datos:', res);
+        }
+      },
+      error: (err) => {
+        console.error('[MensualidadModal] Error al cargar definiciones de descuentos:', err);
+        this.defDescuentosCache = [];
+      }
+    });
+  }
+
+  private obtenerDefinicionDescuento(idDefDescuento: number): any {
+    try {
+      const descuentosAplicados = this.resumen?.descuentos_aplicados || [];
+      console.log('[MensualidadModal] Buscando en descuentos_aplicados:', { count: descuentosAplicados.length, idBuscado: idDefDescuento });
+      for (const desc of descuentosAplicados) {
+        const def = desc?.definicion || desc?.def_descuento_beca || {};
+        const id = Number(def?.id_def_descuento_beca || 0);
+        if (id === idDefDescuento) return def;
+      }
+      return null;
+    } catch {
+      return null;
+    }
+  }
+
+  private obtenerDefinicionDescuentoDirecto(idDefDescuento: number): any {
+    try {
+      const def = this.defDescuentosCache.find((d: any) => Number(d?.cod_descuento || 0) === idDefDescuento);
+      if (def) return def;
+
+      const descuentosAplicados = this.resumen?.descuentos_aplicados || [];
+      for (const desc of descuentosAplicados) {
+        const defItem = desc?.definicion || desc?.def_descuento_beca || {};
+        const id = Number(defItem?.cod_descuento || defItem?.cod_beca || 0);
+        if (id === idDefDescuento) return defItem;
+      }
+      return null;
+    } catch (error) {
+      console.error('[MensualidadModal] Error al obtener definición:', error);
+      return null;
     }
   }
 
