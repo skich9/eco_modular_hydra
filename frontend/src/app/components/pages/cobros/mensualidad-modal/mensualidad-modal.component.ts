@@ -722,11 +722,25 @@ export class MensualidadModalComponent implements OnInit, OnChanges {
     const cantSel = Math.max(1, Number(this.form.get('cantidad')?.value || 1));
     const totalCuotasPendientes = this.pendientes || 0;
     let descuentoSemestreEsInstitucional = false;
+
     if (cantSel === totalCuotasPendientes && this.descuentoSemestreIdDefDescuento) {
-      const defDescuento = this.obtenerDefinicionDescuentoDirecto(this.descuentoSemestreIdDefDescuento);
-      if (defDescuento) {
-        const di = defDescuento?.d_i;
-        descuentoSemestreEsInstitucional = di === 1 || di === true || di === '1';
+      if (this.descuentoSemestreActivar) {
+        let dentroFecha = true;
+        if (this.descuentoSemestreFechaLimite) {
+          const hoy = new Date();
+          const limite = new Date(this.descuentoSemestreFechaLimite);
+          hoy.setHours(0, 0, 0, 0);
+          limite.setHours(0, 0, 0, 0);
+          dentroFecha = hoy <= limite;
+        }
+
+        if (dentroFecha) {
+          const defDescuento = this.obtenerDefinicionDescuentoDirecto(this.descuentoSemestreIdDefDescuento);
+          if (defDescuento) {
+            const di = defDescuento?.d_i;
+            descuentoSemestreEsInstitucional = di === 1 || di === true || di === '1';
+          }
+        }
       }
     }
 
