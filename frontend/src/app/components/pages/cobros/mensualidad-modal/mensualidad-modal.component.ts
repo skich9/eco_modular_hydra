@@ -121,10 +121,16 @@ export class MensualidadModalComponent implements OnInit, OnChanges {
         const cantSel = Math.max(1, Number(this.form?.get('cantidad')?.value || 1));
         let d = this.sumDescuentoNextK(cantSel);
         const totalCuotasPendientes = this.pendientes || 0;
-        if (cantSel === totalCuotasPendientes) {
+
+        if (d > 0) {
+          this.form.get('descuento')?.setValue(d || 0, { emitEvent: false });
+          return;
+        }
+
+        if (cantSel === totalCuotasPendientes && this.validarCuotasSinDescuentoPrevio(cantSel)) {
           const descuentoAuto = this.calcularDescuentoSemestreCompleto(cantSel);
           if (descuentoAuto > 0) {
-            d += descuentoAuto;
+            d = descuentoAuto;
           }
         }
         this.form.get('descuento')?.setValue(d || 0, { emitEvent: false });
@@ -549,10 +555,12 @@ export class MensualidadModalComponent implements OnInit, OnChanges {
           const sum = this.sumNextKCuotasRestantes(cant);
           if (sum > 0) {
             total = sum;
-            // Aplicar descuento automático de semestre completo si corresponde
-            const descuentoAuto = this.calcularDescuentoSemestreCompleto(cant);
-            if (descuentoAuto > 0) {
-              total = Math.max(0, total - descuentoAuto);
+            const totalCuotasPendientes = this.pendientes || 0;
+            if (cant === totalCuotasPendientes && this.validarCuotasSinDescuentoPrevio(cant)) {
+              const descuentoAuto = this.calcularDescuentoSemestreCompleto(cant);
+              if (descuentoAuto > 0) {
+                total = Math.max(0, total - descuentoAuto);
+              }
             }
           } else {
             const puNext = Number(this.pu || 0);
