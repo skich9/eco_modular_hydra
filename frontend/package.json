@@ -23,6 +23,7 @@
   },
   "private": true,
   "dependencies": {
+    "@angular-devkit/build-angular": "^21.0.4",
     "@angular/common": "^21.0.6",
     "@angular/compiler": "^21.0.6",
     "@angular/core": "^21.0.6",
@@ -55,8 +56,5 @@
     "karma-jasmine-html-reporter": "~2.1.0",
     "typescript": "~5.9.2",
     "yargs": "^17.7.2"
-  },
-  "overrides": {
-    "vite": "^7.2.0"
   }
 }

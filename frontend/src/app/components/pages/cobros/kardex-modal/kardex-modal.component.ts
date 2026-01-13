@@ -1,25 +1,166 @@
 import { Component, Input, OnChanges, Pipe, PipeTransform } from '@angular/core';
 import { CommonModule } from '@angular/common';
 
+interface CobroItem {
+    id_cobro?: number;
+    id?: number;
+    cod_tipo_cobro?: string;
+    concepto?: string;
+    monto?: string | number;
+    fecha_cobro?: string;
+    nro_cobro?: number | string;
+    observaciones?: string;
+    id_forma_cobro?: string;
+    nro_factura?: string | null;
+    nro_recibo?: string | number;
+    cliente?: string;
+    nro_documento_cobro?: string;
+}
+
 @Pipe({
-	name: 'filterNonMensualidades',
-	standalone: true
+    name: 'filterNonMensualidades',
+    standalone: true
 })
 export class FilterNonMensualidadesPipe implements PipeTransform {
-	transform(items: any[]): any[] {
-		if (!Array.isArray(items)) return [];
-		return items.filter(item => !item?.id_designacion_costo);
-	}
+    transform(data: any): CobroItem[] {
+        console.group('=== FILTRO MATERIAL EXTRA ===');
+
+        if (!data) {
+            console.log('No hay datos');
+            console.groupEnd();
+            return [];
+        }
+
+        // Extraer el array de items del objeto
+        const items: CobroItem[] = Array.isArray(data) ? data : (data.items || []);
+
+        console.log('Total de items a filtrar:', items.length);
+
+        if (items.length === 0) {
+            console.log('El array de items está vacío');
+            console.groupEnd();
+            return [];
+        }
+
+        console.log('Estructura del primer item (REINCORPORACION):', items[0] ? JSON.parse(JSON.stringify(items[0])) : 'No hay primer item');
+
+        const filtered = items.filter((item: CobroItem, index: number) => {
+            const isMaterialExtra = item?.cod_tipo_cobro === 'MATERIAL_EXTRA';
+
+            if (isMaterialExtra) {
+                console.log(`Item ${index} - MATERIAL EXTRA ENCONTRADO:`, {
+                    id: item?.id_cobro || item?.id,
+                    cod_tipo_cobro: item?.cod_tipo_cobro,
+                    concepto: item?.concepto,
+                    monto: item?.monto,
+                    fecha_cobro: item?.fecha_cobro
+                });
+            }
+
+            return isMaterialExtra;
+        });
+
+        console.log(`Total de items filtrados (MATERIAL_EXTRA): ${filtered.length} de ${items.length}`);
+
+        if (filtered.length === 0) {
+            console.warn('No se encontraron registros con cod_tipo_cobro = "MATERIAL_EXTRA"');
+            console.log('Tipos de cobro encontrados:',
+                [...new Set(items.map((item: CobroItem) => item?.cod_tipo_cobro))]
+            );
+        }
+
+        console.groupEnd();
+        return filtered;
+    }
+}
+
+@Pipe({
+    name: 'filterReincorporacion',
+    standalone: true
+})
+export class FilterReincorporacionPipe implements PipeTransform {
+    transform(data: any): CobroItem[] {
+        console.group('=== FILTRO REINCORPORACION ===');
+
+        if (!data) {
+            console.log('No hay datos');
+            console.groupEnd();
+            return [];
+        }
+
+        // Extraer el array de items del objeto
+        const items: CobroItem[] = Array.isArray(data) ? data : (data.items || []);
+
+        console.log('Total de items a filtrar:', items.length);
+
+        if (items.length === 0) {
+            console.log('El array de items está vacío');
+            console.groupEnd();
+            return [];
+        }
+
+        console.log('Estructura del primer item (REINCORPORACION):', items[0] ? JSON.parse(JSON.stringify(items[0])) : 'No hay primer item');
+
+        const filtered = items.filter((item: CobroItem, index: number) => {
+            const isReincorporacion = item?.cod_tipo_cobro === 'REINCORPORACION';
+
+            if (isReincorporacion) {
+                console.log(`Item ${index} - REINCORPORACION ENCONTRADO:`, {
+                    id: item?.id_cobro || item?.id,
+                    cod_tipo_cobro: item?.cod_tipo_cobro,
+                    concepto: item?.concepto,
+                    monto: item?.monto,
+                    fecha_cobro: item?.fecha_cobro,
+                    nro_factura: item?.nro_factura,
+                    nro_recibo: item?.nro_recibo,
+                    cliente: item?.cliente,
+                    nro_documento_cobro: item?.nro_documento_cobro,
+                    todasLasPropiedades: Object.keys(item),
+                    objetoCompleto: item
+                });
+            }
+
+            return isReincorporacion;
+        });
+
+        console.log(`Total de items filtrados (REINCORPORACION): ${filtered.length} de ${items.length}`);
+
+        if (filtered.length === 0) {
+            console.warn('No se encontraron registros con cod_tipo_cobro = "REINCORPORACION"');
+            console.log('Tipos de cobro encontrados:',
+                [...new Set(items.map((item: CobroItem) => item?.cod_tipo_cobro))]
+            );
+        }
+
+        console.groupEnd();
+        return filtered;
+    }
 }
 
 @Component({
 	selector: 'app-kardex-modal',
 	standalone: true,
-	imports: [CommonModule, FilterNonMensualidadesPipe],
+	imports: [CommonModule, FilterNonMensualidadesPipe, FilterReincorporacionPipe],
 	templateUrl: './kardex-modal.component.html',
 	styleUrls: ['./kardex-modal.component.scss']
 })
 export class KardexModalComponent implements OnChanges {
+	// Método para calcular el total de material extra
+	calcularTotalMaterialExtra(items: any[]): number {
+		if (!Array.isArray(items)) return 0;
+		return items
+			.filter(item => item?.cod_tipo_cobro === 'MATERIAL_EXTRA')
+			.reduce((sum, item) => sum + (parseFloat(item?.monto) || 0), 0);
+	}
+
+	// Método para calcular el total de matrícula o reincorporación
+	calcularTotalReincorporacion(items: any[]): number {
+		if (!Array.isArray(items)) return 0;
+		return items
+			.filter(item => item?.cod_tipo_cobro === 'REINCORPORACION')
+			.reduce((sum, item) => sum + (parseFloat(item?.monto) || 0), 0);
+	}
+
 	@Input() resumen: any = null;
 	@Input() gestion: string = '';
 
@@ -162,7 +303,6 @@ export class KardexModalComponent implements OnChanges {
 			let cobrosItems: any[] = [];
 			try {
 				const cobrosData = this.resumen?.cobros?.items;
-
 				if (cobrosData?.items && Array.isArray(cobrosData.items)) {
 					// La estructura es {total, count, items: Array}
 					cobrosItems = cobrosData.items;
@@ -171,7 +311,7 @@ export class KardexModalComponent implements OnChanges {
 					cobrosItems = cobrosData;
 				} else if (cobrosData && typeof cobrosData === 'object') {
 					// Si es objeto pero no array, intentar convertir
-					cobrosItems = Object.values(cobrosData).filter(item => item && typeof item === 'object');
+					cobrosItems = Object.values(cobrosData).filter((item: any) => item && typeof item === 'object');
 				}
 			} catch (error) {
 				console.warn('[Kardex] Error procesando cobros.items:', error);
@@ -179,44 +319,37 @@ export class KardexModalComponent implements OnChanges {
 			}
 
 			const expandidos: any[] = [];
-
 			// Agrupar pagos reales por id_asignacion_costo
-			const pagosRealesPorAsignacion = new Map();
-
-			// Procesar SOLO los cobros individuales que tengan id_asignacion_costo
+			const pagosRealesPorAsignacion = new Map<any, any[]>();
 			for (const cobro of cobrosItems) {
-				const idDesignacion = cobro?.id_asignacion_costo;
-
-				// SOLO procesar cobros que tengan id_asignacion_costo (son de mensualidades)
-				if (!idDesignacion) {
-					continue;
+				const idAsignacion = cobro?.id_asignacion_costo;
+				if (!idAsignacion) {
+					continue; // Solo mensualidades
 				}
-
-				// Agrupar por asignación
-				if (!pagosRealesPorAsignacion.has(idDesignacion)) {
-					pagosRealesPorAsignacion.set(idDesignacion, []);
+				if (!pagosRealesPorAsignacion.has(idAsignacion)) {
+					pagosRealesPorAsignacion.set(idAsignacion, []);
 				}
-
-				pagosRealesPorAsignacion.get(idDesignacion).push(cobro);
+				pagosRealesPorAsignacion.get(idAsignacion)!.push(cobro);
 			}
 
-			// Procesar los pagos reales agrupados
+			// Procesar pagos agrupados por asignación
 			for (const [idAsignacion, pagos] of pagosRealesPorAsignacion.entries()) {
+				const asignacion = asignaciones.find((a: any) => a?.id_asignacion_costo == idAsignacion);
+				const estadoCuota = (asignacion?.estado_pago || '').toString().toUpperCase();
+				const cuotaEsCompleta = estadoCuota === 'COBRADO';
 
 				// Ordenar pagos por fecha
 				pagos.sort((a: any, b: any) => {
-					const fechaA = new Date(a?.fecha_cobro || a?.fecha_pago || 0);
-					const fechaB = new Date(b?.fecha_cobro || b?.fecha_pago || 0);
-					return fechaA.getTime() - fechaB.getTime();
+					const fechaA = new Date(a?.fecha_cobro || a?.fecha_pago || 0).getTime();
+					const fechaB = new Date(b?.fecha_cobro || b?.fecha_pago || 0).getTime();
+					return fechaA - fechaB;
 				});
 
-				// Mostrar cada pago como fila separada
 				for (let i = 0; i < pagos.length; i++) {
 					const pago = pagos[i];
 					const esUltimoPago = i === pagos.length - 1;
-
-					// Buscar información de la asignación para obtener número de cuota y tipo
-					const asignacion = asignaciones.find((a: any) => a?.id_asignacion_costo == idAsignacion);
+					// El pago total solo se marca como completo si la cuota está COBRADA y es el último pago
+					const esCompleto = (cuotaEsCompleta && esUltimoPago) ? 'Si' : 'No';
 
 					const pagoExpandido = {
 						...pago,
@@ -224,12 +357,13 @@ export class KardexModalComponent implements OnChanges {
 						numero_pago: i + 1,
 						tipo_inscripcion: asignacion?.tipo_inscripcion || 'NORMAL',
 						es_multipago: pagos.length > 1,
-						es_completo: esUltimoPago ? 'Si' : 'No',
+						es_completo: esCompleto,
+						estado_pago: estadoCuota || pago?.estado_pago || '',
 						fecha_pago: pago?.fecha_cobro || pago?.fecha_pago || null,
 						monto_pagado: pago?.monto || 0,
 						nro_factura: pago?.nro_factura || '-',
 						nro_recibo: pago?.nro_recibo || '0',
-						observaciones: this.getObservacionesExtendidas(pago)
+						observaciones: this.getObservacionesExtendidas(pago),
 					};
 
 					expandidos.push(pagoExpandido);
@@ -244,7 +378,6 @@ export class KardexModalComponent implements OnChanges {
 				return (a.numero_pago || 0) - (b.numero_pago || 0);
 			});
 
-			// Guardar en cache
 			this._pagosExpandidosCache = expandidos;
 			return expandidos;
 		} catch (error) {
@@ -270,24 +403,65 @@ export class KardexModalComponent implements OnChanges {
 		return 'Efectivo:';
 	}
 
+	// Método para obtener razón social/NIT desde factura o recibo
+	getRazonSocialNIT(cobro: any): string {
+		// Usar cliente/nro_documento_cobro (campos que vendrán del backend)
+		const cliente = cobro?.cliente || '-';
+		const nroDoc = cobro?.nro_documento_cobro || '';
+		const resultado = nroDoc ? `${cliente} / ${nroDoc}` : cliente;
+
+		// Debug temporal para verificar que lleguen los datos
+		if (cobro?.cliente || cobro?.nro_documento_cobro) {
+			console.log('✅ Razón Social/NIT encontrado:', resultado);
+		}
+
+		return resultado;
+	}
+
 	// Obtener nombre completo del método de pago a partir del código
-	getNombreFormaCobro(idFormaCobro: string): string {
+	getNombreFormaCobro(idFormaCobro: string | undefined | null): string {
+		if (!idFormaCobro) return 'EFECTIVO';
+
 		const metodosPago: { [key: string]: string } = {
+			// Códigos "nuevos" de varias letras
 			'EF': 'EFECTIVO',
-			'TA': 'TARJETA',
-			'CH': 'CHEQUE',
-			'DE': 'DEPOSITO',
 			'TR': 'TRANSFERENCIA',
+			'TA': 'TARJETA',
+			'TC': 'TARJETA',
+			'DE': 'DEPOSITO',
+			'CH': 'CHEQUE',
 			'QR': 'QR',
-			'OT': 'OTRO'
+			'OT': 'OTRO',
+			// Códigos de una letra que se usan en la tabla cobro
+			'E': 'EFECTIVO',      // Efectivo
+			'D': 'DEPOSITO',      // Depósito bancario
+			'C': 'CHEQUE',        // Cheque
+			'L': 'TARJETA',       // Tarjeta débito/crédito
+			'B': 'TRANSFERENCIA', // Transferencia bancaria
+			'O': 'OTRO',          // Otro
+			'T': 'TRASPASO',      // Traspaso de carrera
 		};
 
-		return metodosPago[idFormaCobro] || 'EFECTIVO';
+		const codigo = idFormaCobro.toUpperCase();
+		return metodosPago[codigo] || 'EFECTIVO';
+	}
+
+	// Obtener solo el nombre del banco (sin número de cuenta)
+	private getBancoSoloNombre(pago: any): string {
+		try {
+			const raw = (pago?.banco_nb || pago?.banco || '').toString().trim();
+			if (!raw) return '';
+			// En nota_bancaria se guarda como "BANCO X - 123456"; nos quedamos con la parte antes de " - "
+			const partes = raw.split(' - ');
+			return (partes[0] || raw).trim();
+		} catch {
+			return '';
+		}
 	}
 
 	// Obtener observaciones extendidas según el método de pago
 	getObservacionesExtendidas(pago: any): string {
-		const idFormaCobro = pago?.id_forma_cobro;
+		let idFormaCobro = pago?.id_forma_cobro;
 		const obsOriginal = pago?.observaciones || '';
 
 		// Si es efectivo, solo mostrar observaciones si existen
@@ -300,16 +474,56 @@ export class KardexModalComponent implements OnChanges {
 
 		switch (idFormaCobro) {
 			case 'TA': // TARJETA
-				infoAdicional = `Tarjeta: ${pago?.nro_tarjeta || 'N/A'} - Autorización: ${pago?.nro_autorizacion || 'N/A'}`;
+				// {Tipo de Pago}: {banco}-{nro_transaccion}-{fecha_deposito} NL:0
+				const bancoTarjeta = this.getBancoSoloNombre(pago);
+				const nroTransaccionTarjeta = (pago?.nro_transaccion || pago?.nro_deposito || '').toString();
+				const fechaDepositoTarjeta = (pago?.fecha_deposito || pago?.fecha_nota || '').toString();
+
+				if (bancoTarjeta && nroTransaccionTarjeta && fechaDepositoTarjeta) {
+					infoAdicional = `Tarjeta: ${bancoTarjeta}-${nroTransaccionTarjeta}-${fechaDepositoTarjeta} NL:0`;
+				} else {
+					infoAdicional = `Tarjeta: ${pago?.nro_tarjeta || 'N/A'} - Autorización: ${pago?.nro_autorizacion || 'N/A'}`;
+				}
 				break;
 			case 'CH': // CHEQUE
-				infoAdicional = `Cheque N°: ${pago?.nro_cheque || 'N/A'} - Banco: ${pago?.banco || 'N/A'}`;
+				infoAdicional = `Cheque N°: ${pago?.nro_cheque || 'N/A'} - Banco: ${this.getBancoSoloNombre(pago) || 'N/A'}`;
 				break;
 			case 'DE': // DEPOSITO
-				infoAdicional = `Depósito - N° Cuenta: ${pago?.nro_cuenta || 'N/A'} - Banco: ${pago?.banco || 'N/A'} - Referencia: ${pago?.nro_referencia || 'N/A'}`;
+				// Deposito: {banco}-{nro_transaccion}-{fecha_deposito} ND:{correlativo}
+				const bancoDeposito = this.getBancoSoloNombre(pago);
+				const nroDeposito = (pago?.nro_transaccion || pago?.nro_deposito || '').toString();
+				const fechaDeposito = (pago?.fecha_deposito || pago?.fecha_nota || '').toString();
+				let correlativoNd = (pago?.correlativo_nb || pago?.nro_referencia || '').toString();
+				// Limpiar prefijos tipo "NB:", "ND:" o similares para no duplicar
+				if (correlativoNd) {
+					correlativoNd = correlativoNd.replace(/^N[BD][:\s]*/i, '').trim();
+				}
+				if (bancoDeposito && nroDeposito && fechaDeposito) {
+					infoAdicional = correlativoNd
+						? `Deposito: ${bancoDeposito}-${nroDeposito}-${fechaDeposito} ND:${correlativoNd}`
+						: `Deposito: ${bancoDeposito}-${nroDeposito}-${fechaDeposito}`;
+				} else {
+					infoAdicional = `Depósito - N° Cuenta: ${pago?.nro_cuenta || 'N/A'} - Banco: ${this.getBancoSoloNombre(pago) || 'N/A'} - Referencia: ${pago?.nro_referencia || 'N/A'}`;
+				}
 				break;
 			case 'TR': // TRANSFERENCIA
-				infoAdicional = `Transferencia - N° Cuenta: ${pago?.nro_cuenta || 'N/A'} - Banco: ${pago?.banco || 'N/A'} - Referencia: ${pago?.nro_referencia || 'N/A'}`;
+				// {Tipo de Pago}: {banco}-{nro_transaccion}-{fecha_deposito} NB:{correlativo}
+				const bancoTransferencia = this.getBancoSoloNombre(pago);
+				const nroTransferencia = (pago?.nro_transaccion || pago?.nro_deposito || '').toString();
+				const fechaTransferencia = (pago?.fecha_deposito || pago?.fecha_nota || '').toString();
+				let correlativoNb = (pago?.correlativo_nb || pago?.nro_referencia || '').toString();
+				// Limpiar prefijos tipo "NB:" o "NB " que puedan venir desde nro_referencia para no duplicar
+				if (correlativoNb) {
+					correlativoNb = correlativoNb.replace(/^NB[:\s]*/i, '').trim();
+				}
+
+				if (bancoTransferencia && nroTransferencia && fechaTransferencia) {
+					infoAdicional = correlativoNb
+						? `Transferencia: ${bancoTransferencia}-${nroTransferencia}-${fechaTransferencia} NB:${correlativoNb}`
+						: `Transferencia: ${bancoTransferencia}-${nroTransferencia}-${fechaTransferencia}`;
+				} else {
+					infoAdicional = `Transferencia - N° Cuenta: ${pago?.nro_cuenta || 'N/A'} - Banco: ${this.getBancoSoloNombre(pago) || 'N/A'} - Referencia: ${pago?.nro_referencia || 'N/A'}`;
+				}
 				break;
 			case 'QR': // QR
 				infoAdicional = `QR - Código: ${pago?.codigo_qr || 'N/A'} - Fecha: ${pago?.fecha_qr || 'N/A'}`;
@@ -320,12 +534,13 @@ export class KardexModalComponent implements OnChanges {
 		}
 
 		// Combinar observaciones originales con información adicional
-		if (obsOriginal && infoAdicional) {
-			return `${obsOriginal} | ${infoAdicional}`;
-		} else if (infoAdicional) {
+		// Regla:
+		// - Si existe infoAdicional (formato bancario), mostrar SOLO ese texto para evitar duplicados.
+		// - Si no hay infoAdicional, mostrar las observaciones originales.
+		if (infoAdicional) {
 			return infoAdicional;
-		} else {
-			return obsOriginal || '';
 		}
+		return obsOriginal || '';
 	}
+
 }

@@ -80,10 +80,19 @@ import { Usuario } from '../../../models/usuario.model';
 				</a>
 
 				<!-- Reportes -->
-				<a *ngIf="hasRole('Administrador')" routerLink="/reportes" routerLinkActive="active" class="sidebar-nav-item">
-					<i class="fas fa-chart-bar sidebar-nav-icon"></i>
-					<span *ngIf="!isCollapsed" class="sidebar-nav-text">Reportes</span>
-				</a>
+				<div class="sidebar-nav-dropdown" [class.open]="isReportesOpen">
+					<a href="#" class="sidebar-nav-item sidebar-nav-dropdown-toggle" (click)="toggleReportes($event)">
+						<i class="fas fa-chart-bar sidebar-nav-icon"></i>
+						<span *ngIf="!isCollapsed" class="sidebar-nav-text">Reportes</span>
+						<i *ngIf="!isCollapsed" class="fas fa-chevron-down sidebar-nav-dropdown-icon" [class.rotate]="isReportesOpen"></i>
+					</a>
+					<div class="sidebar-nav-dropdown-menu" [class.show]="isReportesOpen">
+						<a routerLink="/reportes/libro-diario" routerLinkActive="active" class="sidebar-nav-item sidebar-nav-subitem">
+							<i class="fas fa-book sidebar-nav-icon"></i>
+							<span *ngIf="!isCollapsed" class="sidebar-nav-text">Libro Diario</span>
+						</a>
+					</div>
+				</div>
 
 				<!-- Configuración -->
 				<a *ngIf="hasRole('Administrador')" routerLink="/configuracion" routerLinkActive="active" class="sidebar-nav-item">
@@ -247,6 +256,44 @@ import { Usuario } from '../../../models/usuario.model';
 			white-space: nowrap;
 		}
 
+		/* Dropdown styles */
+		.sidebar-nav-dropdown {
+			position: relative;
+		}
+
+		.sidebar-nav-dropdown-toggle {
+			justify-content: space-between;
+		}
+
+		.sidebar-nav-dropdown-icon {
+			transition: transform 0.3s ease;
+			font-size: 0.75rem;
+			margin-left: auto;
+		}
+
+		.sidebar-nav-dropdown-icon.rotate {
+			transform: rotate(180deg);
+		}
+
+		.sidebar-nav-dropdown-menu {
+			max-height: 0;
+			overflow: hidden;
+			transition: max-height 0.3s ease;
+		}
+
+		.sidebar-nav-dropdown-menu.show {
+			max-height: 200px;
+		}
+
+		.sidebar-nav-subitem {
+			padding-left: 3.5rem !important;
+			background-color: rgba(2, 117, 216, 0.05);
+		}
+
+		.sidebar-nav-subitem:hover, .sidebar-nav-subitem.active {
+			background-color: rgba(2, 117, 216, 0.15);
+		}
+
 		.sidebar-divider {
 			height: 1px;
 			margin: 1rem 0;
@@ -315,6 +362,7 @@ export class SidebarComponent implements OnInit {
 	isCollapsed = false;
 	showOverlay = false;
 	isMobile = false;
+	isReportesOpen = false;
 
 	constructor(private authService: AuthService) {}
 
@@ -374,5 +422,10 @@ export class SidebarComponent implements OnInit {
 
 	hasRole(roleName: string): boolean {
 		return this.authService.hasRole(roleName);
+	}
+
+	toggleReportes(event: Event): void {
+		event.preventDefault();
+		this.isReportesOpen = !this.isReportesOpen;
 	}
 }

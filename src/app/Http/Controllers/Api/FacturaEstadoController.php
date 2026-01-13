@@ -20,7 +20,20 @@ class FacturaEstadoController extends Controller
             $anio = $request->query('anio');
 
             $q = DB::table('factura as f')
-                ->select('f.anio','f.nro_factura','f.fecha_emision','f.estado','f.cuf','f.codigo_recepcion','f.cliente');
+                ->select(
+                    'f.anio',
+                    'f.nro_factura',
+                    'f.fecha_emision',
+                    'f.estado',
+                    'f.cuf',
+                    'f.codigo_recepcion',
+                    // Datos adicionales para libro diario y otras UIs
+                    'f.cliente',
+                    'f.nro_documento_cobro',
+                    'f.cod_ceta',
+                    'f.id_forma_cobro',
+                    'f.monto_total'
+                );
             if ($anio) { $q->where('f.anio', (int)$anio); }
             $q->orderBy('f.anio', 'desc')->orderBy('f.nro_factura', 'desc');
 
@@ -85,6 +98,10 @@ class FacturaEstadoController extends Controller
                     }
                     }
                 } catch (\Throwable $e) {}
+                $nit = isset($r->nro_documento_cobro) ? (string)$r->nro_documento_cobro : '0';
+                $codCeta = isset($r->cod_ceta) ? (string)$r->cod_ceta : '0';
+                $idFormaCobro = isset($r->id_forma_cobro) ? (string)$r->id_forma_cobro : null;
+                $montoTotal = isset($r->monto_total) ? (float)$r->monto_total : 0.0;
                 $data[] = [
                     'anio' => (int) $r->anio,
                     'nro_factura' => (int) $r->nro_factura,
@@ -94,6 +111,11 @@ class FacturaEstadoController extends Controller
                     'codigo_recepcion' => isset($r->codigo_recepcion) ? (string)$r->codigo_recepcion : '',
                     'cliente' => $cliente,
                     'horas_restantes' => $horasRestantes,
+                    // Nuevos campos opcionales (backwards compatible)
+                    'nit' => $nit,
+                    'cod_ceta' => $codCeta,
+                    'id_forma_cobro' => $idFormaCobro,
+                    'monto_total' => $montoTotal,
                 ];
             }
 

@@ -86,11 +86,6 @@
 													<span class="badge rounded-pill bg-primary">{{ ins?.cod_curso || '-' }}</span>
 													<span class="badge rounded-pill" [ngClass]="{'bg-warning text-dark': true}">{{ (ins?.tipo_inscripcion || '-').toUpperCase() }}</span>
 												</div>
-												<!-- Mostrar arrastre si existe -->
-												<div class="d-flex align-items-center gap-2" *ngIf="resumen?.arrastre?.has">
-													<span class="badge rounded-pill bg-info">{{ resumen?.arrastre?.inscripcion?.cod_curso || '-' }}</span>
-													<span class="badge rounded-pill bg-secondary">{{ (resumen?.arrastre?.inscripcion?.tipo_inscripcion || 'ARRASTRE').toUpperCase() }}</span>
-												</div>
 											</div>
 										</ng-container>
 										<ng-template #noInscripciones>
