@@ -9,3 +9,5 @@ sga_refs_socket/
 /vistas_old
 
 frontend/package-lock.json
+src/config/app.php
+frontend/src/environments/environment.ts
