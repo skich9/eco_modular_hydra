@@ -2032,37 +2032,24 @@ export class CobrosComponent implements OnInit {
       this.showAlert('Solo puede eliminar la última fila del detalle', 'warning');
       return;
     }
-    // Antes de eliminar, si la fila es una Mensualidad parcial, reintegrar el monto al saldo frontal
+    // Antes de eliminar, si la fila es una Mensualidad parcial, limpiar el saldo frontal
     try {
       const ctrl = this.pagos.at(i) as FormGroup;
       const detalle = (ctrl.get('detalle')?.value || '').toString();
       const isMensualidad = /^\s*Mensualidad\s*-/i.test(detalle);
       const esParcial = !!ctrl.get('es_parcial')?.value;
       const numeroCuota = Number(ctrl.get('numero_cuota')?.value || 0);
-      const pu = Number(ctrl.get('pu_mensualidad')?.value || 0);
-      if (isMensualidad) {
-        if (esParcial && numeroCuota) {
-          const monto = this.calcRowSubtotal(i);
-          const prevSaldo = Number(this.frontSaldoByCuota[numeroCuota] || 0);
-          const desc = Number(ctrl.get('descuento')?.value || 0) || 0;
-          const base = pu > 0 ? pu : Number(this.resumen?.totales?.pu_mensual || this.mensualidadPU || 0);
-          const netoBase = Math.max(0, base - (isNaN(desc) ? 0 : desc));
-          let nuevoSaldo = (isFinite(prevSaldo) ? prevSaldo : 0) + (isFinite(monto) ? monto : 0);
-          // Reintegrar respetando el neto (PU - descuento) de esa línea parcial
-          if (netoBase > 0 && nuevoSaldo > netoBase) nuevoSaldo = netoBase;
-          this.frontSaldoByCuota[numeroCuota] = nuevoSaldo;
-          // Fijar foco en la misma cuota nuevamente
-          this.lockedMensualidadCuota = numeroCuota;
-          this.startCuotaOverrideValue = numeroCuota;
-          // Actualizar PU sugerido para el próximo modal
-          if (nuevoSaldo > 0) {
-            this.mensualidadPU = nuevoSaldo;
-          } else {
-            const puSem = Number(this.resumen?.totales?.pu_mensual || 0);
-            const puNext = Number(this.resumen?.mensualidad_next?.next_cuota?.monto ?? 0);
-            this.mensualidadPU = puSem > 0 ? puSem : puNext;
-          }
-        }
+
+      if (isMensualidad && esParcial && numeroCuota) {
+        // Limpiar completamente el saldo frontal de esta cuota
+        delete this.frontSaldoByCuota[numeroCuota];
+        // Desbloquear la cuota
+        this.lockedMensualidadCuota = null;
+        this.startCuotaOverrideValue = null;
+        // Restaurar PU sugerido al valor del backend
+        const puSem = Number(this.resumen?.totales?.pu_mensual || 0);
+        const puNext = Number(this.resumen?.mensualidad_next?.next_cuota?.monto ?? 0);
+        this.mensualidadPU = puSem > 0 ? puSem : puNext;
       }
     } catch {}
     this.pagos.removeAt(i);
@@ -3459,51 +3446,74 @@ export class CobrosComponent implements OnInit {
 
   // Calcular descuento prorrateado para una fila específica (4 decimales)
   calcularDescuentoProrrateadoParaFila(i: number): number {
-    try {
-      const g = this.pagos.at(i) as FormGroup;
-      if (!g) return 0;
+    const g = this.pagos.at(i) as FormGroup;
+    if (!g) {
+      throw new Error(`No se encontró el FormGroup en el índice ${i}`);
+    }
 
-      const esParcial = !!g.get('es_parcial')?.value;
-      if (!esParcial) return 0;
-
-      const montoParcial = Number(g.get('monto')?.value || 0);
-      if (montoParcial <= 0) return 0;
-
-      const numeroCuota = Number(g.get('numero_cuota')?.value || 0) || null;
-      const idAsign = Number(g.get('id_asignacion_costo')?.value || 0) || null;
-
-      // Buscar la cuota en el resumen
-      const asignList: any[] = Array.isArray(this.resumen?.asignaciones)
-        ? this.resumen!.asignaciones
-        : (Array.isArray(this.resumen?.asignacion_costos?.items) ? this.resumen!.asignacion_costos.items : []);
-
-      let cuota: any = null;
-      if (numeroCuota) {
-        cuota = asignList.find((a: any) => Number(a?.numero_cuota || a?.numero || 0) === Number(numeroCuota));
-      } else if (idAsign) {
-        cuota = asignList.find((a: any) => Number(a?.id_asignacion_costo || 0) === Number(idAsign));
-      }
-
-      if (!cuota) return 0;
-
-      const descuentoPago = Number(cuota?.descuento || 0);
-      if (descuentoPago <= 0) return 0;
-
-      const deudaPagada = Number(cuota?.monto_pagado || 0);
-      const totalDebePagar = Number(cuota?.total_debe_pagar || 0);
-      const descuentoAplicado = Number(cuota?.descuento_aplicado || 0);
-
-      if (totalDebePagar <= 0) return 0;
-
-      // Fórmula: descuento_pago * ((monto_pago_parcial + deuda_pagada) / total_debe_pagar) - descuento_aplicado
-      const descuentoProrrateado = (descuentoPago * ((montoParcial + deudaPagada) / totalDebePagar)) - descuentoAplicado;
-
-      // Redondear a 4 decimales
-      return Math.round(Math.max(0, descuentoProrrateado) * 10000) / 10000;
-    } catch (error) {
-      console.error('[Cobros] Error al calcular descuento prorrateado para fila:', error);
+    const esParcial = !!g.get('es_parcial')?.value;
+    if (!esParcial) {
       return 0;
     }
+
+    const montoParcial = Number(g.get('monto')?.value || 0);
+    if (montoParcial <= 0) {
+      return 0;
+    }
+
+    const numeroCuota = Number(g.get('numero_cuota')?.value || 0) || null;
+    const idAsign = Number(g.get('id_asignacion_costo')?.value || 0) || null;
+
+    // Buscar la cuota en el resumen
+    const asignList: any[] = Array.isArray(this.resumen?.asignaciones)
+      ? this.resumen!.asignaciones
+      : (Array.isArray(this.resumen?.asignacion_costos?.items)
+          ? this.resumen!.asignacion_costos.items
+          : []);
+
+    if (asignList.length === 0) {
+      throw new Error('No hay asignaciones disponibles en el resumen');
+    }
+
+    let cuota: any = null;
+    if (numeroCuota) {
+      cuota = asignList.find(
+        (a: any) => Number(a?.numero_cuota || a?.numero || 0) === Number(numeroCuota)
+      );
+    } else if (idAsign) {
+      cuota = asignList.find(
+        (a: any) => Number(a?.id_asignacion_costo || 0) === Number(idAsign)
+      );
+    }
+
+    if (!cuota) {
+      throw new Error(
+        `No se encontró la cuota ${numeroCuota || idAsign} en el resumen`
+      );
+    }
+
+    const descuentoPago = Number(cuota?.descuento || 0);
+    if (descuentoPago <= 0) {
+      return 0;
+    }
+
+    const deudaPagada = Number(cuota?.monto_pagado || 0);
+    const totalDebePagar = Number(cuota?.total_debe_pagar || 0);
+    const descuentoAplicado = Number(cuota?.descuento_aplicado || 0);
+
+    if (totalDebePagar <= 0) {
+      throw new Error(
+        `Total a pagar inválido para cuota ${numeroCuota}: ${totalDebePagar}`
+      );
+    }
+
+    // Fórmula: descuento_pago * (monto_pago_parcial / total_debe_pagar)
+    // Solo calculamos el descuento proporcional al pago actual, sin restar descuento_aplicado
+    const proporcion = montoParcial / totalDebePagar;
+    const descuentoProrrateado = descuentoPago * proporcion;
+
+    // Redondear a 4 decimales
+    return Math.round(Math.max(0, descuentoProrrateado) * 10000) / 10000;
   }
 
   // Descuento mostrado en la tabla: para pagos parciales, mostrar descuento_prorrateado
@@ -3511,7 +3521,10 @@ export class CobrosComponent implements OnInit {
   getRowDisplayDescuento(i: number): number {
     try {
       const g = this.pagos.at(i) as FormGroup;
-      if (!g) return 0;
+      if (!g) {
+        return 0;
+      }
+
       const esParcial = !!g.get('es_parcial')?.value;
       if (!esParcial) {
         return Number(g.get('descuento')?.value || 0);
@@ -3519,8 +3532,9 @@ export class CobrosComponent implements OnInit {
 
       // Para pagos parciales: retornar descuento prorrateado
       return this.calcularDescuentoProrrateadoParaFila(i);
-    } catch {
-      return 0;
+    } catch (error) {
+      console.error('[Cobros] Error al obtener descuento para fila:', i, error);
+      throw error;
     }
   }
 

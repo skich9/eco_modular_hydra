@@ -80,7 +80,7 @@ export class MensualidadModalComponent implements OnInit, OnChanges {
     });
   }
 
-  // Suma del BRUTO - PAGADO de las próximas k cuotas restantes (según asignacion_costos/asignaciones)
+  // Suma del MONTO BRUTO de las próximas k cuotas (para mostrar en Precio Unitario)
   private sumBrutoMenosPagadoNextK(k: number): number {
     try {
       const list = this.getOrderedCuotasRestantes();
@@ -90,8 +90,8 @@ export class MensualidadModalComponent implements OnInit, OnChanges {
       for (const it of list) {
         const hit = (src || []).find(a => Number(a?.numero_cuota || 0) === Number(it.numero));
         const bruto = this.toNumberLoose(hit?.monto);
-        const pagado = this.toNumberLoose(hit?.monto_pagado);
-        acc += Math.max(0, bruto - pagado);
+        // Precio Unitario muestra el monto BRUTO de la cuota (sin restar pagado)
+        acc += Math.max(0, bruto);
         c++; if (c >= k) break;
       }
       return acc;
@@ -109,6 +109,27 @@ export class MensualidadModalComponent implements OnInit, OnChanges {
         const hit = (src || []).find(a => Number(a?.numero_cuota || 0) === Number(it.numero));
         const d = this.toNumberLoose(hit?.descuento);
         acc += Math.max(0, d);
+        c++; if (c >= k) break;
+      }
+      return acc;
+    } catch { return 0; }
+  }
+
+  // Calcula la DEUDA REAL de las próximas k cuotas: monto - (monto_pagado + descuento)
+  private sumDeudaRealNextK(k: number): number {
+    try {
+      const list = this.getOrderedCuotasRestantes();
+      if (!list || !list.length || k <= 0) return 0;
+      const src: any[] = ((this.resumen?.asignacion_costos?.items || this.resumen?.asignaciones || []) as any[]);
+      let acc = 0; let c = 0;
+      for (const it of list) {
+        const hit = (src || []).find(a => Number(a?.numero_cuota || 0) === Number(it.numero));
+        const monto = this.toNumberLoose(hit?.monto);
+        const montoPagado = this.toNumberLoose(hit?.monto_pagado);
+        const descuento = this.toNumberLoose(hit?.descuento);
+        // Deuda real = monto - (monto_pagado + descuento)
+        const deudaReal = Math.max(0, monto - (montoPagado + descuento));
+        acc += deudaReal;
         c++; if (c >= k) break;
       }
       return acc;
@@ -236,7 +257,7 @@ export class MensualidadModalComponent implements OnInit, OnChanges {
     } catch { return Number(this.pu || 0); }
   }
 
-  // Máximo permitido para pago parcial: monto - descuento - lo que ya está en tabla detalle
+  // Máximo permitido para pago parcial: monto - descuento - monto_pagado - lo que ya está en tabla detalle
   getParcialMax(): number {
     try {
       const start = this.getStartCuotaFromResumen();
@@ -249,19 +270,20 @@ export class MensualidadModalComponent implements OnInit, OnChanges {
 
       const monto = Number(cuota?.monto || 0);
       const descuento = Number(cuota?.descuento || 0);
+      const montoPagado = Number(cuota?.monto_pagado || 0);
 
-      // Calcular neto base: monto - descuento
-      let netoBase = Math.max(0, monto - descuento);
+      // Calcular deuda real: monto - descuento - monto_pagado
+      let deudaReal = Math.max(0, monto - descuento - montoPagado);
 
       // Si hay saldo frontal (lo que ya está en la tabla detalle), restarlo del máximo
       if (this.frontSaldos && Object.prototype.hasOwnProperty.call(this.frontSaldos, start)) {
         const saldoFrontal = Number(this.frontSaldos[start] || 0);
         if (isFinite(saldoFrontal) && saldoFrontal > 0) {
-          netoBase = saldoFrontal;
+          deudaReal = saldoFrontal;
         }
       }
 
-      return (isNaN(netoBase) || netoBase <= 0) ? Number.MAX_SAFE_INTEGER : netoBase;
+      return (isNaN(deudaReal) || deudaReal <= 0) ? Number.MAX_SAFE_INTEGER : deudaReal;
     } catch {
       return Number.MAX_SAFE_INTEGER;
     }
@@ -347,9 +369,21 @@ export class MensualidadModalComponent implements OnInit, OnChanges {
     this.recalcTotal();
 
     // Recalcular total al cambiar cantidad, descuento o monto_manual
-    this.form.get('cantidad')?.valueChanges.subscribe(() => { this.recalcTotal(); this.updateDescuentoDisplay(); });
+    this.form.get('cantidad')?.valueChanges.subscribe(() => {
+      this.recalcTotal();
+      this.updateDescuentoDisplay();
+    });
     this.form.get('monto_manual')?.valueChanges.subscribe(() => this.recalcTotal());
-    this.form.get('monto_parcial')?.valueChanges.subscribe(() => this.recalcTotal());
+
+    // Recalcular total al cambiar monto parcial (sin modificar el campo descuento)
+    this.form.get('monto_parcial')?.valueChanges.subscribe((value) => {
+      // Redondear automáticamente a entero si se ingresa un decimal
+      if (value && !Number.isInteger(Number(value))) {
+        const rounded = Math.round(Number(value));
+        this.form.get('monto_parcial')?.setValue(rounded, { emitEvent: false });
+      }
+      this.recalcTotal();
+    });
     // Cambios de método de pago para activar validadores de TARJETA
     this.form.get('metodo_pago')?.valueChanges.subscribe(() => this.updateTarjetaValidators());
     this.updateTarjetaValidators();
@@ -374,11 +408,11 @@ export class MensualidadModalComponent implements OnInit, OnChanges {
         this.form.get('cantidad')?.setValue(1, { emitEvent: false });
         this.form.get('cantidad')?.disable({ emitEvent: false });
         this.form.get('monto_parcial')?.enable({ emitEvent: false });
-        this.form.get('monto_parcial')?.setValidators([Validators.required, Validators.min(0.01), Validators.max(Number(this.getParcialMax() || Number.MAX_SAFE_INTEGER))]);
-        // Prefijar el monto parcial con el neto de la cuota (PU - descuento)
-        this.form.get('monto_parcial')?.setValue(this.getParcialMax() || 0, { emitEvent: false });
-        // Inicializar descuento en 0 para evitar parpadeo (se llenará automáticamente con el prorrateado)
-        this.form.get('descuento')?.setValue(0, { emitEvent: false });
+        const maxParcial = Math.floor(this.getParcialMax() || 0);
+        this.form.get('monto_parcial')?.setValidators([Validators.required, Validators.min(1), Validators.max(Number(maxParcial || Number.MAX_SAFE_INTEGER))]);
+        // Dejar el campo vacío para que el usuario ingrese el monto que desea pagar
+        this.form.get('monto_parcial')?.setValue(0, { emitEvent: false });
+        // NO modificar el descuento - debe mantener su valor original
       } else {
         this.form.get('cantidad')?.enable({ emitEvent: false });
         this.form.get('monto_parcial')?.setValue(0, { emitEvent: false });
@@ -465,8 +499,9 @@ export class MensualidadModalComponent implements OnInit, OnChanges {
       this.recalcTotal();
       // Si el parcial está activo, actualizar tope y valor sugerido del monto parcial con el PU efectivo
       if (this.tipo === 'mensualidad' && this.form.get('pago_parcial')?.value) {
-        this.form.get('monto_parcial')?.setValidators([Validators.required, Validators.min(0.01), Validators.max(Number(this.getParcialMax() || Number.MAX_SAFE_INTEGER))]);
-        this.form.get('monto_parcial')?.setValue(this.getParcialMax() || 0, { emitEvent: false });
+        const maxParcial = Math.floor(this.getParcialMax() || 0);
+        this.form.get('monto_parcial')?.setValidators([Validators.required, Validators.min(1), Validators.max(Number(maxParcial || Number.MAX_SAFE_INTEGER))]);
+        this.form.get('monto_parcial')?.setValue(0, { emitEvent: false });
         this.form.get('monto_parcial')?.updateValueAndValidity({ emitEvent: false });
       }
     }
@@ -490,9 +525,10 @@ export class MensualidadModalComponent implements OnInit, OnChanges {
         this.form.get('cantidad')?.setValue(1, { emitEvent: false });
         this.form.get('cantidad')?.disable({ emitEvent: false });
         this.form.get('monto_parcial')?.enable({ emitEvent: false });
-        this.form.get('monto_parcial')?.setValidators([Validators.required, Validators.min(0.01), Validators.max(Number(this.getParcialMax() || Number.MAX_SAFE_INTEGER))]);
-        // Prefijar con el neto de la cuota (PU - descuento)
-        this.form.get('monto_parcial')?.setValue(this.getParcialMax() || 0, { emitEvent: false });
+        const maxParcial = Math.floor(this.getParcialMax() || 0);
+        this.form.get('monto_parcial')?.setValidators([Validators.required, Validators.min(1), Validators.max(Number(maxParcial || Number.MAX_SAFE_INTEGER))]);
+        // Dejar el campo vacío para que el usuario ingrese el monto
+        this.form.get('monto_parcial')?.setValue(0, { emitEvent: false });
       } else {
         this.form.get('cantidad')?.enable({ emitEvent: false });
         this.form.get('monto_parcial')?.setValue(0, { emitEvent: false });
@@ -508,8 +544,9 @@ export class MensualidadModalComponent implements OnInit, OnChanges {
       this.form.get('monto_manual')?.setValue(0, { emitEvent: false });
       if (this.form.get('pago_parcial')?.value) {
         this.form.get('monto_parcial')?.enable({ emitEvent: false });
-        this.form.get('monto_parcial')?.setValidators([Validators.required, Validators.min(0.01), Validators.max(this.puDisplay || Number.MAX_SAFE_INTEGER)]);
-        this.form.get('monto_parcial')?.setValue(this.puDisplay || 0, { emitEvent: false });
+        const maxParcial = Math.floor(this.puDisplay || 0);
+        this.form.get('monto_parcial')?.setValidators([Validators.required, Validators.min(1), Validators.max(maxParcial || Number.MAX_SAFE_INTEGER)]);
+        this.form.get('monto_parcial')?.setValue(0, { emitEvent: false });
       } else {
         this.form.get('monto_parcial')?.setValue(0, { emitEvent: false });
         this.form.get('monto_parcial')?.clearValidators();
@@ -547,28 +584,25 @@ export class MensualidadModalComponent implements OnInit, OnChanges {
         total = Number(this.form.get('monto_parcial')?.value || 0);
       } else {
         const cant = Math.max(0, Number(this.form.get('cantidad')?.value || 0));
-        if (cant === 1) {
-          const pu = this.puDisplay;
-          const desc = Number(this.form.get('descuento')?.value || 0);
-          total = Math.max(0, Number(pu || 0) - desc);
-        } else {
-          const sum = this.sumNextKCuotasRestantes(cant);
-          if (sum > 0) {
-            total = sum;
-            const totalCuotasPendientes = this.pendientes || 0;
-            if (cant === totalCuotasPendientes && this.validarCuotasSinDescuentoPrevio(cant)) {
-              const descuentoAuto = this.calcularDescuentoSemestreCompleto(cant);
-              if (descuentoAuto > 0) {
-                total = Math.max(0, total - descuentoAuto);
-              }
+        // Usar deuda real: monto - (monto_pagado + descuento)
+        const deudaReal = this.sumDeudaRealNextK(cant);
+        if (deudaReal > 0) {
+          total = deudaReal;
+          const totalCuotasPendientes = this.pendientes || 0;
+          // Descuento automático de semestre completo
+          if (cant === totalCuotasPendientes && this.validarCuotasSinDescuentoPrevio(cant)) {
+            const descuentoAuto = this.calcularDescuentoSemestreCompleto(cant);
+            if (descuentoAuto > 0) {
+              total = Math.max(0, total - descuentoAuto);
             }
-          } else {
-            const puNext = Number(this.pu || 0);
-            const avg = this.avgAsignMonto();
-            const puTotales = Number(this.resumen?.totales?.pu_mensual || 0);
-            const puSemestral = (avg !== null && avg !== undefined) ? avg : (puTotales || puNext);
-            if (cant <= 0) total = 0; else if (cant === 1) total = puNext; else total = puNext + Math.max(0, cant - 1) * (puSemestral || puNext);
           }
+        } else {
+          // Fallback si no hay datos de asignaciones
+          const puNext = Number(this.pu || 0);
+          const avg = this.avgAsignMonto();
+          const puTotales = Number(this.resumen?.totales?.pu_mensual || 0);
+          const puSemestral = (avg !== null && avg !== undefined) ? avg : (puTotales || puNext);
+          if (cant <= 0) total = 0; else if (cant === 1) total = puNext; else total = puNext + Math.max(0, cant - 1) * (puSemestral || puNext);
         }
       }
     } else if (this.tipo === 'arrastre') {
@@ -707,6 +741,7 @@ export class MensualidadModalComponent implements OnInit, OnChanges {
   get facturaDeshabilitada(): boolean {
     if (!this.resumen) return false;
 
+    // Solo bloquear Factura si hay descuentos INSTITUCIONALES (d_i: true)
     const descuentosAplicados = this.resumen?.descuentos_aplicados || [];
     const tieneDescuentoConDI = Array.isArray(descuentosAplicados) && descuentosAplicados.some((desc: any) => {
       const definicion = desc?.definicion || desc?.def_descuento_beca || {};
@@ -714,19 +749,7 @@ export class MensualidadModalComponent implements OnInit, OnChanges {
       return di === 1 || di === true || di === '1';
     });
 
-    let cuotaConDescuento = false;
-    try {
-      const asignaciones = this.resumen?.asignaciones || [];
-      const start = this.getStartCuotaFromResumen();
-      const cantidad = Math.max(1, Number(this.form.get('cantidad')?.value || 1));
-      for (let i = 0; i < cantidad; i++) {
-        const nro = start + i;
-        const cuota = asignaciones.find((a: any) => Number(a?.numero_cuota || 0) === Number(nro));
-        const descNum = Number(cuota?.descuento || 0);
-        if (descNum > 0) { cuotaConDescuento = true; break; }
-      }
-    } catch {}
-
+    // Verificar si el descuento de semestre completo es institucional
     const cantSel = Math.max(1, Number(this.form.get('cantidad')?.value || 1));
     const totalCuotasPendientes = this.pendientes || 0;
     let descuentoSemestreEsInstitucional = false;
@@ -752,7 +775,9 @@ export class MensualidadModalComponent implements OnInit, OnChanges {
       }
     }
 
-    const disabled = !!tieneDescuentoConDI || !!cuotaConDescuento || descuentoSemestreEsInstitucional;
+    // SOLO bloquear si hay descuentos institucionales (d_i: true)
+    // Las becas académicas y descuentos regulares SÍ permiten Factura
+    const disabled = !!tieneDescuentoConDI || descuentoSemestreEsInstitucional;
 
     if (disabled) {
       const comprobanteActual = this.form.get('comprobante')?.value;
@@ -768,66 +793,122 @@ export class MensualidadModalComponent implements OnInit, OnChanges {
 
   // Calcular descuento prorrateado según la fórmula especificada (4 decimales internos)
   calcularDescuentoProrrateado(montoPagoParcial: number): number {
-    try {
-      if (!this.resumen || !montoPagoParcial || montoPagoParcial <= 0) return 0;
+    console.log('[MensualidadModal] calcularDescuentoProrrateado llamado:', {
+      montoPagoParcial,
+      tieneResumen: !!this.resumen
+    });
 
-      const cantidad = Number(this.form.get('cantidad')?.value || 1);
-      const asignaciones = this.resumen?.asignaciones || [];
-      const startCuota = this.getStartCuotaFromResumen();
-
-      let descuentoTotal = 0;
-
-      // Calcular descuento prorrateado para cada cuota que se va a pagar
-      for (let i = 0; i < cantidad; i++) {
-        const numeroCuota = startCuota + i;
-        const cuota = asignaciones.find((a: any) => Number(a?.numero_cuota) === numeroCuota);
-
-        if (!cuota) continue;
-
-        const descuentoPago = Number(cuota?.descuento || 0);
-        if (descuentoPago <= 0) continue;
-
-        const deudaPagada = Number(cuota?.monto_pagado || 0);
-        const totalDebePagar = Number(cuota?.total_debe_pagar || 0);
-        const descuentoAplicado = Number(cuota?.descuento_aplicado || 0);
-
-        if (totalDebePagar <= 0) continue;
-
-        // Fórmula: descuento_pago * ((monto_pago_parcial + deuda_pagada) / total_debe_pagar) - descuento_aplicado
-        // Usar 4 decimales en cálculos internos
-        const descuentoProrrateado = (descuentoPago * ((montoPagoParcial + deudaPagada) / totalDebePagar)) - descuentoAplicado;
-
-        descuentoTotal += Math.max(0, descuentoProrrateado);
-      }
-
-      // Redondear a 4 decimales
-      return Math.round(descuentoTotal * 10000) / 10000;
-    } catch (error) {
-      console.error('[MensualidadModal] Error al calcular descuento prorrateado:', error);
+    if (!this.resumen || !montoPagoParcial || montoPagoParcial <= 0) {
+      console.log('[MensualidadModal] Retornando 0 - condiciones iniciales no cumplidas');
       return 0;
     }
+
+    const cantidad = Number(this.form.get('cantidad')?.value || 1);
+    const asignaciones = this.resumen?.asignaciones || [];
+    const startCuota = this.getStartCuotaFromResumen();
+
+    console.log('[MensualidadModal] Datos para cálculo:', {
+      cantidad,
+      startCuota,
+      totalAsignaciones: asignaciones.length,
+      primerasCuotas: asignaciones.slice(0, 3).map((a: any) => ({
+        numero_cuota: a?.numero_cuota,
+        descuento: a?.descuento,
+        total_debe_pagar: a?.total_debe_pagar,
+        descuento_aplicado: a?.descuento_aplicado,
+        monto_pagado: a?.monto_pagado
+      }))
+    });
+
+    if (!asignaciones || asignaciones.length === 0) {
+      throw new Error('No hay asignaciones disponibles para calcular descuento prorrateado');
+    }
+
+    let descuentoTotal = 0;
+
+    // Calcular descuento prorrateado para cada cuota que se va a pagar
+    for (let i = 0; i < cantidad; i++) {
+      const numeroCuota = startCuota + i;
+      const cuota = asignaciones.find(
+        (a: any) => Number(a?.numero_cuota) === numeroCuota
+      );
+
+      if (!cuota) continue;
+
+      const descuentoPago = Number(cuota?.descuento || 0);
+      console.log('[MensualidadModal] Cuota encontrada:', {
+        numeroCuota,
+        descuentoPago,
+        monto_pagado: cuota?.monto_pagado,
+        total_debe_pagar: cuota?.total_debe_pagar,
+        descuento_aplicado: cuota?.descuento_aplicado
+      });
+
+      if (descuentoPago <= 0) {
+        console.log('[MensualidadModal] Cuota sin descuento, continuando...');
+        continue;
+      }
+
+      const deudaPagada = Number(cuota?.monto_pagado || 0);
+      const totalDebePagar = Number(cuota?.total_debe_pagar || 0);
+      const descuentoAplicado = Number(cuota?.descuento_aplicado || 0);
+
+      if (totalDebePagar <= 0) {
+        throw new Error(
+          `Total a pagar inválido para cuota ${numeroCuota}: ${totalDebePagar}`
+        );
+      }
+
+      // Fórmula: descuento_pago * (monto_pago_parcial / total_debe_pagar)
+      // Solo calculamos el descuento proporcional al pago actual, sin restar descuento_aplicado
+      const proporcion = montoPagoParcial / totalDebePagar;
+      const descuentoProrrateado = descuentoPago * proporcion;
+
+      console.log('[MensualidadModal] Cálculo de descuento prorrateado:', {
+        montoPagoParcial,
+        totalDebePagar,
+        descuentoPago,
+        proporcion,
+        descuentoProrrateado,
+        descuentoFinal: Math.max(0, descuentoProrrateado)
+      });
+
+      descuentoTotal += Math.max(0, descuentoProrrateado);
+    }
+
+    console.log('[MensualidadModal] Descuento total calculado:', descuentoTotal);
+
+    // Redondear a 4 decimales
+    return Math.round(descuentoTotal * 10000) / 10000;
   }
+
+  // ELIMINADO: Ya no se actualiza automáticamente el campo descuento
+  // El campo descuento se mantiene sin cambios según indicaciones del dev senior
 
   // Getter para obtener el descuento prorrateado basado en el monto actual
   get descuentoProrrateado(): number {
     const montoParcial = Number(this.form.get('monto_parcial')?.value || 0);
     const pagoParcial = this.form.get('pago_parcial')?.value;
 
-    if (!pagoParcial) return 0;
-    if (montoParcial <= 0) return 0;
+    console.log('[MensualidadModal] Getter descuentoProrrateado llamado:', {
+      montoParcial,
+      pagoParcial
+    });
 
-    const descuento = this.calcularDescuentoProrrateado(montoParcial);
-    const descuentoRedondeado = Math.round(descuento * 100) / 100;
-
-    if (descuentoRedondeado > 0) {
-      const currentDescuento = Number(this.form.get('descuento')?.value || 0);
-      if (Math.abs(currentDescuento - descuentoRedondeado) > 0.01) {
-        setTimeout(() => {
-          this.form.patchValue({ descuento: descuentoRedondeado }, { emitEvent: false });
-        }, 0);
-      }
+    if (!pagoParcial || montoParcial <= 0) {
+      console.log('[MensualidadModal] Getter retorna 0 - condiciones no cumplidas');
+      return 0;
     }
-    return descuentoRedondeado;
+
+    try {
+      const descuento = this.calcularDescuentoProrrateado(montoParcial);
+      const resultado = Math.round(descuento * 100) / 100;
+      console.log('[MensualidadModal] Getter descuentoProrrateado resultado:', resultado);
+      return resultado;
+    } catch (error) {
+      console.error('[MensualidadModal] Error en getter descuentoProrrateado:', error);
+      return 0;
+    }
   }
 
   private toNumberLoose(v: any): number {
@@ -1095,6 +1176,8 @@ export class MensualidadModalComponent implements OnInit, OnChanges {
         const id_cuota_template = first ? (first.id_cuota_template ?? null) : null;
         const id_asignacion_costo = first ? (first.id_asignacion_costo ?? null) : null;
         const monto = Number(this.form.get('monto_parcial')?.value || 0);
+        // Calcular el descuento prorrateado para este pago parcial
+        const descuentoProrrateado = this.calcularDescuentoProrrateado(monto);
         pagos.push({
           id_forma_cobro: this.form.get('metodo_pago')?.value || null,
           nro_cobro: this.baseNro || 1,
@@ -1115,8 +1198,8 @@ export class MensualidadModalComponent implements OnInit, OnChanges {
           nro_deposito: this.form.get('nro_deposito')?.value || null,
           tarjeta_first4: this.form.get('tarjeta_first4')?.value || null,
           tarjeta_last4: this.form.get('tarjeta_last4')?.value || null,
-          // opcionales: usar el descuento individual de esa cuota
-          descuento: this.getDescuentoForCuota(Number(numero_cuota || 0)) || null,
+          // Enviar el descuento prorrateado calculado
+          descuento: descuentoProrrateado || null,
           nro_factura: this.form.get('comprobante')?.value === 'FACTURA' ? (this.form.get('nro_factura')?.value || null) : null,
           nro_recibo: this.form.get('comprobante')?.value === 'RECIBO' ? (this.form.get('nro_recibo')?.value || null) : null,
           // targeting de cuota

@@ -503,9 +503,22 @@ class CobroController extends Controller
 			// Colección de asignaciones de costos (todas las cuotas) para la inscripción principal
 			$asignacionesPrimarias = collect();
 			if ($primaryInscripcion) {
+				\Log::info('[CobroController] Buscando asignaciones:', [
+					'cod_ceta' => $codCeta,
+					'cod_pensum' => $codPensumToUse,
+					'cod_inscrip' => $primaryInscripcion->cod_inscrip
+				]);
+
 				$queryAsign = AsignacionCostos::where('cod_pensum', $codPensumToUse)
 					->where('cod_inscrip', $primaryInscripcion->cod_inscrip);
 				$asignacionesPrimarias = $queryAsign->orderBy('numero_cuota')->get();
+
+				\Log::info('[CobroController] Asignaciones encontradas:', [
+					'count' => $asignacionesPrimarias->count(),
+					'primeras_3' => $asignacionesPrimarias->take(3)->toArray()
+				]);
+			} else {
+				\Log::warning('[CobroController] No hay primaryInscripcion para cod_ceta:', ['cod_ceta' => $codCeta]);
 			}
 
 			// Mapear descuentos por asignación (id_asignacion_costo -> monto_descuento)
@@ -1077,16 +1090,39 @@ class CobroController extends Controller
 						$monto = (float) ($a->monto ?? 0);
 						$montoPagado = (float) ($a->monto_pagado ?? 0);
 
-						// Calcular descuento_aplicado: sumatoria de descuentos en cobros anteriores con este id_asignacion_costo
+						// Calcular descuento_aplicado: sumatoria de descuentos en cobros anteriores VÁLIDOS
 						$descuentoAplicado = 0.0;
 						try {
 							if ($idAsignacion > 0) {
-								$descuentoAplicado = (float) DB::table('cobro')
+								$cobrosAnteriores = DB::table('cobro')
 									->where('id_asignacion_costo', $idAsignacion)
-									->sum(DB::raw('CAST(descuento AS DECIMAL(10,4))'));
+									->whereNotNull('fecha_pago')
+									->where('monto', '>', 0)
+									->select('id_cobro', 'descuento', 'monto', 'fecha_pago')
+									->get();
+
+								\Log::info('[CobroController] Cobros anteriores para asignacion:', [
+									'id_asignacion_costo' => $idAsignacion,
+									'numero_cuota' => $a->numero_cuota ?? null,
+									'total_cobros' => $cobrosAnteriores->count(),
+									'suma_descuentos' => $cobrosAnteriores->sum('descuento'),
+									'cobros' => $cobrosAnteriores->map(function($c) {
+										return [
+											'id_cobro' => $c->id_cobro,
+											'descuento' => $c->descuento,
+											'monto' => $c->monto,
+											'fecha_pago' => $c->fecha_pago
+										];
+									})->toArray()
+								]);
+
+								$descuentoAplicado = (float) $cobrosAnteriores->sum('descuento');
 							}
 						} catch (\Throwable $e) {
-							// Si falla, usar 0
+							\Log::error('[CobroController] Error calculando descuento_aplicado:', [
+								'error' => $e->getMessage(),
+								'id_asignacion_costo' => $idAsignacion
+							]);
 						}
 
 						// Calcular total_debe_pagar: monto - descuento_pago (4 decimales)
