@@ -36,21 +36,21 @@ class CobroController extends Controller
 		try {
 			// Cargar cobros con relaciones básicas y aplicar filtros opcionales
 			$query = Cobro::with(['usuario', 'cuota', 'formaCobro', 'cuentaBancaria', 'itemCobro', 'detalleRegular', 'detalleMulta', 'recibo', 'factura']);
-			
+
 			// Filtro por id_usuario (usado por el libro diario)
 			$idUsuario = $request->query('id_usuario');
 			if ($idUsuario !== null && $idUsuario !== '') {
 				$query->where('id_usuario', (int) $idUsuario);
 			}
-			
+
 			// Filtro por fecha (Y-m-d) sobre fecha_cobro
 			$fecha = $request->query('fecha');
 			if ($fecha) {
 				$query->whereDate('fecha_cobro', $fecha);
 			}
-			
+
 			$cobros = $query->get();
-			
+
 			// Mapas de nota_bancaria por nro_recibo y nro_factura
 			$nbByRecibo = [];
 			$nbByFactura = [];
@@ -100,11 +100,11 @@ class CobroController extends Controller
 				$nbByRecibo = [];
 				$nbByFactura = [];
 			}
-			
+
 			// Enriquecer cada cobro con datos bancarios y de cliente (si existen) y aplanar a array
 			$cobrosEnriquecidos = $cobros->map(function($cobro) use ($nbByRecibo, $nbByFactura) {
 				$cobroArray = $cobro->toArray();
-				
+
 				// Agregar datos de razón social / NIT desde recibo o factura
 				// Igual que en resumen(): prioridad recibo y luego factura
 				try {
@@ -113,7 +113,7 @@ class CobroController extends Controller
 				} catch (\Throwable $e) {
 					// Si algo falla, dejar los campos como vienen del modelo
 				}
-				
+
 				// Enlazar nota_bancaria por nro_recibo o nro_factura
 				$nroReciboKey = (string)($cobro->nro_recibo ?? '');
 				$nroFacturaKey = (string)($cobro->nro_factura ?? '');
@@ -132,7 +132,7 @@ class CobroController extends Controller
 				}
 				return $cobroArray;
 			});
-			
+
 			return response()->json([
 				'success' => true,
 				'data' => $cobrosEnriquecidos
@@ -396,7 +396,7 @@ class CobroController extends Controller
 					$join->on('dp.cod_ceta', '=', 'estudiantes.cod_ceta');
 				})
 				->find($codCeta);
-			
+
 			// Debug para verificar que se obtenga el estudiante correcto
 			Log::info('Estudiante obtenido:', [
 				'cod_ceta_buscado' => $codCeta,
@@ -405,7 +405,7 @@ class CobroController extends Controller
 				'estudiante_apellido' => $estudiante?->apellido,
 				'estudiante_completo' => $estudiante?->toArray()
 			]);
-			
+
 			if (!$estudiante) {
 				return response()->json([
 					'success' => false,
@@ -839,7 +839,7 @@ class CobroController extends Controller
 			$saldoMensualidad = $montoSemestreNeto !== null
 				? max(0, (float)$montoSemestreNeto - (float)$totalMensualidadConParciales)
 				: null;
-			
+
 			// Debug para el cálculo del saldo
 			Log::info('Cálculo de saldo de mensualidad:', [
 				'cod_ceta' => $codCeta,
@@ -852,7 +852,7 @@ class CobroController extends Controller
 				'saldoMensualidad' => $saldoMensualidad,
 				'formula_usada' => 'montoSemestreNeto - totalMensualidadConParciales'
 			]);
-			
+
 			$puMensualFromNext = $mensualidadNext ? round((float) ($mensualidadNext['monto'] ?? 0), 2) : null;
 // >>>>>>> db8167bb0a817bf7e0af1d0732b63770d42d68e3
 			$puMensualFromAsignacion = $asignacionesPrimarias->count() > 0 ? round((float) $asignacionesPrimarias->avg('monto'), 2) : null;
@@ -953,7 +953,7 @@ class CobroController extends Controller
 			$estudianteData = $estudiante->toArray();
 			// Agregar nombre_completo desde el accessor
 			$estudianteData['nombre_completo'] = $estudiante->nombre_completo;
-			
+
 			// Debug para verificar datos del estudiante antes de devolver
 			Log::info('Datos del estudiante a devolver:', [
 				'cod_ceta' => $estudianteData['cod_ceta'] ?? 'no existe',
@@ -963,7 +963,7 @@ class CobroController extends Controller
 				'ci_original' => $estudianteData['ci'] ?? 'no existe',
 				'ci_dp' => $estudiante->dp->ci_doc ?? 'no existe dp'
 			]);
-			
+
 			if (isset($estudiante->dp)) {
 				$estudianteData['ci'] = $estudiante->dp->ci_doc ?: ($estudiante->ci ?: '');
 				$estudianteData['telefono'] = $estudiante->dp->telefono_doc ?: '';
@@ -1193,7 +1193,7 @@ class CobroController extends Controller
 							// Ordenar por número de cuota
 							->sortBy('numero_cuota')
 							->values(),
-					
+
 					// Debug para verificar adeudadas
 					'adeudadas_debug' => [
 						'asignaciones_primarias_count' => $asignacionesPrimarias->count(),
@@ -1438,6 +1438,26 @@ class CobroController extends Controller
 						'success' => false,
 						'message' => 'No se puede mezclar FACTURA y RECIBO en el mismo registro. Use un único tipo de documento en el lote.',
 					], 422);
+				}
+			} catch (\Throwable $e) { /* no bloquear si la inspección falla */ }
+
+			// Validación: detectar si múltiples items usan el mismo id_asignacion_costo
+			try {
+				$asignCounts = [];
+				foreach ((array)$items as $it) {
+					$idAsignItem = isset($it['id_asignacion_costo']) ? (int)$it['id_asignacion_costo'] : 0;
+					if ($idAsignItem > 0) {
+						$asignCounts[$idAsignItem] = (isset($asignCounts[$idAsignItem]) ? $asignCounts[$idAsignItem] : 0) + 1;
+					}
+				}
+				foreach ($asignCounts as $idAsign => $count) {
+					if ($count > 1) {
+						Log::warning('batchStore: múltiples items con mismo id_asignacion_costo', ['id_asignacion_costo' => $idAsign, 'count' => $count]);
+						return response()->json([
+							'success' => false,
+							'message' => 'Error: Múltiples cuotas están usando la misma asignación de costo. Por favor, contacte al administrador para corregir los datos de las cuotas.',
+						], 422);
+					}
 				}
 			} catch (\Throwable $e) { /* no bloquear si la inspección falla */ }
 			$emitGroupMeta = null; // meta para emisión agrupada post-commit
@@ -1838,6 +1858,7 @@ class CobroController extends Controller
 							}
 							// Paso 3: emisión online (opcional). Si hay agrupación, se difiere al final del loop.
 							if ($emitirOnline && !$hasFacturaGroup) {
+                                 Log::info( "esta entrando a la opcion1");
 								if (config('sin.offline')) {
 									Log::warning('batchStore: skip recepcionFactura (OFFLINE)');
 								} else {
@@ -2422,7 +2443,12 @@ class CobroController extends Controller
 						}
 					}
 
-					// Acumular pagos del batch por plantilla de cuota para seguir aplicando a la misma cuota si aún queda saldo
+					// Acumular pagos del batch por id_asignacion_costo (no por template) para evitar duplicados
+					if ($idAsign) {
+						$batchPaidByAsign[$idAsign] = (isset($batchPaidByAsign[$idAsign]) ? $batchPaidByAsign[$idAsign] : 0) + (float)$item['monto'];
+						try { Log::info('batchStore:paidByAsign', [ 'idx' => $idx, 'id_asign' => $idAsign, 'batch_paid' => $batchPaidByAsign[$idAsign] ]); } catch (\Throwable $e) {}
+					}
+					// También mantener el tracking por template para compatibilidad
 					if ($idCuota) {
 						$batchPaidByTpl[$idCuota] = (isset($batchPaidByTpl[$idCuota]) ? $batchPaidByTpl[$idCuota] : 0) + (float)$item['monto'];
 						try { Log::info('batchStore:paidByTpl', [ 'idx' => $idx, 'tpl' => $idCuota, 'batch_paid' => $batchPaidByTpl[$idCuota] ]); } catch (\Throwable $e) {}
@@ -2433,10 +2459,12 @@ class CobroController extends Controller
 						$toUpd = AsignacionCostos::find((int)$idAsign);
 						if ($toUpd) {
 							$prevPagado = (float)(isset($toUpd->monto_pagado) ? $toUpd->monto_pagado : 0);
-							$newPagado = $prevPagado + (float)$item['monto'];
-// <<<<<<< HEAD
-// 							$fullNow = $newPagado >= (float) (isset($toUpd->monto) ? $toUpd->monto : 0) || !empty($item['cobro_completo']);
-// =======
+
+							// CORRECCIÓN: Solo aplicar el monto del item actual, sin acumular pagos previos del batch
+							// El tracking en $batchPaidByAsign ya se hace DESPUÉS de aplicar cada item
+							$montoAplicar = (float)$item['monto'];
+							$newPagado = $prevPagado + $montoAplicar;
+
 							$descN = 0.0;
 							try {
 								$idDet = (int)($toUpd->id_descuentoDetalle ?? 0);
@@ -2451,7 +2479,6 @@ class CobroController extends Controller
 							$nominal = (float) ($toUpd->monto ?? 0);
 							$neto = max(0, $nominal - $descN);
 							$fullNow = ($newPagado >= $neto) || !empty($item['cobro_completo']);
-// >>>>>>> db8167bb0a817bf7e0af1d0732b63770d42d68e3
 							$upd = [ 'monto_pagado' => $newPagado ];
 							if ($fullNow) {
 								$upd['estado_pago'] = 'COBRADO';
@@ -2459,7 +2486,7 @@ class CobroController extends Controller
 							} else {
 								$upd['estado_pago'] = 'PARCIAL';
 							}
-							try { Log::info('batchStore:asign_update', [ 'idx' => $idx, 'id_asignacion_costo' => (int)$toUpd->id_asignacion_costo, 'add_monto' => (float)$item['monto'], 'prev_pagado' => $prevPagado, 'new_pagado' => $newPagado, 'total' => (float)(isset($toUpd->monto) ? $toUpd->monto : 0), 'estado_final' => $upd['estado_pago'] ]); } catch (\Throwable $e) {}
+							try { Log::info('batchStore:asign_update', [ 'idx' => $idx, 'id_asignacion_costo' => (int)$toUpd->id_asignacion_costo, 'add_monto' => $montoAplicar, 'prev_pagado' => $prevPagado, 'new_pagado' => $newPagado, 'total' => (float)(isset($toUpd->monto) ? $toUpd->monto : 0), 'neto' => $neto, 'batch_paid_before' => $batchPaidToThisAsign, 'estado_final' => $upd['estado_pago'] ]); } catch (\Throwable $e) {}
 							$aff = AsignacionCostos::where('id_asignacion_costo', (int)$toUpd->id_asignacion_costo)->update($upd);
 							try { Log::info('batchStore:asign_updated', [ 'idx' => $idx, 'id_asignacion_costo' => (int)$toUpd->id_asignacion_costo, 'affected' => $aff ]); } catch (\Throwable $e) {}
 						}
@@ -2570,6 +2597,7 @@ class CobroController extends Controller
 
 				// Emisión online única para la factura agrupada (punto correcto: después del foreach)
 				if ($hasFacturaGroup && $emitirOnline) {
+                    Log::info( "esta entrando a la opcion2");
 					if (config('sin.offline')) {
 						Log::warning('batchStore: skip recepcionFactura (OFFLINE, grupo)');
 					} else {
