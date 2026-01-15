@@ -2377,6 +2377,21 @@ class CobroController extends Controller
 					if ($hasFacturaGroup && $tipoDoc === 'F' && $medioDoc === 'C') {
 						$detalleDesc = isset($detalle) && $detalle !== '' ? (string)$detalle : ((string)(isset($item['observaciones']) ? $item['observaciones'] : 'Cobro'));
 
+						// Calcular precio bruto y descuento para enviar correctamente a impuestos
+						$precioBruto = 0.0;
+						$descuentoMonto = 0.0;
+						$precioNeto = (float)$item['monto'];
+
+						// Si tiene pu_mensualidad y descuento, calcular precio bruto
+						if (isset($item['pu_mensualidad']) && (float)$item['pu_mensualidad'] > 0) {
+							$precioBruto = (float)$item['pu_mensualidad'];
+							if (isset($item['descuento']) && (float)$item['descuento'] > 0) {
+								$descuentoMonto = (float)$item['descuento'];
+							}
+						} else {
+							// Si no hay pu_mensualidad, usar el monto como precio bruto (sin descuento)
+							$precioBruto = $precioNeto;
+						}
 
 						$codigoSin = 99100; // Default para SIN
 						$codigoInterno = null; // Default para PDF
@@ -2422,9 +2437,9 @@ class CobroController extends Controller
 							'descripcion' => $detalleDesc,
 							'cantidad' => 1,
 							'unidad_medida' => $unidadMedida,
-							'precio_unitario' => (float)$item['monto'],
-							'descuento' => 0,
-							'subtotal' => (float)$item['monto'],
+							'precio_unitario' => $precioBruto,
+							'descuento' => $descuentoMonto,
+							'subtotal' => $precioNeto,
 							'actividad_economica' => $actividadEconomica,
 						];
 						// También acumular en meta para post-commit

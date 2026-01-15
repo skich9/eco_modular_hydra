@@ -22,8 +22,8 @@ class FacturaPayloadBuilder
         } else {
             // XML para modalidad 1 o sector educativo (11)
             $xmlCrudo = $this->buildXmlSectorEducativo($args, $docSector);
-            
-            // Firmar XML 
+
+            // Firmar XML
             $nombreFactura = '';
             if (!empty($args['cuf'])) {
                 $nombreFactura = (string) $args['cuf'];
@@ -55,7 +55,7 @@ class FacturaPayloadBuilder
                     'xmlPath' => $xmlPath,
                     'len' => strlen($archivoBytes),
                 ]);
-                
+
                 // Validar XML firmado contra el XSD antes de comprimir/enviar
                 if ($xmlPath && is_file($xmlPath)) {
                     $xsdPath = base_path('xsd/facturaElectronicaSectorEducativo.xsd');
@@ -166,12 +166,12 @@ class FacturaPayloadBuilder
             $base = rtrim(sys_get_temp_dir(), DIRECTORY_SEPARATOR) . DIRECTORY_SEPARATOR . 'siat_fact_' . uniqid();
             $xmlPath = $xmlFilePath && is_file($xmlFilePath) ? $xmlFilePath : ($base . '.xml');
             $zipPath = $base . '.zip';
-            
+
             // Si no hay archivo en disco, guardar XML en un temporal
             if (!$xmlFilePath || !is_file($xmlFilePath)) {
                 file_put_contents($xmlPath, $xml);
             }
-            
+
             // Comprimir con gzopen al archivo .zip usando el XML en disco
             $fp = @fopen($xmlPath, 'rb');
             if ($fp !== false) {
@@ -183,7 +183,7 @@ class FacturaPayloadBuilder
                     @gzclose($gz);
                 }
             }
-            
+
             if (is_file($zipPath)) {
                 // Guardar una copia estable del ZIP comprimido para inspección/reuso
                 $destPath = null;
@@ -208,7 +208,7 @@ class FacturaPayloadBuilder
                 } catch (\Throwable $e) {
                     Log::warning('FacturaPayloadBuilder.compressSingleGzToZip.storeCopyError', [ 'error' => $e->getMessage() ]);
                 }
-                
+
                 // Para calcular bytes y hash, leer directamente desde el ZIP definitivo en disco
                 $hashSource = $destPath && is_file($destPath) ? $destPath : $zipPath;
                 $zipContent = file_get_contents($hashSource);
@@ -275,7 +275,7 @@ class FacturaPayloadBuilder
             $base = rtrim(sys_get_temp_dir(), DIRECTORY_SEPARATOR) . DIRECTORY_SEPARATOR . 'siat_pkg_' . uniqid();
             $tarPath = $base . '.tar';
             $gzPath = $tarPath . '.gz';
-            
+
             // Crear TAR
             $tar = new \PharData($tarPath);
             foreach ($xmlFiles as $file) {
@@ -283,7 +283,7 @@ class FacturaPayloadBuilder
                 $content = (string)($file['contenido'] ?? '');
                 $tar[$name] = $content;
             }
-            
+
             // Comprimir a GZ (tar.gz)
             $tar->compress(\Phar::GZ);
             if (!is_file($gzPath)) {
@@ -573,6 +573,7 @@ class FacturaPayloadBuilder
         // Detalle(s) para XML: si viene 'detalles' usar lista repetida <detalle>...
         if (!empty($args['detalles']) && is_array($args['detalles'])) {
             foreach ($args['detalles'] as $d) {
+                $descuentoItem = (float)($d['descuento'] ?? 0);
                 $xml .= '<detalle>';
                 $xml .= '<actividadEconomica>' . htmlspecialchars((string)$actividad, ENT_QUOTES | ENT_SUBSTITUTE, 'UTF-8') . '</actividadEconomica>';
                 $xml .= '<codigoProductoSin>' . (int)($d['codigo_sin'] ?? $codigoProductoSin) . '</codigoProductoSin>';
@@ -581,11 +582,16 @@ class FacturaPayloadBuilder
                 $xml .= '<cantidad>' . number_format((float)($d['cantidad'] ?? $cantidad), 2, '.', '') . '</cantidad>';
                 $xml .= '<unidadMedida>' . (int)($d['unidad_medida'] ?? $unidadMedida) . '</unidadMedida>';
                 $xml .= '<precioUnitario>' . number_format((float)($d['precio_unitario'] ?? $precioUnitario), 2, '.', '') . '</precioUnitario>';
-                $xml .= '<montoDescuento xsi:nil="true"/>';
+                if ($descuentoItem > 0) {
+                    $xml .= '<montoDescuento>' . number_format($descuentoItem, 2, '.', '') . '</montoDescuento>';
+                } else {
+                    $xml .= '<montoDescuento xsi:nil="true"/>';
+                }
                 $xml .= '<subTotal>' . number_format((float)($d['subtotal'] ?? $subTotal), 2, '.', '') . '</subTotal>';
                 $xml .= '</detalle>';
             }
         } else {
+            $descuentoItem = (float)($det['descuento'] ?? 0);
             $xml .= '<detalle>';
             $xml .= '<actividadEconomica>' . htmlspecialchars((string)$actividad, ENT_QUOTES | ENT_SUBSTITUTE, 'UTF-8') . '</actividadEconomica>';
             $xml .= '<codigoProductoSin>' . (int)$codigoProductoSin . '</codigoProductoSin>';
@@ -594,7 +600,11 @@ class FacturaPayloadBuilder
             $xml .= '<cantidad>' . number_format($cantidad, 2, '.', '') . '</cantidad>';
             $xml .= '<unidadMedida>' . (int)$unidadMedida . '</unidadMedida>';
             $xml .= '<precioUnitario>' . number_format($precioUnitario, 2, '.', '') . '</precioUnitario>';
-            $xml .= '<montoDescuento xsi:nil="true"/>';
+            if ($descuentoItem > 0) {
+                $xml .= '<montoDescuento>' . number_format($descuentoItem, 2, '.', '') . '</montoDescuento>';
+            } else {
+                $xml .= '<montoDescuento xsi:nil="true"/>';
+            }
             $xml .= '<subTotal>' . number_format($subTotal, 2, '.', '') . '</subTotal>';
             $xml .= '</detalle>';
         }
