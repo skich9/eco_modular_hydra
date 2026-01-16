@@ -2384,9 +2384,47 @@ class CobroController extends Controller
 
 						// Si tiene pu_mensualidad y descuento, calcular precio bruto
 						if (isset($item['pu_mensualidad']) && (float)$item['pu_mensualidad'] > 0) {
-							$precioBruto = (float)$item['pu_mensualidad'];
-							if (isset($item['descuento']) && (float)$item['descuento'] > 0) {
-								$descuentoMonto = (float)$item['descuento'];
+							$puOriginal = (float)$item['pu_mensualidad'];
+
+							// Obtener el descuento REAL de la asignación, no el enviado desde frontend
+							$descOriginal = 0.0;
+							if ($idAsign) {
+								try {
+									$asignSnap = DB::table('asignacion_costos')->where('id_asignacion_costo', (int)$idAsign)->first();
+									if ($asignSnap) {
+										$idDet = (int)($asignSnap->id_descuentoDetalle ?? 0);
+										if ($idDet) {
+											$dr = DB::table('descuento_detalle')->where('id_descuento_detalle', $idDet)->first(['monto_descuento']);
+											$descOriginal = $dr ? (float)($dr->monto_descuento ?? 0) : 0.0;
+										}
+									}
+								} catch (\Throwable $e) {
+									Log::warning('batchStore: error obteniendo descuento de asignación', ['error' => $e->getMessage(), 'id_asign' => $idAsign]);
+								}
+							}
+
+							// Si no se pudo obtener de la asignación, usar el enviado desde frontend
+							if ($descOriginal == 0 && isset($item['descuento']) && (float)$item['descuento'] > 0) {
+								$descOriginal = (float)$item['descuento'];
+							}
+
+							$netoEsperado = $puOriginal - $descOriginal;
+
+							// Si el monto pagado es menor al neto esperado, es un pago parcial
+							// Debemos prorratear el precio_unitario y descuento proporcionalmente
+							if ($precioNeto < $netoEsperado && $netoEsperado > 0) {
+								$proporcion = $precioNeto / $netoEsperado;
+								$precioBruto = round($puOriginal * $proporcion, 2);
+								$descuentoMonto = round($descOriginal * $proporcion, 2);
+								// Ajustar para que la suma sea exacta
+								$diferencia = $precioNeto - ($precioBruto - $descuentoMonto);
+								if (abs($diferencia) > 0.01) {
+									$precioBruto += $diferencia;
+								}
+							} else {
+								// Pago completo o mayor
+								$precioBruto = $puOriginal;
+								$descuentoMonto = $descOriginal;
 							}
 						} else {
 							// Si no hay pu_mensualidad, usar el monto como precio bruto (sin descuento)
@@ -2398,10 +2436,12 @@ class CobroController extends Controller
 								'idx' => $idx,
 								'item_monto' => $precioNeto,
 								'item_pu_mensualidad' => isset($item['pu_mensualidad']) ? (float)$item['pu_mensualidad'] : null,
-								'item_descuento' => isset($item['descuento']) ? (float)$item['descuento'] : null,
+								'item_descuento_frontend' => isset($item['descuento']) ? (float)$item['descuento'] : null,
+								'descuento_real_asignacion' => isset($descOriginal) ? $descOriginal : null,
 								'calculado_precioBruto' => $precioBruto,
 								'calculado_descuentoMonto' => $descuentoMonto,
-								'calculado_precioNeto' => $precioNeto
+								'calculado_precioNeto' => $precioNeto,
+								'es_pago_parcial' => isset($netoEsperado) && $precioNeto < $netoEsperado
 							]);
 						} catch (\Throwable $e) {}
 
@@ -2637,7 +2677,7 @@ class CobroController extends Controller
 			if ($hasFacturaGroup && !empty($factDetalles)) {
 					foreach ($factDetalles as $detIdx => $det) {
 						try {
-							DB::table('factura_detalle')->insert([
+							$insertData = [
 								'anio' => (int)$anioFacturaGroup,
 								'nro_factura' => (int)$nroFacturaGroup,
 								'id_detalle' => $detIdx + 1,
@@ -2650,7 +2690,16 @@ class CobroController extends Controller
 								'precio_unitario' => (float)(isset($det['precio_unitario']) ? $det['precio_unitario'] : 0),
 								'descuento' => (float)(isset($det['descuento']) ? $det['descuento'] : 0),
 								'subtotal' => (float)(isset($det['subtotal']) ? $det['subtotal'] : 0),
+							];
+							Log::info('batchStore: insertando en factura_detalle', [
+								'anio' => $anioFacturaGroup,
+								'nro_factura' => $nroFacturaGroup,
+								'id_detalle' => $detIdx + 1,
+								'precio_unitario' => $insertData['precio_unitario'],
+								'descuento' => $insertData['descuento'],
+								'subtotal' => $insertData['subtotal']
 							]);
+							DB::table('factura_detalle')->insert($insertData);
 						} catch (\Throwable $e) {
 							Log::error('batchStore: error insertando detalle factura', ['error' => $e->getMessage(), 'detalle' => $det]);
 						}
