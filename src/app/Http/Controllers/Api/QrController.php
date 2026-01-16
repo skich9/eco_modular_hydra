@@ -84,6 +84,7 @@ class QrController extends Controller
                 foreach ($items as $idx => $it) {
                     $monto = (float)($it['monto'] ?? 0);
                     $pu = isset($it['pu_mensualidad']) ? (float)$it['pu_mensualidad'] : $monto;
+                    $desc = isset($it['descuento']) ? (float)$it['descuento'] : 0;
                     $concepto = (string)($it['detalle'] ?? 'COBRO QR');
                     if (mb_strlen($concepto) > 255) { $concepto = mb_substr($concepto, 0, 255); }
                     $obsVal = $it['observaciones'] ?? null;
@@ -95,6 +96,7 @@ class QrController extends Controller
                         'concepto' => $concepto,
                         'observaciones' => $obsVal,
                         'precio_unitario' => $pu,
+                        'descuento' => $desc,
                         'subtotal' => $monto,
                         'orden' => (int)($it['order'] ?? ($idx+1)),
                         'nro_cuota' => isset($it['nro_cuota']) ? (int)$it['nro_cuota'] : null,
@@ -155,6 +157,25 @@ class QrController extends Controller
             'cliente.numero' => 'nullable|string',
             'cliente.razon_social' => 'nullable|string',
         ]);
+
+        try {
+            $itemsLog = [];
+            foreach (($validated['items'] ?? []) as $idx => $it) {
+                $itemsLog[] = [
+                    'idx' => $idx,
+                    'monto' => $it['monto'] ?? null,
+                    'pu_mensualidad' => $it['pu_mensualidad'] ?? null,
+                    'descuento' => $it['descuento'] ?? null,
+                    'concepto' => $it['concepto'] ?? $it['detalle'] ?? null,
+                ];
+            }
+            Log::info('QR initiate: datos recibidos del frontend', [
+                'cod_ceta' => $validated['cod_ceta'],
+                'amount' => $validated['amount'],
+                'items_count' => count($validated['items'] ?? []),
+                'items' => $itemsLog
+            ]);
+        } catch (\Throwable $e) {}
 
         // Overrides de configuración por cuenta bancaria (si aplica) y validación de habilitado_QR
         try {
@@ -256,6 +277,7 @@ class QrController extends Controller
         foreach ($items as $idx => $it) {
             $monto = (float)($it['monto'] ?? 0);
             $pu = isset($it['pu_mensualidad']) ? (float)$it['pu_mensualidad'] : $monto;
+            $desc = isset($it['descuento']) ? (float)$it['descuento'] : 0;
             $concepto = (string)($it['concepto'] ?? $it['detalle'] ?? ($validated['detalle'] . ' #' . ($idx+1)));
             if (mb_strlen($concepto) > 255) { $concepto = mb_substr($concepto, 0, 255); }
             $nroCuota = $it['nro_cuota'] ?? $it['numero_cuota'] ?? null;
@@ -280,6 +302,7 @@ class QrController extends Controller
                 'concepto' => $concepto,
                 'observaciones' => $obsVal,
                 'precio_unitario' => $pu,
+                'descuento' => $desc,
                 'subtotal' => $monto,
                 'orden' => (int)($it['order'] ?? ($idx+1)),
                 'nro_cuota' => $nroCuota !== null ? (int)$nroCuota : null,
@@ -675,20 +698,27 @@ class QrController extends Controller
                         }
                         $tipoDocRecuperado = (string)($row->tipo_documento ?? '');
                         $medioDocRecuperado = (string)($row->medio_doc ?? '');
+                        $puRead = (float)($row->precio_unitario ?? ($row->subtotal ?? 0));
+                        $descRead = (float)($row->descuento ?? 0);
+                        $subRead = (float)($row->subtotal ?? 0);
                         try {
                             Log::info('QR callback: recuperando item de qr_conceptos_detalle', [
                                 'tipo_documento' => $tipoDocRecuperado,
                                 'medio_doc' => $medioDocRecuperado,
-                                'concepto' => (string)($row->concepto ?? '')
+                                'concepto' => (string)($row->concepto ?? ''),
+                                'precio_unitario' => $puRead,
+                                'descuento' => $descRead,
+                                'subtotal' => $subRead
                             ]);
                         } catch (\Throwable $e) {}
                         $items[] = [
-                            'monto' => (float)($row->subtotal ?? 0),
+                            'monto' => $subRead,
                             'fecha_cobro' => $today,
                             'order' => (int)($row->orden ?? 1),
                             'observaciones' => $obsMk,
                             'nro_cobro' => null,
-                            'pu_mensualidad' => (float)($row->precio_unitario ?? ($row->subtotal ?? 0)),
+                            'pu_mensualidad' => $puRead,
+                            'descuento' => $descRead,
                             'detalle' => (string)($row->concepto ?? ($trx->detalle_glosa ?? 'COBRO QR')),
                             'id_forma_cobro' => (string)$formaCobro,
                             'id_asignacion_costo' => null,

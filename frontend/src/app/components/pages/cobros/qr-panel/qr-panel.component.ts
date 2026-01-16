@@ -450,6 +450,7 @@ export class QrPanelComponent implements OnDestroy {
 			const det = (g.get('detalle')?.value || '').toString();
 			const pu = Number(g.get('pu_mensualidad')?.value || subtotal);
 			if (!firstPu && pu) firstPu = pu;
+			const desc = Number(g.get('descuento')?.value || 0) || 0;
 			const obs = (g.get('observaciones')?.value || '').toString();
 			const tipoDoc = (g.get('tipo_documento')?.value || '').toString();
 			const medioDoc = (g.get('medio_doc')?.value || '').toString();
@@ -463,6 +464,7 @@ export class QrPanelComponent implements OnDestroy {
 				observaciones: obs,
 				nro_cobro: nro,
 				pu_mensualidad: pu,
+				descuento: desc,
 				tipo_documento: tipoDoc,
 				medio_doc: medioDoc,
 				detalle: det,

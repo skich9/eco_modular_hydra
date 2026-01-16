@@ -2393,6 +2393,18 @@ class CobroController extends Controller
 							$precioBruto = $precioNeto;
 						}
 
+						try {
+							Log::info('batchStore: construyendo factDetalle', [
+								'idx' => $idx,
+								'item_monto' => $precioNeto,
+								'item_pu_mensualidad' => isset($item['pu_mensualidad']) ? (float)$item['pu_mensualidad'] : null,
+								'item_descuento' => isset($item['descuento']) ? (float)$item['descuento'] : null,
+								'calculado_precioBruto' => $precioBruto,
+								'calculado_descuentoMonto' => $descuentoMonto,
+								'calculado_precioNeto' => $precioNeto
+							]);
+						} catch (\Throwable $e) {}
+
 						$codigoSin = 99100; // Default para SIN
 						$codigoInterno = null; // Default para PDF
 						$actividadEconomica = 853000; // Default
