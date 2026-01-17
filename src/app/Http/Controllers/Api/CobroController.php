@@ -1096,9 +1096,9 @@ class CobroController extends Controller
 							if ($idAsignacion > 0) {
 								$cobrosAnteriores = DB::table('cobro')
 									->where('id_asignacion_costo', $idAsignacion)
-									->whereNotNull('fecha_pago')
+									->whereNotNull('fecha_cobro')
 									->where('monto', '>', 0)
-									->select('id_cobro', 'descuento', 'monto', 'fecha_pago')
+									->select('nro_cobro', 'descuento', 'monto', 'fecha_cobro')
 									->get();
 
 								\Log::info('[CobroController] Cobros anteriores para asignacion:', [
@@ -1108,10 +1108,10 @@ class CobroController extends Controller
 									'suma_descuentos' => $cobrosAnteriores->sum('descuento'),
 									'cobros' => $cobrosAnteriores->map(function($c) {
 										return [
-											'id_cobro' => $c->id_cobro,
+											'nro_cobro' => $c->nro_cobro,
 											'descuento' => $c->descuento,
 											'monto' => $c->monto,
-											'fecha_pago' => $c->fecha_pago
+											'fecha_cobro' => $c->fecha_cobro
 										];
 									})->toArray()
 								]);
@@ -1754,6 +1754,108 @@ class CobroController extends Controller
 					];
 				}
 
+				// PRE-CALCULAR descuentos prorrateados correctos para cada ítem
+				// Esto es crítico cuando se pagan múltiples cuotas juntas (algunas con pagos previos, otras completas)
+				$descuentosCalculados = [];
+				foreach ($items as $idx => $item) {
+					$descuentosCalculados[$idx] = [
+						'descuento_original' => 0.0,
+						'descuento_prorrateado' => 0.0,
+						'precio_bruto_original' => 0.0,
+						'precio_bruto_prorrateado' => 0.0,
+						'es_pago_parcial' => false,
+						'monto_pagado_previo' => 0.0,
+						'saldo_restante' => 0.0,
+					];
+
+					$asignSnap = null;
+					$montoAPagar = (float)$item['monto'];
+
+					// Obtener asignación: ya sea por id_asignacion_costo o por numero_cuota (para QR)
+					if (isset($item['id_asignacion_costo'])) {
+						$idAsignItem = (int)$item['id_asignacion_costo'];
+						try {
+							$asignSnap = DB::table('asignacion_costos')->where('id_asignacion_costo', $idAsignItem)->first();
+						} catch (\Throwable $e) {
+							Log::warning('batchStore: error obteniendo asignacion por id', ['idx' => $idx, 'error' => $e->getMessage()]);
+						}
+					} elseif ((isset($item['numero_cuota']) || isset($item['nro_cuota'])) && $primaryInscripcion) {
+					// Para items QR: buscar asignación por numero_cuota o nro_cuota
+					$numeroCuota = (int)($item['numero_cuota'] ?? $item['nro_cuota'] ?? 0);
+					try {
+						$asignSnap = DB::table('asignacion_costos')
+							->where('cod_pensum', $codPensumCtx)
+							->where('cod_inscrip', $primaryInscripcion->cod_inscrip)
+							->where('numero_cuota', $numeroCuota)
+							->first();
+					} catch (\Throwable $e) {
+						Log::warning('batchStore: error obteniendo asignacion por numero_cuota', ['idx' => $idx, 'numero_cuota' => $numeroCuota, 'error' => $e->getMessage()]);
+					}
+				}
+
+					// Calcular descuentos prorrateados si encontramos la asignación
+					if ($asignSnap) {
+						try {
+							// IMPORTANTE: Obtener el precio bruto ORIGINAL de la asignación, no del frontend
+							$puOriginal = (float)($asignSnap->monto ?? 0);
+
+							$descOriginal = 0.0;
+							$idDet = (int)($asignSnap->id_descuentoDetalle ?? 0);
+							if ($idDet) {
+								$dr = DB::table('descuento_detalle')->where('id_descuento_detalle', $idDet)->first(['monto_descuento']);
+								$descOriginal = $dr ? (float)($dr->monto_descuento ?? 0) : 0.0;
+							}
+
+							$montoPagadoPrevio = (float)($asignSnap->monto_pagado ?? 0);
+							$estadoPagoActual = (string)($asignSnap->estado_pago ?? '');
+							$netoTotal = $puOriginal - $descOriginal;
+							$saldoRestante = max(0, $netoTotal - $montoPagadoPrevio);
+
+							// Determinar si es pago parcial
+							$esPagoParcial = ($estadoPagoActual === 'PARCIAL' && $montoPagadoPrevio > 0) || ($montoAPagar < $saldoRestante && $saldoRestante > 0);
+
+							$descuentosCalculados[$idx]['descuento_original'] = $descOriginal;
+							$descuentosCalculados[$idx]['precio_bruto_original'] = $puOriginal;
+							$descuentosCalculados[$idx]['monto_pagado_previo'] = $montoPagadoPrevio;
+							$descuentosCalculados[$idx]['saldo_restante'] = $saldoRestante;
+							$descuentosCalculados[$idx]['es_pago_parcial'] = $esPagoParcial;
+
+							if ($esPagoParcial && $saldoRestante > 0) {
+							// Pago parcial: prorratear según la proporción del pago actual
+							$proporcion = $montoAPagar / $saldoRestante;
+
+							// Calcular precio bruto y descuento del saldo restante
+							$puRestante = $puOriginal - ($puOriginal * ($montoPagadoPrevio / $netoTotal));
+							$descRestante = $descOriginal - ($descOriginal * ($montoPagadoPrevio / $netoTotal));
+
+							// Prorratear según el pago actual (4 decimales)
+							$precioBrutoProrr = $puRestante * $proporcion;
+							$descuentoProrr = $descRestante * $proporcion;
+
+							// Ajustar para que la suma sea exacta
+							$diferencia = $montoAPagar - ($precioBrutoProrr - $descuentoProrr);
+							if (abs($diferencia) > 0.0001) {
+								$precioBrutoProrr += $diferencia;
+							}
+
+							// Guardar con 4 decimales para la base de datos
+							$descuentosCalculados[$idx]['precio_bruto_prorrateado'] = round($precioBrutoProrr, 4);
+							$descuentosCalculados[$idx]['descuento_prorrateado'] = round($descuentoProrr, 4);
+						} else {
+							// Pago completo: usar valores completos
+							$descuentosCalculados[$idx]['precio_bruto_prorrateado'] = $puOriginal;
+							$descuentosCalculados[$idx]['descuento_prorrateado'] = $descOriginal;
+						}
+					} catch (\Throwable $e) {
+							Log::warning('batchStore: error pre-calculando descuento', ['idx' => $idx, 'error' => $e->getMessage()]);
+						}
+					}
+				}
+
+				try {
+					Log::info('batchStore: descuentos pre-calculados', ['descuentos' => $descuentosCalculados]);
+				} catch (\Throwable $e) {}
+
 				// Control para agrupar Recibos computarizados en un único nro_recibo por transacción
 				$nroReciboBatch = null; $anioReciboBatch = null;
 				foreach ($items as $idx => $item) {
@@ -2377,55 +2479,19 @@ class CobroController extends Controller
 					if ($hasFacturaGroup && $tipoDoc === 'F' && $medioDoc === 'C') {
 						$detalleDesc = isset($detalle) && $detalle !== '' ? (string)$detalle : ((string)(isset($item['observaciones']) ? $item['observaciones'] : 'Cobro'));
 
-						// Calcular precio bruto y descuento para enviar correctamente a impuestos
+						// Usar valores PRE-CALCULADOS de descuento prorrateado
 						$precioBruto = 0.0;
 						$descuentoMonto = 0.0;
 						$precioNeto = (float)$item['monto'];
 
-						// Si tiene pu_mensualidad y descuento, calcular precio bruto
-						if (isset($item['pu_mensualidad']) && (float)$item['pu_mensualidad'] > 0) {
-							$puOriginal = (float)$item['pu_mensualidad'];
-
-							// Obtener el descuento REAL de la asignación, no el enviado desde frontend
-							$descOriginal = 0.0;
-							if ($idAsign) {
-								try {
-									$asignSnap = DB::table('asignacion_costos')->where('id_asignacion_costo', (int)$idAsign)->first();
-									if ($asignSnap) {
-										$idDet = (int)($asignSnap->id_descuentoDetalle ?? 0);
-										if ($idDet) {
-											$dr = DB::table('descuento_detalle')->where('id_descuento_detalle', $idDet)->first(['monto_descuento']);
-											$descOriginal = $dr ? (float)($dr->monto_descuento ?? 0) : 0.0;
-										}
-									}
-								} catch (\Throwable $e) {
-									Log::warning('batchStore: error obteniendo descuento de asignación', ['error' => $e->getMessage(), 'id_asign' => $idAsign]);
-								}
-							}
-
-							// Si no se pudo obtener de la asignación, usar el enviado desde frontend
-							if ($descOriginal == 0 && isset($item['descuento']) && (float)$item['descuento'] > 0) {
-								$descOriginal = (float)$item['descuento'];
-							}
-
-							$netoEsperado = $puOriginal - $descOriginal;
-
-							// Si el monto pagado es menor al neto esperado, es un pago parcial
-							// Debemos prorratear el precio_unitario y descuento proporcionalmente
-							if ($precioNeto < $netoEsperado && $netoEsperado > 0) {
-								$proporcion = $precioNeto / $netoEsperado;
-								$precioBruto = round($puOriginal * $proporcion, 2);
-								$descuentoMonto = round($descOriginal * $proporcion, 2);
-								// Ajustar para que la suma sea exacta
-								$diferencia = $precioNeto - ($precioBruto - $descuentoMonto);
-								if (abs($diferencia) > 0.01) {
-									$precioBruto += $diferencia;
-								}
-							} else {
-								// Pago completo o mayor
-								$precioBruto = $puOriginal;
-								$descuentoMonto = $descOriginal;
-							}
+						// Si tiene valores pre-calculados, usarlos
+						if (isset($descuentosCalculados[$idx]) && $descuentosCalculados[$idx]['precio_bruto_prorrateado'] > 0) {
+							$precioBruto = $descuentosCalculados[$idx]['precio_bruto_prorrateado'];
+							$descuentoMonto = $descuentosCalculados[$idx]['descuento_prorrateado'];
+						} elseif (isset($item['pu_mensualidad']) && (float)$item['pu_mensualidad'] > 0) {
+							// Fallback: si no hay pre-calculados, usar valores del item
+							$precioBruto = (float)$item['pu_mensualidad'];
+							$descuentoMonto = isset($item['descuento']) && (float)$item['descuento'] > 0 ? (float)$item['descuento'] : 0;
 						} else {
 							// Si no hay pu_mensualidad, usar el monto como precio bruto (sin descuento)
 							$precioBruto = $precioNeto;
@@ -2437,11 +2503,10 @@ class CobroController extends Controller
 								'item_monto' => $precioNeto,
 								'item_pu_mensualidad' => isset($item['pu_mensualidad']) ? (float)$item['pu_mensualidad'] : null,
 								'item_descuento_frontend' => isset($item['descuento']) ? (float)$item['descuento'] : null,
-								'descuento_real_asignacion' => isset($descOriginal) ? $descOriginal : null,
-								'calculado_precioBruto' => $precioBruto,
-								'calculado_descuentoMonto' => $descuentoMonto,
-								'calculado_precioNeto' => $precioNeto,
-								'es_pago_parcial' => isset($netoEsperado) && $precioNeto < $netoEsperado
+								'pre_calculado' => isset($descuentosCalculados[$idx]) ? $descuentosCalculados[$idx] : null,
+								'usando_precioBruto' => $precioBruto,
+								'usando_descuentoMonto' => $descuentoMonto,
+								'usando_precioNeto' => $precioNeto
 							]);
 						} catch (\Throwable $e) {}
 
@@ -2489,13 +2554,38 @@ class CobroController extends Controller
 							'descripcion' => $detalleDesc,
 							'cantidad' => 1,
 							'unidad_medida' => $unidadMedida,
-							'precio_unitario' => $precioBruto,
-							'descuento' => $descuentoMonto,
-							'subtotal' => $precioNeto,
+							// Redondear a 2 decimales para SIAT (impuestos requieren 2 decimales)
+							'precio_unitario' => round($precioBruto, 2),
+							'descuento' => round($descuentoMonto, 2),
+							'subtotal' => round($precioNeto, 2),
 							'actividad_economica' => $actividadEconomica,
 						];
 						// También acumular en meta para post-commit
 						if (is_array($emitGroupMeta)) { $emitGroupMeta['detalles'][] = end($factDetalles); }
+					}
+
+					// Usar valores PRE-CALCULADOS de descuento y precio unitario (aplica para recibos y facturas)
+					$puMensualidadFinal = isset($item['pu_mensualidad']) ? $item['pu_mensualidad'] : 0;
+					$descuentoFinal = isset($item['descuento']) ? $item['descuento'] : null;
+
+					if (isset($descuentosCalculados[$idx]) && $descuentosCalculados[$idx]['precio_bruto_prorrateado'] > 0) {
+						// Mantener 4 decimales para la base de datos (mayor precisión)
+						$puMensualidadFinal = round($descuentosCalculados[$idx]['precio_bruto_prorrateado'], 4);
+						$descuentoFinal = round($descuentosCalculados[$idx]['descuento_prorrateado'], 4);
+
+						try {
+							Log::info('batchStore: usando valores pre-calculados en cobro', [
+								'idx' => $idx,
+								'tipo_doc' => $tipoDoc,
+								'medio_doc' => $medioDoc,
+								'pu_original' => isset($item['pu_mensualidad']) ? $item['pu_mensualidad'] : 0,
+								'pu_prorrateado' => $puMensualidadFinal,
+								'desc_original' => isset($item['descuento']) ? $item['descuento'] : null,
+								'desc_prorrateado' => $descuentoFinal,
+								'es_pago_parcial' => $descuentosCalculados[$idx]['es_pago_parcial'],
+								'monto_pagado_previo' => $descuentosCalculados[$idx]['monto_pagado_previo']
+							]);
+						} catch (\Throwable $e) {}
 					}
 
 					$payload = array_merge($composite, [
@@ -2505,9 +2595,9 @@ class CobroController extends Controller
 						'observaciones' => isset($item['observaciones']) ? $item['observaciones'] : null,
 						'id_usuario' => $idUsuarioReposicion ?: (int)$request->id_usuario,
 						'id_forma_cobro' => isset($item['id_forma_cobro']) ? $item['id_forma_cobro'] : $formaIdItem,
-						'pu_mensualidad' => isset($item['pu_mensualidad']) ? $item['pu_mensualidad'] : 0,
+						'pu_mensualidad' => $puMensualidadFinal,
 						'order' => $order,
-						'descuento' => isset($item['descuento']) ? $item['descuento'] : null,
+						'descuento' => $descuentoFinal,
 						'id_cuentas_bancarias' => isset($request->id_cuentas_bancarias) ? $request->id_cuentas_bancarias : null,
 						'nro_factura' => $nroFactura,
 						'nro_recibo' => $nroRecibo,
@@ -2535,7 +2625,7 @@ class CobroController extends Controller
 									'cod_pensum' => (string)$request->cod_pensum,
 									'tipo_inscripcion' => (string)$request->tipo_inscripcion,
 									'cod_inscrip' => $primaryInscripcion ? (int)$primaryInscripcion->cod_inscrip : 0,
-									'pu_mensualidad' => (float)(isset($item['pu_mensualidad']) ? $item['pu_mensualidad'] : 0),
+									'pu_mensualidad' => (float)$puMensualidadFinal,
 									'turno' => (string)(isset($primaryInscripcion->turno) ? $primaryInscripcion->turno : ''),
 									'updated_at' => now(),
 									'created_at' => DB::raw('COALESCE(created_at, NOW())'),
@@ -2664,6 +2754,16 @@ class CobroController extends Controller
 						'mensaje' => $mensajeLocal,
 						'cuf' => $cufLocal,
 					];
+
+					// Agregar valores prorrateados calculados para que el frontend los muestre correctamente
+					if (isset($descuentosCalculados[$idx])) {
+						$resultItem['valores_prorrateados'] = [
+							'precio_bruto' => $descuentosCalculados[$idx]['precio_bruto_prorrateado'],
+							'descuento' => $descuentosCalculados[$idx]['descuento_prorrateado'],
+							'es_pago_parcial' => $descuentosCalculados[$idx]['es_pago_parcial'],
+							'monto_pagado_previo' => $descuentosCalculados[$idx]['monto_pagado_previo'],
+						];
+					}
 
 					// Si hay error de facturación, agregarlo al resultado
 					if (isset($facturaError)) {

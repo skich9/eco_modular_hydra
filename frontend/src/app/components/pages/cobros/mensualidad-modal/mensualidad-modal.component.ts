@@ -1230,13 +1230,55 @@ export class MensualidadModalComponent implements OnInit, OnChanges {
             const numero_cuota = Number(list[i]?.numero || 0) || null;
             const id_cuota_template = list[i]?.id_cuota_template ?? null;
             const id_asignacion_costo = list[i]?.id_asignacion_costo ?? null;
-            // P/U debe ser (monto - monto_pagado)
+
+            // Obtener datos de la cuota para detectar pagos previos
+            const cuotaData = numero_cuota ? (this.resumen?.asignaciones || []).find((a: any) => Number(a?.numero_cuota) === numero_cuota) : null;
+            const montoPagadoPrevio = Number(cuotaData?.monto_pagado || 0);
+            const montoBrutoOriginal = Number(cuotaData?.monto || 0);
+            const descuentoOriginal = Number(cuotaData?.descuento || 0);
+            const montoNetoTotal = montoBrutoOriginal - descuentoOriginal;
+            const saldoRestante = Math.max(0, montoNetoTotal - montoPagadoPrevio);
+
+            // Detectar si es un pago parcial automático (hay pagos previos y se paga el saldo restante)
+            const esPagoParcialAuto = montoPagadoPrevio > 0 && m <= saldoRestante && saldoRestante > 0;
+
+            // Calcular P/U y descuento prorrateados si hay pagos previos
             let pu_unit = 0;
-            if (numero_cuota) {
-              const bp = this.getCuotaBrutoPagadoByNumero(numero_cuota);
-              pu_unit = Math.max(0, Number(bp.bruto || 0) - Number(bp.pagado || 0));
+            let descUnit = 0;
+
+            if (esPagoParcialAuto && saldoRestante > 0) {
+              // Pago parcial detectado automáticamente: calcular valores prorrateados
+              const proporcion = m / saldoRestante;
+              const puRestante = montoBrutoOriginal - (montoBrutoOriginal * (montoPagadoPrevio / montoNetoTotal));
+              const descRestante = descuentoOriginal - (descuentoOriginal * (montoPagadoPrevio / montoNetoTotal));
+
+              // Calcular con 4 decimales para precisión
+              let pu_unit_4 = Math.round(puRestante * proporcion * 10000) / 10000;
+              let descUnit_4 = Math.round(descRestante * proporcion * 10000) / 10000;
+
+              // Ajustar para que sume exactamente el monto
+              const diferencia = m - (pu_unit_4 - descUnit_4);
+              if (Math.abs(diferencia) > 0.0001) {
+                pu_unit_4 += diferencia;
+              }
+
+              // Redondear a 2 decimales para mostrar
+              pu_unit = Math.round(pu_unit_4 * 100) / 100;
+              descUnit = Math.round(descUnit_4 * 100) / 100;
+
+              // Ajuste final
+              const diferencia2 = m - (pu_unit - descUnit);
+              if (Math.abs(diferencia2) > 0.01) {
+                pu_unit += diferencia2;
+              }
+            } else {
+              // Pago completo o sin pagos previos: usar valores normales
+              if (numero_cuota) {
+                const bp = this.getCuotaBrutoPagadoByNumero(numero_cuota);
+                pu_unit = Math.max(0, Number(bp.bruto || 0) - Number(bp.pagado || 0));
+              }
+              descUnit = this.getDescuentoForCuota(Number(numero_cuota || 0)) || 0;
             }
-            let descUnit = this.getDescuentoForCuota(Number(numero_cuota || 0)) || 0;
 
             // Distribuir descuento automático proporcionalmente
             if (descuentoAutoTotal > 0 && montoTotalSinDescuentoAuto > 0) {
