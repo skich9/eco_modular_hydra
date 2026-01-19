@@ -24,15 +24,15 @@ export class WsService {
 		const isDev4200 = loc.port === '4200';
 		const isTunnel = (loc.hostname || '').includes('devtunnels') || (loc.hostname || '').includes('ngrok');
 
-        // Regla: si estamos en 4200 => usar :8069
+        // Regla: si estamos en 4200 (desarrollo local) => usar :8070 (puerto mapeado de Docker)
         if (isDev4200) {
-            return `${scheme}://${loc.hostname}:8069/ws`;
+            return `${scheme}://${loc.hostname}:8070`;
         }
-        // Si es túnel https, mapear -<puerto> a -8069 y no usar puerto explícito
+        // Si es túnel https, mapear -<puerto> a -8070 y no usar puerto explícito
         if (isTunnel) {
             const hn = String(loc.hostname || '');
-            const mapped = hn.replace(/-(\d+)(?=\.|$)/, '-8069');
-            return `${scheme}://${mapped}/ws`;
+            const mapped = hn.replace(/-(\d+)(?=\.|$)/, '-8070');
+            return `${scheme}://${mapped}`;
         }
         // Caso por defecto (puertos de previsualización como 127.0.0.1:55754):
         // Usar host actual con el puerto del backend configurado en environment
@@ -40,10 +40,10 @@ export class WsService {
             const api = new URL(environment.apiUrl, `${loc.protocol}//${loc.host}`);
             const apiPort = (environment as any)?.apiPort || api.port;
             const hostPort = apiPort ? `${loc.hostname}:${apiPort}` : api.host;
-            return `${scheme}://${hostPort}/ws`;
+            return `${scheme}://${hostPort}`;
         } catch (e) {
-            const apiPort = (environment as any)?.apiPort || '8069';
-            return `${scheme}://${loc.hostname}:${apiPort}/ws`;
+            const apiPort = (environment as any)?.apiPort || '8070';
+            return `${scheme}://${loc.hostname}:${apiPort}`;
         }
 	}
 

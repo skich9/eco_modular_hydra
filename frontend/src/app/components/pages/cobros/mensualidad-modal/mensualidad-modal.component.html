@@ -228,17 +228,18 @@
             </div>
           </div>
           <div class="col-md-4" *ngIf="(tipo === 'mensualidad' || tipo === 'reincorporacion') && form.get('pago_parcial')?.value">
-            <label class="form-label">{{ tipo === 'reincorporacion' ? 'Saldo a pagar' : 'Monto parcial' }}</label>
-            <input type="number" step="0.01" class="form-control"
+            <label class="form-label">{{ tipo === 'reincorporacion' ? 'Saldo a pagar' : 'Monto cobro parcial' }}</label>
+            <input type="number" step="1" min="1" class="form-control"
                    [ngClass]="{ 'is-invalid': form.get('monto_parcial')?.hasError('max') && form.get('monto_parcial')?.touched }"
-                   formControlName="monto_parcial" />
+                   formControlName="monto_parcial"
+                   placeholder="Ingrese solo números enteros" />
             <div class="invalid-feedback" *ngIf="form.get('monto_parcial')?.hasError('max') && form.get('monto_parcial')?.touched">
               El monto ingresado excede el saldo.
             </div>
-            <div class="form-text">Máximo: {{ getParcialMax() | number:'1.2-2' }}</div>
+            <div class="form-text">Mínimo: 1 - Máximo: {{ getParcialMax() | number:'1.0-0' }}</div>
           </div>
           <div class="col-md-4">
-            <label class="form-label">Costo total</label>
+            <label class="form-label">Total Cobrar</label>
             <input class="form-control" formControlName="costo_total" readonly />
           </div>
           <div class="col-12">

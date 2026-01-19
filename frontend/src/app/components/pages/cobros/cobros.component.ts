@@ -100,11 +100,11 @@ export class CobrosComponent implements OnInit {
     cod_ceta?: string;
     estudiante?: string;
     carrera?: string;
-    pensum?: string;
+    inscripcion?: string;
     gestion?: string;
     rows: Array<{ cant: number; detalle: string; pu: number; descuento: number; subtotal: number; obs?: string }>;
     total?: number;
-    docs?: Array<{ anio: number; nro_recibo?: number }>
+    docs?: Array<{ anio: number; nro_recibo?: number; nro_factura?: number; tipo?: string; codigo_recepcion?: string }>
   } | null = null;
 
   busquedaLoading = false;
@@ -1617,19 +1617,38 @@ export class CobrosComponent implements OnInit {
             next: (det: any) => {
               try {
                 const tr = det?.data?.transaccion || null;
-                const anio = Number(tr?.anio_recibo || 0);
-                const nro = Number(tr?.nro_recibo || 0);
-                if (anio && nro) {
+
+                // Intentar descargar factura si existe
+                const anioFactura = Number(tr?.anio_factura || tr?.anio || 0);
+                const nroFactura = Number(tr?.nro_factura || 0);
+                if (anioFactura && nroFactura) {
                   try {
                     if (this.successSummary) {
                       const docs = Array.isArray(this.successSummary.docs) ? this.successSummary.docs : [];
-                      if (!docs.some((x: any) => Number(x?.anio) === anio && Number(x?.nro_recibo) === nro)) {
-                        docs.push({ anio, nro_recibo: nro });
+                      if (!docs.some((x: any) => Number(x?.anio) === anioFactura && Number(x?.nro_factura) === nroFactura)) {
+                        docs.push({ anio: anioFactura, nro_factura: nroFactura });
                         this.successSummary.docs = docs as any;
                       }
                     }
                   } catch {}
-                  this.downloadReciboPdfWithFallback(anio, nro);
+                  this.downloadFacturaPdfWithFallback(anioFactura, nroFactura);
+                  return;
+                }
+
+                // Si no hay factura, intentar descargar recibo
+                const anioRecibo = Number(tr?.anio_recibo || tr?.anio || 0);
+                const nroRecibo = Number(tr?.nro_recibo || 0);
+                if (anioRecibo && nroRecibo) {
+                  try {
+                    if (this.successSummary) {
+                      const docs = Array.isArray(this.successSummary.docs) ? this.successSummary.docs : [];
+                      if (!docs.some((x: any) => Number(x?.anio) === anioRecibo && Number(x?.nro_recibo) === nroRecibo)) {
+                        docs.push({ anio: anioRecibo, nro_recibo: nroRecibo });
+                        this.successSummary.docs = docs as any;
+                      }
+                    }
+                  } catch {}
+                  this.downloadReciboPdfWithFallback(anioRecibo, nroRecibo);
                 }
               } catch {}
             },
@@ -2013,37 +2032,24 @@ export class CobrosComponent implements OnInit {
       this.showAlert('Solo puede eliminar la última fila del detalle', 'warning');
       return;
     }
-    // Antes de eliminar, si la fila es una Mensualidad parcial, reintegrar el monto al saldo frontal
+    // Antes de eliminar, si la fila es una Mensualidad parcial, limpiar el saldo frontal
     try {
       const ctrl = this.pagos.at(i) as FormGroup;
       const detalle = (ctrl.get('detalle')?.value || '').toString();
       const isMensualidad = /^\s*Mensualidad\s*-/i.test(detalle);
       const esParcial = !!ctrl.get('es_parcial')?.value;
       const numeroCuota = Number(ctrl.get('numero_cuota')?.value || 0);
-      const pu = Number(ctrl.get('pu_mensualidad')?.value || 0);
-      if (isMensualidad) {
-        if (esParcial && numeroCuota) {
-          const monto = this.calcRowSubtotal(i);
-          const prevSaldo = Number(this.frontSaldoByCuota[numeroCuota] || 0);
-          const desc = Number(ctrl.get('descuento')?.value || 0) || 0;
-          const base = pu > 0 ? pu : Number(this.resumen?.totales?.pu_mensual || this.mensualidadPU || 0);
-          const netoBase = Math.max(0, base - (isNaN(desc) ? 0 : desc));
-          let nuevoSaldo = (isFinite(prevSaldo) ? prevSaldo : 0) + (isFinite(monto) ? monto : 0);
-          // Reintegrar respetando el neto (PU - descuento) de esa línea parcial
-          if (netoBase > 0 && nuevoSaldo > netoBase) nuevoSaldo = netoBase;
-          this.frontSaldoByCuota[numeroCuota] = nuevoSaldo;
-          // Fijar foco en la misma cuota nuevamente
-          this.lockedMensualidadCuota = numeroCuota;
-          this.startCuotaOverrideValue = numeroCuota;
-          // Actualizar PU sugerido para el próximo modal
-          if (nuevoSaldo > 0) {
-            this.mensualidadPU = nuevoSaldo;
-          } else {
-            const puSem = Number(this.resumen?.totales?.pu_mensual || 0);
-            const puNext = Number(this.resumen?.mensualidad_next?.next_cuota?.monto ?? 0);
-            this.mensualidadPU = puSem > 0 ? puSem : puNext;
-          }
-        }
+
+      if (isMensualidad && esParcial && numeroCuota) {
+        // Limpiar completamente el saldo frontal de esta cuota
+        delete this.frontSaldoByCuota[numeroCuota];
+        // Desbloquear la cuota
+        this.lockedMensualidadCuota = null;
+        this.startCuotaOverrideValue = null;
+        // Restaurar PU sugerido al valor del backend
+        const puSem = Number(this.resumen?.totales?.pu_mensual || 0);
+        const puNext = Number(this.resumen?.mensualidad_next?.next_cuota?.monto ?? 0);
+        this.mensualidadPU = puSem > 0 ? puSem : puNext;
       }
     } catch {}
     this.pagos.removeAt(i);
@@ -2054,15 +2060,15 @@ export class CobrosComponent implements OnInit {
     if (!this.searchForm.valid) return;
     this.loading = true;
     const { cod_ceta, gestion } = this.searchForm.value;
-    
+
     // Limpiar datos anteriores pero mantener estado de opciones
     this.resumen = null;
-    
+
     this.cobrosService.getResumen(cod_ceta, gestion).subscribe({
       next: (res) => {
         console.log('[Cobros] Respuesta del backend:', res);
         console.log('[Cobros] Estudiante recibido:', res?.data?.estudiante);
-        
+
         if (res.success) {
           this.resumen = res.data;
           try {
@@ -2080,14 +2086,14 @@ export class CobrosComponent implements OnInit {
           // Prefill identidad/razón social
           const est = this.resumen?.estudiante || {};
           const fullName = [est.ap_paterno, est.ap_materno, est.nombres ].filter(Boolean).join(' ');
-          
+
           console.log('[Cobros] Datos del estudiante para llenar formulario:', {
             estudiante: est,
             fullName: fullName,
             ci: est.ci,
             cod_ceta: est.cod_ceta
           });
-          
+
           // Limpiar formulario antes de llenar con nuevos datos con un pequeño delay
           setTimeout(() => {
             console.log('[Cobros] Limpiando y llenando formulario...');
@@ -2102,7 +2108,7 @@ export class CobrosComponent implements OnInit {
               email_habilitado: false,
               email: est.email || ''
             });
-            
+
             console.log('[Cobros] Formulario después de llenar:', this.identidadForm.value);
           }, 50);
 
@@ -2189,12 +2195,12 @@ export class CobrosComponent implements OnInit {
       },
       error: (err) => {
         console.error('Resumen error:', err);
-        
+
         // No limpiar el formulario aquí para permitir mostrar datos si la carga es exitosa
         this.resumen = null;
         this.reincorporacion = null;
         this.showOpciones = false;
-        
+
         const status = Number(err?.status || 0);
         const backendMsg = (err?.error?.message || err?.message || '').toString();
         // Fallback: si la gestión solicitada no aplica, reintentar con la última inscripción del estudiante
@@ -3174,7 +3180,7 @@ export class CobrosComponent implements OnInit {
         const raw: any = fg.getRawValue();
         const subtotal = this.calcRowSubtotal(idx);
         const fecha = raw?.fecha_cobro || hoy;
-        
+
         // NO asignar nro_cobro, dejar que backend lo genere
         fg.patchValue({ fecha_cobro: fecha, monto: subtotal }, { emitEvent: false });
         console.log(`Pago ${idx} - nro_cobro será generado por backend`);
@@ -3223,24 +3229,24 @@ export class CobrosComponent implements OnInit {
     // Mapear pagos para enviar solo con 'monto' calculado, SIN nro_cobro (backend lo genera)
     const hoy = new Date().toISOString().slice(0, 10);
     console.log('Creando pagosRaw - SIN nro_cobro, backend generará con AUTO_INCREMENT');
-    
+
     const pagosRaw = (baseCtrls || []).map((ctrl, idx) => {
       const raw = (ctrl as FormGroup).getRawValue() as any;
       const subtotal = this.calcRowSubtotal(idx);
       const fecha = raw.fecha_cobro || hoy;
-      
+
       // NO incluir nro_cobro, dejar que backend lo genere
-      const item: any = { 
-        ...raw, 
-        fecha_cobro: fecha, 
+      const item: any = {
+        ...raw,
+        fecha_cobro: fecha,
         monto: subtotal,
         // Asegurar que cada pago tenga el id_forma_cobro de la cabecera
         id_forma_cobro: cabecera?.id_forma_cobro || raw?.id_forma_cobro
       };
-      
+
       // Eliminar nro_cobro si existe para que backend lo genere
       delete item.nro_cobro;
-      
+
       console.log(`pagosRaw ${idx} - nro_cobro será generado por backend`);
       return item;
     });
@@ -3255,15 +3261,15 @@ export class CobrosComponent implements OnInit {
         if (md === 'C' || comp === 'COMPUTARIZADA') return 'C';
         return 'C';
       })();
-      
+
       // Formatear observaciones sólo respetando lo que venga de los formularios
       console.log('Procesando pago para formatear observaciones (sin defaults automáticos):', it);
       const observacionesFinal = this.formatObservacionesByPaymentMethod(it);
       console.log('Observaciones finales a enviar al backend:', observacionesFinal);
-      
+
       return { ...it, tipo_documento: tipo || 'R', medio_doc: medio || 'C', observaciones: observacionesFinal };
     });
-    
+
     console.log('HOIla 10 - Payload final con observaciones formateadas:', {
       pagos: pagos.map(p => ({
         id_forma_cobro: p.id_forma_cobro,
@@ -3273,7 +3279,7 @@ export class CobrosComponent implements OnInit {
         fecha_deposito: p.fecha_deposito
       }))
     });
-    
+
     const payload = {
       ...cabecera,
       codigo_sin: siatCodigoSin,
@@ -3440,51 +3446,74 @@ export class CobrosComponent implements OnInit {
 
   // Calcular descuento prorrateado para una fila específica (4 decimales)
   calcularDescuentoProrrateadoParaFila(i: number): number {
-    try {
-      const g = this.pagos.at(i) as FormGroup;
-      if (!g) return 0;
+    const g = this.pagos.at(i) as FormGroup;
+    if (!g) {
+      throw new Error(`No se encontró el FormGroup en el índice ${i}`);
+    }
 
-      const esParcial = !!g.get('es_parcial')?.value;
-      if (!esParcial) return 0;
-
-      const montoParcial = Number(g.get('monto')?.value || 0);
-      if (montoParcial <= 0) return 0;
-
-      const numeroCuota = Number(g.get('numero_cuota')?.value || 0) || null;
-      const idAsign = Number(g.get('id_asignacion_costo')?.value || 0) || null;
-
-      // Buscar la cuota en el resumen
-      const asignList: any[] = Array.isArray(this.resumen?.asignaciones)
-        ? this.resumen!.asignaciones
-        : (Array.isArray(this.resumen?.asignacion_costos?.items) ? this.resumen!.asignacion_costos.items : []);
-
-      let cuota: any = null;
-      if (numeroCuota) {
-        cuota = asignList.find((a: any) => Number(a?.numero_cuota || a?.numero || 0) === Number(numeroCuota));
-      } else if (idAsign) {
-        cuota = asignList.find((a: any) => Number(a?.id_asignacion_costo || 0) === Number(idAsign));
-      }
-
-      if (!cuota) return 0;
-
-      const descuentoPago = Number(cuota?.descuento || 0);
-      if (descuentoPago <= 0) return 0;
-
-      const deudaPagada = Number(cuota?.monto_pagado || 0);
-      const totalDebePagar = Number(cuota?.total_debe_pagar || 0);
-      const descuentoAplicado = Number(cuota?.descuento_aplicado || 0);
-
-      if (totalDebePagar <= 0) return 0;
-
-      // Fórmula: descuento_pago * ((monto_pago_parcial + deuda_pagada) / total_debe_pagar) - descuento_aplicado
-      const descuentoProrrateado = (descuentoPago * ((montoParcial + deudaPagada) / totalDebePagar)) - descuentoAplicado;
-
-      // Redondear a 4 decimales
-      return Math.round(Math.max(0, descuentoProrrateado) * 10000) / 10000;
-    } catch (error) {
-      console.error('[Cobros] Error al calcular descuento prorrateado para fila:', error);
+    const esParcial = !!g.get('es_parcial')?.value;
+    if (!esParcial) {
       return 0;
     }
+
+    const montoParcial = Number(g.get('monto')?.value || 0);
+    if (montoParcial <= 0) {
+      return 0;
+    }
+
+    const numeroCuota = Number(g.get('numero_cuota')?.value || 0) || null;
+    const idAsign = Number(g.get('id_asignacion_costo')?.value || 0) || null;
+
+    // Buscar la cuota en el resumen
+    const asignList: any[] = Array.isArray(this.resumen?.asignaciones)
+      ? this.resumen!.asignaciones
+      : (Array.isArray(this.resumen?.asignacion_costos?.items)
+          ? this.resumen!.asignacion_costos.items
+          : []);
+
+    if (asignList.length === 0) {
+      throw new Error('No hay asignaciones disponibles en el resumen');
+    }
+
+    let cuota: any = null;
+    if (numeroCuota) {
+      cuota = asignList.find(
+        (a: any) => Number(a?.numero_cuota || a?.numero || 0) === Number(numeroCuota)
+      );
+    } else if (idAsign) {
+      cuota = asignList.find(
+        (a: any) => Number(a?.id_asignacion_costo || 0) === Number(idAsign)
+      );
+    }
+
+    if (!cuota) {
+      throw new Error(
+        `No se encontró la cuota ${numeroCuota || idAsign} en el resumen`
+      );
+    }
+
+    const descuentoPago = Number(cuota?.descuento || 0);
+    if (descuentoPago <= 0) {
+      return 0;
+    }
+
+    const deudaPagada = Number(cuota?.monto_pagado || 0);
+    const totalDebePagar = Number(cuota?.total_debe_pagar || 0);
+    const descuentoAplicado = Number(cuota?.descuento_aplicado || 0);
+
+    if (totalDebePagar <= 0) {
+      throw new Error(
+        `Total a pagar inválido para cuota ${numeroCuota}: ${totalDebePagar}`
+      );
+    }
+
+    // Fórmula: descuento_pago * (monto_pago_parcial / total_debe_pagar)
+    // Solo calculamos el descuento proporcional al pago actual, sin restar descuento_aplicado
+    const proporcion = montoParcial / totalDebePagar;
+    const descuentoProrrateado = descuentoPago * proporcion;
+
+    // Redondear a 4 decimales
+    return Math.round(Math.max(0, descuentoProrrateado) * 10000) / 10000;
   }
 
   // Descuento mostrado en la tabla: para pagos parciales, mostrar descuento_prorrateado
@@ -3492,7 +3521,10 @@ export class CobrosComponent implements OnInit {
   getRowDisplayDescuento(i: number): number {
     try {
       const g = this.pagos.at(i) as FormGroup;
-      if (!g) return 0;
+      if (!g) {
+        return 0;
+      }
+
       const esParcial = !!g.get('es_parcial')?.value;
       if (!esParcial) {
         return Number(g.get('descuento')?.value || 0);
@@ -3500,8 +3532,9 @@ export class CobrosComponent implements OnInit {
 
       // Para pagos parciales: retornar descuento prorrateado
       return this.calcularDescuentoProrrateadoParaFila(i);
-    } catch {
-      return 0;
+    } catch (error) {
+      console.error('[Cobros] Error al obtener descuento para fila:', i, error);
+      throw error;
     }
   }
 

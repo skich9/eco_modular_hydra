@@ -970,4 +970,88 @@ class SgaSyncRepository
 		// validación simple
 		return filter_var($email, FILTER_VALIDATE_EMAIL) ? $email : null;
 	}
+
+	/**
+	 * Obtiene datos de estudiante desde la base de datos SGA correcta según su pensum
+	 * Evita consultar ambas bases de datos innecesariamente
+	 *
+	 * @param int $codCeta Código del estudiante
+	 * @return object|null Datos del estudiante o null si no se encuentra
+	 */
+	public function getEstudianteOptimizado($codCeta)
+	{
+		try {
+			// Determinar la conexión correcta según el pensum del estudiante
+			$connection = \App\Helpers\SgaHelper::getConnectionByCeta($codCeta);
+
+			// Consultar solo en la base de datos correspondiente
+			$estudiante = DB::connection($connection)
+				->table('estudiante')
+				->where('cod_ceta', $codCeta)
+				->first();
+
+			if ($estudiante) {
+				return $estudiante;
+			}
+
+			// Si no se encuentra, intentar en la otra base de datos como fallback
+			$otherConnection = $connection === 'sga_elec' ? 'sga_mec' : 'sga_elec';
+			return DB::connection($otherConnection)
+				->table('estudiante')
+				->where('cod_ceta', $codCeta)
+				->first();
+		} catch (\Throwable $e) {
+			\Log::warning('SgaSyncRepository: Error al obtener estudiante optimizado', [
+				'cod_ceta' => $codCeta,
+				'error' => $e->getMessage()
+			]);
+			return null;
+		}
+	}
+
+	/**
+	 * Obtiene inscripciones de estudiante desde la base de datos SGA correcta según su pensum
+	 *
+	 * @param int $codCeta Código del estudiante
+	 * @param string|null $codPensum Código del pensum (opcional, para optimizar más)
+	 * @return \Illuminate\Support\Collection Colección de inscripciones
+	 */
+	public function getInscripcionesOptimizado($codCeta, $codPensum = null)
+	{
+		try {
+			// Si se proporciona pensum, usar ese para determinar la conexión
+			if ($codPensum) {
+				$connection = \App\Helpers\SgaHelper::getConnectionByPensum($codPensum);
+			} else {
+				// Si no, determinar por CETA
+				$connection = \App\Helpers\SgaHelper::getConnectionByCeta($codCeta);
+			}
+
+			// Consultar solo en la base de datos correspondiente
+			$inscripciones = DB::connection($connection)
+				->table('registro_inscripcion')
+				->where('cod_ceta', $codCeta)
+				->orderBy('gestion', 'desc')
+				->get();
+
+			if ($inscripciones->isNotEmpty()) {
+				return $inscripciones;
+			}
+
+			// Si no se encuentra, intentar en la otra base de datos como fallback
+			$otherConnection = $connection === 'sga_elec' ? 'sga_mec' : 'sga_elec';
+			return DB::connection($otherConnection)
+				->table('registro_inscripcion')
+				->where('cod_ceta', $codCeta)
+				->orderBy('gestion', 'desc')
+				->get();
+		} catch (\Throwable $e) {
+			\Log::warning('SgaSyncRepository: Error al obtener inscripciones optimizado', [
+				'cod_ceta' => $codCeta,
+				'cod_pensum' => $codPensum,
+				'error' => $e->getMessage()
+			]);
+			return collect([]);
+		}
+	}
 }

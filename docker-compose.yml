@@ -153,3 +153,23 @@ services:
     networks:
       - angular_laravel_network
     restart: unless-stopped
+
+  angular_laravel_websocket:
+    build:
+      context: .
+      dockerfile: dockerfiles/php.dockerfile
+    container_name: angular_laravel_websocket
+    working_dir: /var/www/html
+    depends_on:
+      - angular_laravel_php
+      - redis
+    volumes:
+      - ./src:/var/www/html
+    ports:
+      - "8070:8069"
+    environment:
+      - WS_ADDRESS=0.0.0.0:8069
+    command: php /var/www/html/websocket/websocket-server.php start
+    networks:
+      - angular_laravel_network
+    restart: unless-stopped

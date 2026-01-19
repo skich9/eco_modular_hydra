@@ -22,8 +22,8 @@ class FacturaPayloadBuilder
         } else {
             // XML para modalidad 1 o sector educativo (11)
             $xmlCrudo = $this->buildXmlSectorEducativo($args, $docSector);
-            
-            // Firmar XML 
+
+            // Firmar XML
             $nombreFactura = '';
             if (!empty($args['cuf'])) {
                 $nombreFactura = (string) $args['cuf'];
@@ -55,7 +55,7 @@ class FacturaPayloadBuilder
                     'xmlPath' => $xmlPath,
                     'len' => strlen($archivoBytes),
                 ]);
-                
+
                 // Validar XML firmado contra el XSD antes de comprimir/enviar
                 if ($xmlPath && is_file($xmlPath)) {
                     $xsdPath = base_path('xsd/facturaElectronicaSectorEducativo.xsd');
@@ -166,12 +166,12 @@ class FacturaPayloadBuilder
             $base = rtrim(sys_get_temp_dir(), DIRECTORY_SEPARATOR) . DIRECTORY_SEPARATOR . 'siat_fact_' . uniqid();
             $xmlPath = $xmlFilePath && is_file($xmlFilePath) ? $xmlFilePath : ($base . '.xml');
             $zipPath = $base . '.zip';
-            
+
             // Si no hay archivo en disco, guardar XML en un temporal
             if (!$xmlFilePath || !is_file($xmlFilePath)) {
                 file_put_contents($xmlPath, $xml);
             }
-            
+
             // Comprimir con gzopen al archivo .zip usando el XML en disco
             $fp = @fopen($xmlPath, 'rb');
             if ($fp !== false) {
@@ -183,7 +183,7 @@ class FacturaPayloadBuilder
                     @gzclose($gz);
                 }
             }
-            
+
             if (is_file($zipPath)) {
                 // Guardar una copia estable del ZIP comprimido para inspección/reuso
                 $destPath = null;
@@ -208,7 +208,7 @@ class FacturaPayloadBuilder
                 } catch (\Throwable $e) {
                     Log::warning('FacturaPayloadBuilder.compressSingleGzToZip.storeCopyError', [ 'error' => $e->getMessage() ]);
                 }
-                
+
                 // Para calcular bytes y hash, leer directamente desde el ZIP definitivo en disco
                 $hashSource = $destPath && is_file($destPath) ? $destPath : $zipPath;
                 $zipContent = file_get_contents($hashSource);
@@ -275,7 +275,7 @@ class FacturaPayloadBuilder
             $base = rtrim(sys_get_temp_dir(), DIRECTORY_SEPARATOR) . DIRECTORY_SEPARATOR . 'siat_pkg_' . uniqid();
             $tarPath = $base . '.tar';
             $gzPath = $tarPath . '.gz';
-            
+
             // Crear TAR
             $tar = new \PharData($tarPath);
             foreach ($xmlFiles as $file) {
@@ -283,7 +283,7 @@ class FacturaPayloadBuilder
                 $content = (string)($file['contenido'] ?? '');
                 $tar[$name] = $content;
             }
-            
+
             // Comprimir a GZ (tar.gz)
             $tar->compress(\Phar::GZ);
             if (!is_file($gzPath)) {
@@ -406,29 +406,53 @@ class FacturaPayloadBuilder
         $detalle = [];
         if (!empty($args['detalles']) && is_array($args['detalles'])) {
             foreach ($args['detalles'] as $d) {
+                $actEco = (string) ($actividadEnv = (string) config('sin.actividad_economica', $actividad));
+                $codSin = (int) ($d['codigo_sin'] ?? ($args['detalle']['codigo_sin'] ?? (int) config('sin.codigo_producto_sin', 0)));
+                $codProd = (string) ($d['codigo'] ?? ($args['detalle']['codigo'] ?? 'ITEM'));
+                $desc = (string) ($d['descripcion'] ?? ($args['detalle']['descripcion'] ?? 'Servicio/Item'));
+                $cant = (float) ($d['cantidad'] ?? ($args['detalle']['cantidad'] ?? 1));
+                $uni = (int) ($d['unidad_medida'] ?? ($args['detalle']['unidad_medida'] ?? 1));
+                $sub = (float) ($d['subtotal'] ?? ($args['detalle']['subtotal'] ?? ($args['monto_total'] ?? 0)));
+                $descItem = (float) ($d['descuento'] ?? ($args['detalle']['descuento'] ?? 0));
+                $puRaw = $d['precio_unitario'] ?? ($args['detalle']['precio_unitario'] ?? null);
+                $pu = ($puRaw !== null)
+                    ? (float) $puRaw
+                    : ($cant > 0 ? (($sub + $descItem) / $cant) : ($sub + $descItem));
                 $detalle[] = [
-                    'actividadEconomica' => (string) ($actividadEnv = (string) config('sin.actividad_economica', $actividad)),
-                    'codigoProductoSin' => (int) ($d['codigo_sin'] ?? ($args['detalle']['codigo_sin'] ?? (int) config('sin.codigo_producto_sin', 0))),
-                    'codigoProducto' => (string) ($d['codigo'] ?? ($args['detalle']['codigo'] ?? 'ITEM')),
-                    'descripcion' => (string) ($d['descripcion'] ?? ($args['detalle']['descripcion'] ?? 'Servicio/Item')),
-                    'cantidad' => (float) ($d['cantidad'] ?? ($args['detalle']['cantidad'] ?? 1)),
-                    'unidadMedida' => (int) ($d['unidad_medida'] ?? ($args['detalle']['unidad_medida'] ?? 1)),
-                    'precioUnitario' => (float) ($d['precio_unitario'] ?? ($args['detalle']['precio_unitario'] ?? ($args['monto_total'] ?? 0))),
-                    'montoDescuento' => (float) ($d['descuento'] ?? ($args['detalle']['descuento'] ?? 0)),
-                    'subTotal' => (float) ($d['subtotal'] ?? ($args['detalle']['subtotal'] ?? ($args['monto_total'] ?? 0))),
+                    'actividadEconomica' => $actEco,
+                    'codigoProductoSin' => $codSin,
+                    'codigoProducto' => $codProd,
+                    'descripcion' => $desc,
+                    'cantidad' => $cant,
+                    'unidadMedida' => $uni,
+                    'precioUnitario' => (float) $pu,
+                    'montoDescuento' => (float) $descItem,
+                    'subTotal' => (float) $sub,
                 ];
             }
         } else {
+            $actEco = (string) ((string) config('sin.actividad_economica', $actividad));
+            $codSin = (int) ($args['detalle']['codigo_sin'] ?? (int) config('sin.codigo_producto_sin', 0));
+            $codProd = (string) ($args['detalle']['codigo'] ?? 'ITEM');
+            $desc = (string) ($args['detalle']['descripcion'] ?? 'Servicio/Item');
+            $cant = (float) ($args['detalle']['cantidad'] ?? 1);
+            $sub = (float) ($args['detalle']['subtotal'] ?? ($args['monto_total'] ?? 0));
+            $uni = (int) ($args['detalle']['unidad_medida'] ?? 1);
+            $descItem = (float) ($args['detalle']['descuento'] ?? 0);
+            $puRaw = $args['detalle']['precio_unitario'] ?? null;
+            $pu = ($puRaw !== null)
+                ? (float) $puRaw
+                : ($cant > 0 ? (($sub + $descItem) / $cant) : ($sub + $descItem));
             $detalle = [[
-                'actividadEconomica' => (string) ((string) config('sin.actividad_economica', $actividad)),
-                'codigoProductoSin' => (int) ($args['detalle']['codigo_sin'] ?? (int) config('sin.codigo_producto_sin', 0)),
-                'codigoProducto' => (string) ($args['detalle']['codigo'] ?? 'ITEM'),
-                'descripcion' => (string) ($args['detalle']['descripcion'] ?? 'Servicio/Item'),
-                'cantidad' => (float) ($args['detalle']['cantidad'] ?? 1),
-                'unidadMedida' => (int) ($args['detalle']['unidad_medida'] ?? 1),
-                'precioUnitario' => (float) ($args['detalle']['precio_unitario'] ?? ($args['monto_total'] ?? 0)),
-                'montoDescuento' => (float) ($args['detalle']['descuento'] ?? 0),
-                'subTotal' => (float) ($args['detalle']['subtotal'] ?? ($args['monto_total'] ?? 0)),
+                'actividadEconomica' => $actEco,
+                'codigoProductoSin' => $codSin,
+                'codigoProducto' => $codProd,
+                'descripcion' => $desc,
+                'cantidad' => $cant,
+                'unidadMedida' => $uni,
+                'precioUnitario' => (float) $pu,
+                'montoDescuento' => (float) $descItem,
+                'subTotal' => (float) $sub,
             ]];
         }
 
@@ -500,6 +524,21 @@ class FacturaPayloadBuilder
         $precioUnitario = (float) ($det['precio_unitario'] ?? ($args['monto_total'] ?? 0));
         $subTotal = (float) ($det['subtotal'] ?? ($args['monto_total'] ?? 0));
 
+        // Suma de subtotales (netos) y totales de cabecera según lógica SGA
+        $sumSub = 0.0;
+        if (!empty($args['detalles']) && is_array($args['detalles'])) {
+            foreach ($args['detalles'] as $dx) {
+                $sumSub += (float) ($dx['subtotal'] ?? 0);
+            }
+        } else {
+            $sumSub = (float) ($det['subtotal'] ?? ($args['monto_total'] ?? 0));
+        }
+        $descAdic = (float) ($args['descuento_adicional'] ?? ($args['descuentoAdicional'] ?? 0));
+        $giftCard = (float) ($args['gift_card'] ?? ($args['monto_gift_card'] ?? ($args['giftCard'] ?? 0)));
+        $montoTotalCalc = round($sumSub - $descAdic, 2);
+        $montoTotalSujetoIvaCalc = round($montoTotalCalc - $giftCard, 2);
+        $montoMonedaCalc = $montoTotalCalc;
+
         // Emisor (usar .env/config y direccion desde sin_cufd)
         $razonEmisorCfg = (string) config('sin.razon_social', 'INSTITUTO TECNOLOGICO DE ENSEÑANZA AUTOMOTRIZ "CETA" S.R.L.');
         $municipioCfg = (string) config('sin.municipio', 'COCHABAMBA');
@@ -557,13 +596,21 @@ class FacturaPayloadBuilder
         } else {
             $xml .= '<numeroTarjeta xsi:nil="true"/>';
         }
-        $xml .= '<montoTotal>' . number_format((float)($args['monto_total'] ?? 0), 2, '.', '') . '</montoTotal>';
-        $xml .= '<montoTotalSujetoIva>' . number_format((float)($args['monto_total'] ?? 0), 2, '.', '') . '</montoTotalSujetoIva>';
+        $xml .= '<montoTotal>' . number_format($montoTotalCalc, 2, '.', '') . '</montoTotal>';
+        $xml .= '<montoTotalSujetoIva>' . number_format($montoTotalSujetoIvaCalc, 2, '.', '') . '</montoTotalSujetoIva>';
         $xml .= '<codigoMoneda>' . (int) config('sin.codigo_moneda', 1) . '</codigoMoneda>';
         $xml .= '<tipoCambio>' . number_format((float) config('sin.tipo_cambio', 1), 2, '.', '') . '</tipoCambio>';
-        $xml .= '<montoTotalMoneda>' . number_format((float)($args['monto_total'] ?? 0), 2, '.', '') . '</montoTotalMoneda>';
-        $xml .= '<montoGiftCard xsi:nil="true"/>';
-        $xml .= '<descuentoAdicional xsi:nil="true"/>';
+        $xml .= '<montoTotalMoneda>' . number_format($montoMonedaCalc, 2, '.', '') . '</montoTotalMoneda>';
+        if ($giftCard > 0) {
+            $xml .= '<montoGiftCard>' . number_format($giftCard, 2, '.', '') . '</montoGiftCard>';
+        } else {
+            $xml .= '<montoGiftCard xsi:nil="true"/>';
+        }
+        if ($descAdic > 0) {
+            $xml .= '<descuentoAdicional>' . number_format($descAdic, 2, '.', '') . '</descuentoAdicional>';
+        } else {
+            $xml .= '<descuentoAdicional xsi:nil="true"/>';
+        }
         $xml .= '<codigoExcepcion xsi:nil="true"/>';
         $xml .= '<cafc xsi:nil="true"/>';
         $xml .= '<leyenda>' . htmlspecialchars($leyenda, ENT_QUOTES | ENT_SUBSTITUTE, 'UTF-8') . '</leyenda>';
@@ -578,11 +625,20 @@ class FacturaPayloadBuilder
                 $xml .= '<codigoProductoSin>' . (int)($d['codigo_sin'] ?? $codigoProductoSin) . '</codigoProductoSin>';
                 $xml .= '<codigoProducto>' . htmlspecialchars((string)($d['codigo'] ?? $codigoProducto), ENT_QUOTES | ENT_SUBSTITUTE, 'UTF-8') . '</codigoProducto>';
                 $xml .= '<descripcion>' . htmlspecialchars((string)($d['descripcion'] ?? $descripcion), ENT_QUOTES | ENT_SUBSTITUTE, 'UTF-8') . '</descripcion>';
-                $xml .= '<cantidad>' . number_format((float)($d['cantidad'] ?? $cantidad), 2, '.', '') . '</cantidad>';
+                $cantItem = (float)($d['cantidad'] ?? $cantidad);
+                $subItem = (float)($d['subtotal'] ?? $subTotal);
+                $descItem = (float)($d['descuento'] ?? 0);
+                $puRaw = $d['precio_unitario'] ?? null;
+                $puItem = ($puRaw !== null) ? (float)$puRaw : ($cantItem > 0 ? (($subItem + $descItem) / $cantItem) : ($subItem + $descItem));
+                $xml .= '<cantidad>' . number_format($cantItem, 2, '.', '') . '</cantidad>';
                 $xml .= '<unidadMedida>' . (int)($d['unidad_medida'] ?? $unidadMedida) . '</unidadMedida>';
-                $xml .= '<precioUnitario>' . number_format((float)($d['precio_unitario'] ?? $precioUnitario), 2, '.', '') . '</precioUnitario>';
-                $xml .= '<montoDescuento xsi:nil="true"/>';
-                $xml .= '<subTotal>' . number_format((float)($d['subtotal'] ?? $subTotal), 2, '.', '') . '</subTotal>';
+                $xml .= '<precioUnitario>' . number_format($puItem, 2, '.', '') . '</precioUnitario>';
+                if ($descItem > 0) {
+                    $xml .= '<montoDescuento>' . number_format($descItem, 2, '.', '') . '</montoDescuento>';
+                } else {
+                    $xml .= '<montoDescuento xsi:nil="true"/>';
+                }
+                $xml .= '<subTotal>' . number_format($subItem, 2, '.', '') . '</subTotal>';
                 $xml .= '</detalle>';
             }
         } else {
@@ -591,11 +647,20 @@ class FacturaPayloadBuilder
             $xml .= '<codigoProductoSin>' . (int)$codigoProductoSin . '</codigoProductoSin>';
             $xml .= '<codigoProducto>' . htmlspecialchars($codigoProducto, ENT_QUOTES | ENT_SUBSTITUTE, 'UTF-8') . '</codigoProducto>';
             $xml .= '<descripcion>' . htmlspecialchars($descripcion, ENT_QUOTES | ENT_SUBSTITUTE, 'UTF-8') . '</descripcion>';
-            $xml .= '<cantidad>' . number_format($cantidad, 2, '.', '') . '</cantidad>';
+            $cantItem = (float)$cantidad;
+            $subItem = (float)$subTotal;
+            $descItem = (float)($det['descuento'] ?? 0);
+            $puRaw = $det['precio_unitario'] ?? null;
+            $puItem = ($puRaw !== null) ? (float)$puRaw : ($cantItem > 0 ? (($subItem + $descItem) / $cantItem) : ($subItem + $descItem));
+            $xml .= '<cantidad>' . number_format($cantItem, 2, '.', '') . '</cantidad>';
             $xml .= '<unidadMedida>' . (int)$unidadMedida . '</unidadMedida>';
-            $xml .= '<precioUnitario>' . number_format($precioUnitario, 2, '.', '') . '</precioUnitario>';
-            $xml .= '<montoDescuento xsi:nil="true"/>';
-            $xml .= '<subTotal>' . number_format($subTotal, 2, '.', '') . '</subTotal>';
+            $xml .= '<precioUnitario>' . number_format($puItem, 2, '.', '') . '</precioUnitario>';
+            if ($descItem > 0) {
+                $xml .= '<montoDescuento>' . number_format($descItem, 2, '.', '') . '</montoDescuento>';
+            } else {
+                $xml .= '<montoDescuento xsi:nil="true"/>';
+            }
+            $xml .= '<subTotal>' . number_format($subItem, 2, '.', '') . '</subTotal>';
             $xml .= '</detalle>';
         }
         $xml .= '</facturaElectronicaSectorEducativo>';

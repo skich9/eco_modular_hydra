@@ -36,21 +36,21 @@ class CobroController extends Controller
 		try {
 			// Cargar cobros con relaciones básicas y aplicar filtros opcionales
 			$query = Cobro::with(['usuario', 'cuota', 'formaCobro', 'cuentaBancaria', 'itemCobro', 'detalleRegular', 'detalleMulta', 'recibo', 'factura']);
-			
+
 			// Filtro por id_usuario (usado por el libro diario)
 			$idUsuario = $request->query('id_usuario');
 			if ($idUsuario !== null && $idUsuario !== '') {
 				$query->where('id_usuario', (int) $idUsuario);
 			}
-			
+
 			// Filtro por fecha (Y-m-d) sobre fecha_cobro
 			$fecha = $request->query('fecha');
 			if ($fecha) {
 				$query->whereDate('fecha_cobro', $fecha);
 			}
-			
+
 			$cobros = $query->get();
-			
+
 			// Mapas de nota_bancaria por nro_recibo y nro_factura
 			$nbByRecibo = [];
 			$nbByFactura = [];
@@ -100,11 +100,11 @@ class CobroController extends Controller
 				$nbByRecibo = [];
 				$nbByFactura = [];
 			}
-			
+
 			// Enriquecer cada cobro con datos bancarios y de cliente (si existen) y aplanar a array
 			$cobrosEnriquecidos = $cobros->map(function($cobro) use ($nbByRecibo, $nbByFactura) {
 				$cobroArray = $cobro->toArray();
-				
+
 				// Agregar datos de razón social / NIT desde recibo o factura
 				// Igual que en resumen(): prioridad recibo y luego factura
 				try {
@@ -113,7 +113,7 @@ class CobroController extends Controller
 				} catch (\Throwable $e) {
 					// Si algo falla, dejar los campos como vienen del modelo
 				}
-				
+
 				// Enlazar nota_bancaria por nro_recibo o nro_factura
 				$nroReciboKey = (string)($cobro->nro_recibo ?? '');
 				$nroFacturaKey = (string)($cobro->nro_factura ?? '');
@@ -132,7 +132,7 @@ class CobroController extends Controller
 				}
 				return $cobroArray;
 			});
-			
+
 			return response()->json([
 				'success' => true,
 				'data' => $cobrosEnriquecidos
@@ -396,7 +396,7 @@ class CobroController extends Controller
 					$join->on('dp.cod_ceta', '=', 'estudiantes.cod_ceta');
 				})
 				->find($codCeta);
-			
+
 			// Debug para verificar que se obtenga el estudiante correcto
 			Log::info('Estudiante obtenido:', [
 				'cod_ceta_buscado' => $codCeta,
@@ -405,7 +405,7 @@ class CobroController extends Controller
 				'estudiante_apellido' => $estudiante?->apellido,
 				'estudiante_completo' => $estudiante?->toArray()
 			]);
-			
+
 			if (!$estudiante) {
 				return response()->json([
 					'success' => false,
@@ -503,9 +503,22 @@ class CobroController extends Controller
 			// Colección de asignaciones de costos (todas las cuotas) para la inscripción principal
 			$asignacionesPrimarias = collect();
 			if ($primaryInscripcion) {
+				\Log::info('[CobroController] Buscando asignaciones:', [
+					'cod_ceta' => $codCeta,
+					'cod_pensum' => $codPensumToUse,
+					'cod_inscrip' => $primaryInscripcion->cod_inscrip
+				]);
+
 				$queryAsign = AsignacionCostos::where('cod_pensum', $codPensumToUse)
 					->where('cod_inscrip', $primaryInscripcion->cod_inscrip);
 				$asignacionesPrimarias = $queryAsign->orderBy('numero_cuota')->get();
+
+				\Log::info('[CobroController] Asignaciones encontradas:', [
+					'count' => $asignacionesPrimarias->count(),
+					'primeras_3' => $asignacionesPrimarias->take(3)->toArray()
+				]);
+			} else {
+				\Log::warning('[CobroController] No hay primaryInscripcion para cod_ceta:', ['cod_ceta' => $codCeta]);
 			}
 
 			// Mapear descuentos por asignación (id_asignacion_costo -> monto_descuento)
@@ -839,7 +852,7 @@ class CobroController extends Controller
 			$saldoMensualidad = $montoSemestreNeto !== null
 				? max(0, (float)$montoSemestreNeto - (float)$totalMensualidadConParciales)
 				: null;
-			
+
 			// Debug para el cálculo del saldo
 			Log::info('Cálculo de saldo de mensualidad:', [
 				'cod_ceta' => $codCeta,
@@ -852,7 +865,7 @@ class CobroController extends Controller
 				'saldoMensualidad' => $saldoMensualidad,
 				'formula_usada' => 'montoSemestreNeto - totalMensualidadConParciales'
 			]);
-			
+
 			$puMensualFromNext = $mensualidadNext ? round((float) ($mensualidadNext['monto'] ?? 0), 2) : null;
 // >>>>>>> db8167bb0a817bf7e0af1d0732b63770d42d68e3
 			$puMensualFromAsignacion = $asignacionesPrimarias->count() > 0 ? round((float) $asignacionesPrimarias->avg('monto'), 2) : null;
@@ -953,7 +966,7 @@ class CobroController extends Controller
 			$estudianteData = $estudiante->toArray();
 			// Agregar nombre_completo desde el accessor
 			$estudianteData['nombre_completo'] = $estudiante->nombre_completo;
-			
+
 			// Debug para verificar datos del estudiante antes de devolver
 			Log::info('Datos del estudiante a devolver:', [
 				'cod_ceta' => $estudianteData['cod_ceta'] ?? 'no existe',
@@ -963,7 +976,7 @@ class CobroController extends Controller
 				'ci_original' => $estudianteData['ci'] ?? 'no existe',
 				'ci_dp' => $estudiante->dp->ci_doc ?? 'no existe dp'
 			]);
-			
+
 			if (isset($estudiante->dp)) {
 				$estudianteData['ci'] = $estudiante->dp->ci_doc ?: ($estudiante->ci ?: '');
 				$estudianteData['telefono'] = $estudiante->dp->telefono_doc ?: '';
@@ -1077,16 +1090,39 @@ class CobroController extends Controller
 						$monto = (float) ($a->monto ?? 0);
 						$montoPagado = (float) ($a->monto_pagado ?? 0);
 
-						// Calcular descuento_aplicado: sumatoria de descuentos en cobros anteriores con este id_asignacion_costo
+						// Calcular descuento_aplicado: sumatoria de descuentos en cobros anteriores VÁLIDOS
 						$descuentoAplicado = 0.0;
 						try {
 							if ($idAsignacion > 0) {
-								$descuentoAplicado = (float) DB::table('cobro')
+								$cobrosAnteriores = DB::table('cobro')
 									->where('id_asignacion_costo', $idAsignacion)
-									->sum(DB::raw('CAST(descuento AS DECIMAL(10,4))'));
+									->whereNotNull('fecha_cobro')
+									->where('monto', '>', 0)
+									->select('nro_cobro', 'descuento', 'monto', 'fecha_cobro')
+									->get();
+
+								\Log::info('[CobroController] Cobros anteriores para asignacion:', [
+									'id_asignacion_costo' => $idAsignacion,
+									'numero_cuota' => $a->numero_cuota ?? null,
+									'total_cobros' => $cobrosAnteriores->count(),
+									'suma_descuentos' => $cobrosAnteriores->sum('descuento'),
+									'cobros' => $cobrosAnteriores->map(function($c) {
+										return [
+											'nro_cobro' => $c->nro_cobro,
+											'descuento' => $c->descuento,
+											'monto' => $c->monto,
+											'fecha_cobro' => $c->fecha_cobro
+										];
+									})->toArray()
+								]);
+
+								$descuentoAplicado = (float) $cobrosAnteriores->sum('descuento');
 							}
 						} catch (\Throwable $e) {
-							// Si falla, usar 0
+							\Log::error('[CobroController] Error calculando descuento_aplicado:', [
+								'error' => $e->getMessage(),
+								'id_asignacion_costo' => $idAsignacion
+							]);
 						}
 
 						// Calcular total_debe_pagar: monto - descuento_pago (4 decimales)
@@ -1193,7 +1229,7 @@ class CobroController extends Controller
 							// Ordenar por número de cuota
 							->sortBy('numero_cuota')
 							->values(),
-					
+
 					// Debug para verificar adeudadas
 					'adeudadas_debug' => [
 						'asignaciones_primarias_count' => $asignacionesPrimarias->count(),
@@ -1438,6 +1474,26 @@ class CobroController extends Controller
 						'success' => false,
 						'message' => 'No se puede mezclar FACTURA y RECIBO en el mismo registro. Use un único tipo de documento en el lote.',
 					], 422);
+				}
+			} catch (\Throwable $e) { /* no bloquear si la inspección falla */ }
+
+			// Validación: detectar si múltiples items usan el mismo id_asignacion_costo
+			try {
+				$asignCounts = [];
+				foreach ((array)$items as $it) {
+					$idAsignItem = isset($it['id_asignacion_costo']) ? (int)$it['id_asignacion_costo'] : 0;
+					if ($idAsignItem > 0) {
+						$asignCounts[$idAsignItem] = (isset($asignCounts[$idAsignItem]) ? $asignCounts[$idAsignItem] : 0) + 1;
+					}
+				}
+				foreach ($asignCounts as $idAsign => $count) {
+					if ($count > 1) {
+						Log::warning('batchStore: múltiples items con mismo id_asignacion_costo', ['id_asignacion_costo' => $idAsign, 'count' => $count]);
+						return response()->json([
+							'success' => false,
+							'message' => 'Error: Múltiples cuotas están usando la misma asignación de costo. Por favor, contacte al administrador para corregir los datos de las cuotas.',
+						], 422);
+					}
 				}
 			} catch (\Throwable $e) { /* no bloquear si la inspección falla */ }
 			$emitGroupMeta = null; // meta para emisión agrupada post-commit
@@ -1698,6 +1754,108 @@ class CobroController extends Controller
 					];
 				}
 
+				// PRE-CALCULAR descuentos prorrateados correctos para cada ítem
+				// Esto es crítico cuando se pagan múltiples cuotas juntas (algunas con pagos previos, otras completas)
+				$descuentosCalculados = [];
+				foreach ($items as $idx => $item) {
+					$descuentosCalculados[$idx] = [
+						'descuento_original' => 0.0,
+						'descuento_prorrateado' => 0.0,
+						'precio_bruto_original' => 0.0,
+						'precio_bruto_prorrateado' => 0.0,
+						'es_pago_parcial' => false,
+						'monto_pagado_previo' => 0.0,
+						'saldo_restante' => 0.0,
+					];
+
+					$asignSnap = null;
+					$montoAPagar = (float)$item['monto'];
+
+					// Obtener asignación: ya sea por id_asignacion_costo o por numero_cuota (para QR)
+					if (isset($item['id_asignacion_costo'])) {
+						$idAsignItem = (int)$item['id_asignacion_costo'];
+						try {
+							$asignSnap = DB::table('asignacion_costos')->where('id_asignacion_costo', $idAsignItem)->first();
+						} catch (\Throwable $e) {
+							Log::warning('batchStore: error obteniendo asignacion por id', ['idx' => $idx, 'error' => $e->getMessage()]);
+						}
+					} elseif ((isset($item['numero_cuota']) || isset($item['nro_cuota'])) && $primaryInscripcion) {
+					// Para items QR: buscar asignación por numero_cuota o nro_cuota
+					$numeroCuota = (int)($item['numero_cuota'] ?? $item['nro_cuota'] ?? 0);
+					try {
+						$asignSnap = DB::table('asignacion_costos')
+							->where('cod_pensum', $codPensumCtx)
+							->where('cod_inscrip', $primaryInscripcion->cod_inscrip)
+							->where('numero_cuota', $numeroCuota)
+							->first();
+					} catch (\Throwable $e) {
+						Log::warning('batchStore: error obteniendo asignacion por numero_cuota', ['idx' => $idx, 'numero_cuota' => $numeroCuota, 'error' => $e->getMessage()]);
+					}
+				}
+
+					// Calcular descuentos prorrateados si encontramos la asignación
+					if ($asignSnap) {
+						try {
+							// IMPORTANTE: Obtener el precio bruto ORIGINAL de la asignación, no del frontend
+							$puOriginal = (float)($asignSnap->monto ?? 0);
+
+							$descOriginal = 0.0;
+							$idDet = (int)($asignSnap->id_descuentoDetalle ?? 0);
+							if ($idDet) {
+								$dr = DB::table('descuento_detalle')->where('id_descuento_detalle', $idDet)->first(['monto_descuento']);
+								$descOriginal = $dr ? (float)($dr->monto_descuento ?? 0) : 0.0;
+							}
+
+							$montoPagadoPrevio = (float)($asignSnap->monto_pagado ?? 0);
+							$estadoPagoActual = (string)($asignSnap->estado_pago ?? '');
+							$netoTotal = $puOriginal - $descOriginal;
+							$saldoRestante = max(0, $netoTotal - $montoPagadoPrevio);
+
+							// Determinar si es pago parcial
+							$esPagoParcial = ($estadoPagoActual === 'PARCIAL' && $montoPagadoPrevio > 0) || ($montoAPagar < $saldoRestante && $saldoRestante > 0);
+
+							$descuentosCalculados[$idx]['descuento_original'] = $descOriginal;
+							$descuentosCalculados[$idx]['precio_bruto_original'] = $puOriginal;
+							$descuentosCalculados[$idx]['monto_pagado_previo'] = $montoPagadoPrevio;
+							$descuentosCalculados[$idx]['saldo_restante'] = $saldoRestante;
+							$descuentosCalculados[$idx]['es_pago_parcial'] = $esPagoParcial;
+
+							if ($esPagoParcial && $saldoRestante > 0) {
+							// Pago parcial: prorratear según la proporción del pago actual
+							$proporcion = $montoAPagar / $saldoRestante;
+
+							// Calcular precio bruto y descuento del saldo restante
+							$puRestante = $puOriginal - ($puOriginal * ($montoPagadoPrevio / $netoTotal));
+							$descRestante = $descOriginal - ($descOriginal * ($montoPagadoPrevio / $netoTotal));
+
+							// Prorratear según el pago actual (4 decimales)
+							$precioBrutoProrr = $puRestante * $proporcion;
+							$descuentoProrr = $descRestante * $proporcion;
+
+							// Ajustar para que la suma sea exacta
+							$diferencia = $montoAPagar - ($precioBrutoProrr - $descuentoProrr);
+							if (abs($diferencia) > 0.0001) {
+								$precioBrutoProrr += $diferencia;
+							}
+
+							// Guardar con 4 decimales para la base de datos
+							$descuentosCalculados[$idx]['precio_bruto_prorrateado'] = round($precioBrutoProrr, 4);
+							$descuentosCalculados[$idx]['descuento_prorrateado'] = round($descuentoProrr, 4);
+						} else {
+							// Pago completo: usar valores completos
+							$descuentosCalculados[$idx]['precio_bruto_prorrateado'] = $puOriginal;
+							$descuentosCalculados[$idx]['descuento_prorrateado'] = $descOriginal;
+						}
+					} catch (\Throwable $e) {
+							Log::warning('batchStore: error pre-calculando descuento', ['idx' => $idx, 'error' => $e->getMessage()]);
+						}
+					}
+				}
+
+				try {
+					Log::info('batchStore: descuentos pre-calculados', ['descuentos' => $descuentosCalculados]);
+				} catch (\Throwable $e) {}
+
 				// Control para agrupar Recibos computarizados en un único nro_recibo por transacción
 				$nroReciboBatch = null; $anioReciboBatch = null;
 				foreach ($items as $idx => $item) {
@@ -1838,6 +1996,7 @@ class CobroController extends Controller
 							}
 							// Paso 3: emisión online (opcional). Si hay agrupación, se difiere al final del loop.
 							if ($emitirOnline && !$hasFacturaGroup) {
+                                 Log::info( "esta entrando a la opcion1");
 								if (config('sin.offline')) {
 									Log::warning('batchStore: skip recepcionFactura (OFFLINE)');
 								} else {
@@ -2320,6 +2479,36 @@ class CobroController extends Controller
 					if ($hasFacturaGroup && $tipoDoc === 'F' && $medioDoc === 'C') {
 						$detalleDesc = isset($detalle) && $detalle !== '' ? (string)$detalle : ((string)(isset($item['observaciones']) ? $item['observaciones'] : 'Cobro'));
 
+						// Usar valores PRE-CALCULADOS de descuento prorrateado
+						$precioBruto = 0.0;
+						$descuentoMonto = 0.0;
+						$precioNeto = (float)$item['monto'];
+
+						// Si tiene valores pre-calculados, usarlos
+						if (isset($descuentosCalculados[$idx]) && $descuentosCalculados[$idx]['precio_bruto_prorrateado'] > 0) {
+							$precioBruto = $descuentosCalculados[$idx]['precio_bruto_prorrateado'];
+							$descuentoMonto = $descuentosCalculados[$idx]['descuento_prorrateado'];
+						} elseif (isset($item['pu_mensualidad']) && (float)$item['pu_mensualidad'] > 0) {
+							// Fallback: si no hay pre-calculados, usar valores del item
+							$precioBruto = (float)$item['pu_mensualidad'];
+							$descuentoMonto = isset($item['descuento']) && (float)$item['descuento'] > 0 ? (float)$item['descuento'] : 0;
+						} else {
+							// Si no hay pu_mensualidad, usar el monto como precio bruto (sin descuento)
+							$precioBruto = $precioNeto;
+						}
+
+						try {
+							Log::info('batchStore: construyendo factDetalle', [
+								'idx' => $idx,
+								'item_monto' => $precioNeto,
+								'item_pu_mensualidad' => isset($item['pu_mensualidad']) ? (float)$item['pu_mensualidad'] : null,
+								'item_descuento_frontend' => isset($item['descuento']) ? (float)$item['descuento'] : null,
+								'pre_calculado' => isset($descuentosCalculados[$idx]) ? $descuentosCalculados[$idx] : null,
+								'usando_precioBruto' => $precioBruto,
+								'usando_descuentoMonto' => $descuentoMonto,
+								'usando_precioNeto' => $precioNeto
+							]);
+						} catch (\Throwable $e) {}
 
 						$codigoSin = 99100; // Default para SIN
 						$codigoInterno = null; // Default para PDF
@@ -2365,13 +2554,38 @@ class CobroController extends Controller
 							'descripcion' => $detalleDesc,
 							'cantidad' => 1,
 							'unidad_medida' => $unidadMedida,
-							'precio_unitario' => (float)$item['monto'],
-							'descuento' => 0,
-							'subtotal' => (float)$item['monto'],
+							// Redondear a 2 decimales para SIAT (impuestos requieren 2 decimales)
+							'precio_unitario' => round($precioBruto, 2),
+							'descuento' => round($descuentoMonto, 2),
+							'subtotal' => round($precioNeto, 2),
 							'actividad_economica' => $actividadEconomica,
 						];
 						// También acumular en meta para post-commit
 						if (is_array($emitGroupMeta)) { $emitGroupMeta['detalles'][] = end($factDetalles); }
+					}
+
+					// Usar valores PRE-CALCULADOS de descuento y precio unitario (aplica para recibos y facturas)
+					$puMensualidadFinal = isset($item['pu_mensualidad']) ? $item['pu_mensualidad'] : 0;
+					$descuentoFinal = isset($item['descuento']) ? $item['descuento'] : null;
+
+					if (isset($descuentosCalculados[$idx]) && $descuentosCalculados[$idx]['precio_bruto_prorrateado'] > 0) {
+						// Mantener 4 decimales para la base de datos (mayor precisión)
+						$puMensualidadFinal = round($descuentosCalculados[$idx]['precio_bruto_prorrateado'], 4);
+						$descuentoFinal = round($descuentosCalculados[$idx]['descuento_prorrateado'], 4);
+
+						try {
+							Log::info('batchStore: usando valores pre-calculados en cobro', [
+								'idx' => $idx,
+								'tipo_doc' => $tipoDoc,
+								'medio_doc' => $medioDoc,
+								'pu_original' => isset($item['pu_mensualidad']) ? $item['pu_mensualidad'] : 0,
+								'pu_prorrateado' => $puMensualidadFinal,
+								'desc_original' => isset($item['descuento']) ? $item['descuento'] : null,
+								'desc_prorrateado' => $descuentoFinal,
+								'es_pago_parcial' => $descuentosCalculados[$idx]['es_pago_parcial'],
+								'monto_pagado_previo' => $descuentosCalculados[$idx]['monto_pagado_previo']
+							]);
+						} catch (\Throwable $e) {}
 					}
 
 					$payload = array_merge($composite, [
@@ -2381,9 +2595,9 @@ class CobroController extends Controller
 						'observaciones' => isset($item['observaciones']) ? $item['observaciones'] : null,
 						'id_usuario' => $idUsuarioReposicion ?: (int)$request->id_usuario,
 						'id_forma_cobro' => isset($item['id_forma_cobro']) ? $item['id_forma_cobro'] : $formaIdItem,
-						'pu_mensualidad' => isset($item['pu_mensualidad']) ? $item['pu_mensualidad'] : 0,
+						'pu_mensualidad' => $puMensualidadFinal,
 						'order' => $order,
-						'descuento' => isset($item['descuento']) ? $item['descuento'] : null,
+						'descuento' => $descuentoFinal,
 						'id_cuentas_bancarias' => isset($request->id_cuentas_bancarias) ? $request->id_cuentas_bancarias : null,
 						'nro_factura' => $nroFactura,
 						'nro_recibo' => $nroRecibo,
@@ -2411,7 +2625,7 @@ class CobroController extends Controller
 									'cod_pensum' => (string)$request->cod_pensum,
 									'tipo_inscripcion' => (string)$request->tipo_inscripcion,
 									'cod_inscrip' => $primaryInscripcion ? (int)$primaryInscripcion->cod_inscrip : 0,
-									'pu_mensualidad' => (float)(isset($item['pu_mensualidad']) ? $item['pu_mensualidad'] : 0),
+									'pu_mensualidad' => (float)$puMensualidadFinal,
 									'turno' => (string)(isset($primaryInscripcion->turno) ? $primaryInscripcion->turno : ''),
 									'updated_at' => now(),
 									'created_at' => DB::raw('COALESCE(created_at, NOW())'),
@@ -2422,7 +2636,12 @@ class CobroController extends Controller
 						}
 					}
 
-					// Acumular pagos del batch por plantilla de cuota para seguir aplicando a la misma cuota si aún queda saldo
+					// Acumular pagos del batch por id_asignacion_costo (no por template) para evitar duplicados
+					if ($idAsign) {
+						$batchPaidByAsign[$idAsign] = (isset($batchPaidByAsign[$idAsign]) ? $batchPaidByAsign[$idAsign] : 0) + (float)$item['monto'];
+						try { Log::info('batchStore:paidByAsign', [ 'idx' => $idx, 'id_asign' => $idAsign, 'batch_paid' => $batchPaidByAsign[$idAsign] ]); } catch (\Throwable $e) {}
+					}
+					// También mantener el tracking por template para compatibilidad
 					if ($idCuota) {
 						$batchPaidByTpl[$idCuota] = (isset($batchPaidByTpl[$idCuota]) ? $batchPaidByTpl[$idCuota] : 0) + (float)$item['monto'];
 						try { Log::info('batchStore:paidByTpl', [ 'idx' => $idx, 'tpl' => $idCuota, 'batch_paid' => $batchPaidByTpl[$idCuota] ]); } catch (\Throwable $e) {}
@@ -2433,10 +2652,12 @@ class CobroController extends Controller
 						$toUpd = AsignacionCostos::find((int)$idAsign);
 						if ($toUpd) {
 							$prevPagado = (float)(isset($toUpd->monto_pagado) ? $toUpd->monto_pagado : 0);
-							$newPagado = $prevPagado + (float)$item['monto'];
-// <<<<<<< HEAD
-// 							$fullNow = $newPagado >= (float) (isset($toUpd->monto) ? $toUpd->monto : 0) || !empty($item['cobro_completo']);
-// =======
+
+							// CORRECCIÓN: Solo aplicar el monto del item actual, sin acumular pagos previos del batch
+							// El tracking en $batchPaidByAsign ya se hace DESPUÉS de aplicar cada item
+							$montoAplicar = (float)$item['monto'];
+							$newPagado = $prevPagado + $montoAplicar;
+
 							$descN = 0.0;
 							try {
 								$idDet = (int)($toUpd->id_descuentoDetalle ?? 0);
@@ -2451,7 +2672,6 @@ class CobroController extends Controller
 							$nominal = (float) ($toUpd->monto ?? 0);
 							$neto = max(0, $nominal - $descN);
 							$fullNow = ($newPagado >= $neto) || !empty($item['cobro_completo']);
-// >>>>>>> db8167bb0a817bf7e0af1d0732b63770d42d68e3
 							$upd = [ 'monto_pagado' => $newPagado ];
 							if ($fullNow) {
 								$upd['estado_pago'] = 'COBRADO';
@@ -2459,7 +2679,7 @@ class CobroController extends Controller
 							} else {
 								$upd['estado_pago'] = 'PARCIAL';
 							}
-							try { Log::info('batchStore:asign_update', [ 'idx' => $idx, 'id_asignacion_costo' => (int)$toUpd->id_asignacion_costo, 'add_monto' => (float)$item['monto'], 'prev_pagado' => $prevPagado, 'new_pagado' => $newPagado, 'total' => (float)(isset($toUpd->monto) ? $toUpd->monto : 0), 'estado_final' => $upd['estado_pago'] ]); } catch (\Throwable $e) {}
+							try { Log::info('batchStore:asign_update', [ 'idx' => $idx, 'id_asignacion_costo' => (int)$toUpd->id_asignacion_costo, 'add_monto' => $montoAplicar, 'prev_pagado' => $prevPagado, 'new_pagado' => $newPagado, 'total' => (float)(isset($toUpd->monto) ? $toUpd->monto : 0), 'neto' => $neto, 'batch_paid_before' => $batchPaidToThisAsign, 'estado_final' => $upd['estado_pago'] ]); } catch (\Throwable $e) {}
 							$aff = AsignacionCostos::where('id_asignacion_costo', (int)$toUpd->id_asignacion_costo)->update($upd);
 							try { Log::info('batchStore:asign_updated', [ 'idx' => $idx, 'id_asignacion_costo' => (int)$toUpd->id_asignacion_costo, 'affected' => $aff ]); } catch (\Throwable $e) {}
 						}
@@ -2535,6 +2755,16 @@ class CobroController extends Controller
 						'cuf' => $cufLocal,
 					];
 
+					// Agregar valores prorrateados calculados para que el frontend los muestre correctamente
+					if (isset($descuentosCalculados[$idx])) {
+						$resultItem['valores_prorrateados'] = [
+							'precio_bruto' => $descuentosCalculados[$idx]['precio_bruto_prorrateado'],
+							'descuento' => $descuentosCalculados[$idx]['descuento_prorrateado'],
+							'es_pago_parcial' => $descuentosCalculados[$idx]['es_pago_parcial'],
+							'monto_pagado_previo' => $descuentosCalculados[$idx]['monto_pagado_previo'],
+						];
+					}
+
 					// Si hay error de facturación, agregarlo al resultado
 					if (isset($facturaError)) {
 						$resultItem['factura_error'] = $facturaError;
@@ -2547,7 +2777,7 @@ class CobroController extends Controller
 			if ($hasFacturaGroup && !empty($factDetalles)) {
 					foreach ($factDetalles as $detIdx => $det) {
 						try {
-							DB::table('factura_detalle')->insert([
+							$insertData = [
 								'anio' => (int)$anioFacturaGroup,
 								'nro_factura' => (int)$nroFacturaGroup,
 								'id_detalle' => $detIdx + 1,
@@ -2560,7 +2790,16 @@ class CobroController extends Controller
 								'precio_unitario' => (float)(isset($det['precio_unitario']) ? $det['precio_unitario'] : 0),
 								'descuento' => (float)(isset($det['descuento']) ? $det['descuento'] : 0),
 								'subtotal' => (float)(isset($det['subtotal']) ? $det['subtotal'] : 0),
+							];
+							Log::info('batchStore: insertando en factura_detalle', [
+								'anio' => $anioFacturaGroup,
+								'nro_factura' => $nroFacturaGroup,
+								'id_detalle' => $detIdx + 1,
+								'precio_unitario' => $insertData['precio_unitario'],
+								'descuento' => $insertData['descuento'],
+								'subtotal' => $insertData['subtotal']
 							]);
+							DB::table('factura_detalle')->insert($insertData);
 						} catch (\Throwable $e) {
 							Log::error('batchStore: error insertando detalle factura', ['error' => $e->getMessage(), 'detalle' => $det]);
 						}
@@ -2570,6 +2809,7 @@ class CobroController extends Controller
 
 				// Emisión online única para la factura agrupada (punto correcto: después del foreach)
 				if ($hasFacturaGroup && $emitirOnline) {
+                    Log::info( "esta entrando a la opcion2");
 					if (config('sin.offline')) {
 						Log::warning('batchStore: skip recepcionFactura (OFFLINE, grupo)');
 					} else {

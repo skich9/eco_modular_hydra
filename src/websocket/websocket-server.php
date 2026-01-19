@@ -4,12 +4,16 @@ require_once __DIR__ . '/../vendor/autoload.php';
 use Workerman\Worker;
 
 // Obtener direccion IP:PUERTO desde el endpoint REST o variable de entorno
-$base = getenv('APP_URL') ?: 'http://127.0.0.1:8000';
-$endpoint = rtrim($base, '/') . '/api/socket/port';
-$addr = getenv('WS_ADDRESS');
+$addr = null;
 $puerto = null;
 
+// 1. Intentar desde variable de entorno WS_ADDRESS
+$addr = getenv('WS_ADDRESS');
+
+// 2. Si no hay WS_ADDRESS, intentar desde endpoint REST
 if (!$addr) {
+	$base = getenv('APP_URL') ?: 'http://127.0.0.1:8000';
+	$endpoint = rtrim($base, '/') . '/api/socket/port';
 	try {
 		$resp = @file_get_contents($endpoint);
 		if ($resp !== false) {
@@ -19,7 +23,12 @@ if (!$addr) {
 	} catch (\Throwable $e) {}
 }
 
-if (!$addr) { fwrite(STDERR, "No se pudo obtener socket/port (usar env WS_ADDRESS o configurar APP_URL).\n"); exit(1); }
+// 3. Si aún no hay addr, usar puerto por defecto
+if (!$addr) {
+	$addr = '0.0.0.0:8069';
+	fwrite(STDERR, "Usando puerto por defecto: $addr\n");
+}
+
 if (preg_match('/:(\d+)$/', $addr, $m)) { $puerto = (int)$m[1]; }
 if (!$puerto) { fwrite(STDERR, "Valor de puerto inválido en '$addr'\n"); exit(1); }
 

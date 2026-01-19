@@ -39,16 +39,16 @@ return new class extends Migration {
 					$table->tinyInteger('nro_cuota')->nullable()->after('observaciones');
 				}
 				if (!Schema::hasColumn('qr_conceptos_detalle', 'descuento')) {
-					$table->integer('descuento')->nullable()->after('precio_unitario');
+					$table->decimal('descuento', 10, 2)->default(0)->after('precio_unitario');
 				}
 				if (!Schema::hasColumn('qr_conceptos_detalle', 'multa')) {
-					$table->integer('multa')->nullable()->after('descuento');
+					$table->decimal('multa', 10, 2)->default(0)->after('descuento');
 				}
 				if (!Schema::hasColumn('qr_conceptos_detalle', 'turno')) {
 					$table->string('turno', 50)->nullable()->after('multa');
 				}
 				if (!Schema::hasColumn('qr_conceptos_detalle', 'monto_saldo')) {
-					$table->integer('monto_saldo')->nullable()->after('turno');
+					$table->decimal('monto_saldo', 10, 2)->nullable()->after('turno');
 				}
 			});
 		}

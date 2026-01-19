@@ -24,7 +24,7 @@ class CobrosDetalleRegular extends Model
 	protected $casts = [
 		'cod_inscrip' => 'integer',
 		'nro_cobro' => 'integer',
-		'pu_mensualidad' => 'decimal:2',
+		'pu_mensualidad' => 'decimal:4',
 	];
 
 	public function cobro()

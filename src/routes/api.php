@@ -58,26 +58,12 @@ Route::middleware('auth:sanctum')->get('/user', function (Request $request) {
 
 // ===================== SGA Proxy (Reincorporación) =====================
 Route::match(['get','post'], 'sga/eco_hydra/Reincorporacion/estado', function (Request $request) {
-    // Seleccionar URL SGA según codigo_carrera del pensum
+    // Seleccionar URL SGA según codigo_carrera del pensum usando SgaHelper
     $codPensum = $request->input('cod_pensum');
-    $base = env('SGA_BASE_URL'); // default Electrónica
-    
-    if ($codPensum) {
-        try {
-            $pensum = \App\Models\Pensum::where('cod_pensum', $codPensum)->first();
-            if ($pensum && $pensum->codigo_carrera) {
-                $carrera = strtoupper($pensum->codigo_carrera);
-                // MEA = Mecánica Automotriz -> usar URL de Mecánica
-                if ($carrera === 'MEA') {
-                    $base = env('SGA_MECANICA_URL', env('SGA_BASE_URL'));
-                }
-                // EEA = Electricidad y Electrónica -> usar URL de Electrónica (default)
-            }
-        } catch (\Throwable $e) {
-            \Log::warning('Error determinando URL SGA por carrera', ['error' => $e->getMessage()]);
-        }
-    }
-    
+    $base = $codPensum
+        ? \App\Helpers\SgaHelper::getApiUrlByPensum($codPensum)
+        : env('SGA_BASE_URL');
+
     try {
         if ($base) {
             $url = rtrim($base, '/') . '/eco_hydra/Reincorporacion/estado';
@@ -219,7 +205,7 @@ Route::get('facturas/{anio}/{nro}/pdf', [FacturaPdfController::class, 'pdf'])
 // SIN: motivos de anulacion
 Route::get('sin/motivos-anulacion', [SinCatalogoController::class, 'motivosAnulacion']);
 
-// SIN: URL base para QR 
+// SIN: URL base para QR
 Route::get('sin/qr-url', [\App\Http\Controllers\Api\SinAdminController::class, 'qrUrl']);
 
 // Contingencias: gestión de facturas en contingencia
@@ -325,7 +311,12 @@ Route::get('kardex-notas/materias', [KardexNotasController::class, 'materias']);
 // ===================== SGA Proxy (Recuperación) =====================
 // Proxy simple para evitar 404 en frontend y centralizar CORS en Laravel
 Route::get('sga/eco_hydra/Recuperacion/elegibilidad', function (Request $request) {
-    $base = env('SGA_BASE_URL');
+    // Determinar URL SGA según pensum usando SgaHelper
+    $codPensum = $request->query('cod_pensum');
+    $base = $codPensum
+        ? \App\Helpers\SgaHelper::getApiUrlByPensum($codPensum)
+        : env('SGA_BASE_URL');
+
     try {
         if ($base) {
             $url = rtrim($base, '/') . '/eco_hydra/Recuperacion/elegibilidad';
@@ -334,7 +325,7 @@ Route::get('sga/eco_hydra/Recuperacion/elegibilidad', function (Request $request
             if ($cookie) { $req = $req->withHeaders(['Cookie' => $cookie]); }
             $resp = $req->get($url, [
                 'cod_ceta' => $request->query('cod_ceta'),
-                'cod_pensum' => $request->query('cod_pensum'),
+                'cod_pensum' => $codPensum,
                 'gestion' => $request->query('gestion'),
             ]);
             if ($resp->ok()) {
@@ -366,7 +357,12 @@ Route::get('sga/eco_hydra/Recuperacion/elegibilidad', function (Request $request
 });
 
 Route::get('sga/eco_hydra/Recuperacion/autorizaciones', function (Request $request) {
-    $base = env('SGA_BASE_URL');
+    // Determinar URL SGA según pensum usando SgaHelper
+    $codPensum = $request->query('cod_pensum');
+    $base = $codPensum
+        ? \App\Helpers\SgaHelper::getApiUrlByPensum($codPensum)
+        : env('SGA_BASE_URL');
+
     try {
         if ($base) {
             $url = rtrim($base, '/') . '/eco_hydra/Recuperacion/autorizaciones';
@@ -375,7 +371,7 @@ Route::get('sga/eco_hydra/Recuperacion/autorizaciones', function (Request $reque
             if ($cookie) { $req = $req->withHeaders(['Cookie' => $cookie]); }
             $resp = $req->get($url, [
                 'cod_ceta' => $request->query('cod_ceta'),
-                'cod_pensum' => $request->query('cod_pensum'),
+                'cod_pensum' => $codPensum,
             ]);
             if ($resp->ok()) {
                 return response()->json($resp->json(), 200);
