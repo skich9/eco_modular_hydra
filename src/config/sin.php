@@ -3,14 +3,14 @@
 return [
 	// Base URLs y servicios
 	'url' => env('SIN_URL', 'https://siatrest.impuestos.gob.bo/v2'),
-	
+
 	// Servicios SIAT - Cada uno tiene su endpoint específico
 	'servicio_facturacion_electronica' => env('SIN_SERVICE_FACTURACION', 'ServicioFacturacionElectronica'),
 	'servicio_operaciones' => env('SIN_SERVICE_OPERATIONS', 'FacturacionOperaciones'),
 	'servicio_sincronizacion' => env('SIN_SERVICE_SYNC', 'FacturacionSincronizacion'),
 	'servicio_codigos' => env('SIN_SERVICE_CODES', 'FacturacionCodigos'),
 	'servicio_compras' => env('SIN_SERVICE_COMPRAS', 'ServicioRecepcionCompras'),
-	
+
 	// Alias para compatibilidad con código existente
 	'codes_service' => env('SIN_SERVICE_CODES', 'FacturacionCodigos'),
 	'sync_service' => env('SIN_SERVICE_SYNC', 'FacturacionSincronizacion'),
@@ -23,7 +23,7 @@ return [
 	'modalidad' => (int) env('SIN_MODALIDAD', 1),
 	'sucursal' => (int) env('SIN_SUCURSAL', 0),
 	'api_key' => env('SIN_APIKEY'),
-	
+
 	// Datos del emisor
 	'razon_social' => env('SIN_RAZON_SOCIAL', 'INSTITUTO TECNOLOGICO DE ENSEÑANZA AUTOMOTRIZ "CETA" S.R.L.'),
 	'municipio' => env('SIN_MUNICIPIO', 'COCHABAMBA'),
@@ -43,4 +43,6 @@ return [
 	'offline' => filter_var(env('SIN_OFFLINE', false), FILTER_VALIDATE_BOOL),
 	// Verbosidad de logs SIAT/CFUD/PDF (request/response, SQL simulado, HTML preview)
 	'verbose_log' => filter_var(env('SIN_VERBOSE_LOG', false), FILTER_VALIDATE_BOOL),
+
+    'codigoAmbiente' => (int) env('SIN_AMBIENTE', 2),
 ];

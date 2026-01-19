@@ -1498,8 +1498,43 @@ class CobroController extends Controller
 			} catch (\Throwable $e) { /* no bloquear si la inspección falla */ }
 			$emitGroupMeta = null; // meta para emisión agrupada post-commit
 			DB::transaction(function () use ($request, $items, $descuentosFromFrontend, $reciboService, $facturaService, $cufdRepo, $ops, $cufGen, $payloadBuilder, $cuisRepo, &$results, &$emitGroupMeta) {
-				$pv = (int) ($request->input('codigo_punto_venta', 0));
-				$sucursal = (int) ($request->input('codigo_sucursal', config('sin.sucursal')));
+                $codigoAmbiente = env('CODIGO_AMBIENTE', '2'); // 2=PRUEBAS, 1=PRODUCCION
+
+                $codCetaCtx = (int) $request->cod_ceta;
+				$codPensumCtx = (string) $request->cod_pensum;
+				$gestionCtx = $request->gestion;
+
+                ////////////////////////////////////////////////////
+                /// necesito recuperar el codigo_sucursal en funcion al cod_pensum
+                $respSucursal = DB::table('sin_sucursal_pensum')
+                    ->where('cod_pensum', $codPensumCtx)
+                    ->first();
+
+                if(!$respSucursal) {
+                    throw new \Exception("No se encontró una sucursal asociada al pensum {$codPensumCtx}");
+                }
+                // $sucursal = (int) ($request->input('codigo_sucursal', config('sin.sucursal')));
+                $sucursal = $respSucursal->codigo_sucursal;
+
+                $respPuntoVenta = DB::table('sin_punto_venta_usuario')
+                    ->where('id_usuario', $request->id_usuario)
+                    ->where('codigo_sucursal', $sucursal)
+                    ->where('codigo_ambiente', $codigoAmbiente)
+                    ->first();
+
+                if(!$respPuntoVenta) {
+                    throw new \Exception("No se encontró un punto de venta asociado al usuario {$request->id_usuario} en la sucursal {$sucursal}");
+                }
+                $pv = $respPuntoVenta->codigo_punto_venta;
+                // $pv = (int) ($request->input('codigo_punto_venta', 0));
+
+                Log::info('batchStore: determined sucursal/punto_venta xxxxxx', [
+                    'sucursal' => $sucursal,
+                    'punto_venta' => $pv,
+                ]);
+                ////////////////////////////////////////////////////
+				// $pv = (int) ($request->input('codigo_punto_venta', 0));
+				// $sucursal = (int) ($request->input('codigo_sucursal', config('sin.sucursal')));
 				$emitirOnline = (bool) $request->boolean('emitir_online', false);
 
 				// Detectar si es reposición de factura para usar id_usuario configurable
@@ -1524,9 +1559,7 @@ class CobroController extends Controller
 				} catch (\Throwable $e) {}
 
 				// Contexto de inscripción principal del estudiante (para derivar asignación de costos)
-				$codCetaCtx = (int) $request->cod_ceta;
-				$codPensumCtx = (string) $request->cod_pensum;
-				$gestionCtx = $request->gestion;
+
 				// Preferir la inscripción solicitada explícitamente por el frontend (cod_inscrip o tipo_inscripcion)
 				$tipoInsReq = (string) $request->tipo_inscripcion;
 				$codInsReq = $request->cod_inscrip;
@@ -1708,7 +1741,8 @@ class CobroController extends Controller
 				$nroFacturaGroup = null; $anioFacturaGroup = null; $cufGroup = null; $cufdGroup = null; $fechaEmisionIsoGroup = null; $factDetalles = [];
 				if ($hasFacturaGroup) {
 					// Preparar CUFD, correlativo y CUF una sola vez
-					$cufd = $cufdRepo->getVigenteOrCreate($pv);
+                    $cufd = $cufdRepo->getVigenteOrCreate2($codigoAmbiente,$sucursal,$pv);
+					// $cufd = $cufdRepo->getVigenteOrCreate($pv);
 					$anioFacturaGroup = (int) date('Y');
 					$nroFacturaGroup = method_exists($facturaService, 'nextFacturaAtomic')
 						? $facturaService->nextFacturaAtomic($anioFacturaGroup, $sucursal, (string)$pv)
@@ -1963,7 +1997,8 @@ class CobroController extends Controller
 								$fechaEmisionIso = $fechaEmisionIsoGroup;
 							} else {
 								// Modo antiguo: una factura por ítem
-								$cufd = $cufdRepo->getVigenteOrCreate($pv);
+                                $cufd = $cufdRepo->getVigenteOrCreate2($codigoAmbiente, $sucursal, $pv);
+								// $cufd = $cufdRepo->getVigenteOrCreate($pv);
 								$nroFactura = method_exists($facturaService, 'nextFacturaAtomic')
 									? $facturaService->nextFacturaAtomic($anio, $sucursal, (string)$pv)
 									: $facturaService->nextFactura($anio, $sucursal, (string)$pv);
@@ -2002,7 +2037,8 @@ class CobroController extends Controller
 								} else {
 									try {
 										// Obtener CUIS vigente requerido por recepcionFactura
-										$cuisRow = $cuisRepo->getVigenteOrCreate($pv);
+                                        $cuisRow = $cuisRepo->getVigenteOrCreate2($codigoAmbiente,$sucursal,$pv);
+										// $cuisRow = $cuisRepo->getVigenteOrCreate($pv);
 										$cuisCode = isset($cuisRow['codigo_cuis']) ? $cuisRow['codigo_cuis'] : '';
 										// Mapear cliente a las claves esperadas por el builder
 										$cliIn = (array) $request->input('cliente', []);
@@ -2027,7 +2063,8 @@ class CobroController extends Controller
 
 										// Obtener CUFD vigente (usa cache si está vigente, sino solicita uno nuevo al SIN)
 										try {
-											$cufdNow = $cufdRepo->getVigenteOrCreate($pv);
+                                            $cufdNow = $cufdRepo->getVigenteOrCreate2($codigoAmbiente,$sucursal,$pv);
+											// $cufdNow = $cufdRepo->getVigenteOrCreate($pv);
 											$cufd = $cufdNow;
 											$cuisCode = isset($cufdNow['codigo_cuis']) ? $cufdNow['codigo_cuis'] : $cuisCode;
 
@@ -2815,7 +2852,8 @@ class CobroController extends Controller
 					} else {
 						try {
 							// Obtener CUFD NUEVO del SIN (forceNew=true para evitar problemas de sincronización)
-							$cufdNow = $cufdRepo->getVigenteOrCreate($pv, true);
+                            $cufdNow = $cufdRepo->getVigenteOrCreate2($codigoAmbiente, $sucursal, $pv, true);
+							// $cufdNow = $cufdRepo->getVigenteOrCreate($pv, true);
 							$cufdOld = $cufdGroup;
 							$cufdGroup = (string)(isset($cufdNow['codigo_cufd']) ? $cufdNow['codigo_cufd'] : '');
 							$cuisGroup = isset($cufdNow['codigo_cuis']) ? $cufdNow['codigo_cuis'] : $cuisGroup;
@@ -2987,8 +3025,9 @@ class CobroController extends Controller
 				'message' => 'Cobros creados correctamente',
 				'data' => [ 'items' => $results ],
 			], 201);
-		} catch (\Throwable $e) {
-			Log::error('batchStore: exception', [ 'error' => $e->getMessage() ]);
+		} catch (Exception $e) {
+			// Log::error('batchStore: exception', [ 'error' => SgaHelper::getStackTrackeThrowable($e) ]);
+
 			return response()->json([
 				'success' => false,
 				'message' => 'Error al crear cobros por lote: ' . $e->getMessage(),
@@ -3092,6 +3131,7 @@ class CobroController extends Controller
 			// CUFD vigente o crear
 			$cufd = null;
 			try {
+                $cufd = $cufdRepo->getVigenteOrCreate2(0, 0, $pv);
 				$cufd = $cufdRepo->getVigenteOrCreate($pv);
 				Log::info('validar-impuestos: CUFD ok', [ 'codigo_cufd' => isset($cufd['codigo_cufd']) ? $cufd['codigo_cufd'] : null, 'fecha_vigencia' => isset($cufd['fecha_vigencia']) ? $cufd['fecha_vigencia'] : null ]);
 			} catch (\Throwable $e) {

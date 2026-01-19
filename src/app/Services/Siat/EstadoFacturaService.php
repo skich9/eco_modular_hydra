@@ -38,7 +38,7 @@ class EstadoFacturaService
 			// Asegurar CUIS/CUFD vigentes
 			$cuisRow = $this->cuisRepo->getVigenteOrCreate($puntoVenta);
 			$cuis = isset($cuisRow['codigo_cuis']) ? (string)$cuisRow['codigo_cuis'] : '';
-			$cufdRow = $this->cufdRepo->getVigenteOrCreate($puntoVenta);
+			$cufdRow = $this->cufdRepo->getVigenteOrCreate2(0,0,$puntoVenta);
 			$cufd = isset($cufdRow['codigo_cufd']) ? (string)$cufdRow['codigo_cufd'] : '';
 			if ($sucursal === null) { $sucursal = isset($cuisRow['codigo_sucursal']) ? (int)$cuisRow['codigo_sucursal'] : (int)config('sin.sucursal'); }
 

@@ -86,7 +86,7 @@ class SinAdminController extends Controller
 			$cuis = $cuisRepo->getVigenteOrCreate($pv);
 			$cufd = null;
 			try {
-				$cufd = $cufdRepo->getVigenteOrCreate($pv);
+				$cufd = $cufdRepo->getVigenteOrCreate2(0, 0, $pv);
 			} catch (\Throwable $e) {
 				Log::warning('SIN status: CUFD lookup failed', [ 'pv' => $pv, 'error' => $e->getMessage() ]);
 			}
