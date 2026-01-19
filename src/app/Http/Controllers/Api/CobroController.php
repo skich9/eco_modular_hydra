@@ -867,7 +867,6 @@ class CobroController extends Controller
 			]);
 
 			$puMensualFromNext = $mensualidadNext ? round((float) ($mensualidadNext['monto'] ?? 0), 2) : null;
-// >>>>>>> db8167bb0a817bf7e0af1d0732b63770d42d68e3
 			$puMensualFromAsignacion = $asignacionesPrimarias->count() > 0 ? round((float) $asignacionesPrimarias->avg('monto'), 2) : null;
 			$puMensualNominal = $puMensualFromAsignacion !== null
 				? $puMensualFromAsignacion
@@ -2267,10 +2266,6 @@ class CobroController extends Controller
 							foreach ($asignPrimarias as $asig) {
 								$tpl = (int)(isset($asig->id_cuota_template) ? $asig->id_cuota_template : 0);
 								if (!$tpl) continue;
-// <<<<<<< HEAD
-// 								$alreadyPaid = (float)(isset($asig->monto_pagado) ? $asig->monto_pagado : 0) + (float)(isset($batchPaidByTpl[$tpl]) ? $batchPaidByTpl[$tpl] : 0);
-// 								$remaining = (float)(isset($asig->monto) ? $asig->monto : 0) - $alreadyPaid;
-// =======
 								$alreadyPaid = (float)($asig->monto_pagado ?? 0) + (float)($batchPaidByTpl[$tpl] ?? 0);
 								// Considerar descuento por cuota para calcular el restante
 								$descN = 0.0;
@@ -2287,7 +2282,6 @@ class CobroController extends Controller
 								$nominal = (float)($asig->monto ?? 0);
 								$neto = max(0, $nominal - $descN);
 								$remaining = $neto - $alreadyPaid;
-// >>>>>>> db8167bb0a817bf7e0af1d0732b63770d42d68e3
 								if ($remaining > 0) { $found = $asig; break; }
 							}
 							if ($found) { $asignRow = $found; }
@@ -2296,13 +2290,6 @@ class CobroController extends Controller
 							$idAsign = $idAsign ?: (int) $asignRow->id_asignacion_costo;
 							$idCuota = $idCuota ?: ((int) (isset($asignRow->id_cuota_template) ? $asignRow->id_cuota_template : 0) ?: null);
 							try {
-// <<<<<<< HEAD
-// 								$tplSel = (int)(isset($asignRow->id_cuota_template) ? $asignRow->id_cuota_template : 0);
-// 								$prev = (float)(isset($asignRow->monto_pagado) ? $asignRow->monto_pagado : 0);
-// 								$total = (float)(isset($asignRow->monto) ? $asignRow->monto : 0);
-// 								$rem = $total - ($prev + (float)(isset($batchPaidByTpl[$tplSel]) ? $batchPaidByTpl[$tplSel] : 0));
-// 								Log::info('batchStore:target', [ 'idx' => $idx, 'id_asignacion_costo' => $idAsign, 'id_cuota_template' => $idCuota, 'prev_pagado' => $prev, 'total' => $total, 'remaining_before' => $rem ]);
-// =======
 								$tplSel = (int)($asignRow->id_cuota_template ?? 0);
 								$prev = (float)($asignRow->monto_pagado ?? 0);
 								$total = (float)($asignRow->monto ?? 0);
@@ -2320,7 +2307,6 @@ class CobroController extends Controller
 								$netoForLog = max(0, $total - $descN);
 								$rem = $netoForLog - ($prev + (float)($batchPaidByTpl[$tplSel] ?? 0));
 								Log::info('batchStore:target', [ 'idx' => $idx, 'id_asignacion_costo' => $idAsign, 'id_cuota_template' => $idCuota, 'prev_pagado' => $prev, 'total' => $total, 'descuento' => $descN, 'neto' => $netoForLog, 'remaining_before' => $rem ]);
-// >>>>>>> db8167bb0a817bf7e0af1d0732b63770d42d68e3
 							} catch (\Throwable $e) {}
 						}
 					}
