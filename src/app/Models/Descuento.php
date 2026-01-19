@@ -17,25 +17,25 @@ class Descuento extends Model
 		'cod_ceta',
 		'cod_pensum',
 		'cod_inscrip',
-		'cod_descuento',
 		'cod_beca',
 		'id_usuario',
 		'nombre',
 		'observaciones',
-		'porcentaje',
 		'tipo',
 		'estado',
+		'fecha_registro',
+		'fecha_solicitud',
 	];
 
 	protected $casts = [
 		'id_descuentos' => 'integer',
 		'cod_ceta' => 'integer',
 		'cod_inscrip' => 'integer',
-		'cod_descuento' => 'integer',
 		'cod_beca' => 'integer',
 		'id_usuario' => 'integer',
-		'porcentaje' => 'float',
 		'estado' => 'boolean',
+		'fecha_registro' => 'datetime',
+		'fecha_solicitud' => 'date',
 	];
 
 	public function usuario()
@@ -51,11 +51,6 @@ class Descuento extends Model
 	public function detalles()
 	{
 		return $this->hasMany(DescuentoDetalle::class, 'id_descuento', 'id_descuentos');
-	}
-
-	public function definicion()
-	{
-		return $this->belongsTo(DefDescuento::class, 'cod_descuento', 'cod_descuento');
 	}
 
 	public function beca()
