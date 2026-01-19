@@ -8,14 +8,30 @@ return new class extends Migration
 {
     public function up(): void
     {
-        Schema::table('cobro', function (Blueprint $table) {
-            // Adding foreign key for cod_tipo_cobro after tipo_cobro table is created
-            $table->foreign('cod_tipo_cobro')
-                  ->references('cod_tipo_cobro')
-                  ->on('tipo_cobro')
-                  ->onDelete('restrict')
-                  ->onUpdate('restrict');
-        });
+        if (!Schema::hasTable('tipo_cobro')) {
+            return;
+        }
+
+        $sm = Schema::getConnection()->getDoctrineSchemaManager();
+        $foreignKeys = $sm->listTableForeignKeys('cobro');
+
+        $hasFk = false;
+        foreach ($foreignKeys as $fk) {
+            if (in_array('cod_tipo_cobro', $fk->getLocalColumns())) {
+                $hasFk = true;
+                break;
+            }
+        }
+
+        if (!$hasFk) {
+            Schema::table('cobro', function (Blueprint $table) {
+                $table->foreign('cod_tipo_cobro')
+                      ->references('cod_tipo_cobro')
+                      ->on('tipo_cobro')
+                      ->onDelete('restrict')
+                      ->onUpdate('restrict');
+            });
+        }
     }
 
     public function down(): void
