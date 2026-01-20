@@ -8,15 +8,30 @@ return new class extends Migration {
 	public function up(): void
 	{
 		Schema::table('cobro', function (Blueprint $table) {
-			// Nuevos flags de documento
-			$table->char('tipo_documento', 1)->nullable()->after('id_forma_cobro'); // 'F' | 'R'
-			$table->char('medio_doc', 1)->nullable()->after('tipo_documento'); // 'C' | 'M'
+			if (!Schema::hasColumn('cobro', 'tipo_documento')) {
+				$table->char('tipo_documento', 1)->nullable()->after('id_forma_cobro');
+			}
+			if (!Schema::hasColumn('cobro', 'medio_doc')) {
+				$table->char('medio_doc', 1)->nullable()->after('tipo_documento');
+			}
+		});
 
-			// Índices útiles para consultas
-			$table->index('fecha_cobro', 'idx_cobro_fecha_cobro');
-			$table->index('cod_ceta', 'idx_cobro_cod_ceta');
-			$table->index('nro_factura', 'idx_cobro_nro_factura');
-			$table->index('nro_recibo', 'idx_cobro_nro_recibo');
+		$sm = Schema::getConnection()->getDoctrineSchemaManager();
+		$indexes = $sm->listTableIndexes('cobro');
+
+		Schema::table('cobro', function (Blueprint $table) use ($indexes) {
+			if (!isset($indexes['idx_cobro_fecha_cobro'])) {
+				$table->index('fecha_cobro', 'idx_cobro_fecha_cobro');
+			}
+			if (!isset($indexes['idx_cobro_cod_ceta'])) {
+				$table->index('cod_ceta', 'idx_cobro_cod_ceta');
+			}
+			if (!isset($indexes['idx_cobro_nro_factura'])) {
+				$table->index('nro_factura', 'idx_cobro_nro_factura');
+			}
+			if (!isset($indexes['idx_cobro_nro_recibo'])) {
+				$table->index('nro_recibo', 'idx_cobro_nro_recibo');
+			}
 		});
 	}
 

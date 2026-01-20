@@ -9,11 +9,12 @@ return new class extends Migration
     public function up(): void
     {
         Schema::table('cobro', function (Blueprint $table) {
-            $table->text('concepto')->nullable()->after('observaciones');
-            $table->string('cod_tipo_cobro', 50)->nullable()->after('concepto');
-            
-            // Adding foreign key for cod_tipo_cobro (will be added after tipo_cobro table is created)
-            // $table->foreign('cod_tipo_cobro')->references('cod_tipo_cobro')->on('tipo_cobro')->onDelete('restrict')->onUpdate('restrict');
+            if (!Schema::hasColumn('cobro', 'concepto')) {
+                $table->text('concepto')->nullable()->after('observaciones');
+            }
+            if (!Schema::hasColumn('cobro', 'cod_tipo_cobro')) {
+                $table->string('cod_tipo_cobro', 50)->nullable()->after('concepto');
+            }
         });
     }
 
