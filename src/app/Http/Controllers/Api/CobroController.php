@@ -1570,12 +1570,6 @@ class CobroController extends Controller
 				if (is_array($descuentosFromFrontend) && count($descuentosFromFrontend) > 0 && $primaryInscripcion) {
 					Log::info('batchStore: procesando descuentos del frontend', ['count' => count($descuentosFromFrontend)]);
 					try {
-						// Calcular suma total de descuentos
-						$porcentajeTotal = 0;
-						foreach ($descuentosFromFrontend as $desc) {
-							$porcentajeTotal += (float)($desc['monto_descuento'] ?? 0);
-						}
-
 						// Obtener cod_beca del primer descuento
 						$codBeca = isset($descuentosFromFrontend[0]['cod_beca']) ? (int)$descuentosFromFrontend[0]['cod_beca'] : null;
 
@@ -1587,52 +1581,16 @@ class CobroController extends Controller
 						$descuento->cod_beca = $codBeca;
 						$descuento->nombre = 'Descuento por pago de semestre completo';
 						$descuento->observaciones = 'Descuento por pago de semestre completo';
-						$descuento->porcentaje = $porcentajeTotal;
 						$descuento->tipo = (string)$request->tipo_inscripcion;
 						$descuento->estado = 1;
+						$descuento->fecha_registro = now();
+						$descuento->fecha_solicitud = now()->toDateString();
 						$descuento->save();
 
 						Log::info('batchStore: descuento principal creado', [
 							'id_descuentos' => $descuento->id_descuentos,
 							'cod_beca' => $codBeca,
-							'porcentaje_total' => $porcentajeTotal
 						]);
-
-						// Determinar turno y semestre desde grupos (formato esperado: EEA-19-100M)
-						$turno = null;
-						$semestre = null;
-						$grupoStr = null;
-						if (isset($request->grupos)) {
-							$gr = $request->grupos;
-							if (is_array($gr) && count($gr) > 0) {
-								$grupoStr = (string)$gr[0];
-							} else {
-								$grupoStr = (string)$gr;
-							}
-						}
-						if ($grupoStr && preg_match('/-([0-9A-Z]+)$/', $grupoStr, $m)) {
-							$tail = $m[1];
-							if (preg_match('/([A-Z])$/', $tail, $m2)) {
-								$turno = $m2[1];
-							}
-							$semChar = substr($tail, 0, 1);
-							if (is_numeric($semChar)) {
-								$semestre = (int)$semChar;
-							}
-						}
-						// Fallback básico a cod_pensum si no se pudo obtener de grupos
-						if ($semestre === null || $turno === null) {
-							if ($codPensumCtx) {
-								$parts = explode('-', $codPensumCtx);
-								if (count($parts) >= 2) {
-									$secondPart = $parts[1];
-									if (preg_match('/(\d+)([A-Z])/', $secondPart, $matches)) {
-										$semestre = $semestre !== null ? $semestre : (int)$matches[1];
-										$turno = $turno !== null ? $turno : $matches[2];
-									}
-								}
-							}
-						}
 
 						foreach ($descuentosFromFrontend as $desc) {
 							try {
@@ -1646,15 +1604,10 @@ class CobroController extends Controller
 								$detalle = new \App\Models\DescuentoDetalle();
 								$detalle->id_descuento = $descuento->id_descuentos;
 								$detalle->id_inscripcion = $primaryInscripcion->cod_inscrip;
-								$detalle->id_usuario = (int)$request->id_usuario;
 								$detalle->id_cuota = (int)$desc['id_asignacion_costo'];
 								$detalle->monto_descuento = $desc['monto_descuento'];
 								$detalle->observaciones = $desc['observaciones'] ?? 'Descuento por pago de semestre completo';
-								$detalle->fecha_registro = now();
-								$detalle->fecha_solicitud = now()->toDateString();
 								$detalle->tipo_inscripcion = (string)$request->tipo_inscripcion;
-								$detalle->turno = $turno;
-								$detalle->semestre = $semestre;
 								$detalle->save();
 
 								$asignCosto->id_descuentoDetalle = $detalle->id_descuento_detalle;

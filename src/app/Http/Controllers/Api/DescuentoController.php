@@ -16,7 +16,7 @@ class DescuentoController extends Controller
 	public function index(Request $request)
 	{
 		try {
-			$query = Descuento::with(['definicion', 'beca', 'detalles']);
+			$query = Descuento::with(['beca', 'detalles']);
 			if ($request->has('estado')) {
 				$query->where('estado', filter_var($request->get('estado'), FILTER_VALIDATE_BOOLEAN));
 			}
@@ -30,7 +30,7 @@ class DescuentoController extends Controller
 				$query->where('cod_inscrip', $request->get('cod_inscrip'));
 			}
 			$descuentos = $query->orderByDesc('id_descuentos')->get();
-			
+
 			// Agregar tipo_descuento y cuotas calculados
 			$descuentos->each(function($d) {
 				// El campo 'beca' en def_descuentos_beca: 1=BECA, 0=DESCUENTO
@@ -39,7 +39,7 @@ class DescuentoController extends Controller
 				} else {
 					$d->tipo_descuento = 'BECA'; // fallback
 				}
-				
+
 				// Obtener números de cuota desde detalles
 				$cuotasNums = [];
 				if ($d->detalles && $d->detalles->count() > 0) {
@@ -56,7 +56,7 @@ class DescuentoController extends Controller
 				sort($cuotasNums);
 				$d->cuotas = implode(', ', $cuotasNums);
 			});
-			
+
 			return response()->json(['success' => true, 'data' => $descuentos]);
 		} catch (\Exception $e) {
 			return response()->json(['success' => false, 'message' => 'Error al obtener descuentos: ' . $e->getMessage()], 500);
@@ -80,14 +80,14 @@ class DescuentoController extends Controller
 				'cod_ceta' => 'required|integer|exists:estudiantes,cod_ceta',
 				'cod_pensum' => 'required|string|exists:pensums,cod_pensum',
 				'cod_inscrip' => 'required|integer|exists:inscripciones,cod_inscrip',
-				'cod_descuento' => 'nullable|integer|exists:def_descuentos,cod_descuento',
 				'cod_beca' => 'nullable|integer|exists:def_descuentos_beca,cod_beca',
 				'id_usuario' => 'required|integer|exists:usuarios,id_usuario',
 				'nombre' => 'required|string|max:255',
 				'observaciones' => 'nullable|string',
-				'porcentaje' => 'required|numeric|min:0|max:100',
 				'tipo' => 'nullable|string|max:100',
 				'estado' => 'nullable|boolean',
+				'fecha_registro' => 'nullable|date',
+				'fecha_solicitud' => 'nullable|date',
 			]);
 
 			if ($validator->fails()) {
@@ -131,14 +131,14 @@ class DescuentoController extends Controller
 				'cod_ceta' => 'required|integer|exists:estudiantes,cod_ceta',
 				'cod_pensum' => 'required|string|exists:pensums,cod_pensum',
 				'cod_inscrip' => 'required|integer|exists:inscripciones,cod_inscrip',
-				'cod_descuento' => 'nullable|integer|exists:def_descuentos,cod_descuento',
 				'cod_beca' => 'nullable|integer|exists:def_descuentos_beca,cod_beca',
 				'id_usuario' => 'required|integer|exists:usuarios,id_usuario',
 				'nombre' => 'required|string|max:255',
 				'observaciones' => 'nullable|string',
-				'porcentaje' => 'required|numeric|min:0|max:100',
 				'tipo' => 'nullable|string|max:100',
 				'estado' => 'nullable|boolean',
+				'fecha_registro' => 'nullable|date',
+				'fecha_solicitud' => 'nullable|date',
 			]);
 
 			if ($validator->fails()) {
@@ -235,7 +235,7 @@ class DescuentoController extends Controller
 			$codInscrip = (int)$request->input('cod_inscrip');
 			$cuotasRequest = (array)$request->input('cuotas', []);
 			$numerosCuotas = array_map(function($c) { return (int)($c['numero_cuota'] ?? 0); }, $cuotasRequest);
-			
+
 			// Verificar si alguna de las cuotas ya tiene un descuento asignado
 			$cuotasConDescuento = AsignacionCostos::where('cod_pensum', $codPensum)
 				->where('cod_inscrip', $codInscrip)
@@ -243,7 +243,7 @@ class DescuentoController extends Controller
 				->whereNotNull('id_descuentoDetalle')
 				->pluck('numero_cuota')
 				->toArray();
-			
+
 			if (!empty($cuotasConDescuento)) {
 				$cuotasStr = implode(', ', $cuotasConDescuento);
 				return response()->json([
@@ -255,54 +255,30 @@ class DescuentoController extends Controller
 			$insc = Inscripcion::find((int)$request->input('cod_inscrip'));
 			if (!$insc) return response()->json(['success' => false, 'message' => 'Inscripción no encontrada'], 404);
 
-			// Inferir turno y semestre desde cod_curso (M/T/N y dígitos tras guion)
-			$codCurso = (string)($insc->cod_curso ?? '');
-			$turno = null;
-			if ($codCurso !== '') {
-				$last = strtoupper(substr($codCurso, -1));
-				if (in_array($last, ['M','T','N'])) $turno = $last;
-			}
-			$semestre = null;
-			if (strpos($codCurso, '-') !== false) {
-				$after = substr($codCurso, strpos($codCurso, '-') + 1);
-				$firstDigit = null;
-				for ($i = 0; $i < strlen($after); $i++) {
-					$ch = substr($after, $i, 1);
-					if (ctype_digit($ch)) { $firstDigit = $ch; break; }
-				}
-				if ($firstDigit !== null) $semestre = $firstDigit;
-			}
-
 			$payloadMaster = [
 				'cod_ceta' => (int)$request->input('cod_ceta'),
 				'cod_pensum' => (string)$request->input('cod_pensum'),
 				'cod_inscrip' => (int)$request->input('cod_inscrip'),
 				'id_usuario' => (int)$request->input('id_usuario'),
-				'cod_descuento' => null,
 				'cod_beca' => (int)$request->input('cod_beca'),
 				'nombre' => (string)$request->input('nombre'),
-				'porcentaje' => (float)$request->input('porcentaje'),
 				'observaciones' => $request->input('observaciones'),
 				'tipo' => (string)($insc->tipo_inscripcion ?? ''),
 				'estado' => true,
+				'fecha_registro' => now(),
+				'fecha_solicitud' => $request->input('fechaSolicitud') ? date('Y-m-d', strtotime((string)$request->input('fechaSolicitud'))) : null,
 			];
 
-			[$descuento, $detRows] = DB::transaction(function() use ($payloadMaster, $request, $turno, $semestre) {
+			[$descuento, $detRows] = DB::transaction(function() use ($payloadMaster, $request) {
 				$descuento = Descuento::create($payloadMaster);
 				$rows = [];
 				$detBase = [
 					'id_descuento' => (int)$descuento->id_descuentos,
-					'id_usuario' => (int)$request->input('id_usuario'),
 					'id_inscripcion' => (int)$request->input('cod_inscrip'),
 					'cod_Archivo' => $request->input('codigoArchivo'),
-					'fecha_registro' => now(),
-					'fecha_solicitud' => $request->input('fechaSolicitud') ? date('Y-m-d', strtotime((string)$request->input('fechaSolicitud'))) : null,
 					'observaciones' => $request->input('observaciones'),
 					'tipo_inscripcion' => (string)$request->input('tipo_inscripcion', ''),
-					'turno' => $turno,
-					'semestre' => $semestre,
 					'meses_descuento' => $request->input('meses'),
-					'estado' => true,
 				];
 
 				foreach ((array)$request->input('cuotas', []) as $c) {
