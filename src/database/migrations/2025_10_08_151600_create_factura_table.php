@@ -21,7 +21,6 @@ return new class extends Migration {
 				$table->decimal('monto_total', 10, 2);
 				$table->string('codigo_cufd', 100)->nullable(); // para computarizada
 				$table->string('cuf', 150)->nullable(); // identificador fiscal
-				$table->string('codigo_cafc', 25)->nullable(); // para manual
 				$table->string('pdf_path', 255)->nullable();
 				$table->string('qr_path', 255)->nullable();
 				$table->string('estado', 50)->default('VIGENTE');
@@ -29,7 +28,6 @@ return new class extends Migration {
 
 				$table->primary(['nro_factura','anio','codigo_sucursal','codigo_punto_venta'], 'pk_factura_compuesta');
 				$table->index(['codigo_cufd'], 'idx_factura_cufd');
-				$table->index(['codigo_cafc'], 'idx_factura_cafc');
 			});
 		}
 	}
