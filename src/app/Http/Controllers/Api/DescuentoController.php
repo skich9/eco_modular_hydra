@@ -31,7 +31,7 @@ class DescuentoController extends Controller
 			}
 			$descuentos = $query->orderByDesc('id_descuentos')->get();
 
-			// Agregar tipo_descuento y cuotas calculados
+			// Agregar tipo_descuento, cuotas detalladas con montos
 			$descuentos->each(function($d) {
 				// El campo 'beca' en def_descuentos_beca: 1=BECA, 0=DESCUENTO
 				if ($d->beca && isset($d->beca->beca)) {
@@ -40,20 +40,31 @@ class DescuentoController extends Controller
 					$d->tipo_descuento = 'BECA'; // fallback
 				}
 
-				// Obtener números de cuota desde detalles
-				$cuotasNums = [];
+				// Obtener detalles de cada cuota con su monto específico
+				$cuotasDetalle = [];
 				if ($d->detalles && $d->detalles->count() > 0) {
 					foreach ($d->detalles as $det) {
-						// Buscar numero_cuota desde asignacion_costos usando id_cuota
 						if ($det->id_cuota) {
 							$asig = AsignacionCostos::find($det->id_cuota);
 							if ($asig && $asig->numero_cuota) {
-								$cuotasNums[] = (int)$asig->numero_cuota;
+								$cuotasDetalle[] = [
+									'numero_cuota' => (int)$asig->numero_cuota,
+									'monto_descuento' => round((float)(isset($det->monto_descuento) ? $det->monto_descuento : 0), 2)
+								];
 							}
 						}
 					}
 				}
-				sort($cuotasNums);
+
+				// Ordenar por número de cuota
+				usort($cuotasDetalle, function($a, $b) {
+					return $a['numero_cuota'] - $b['numero_cuota'];
+				});
+
+				$d->cuotas_detalle = $cuotasDetalle;
+
+				// Mantener el campo cuotas como string para compatibilidad
+				$cuotasNums = array_column($cuotasDetalle, 'numero_cuota');
 				$d->cuotas = implode(', ', $cuotasNums);
 			});
 
@@ -210,9 +221,8 @@ class DescuentoController extends Controller
 				'cod_pensum' => 'required|string|exists:pensums,cod_pensum',
 				'cod_inscrip' => 'required|integer|exists:inscripciones,cod_inscrip',
 				'id_usuario' => 'required|integer|exists:usuarios,id_usuario',
-				'cod_beca' => 'required|integer|exists:def_descuentos_beca,cod_beca',
+				'cod_beca' => 'nullable|integer|exists:def_descuentos_beca,cod_beca',
 				'nombre' => 'required|string|max:255',
-				// Aquí se guarda el MONTO descontado total (no porcentaje)
 				'porcentaje' => 'required|numeric|min:0',
 				'observaciones' => 'nullable|string',
 				'codigoArchivo' => 'nullable|string|max:255',
@@ -221,7 +231,6 @@ class DescuentoController extends Controller
 				'tipo_inscripcion' => 'nullable|string|max:100',
 				'cuotas' => 'required|array|min:1',
 				'cuotas.*.numero_cuota' => 'required|integer|min:1',
-				// id_cuota en payload es opcional y puede venir de plantilla; se ignorará y se usará id_asignacion_costo
 				'cuotas.*.id_cuota' => 'nullable|integer',
 				'cuotas.*.monto_descuento' => 'required|numeric|min:0',
 				'cuotas.*.observaciones' => 'nullable|string',
@@ -234,7 +243,9 @@ class DescuentoController extends Controller
 			$codPensum = (string)$request->input('cod_pensum');
 			$codInscrip = (int)$request->input('cod_inscrip');
 			$cuotasRequest = (array)$request->input('cuotas', []);
-			$numerosCuotas = array_map(function($c) { return (int)($c['numero_cuota'] ?? 0); }, $cuotasRequest);
+			$numerosCuotas = array_map(function($c) {
+				return isset($c['numero_cuota']) ? (int)$c['numero_cuota'] : 0;
+			}, $cuotasRequest);
 
 			// Verificar si alguna de las cuotas ya tiene un descuento asignado
 			$cuotasConDescuento = AsignacionCostos::where('cod_pensum', $codPensum)
@@ -255,21 +266,27 @@ class DescuentoController extends Controller
 			$insc = Inscripcion::find((int)$request->input('cod_inscrip'));
 			if (!$insc) return response()->json(['success' => false, 'message' => 'Inscripción no encontrada'], 404);
 
+			$codBeca = $request->input('cod_beca');
+			$codBecaValue = null;
+			if ($codBeca !== null && $codBeca !== '') {
+				$codBecaValue = (int)$codBeca;
+			}
+
 			$payloadMaster = [
 				'cod_ceta' => (int)$request->input('cod_ceta'),
 				'cod_pensum' => (string)$request->input('cod_pensum'),
 				'cod_inscrip' => (int)$request->input('cod_inscrip'),
 				'id_usuario' => (int)$request->input('id_usuario'),
-				'cod_beca' => (int)$request->input('cod_beca'),
+				'cod_beca' => $codBecaValue,
 				'nombre' => (string)$request->input('nombre'),
 				'observaciones' => $request->input('observaciones'),
-				'tipo' => (string)($insc->tipo_inscripcion ?? ''),
+				'tipo' => (string)(isset($insc->tipo_inscripcion) ? $insc->tipo_inscripcion : ''),
 				'estado' => true,
 				'fecha_registro' => now(),
 				'fecha_solicitud' => $request->input('fechaSolicitud') ? date('Y-m-d', strtotime((string)$request->input('fechaSolicitud'))) : null,
 			];
 
-			[$descuento, $detRows] = DB::transaction(function() use ($payloadMaster, $request) {
+			list($descuento, $detRows) = DB::transaction(function() use ($payloadMaster, $request) {
 				$descuento = Descuento::create($payloadMaster);
 				$rows = [];
 				$detBase = [
@@ -285,7 +302,7 @@ class DescuentoController extends Controller
 					$row = $detBase;
 					$asig = AsignacionCostos::where('cod_pensum', (string)$request->input('cod_pensum'))
 						->where('cod_inscrip', (int)$request->input('cod_inscrip'))
-						->where('numero_cuota', (int)($c['numero_cuota'] ?? 0))
+						->where('numero_cuota', (int)(isset($c['numero_cuota']) ? $c['numero_cuota'] : 0))
 						->first();
 					$row['id_cuota'] = $asig ? (int)$asig->id_asignacion_costo : null;
 					if (isset($c['observaciones']) && $c['observaciones'] !== '') $row['observaciones'] = (string)$c['observaciones'];
@@ -294,17 +311,17 @@ class DescuentoController extends Controller
 					$canApply = true;
 					if (!$asig) { $canApply = false; }
 					else {
-						$bruto = (float)($asig->monto ?? 0);
-						$pagado = (float)($asig->monto_pagado ?? 0);
+						$bruto = (float)(isset($asig->monto) ? $asig->monto : 0);
+						$pagado = (float)(isset($asig->monto_pagado) ? $asig->monto_pagado : 0);
 						$descExist = 0.0;
 						try {
-							$idDetExist = (int)($asig->id_descuentoDetalle ?? 0);
+							$idDetExist = (int)(isset($asig->id_descuentoDetalle) ? $asig->id_descuentoDetalle : 0);
 							if ($idDetExist) {
 								$detExist = DescuentoDetalle::where('id_descuento_detalle', $idDetExist)->first(['monto_descuento']);
-								$descExist = $detExist ? (float)($detExist->monto_descuento ?? 0) : 0.0;
+								$descExist = $detExist ? (float)(isset($detExist->monto_descuento) ? $detExist->monto_descuento : 0) : 0.0;
 							} else {
 								$detExist = DescuentoDetalle::where('id_cuota', (int)$asig->id_asignacion_costo)->orderByDesc('id_descuento_detalle')->first(['monto_descuento']);
-								$descExist = $detExist ? (float)($detExist->monto_descuento ?? 0) : 0.0;
+								$descExist = $detExist ? (float)(isset($detExist->monto_descuento) ? $detExist->monto_descuento : 0) : 0.0;
 							}
 						} catch (\Throwable $e) { $descExist = 0.0; }
 						$neto = max(0.0, $bruto - $descExist);
@@ -318,7 +335,7 @@ class DescuentoController extends Controller
 					try {
 						AsignacionCostos::where('cod_pensum', (string)$request->input('cod_pensum'))
 							->where('cod_inscrip', (int)$request->input('cod_inscrip'))
-							->where('numero_cuota', (int)($c['numero_cuota'] ?? 0))
+							->where('numero_cuota', (int)(isset($c['numero_cuota']) ? $c['numero_cuota'] : 0))
 							->update(['id_descuentoDetalle' => (int)$det->id_descuento_detalle]);
 					} catch (\Throwable $e) { }
 				}
