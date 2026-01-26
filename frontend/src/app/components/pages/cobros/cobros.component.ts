@@ -62,6 +62,8 @@ export class CobrosComponent implements OnInit {
   formasCobro: any[] = [];
   sinDocsIdentidad: Array<{ codigo: number; descripcion: string }> = [];
   pensums: any[] = [];
+  pensumsDisponibles: any[] = [];
+  multiplePensums: boolean = false;
   cuentasBancarias: any[] = [];
   reincorporacion: any = null;
   // Visibilidad del card de Opciones de cobro
@@ -2061,10 +2063,14 @@ export class CobrosComponent implements OnInit {
     this.loading = true;
     const { cod_ceta, gestion } = this.searchForm.value;
 
+    // Obtener cod_pensum del formulario de cabecera si está disponible
+    const cabecera = this.batchForm.get('cabecera') as FormGroup;
+    const codPensum = cabecera?.get('cod_pensum')?.value || null;
+
     // Limpiar datos anteriores pero mantener estado de opciones
     this.resumen = null;
 
-    this.cobrosService.getResumen(cod_ceta, gestion).subscribe({
+    this.cobrosService.getResumen(cod_ceta, gestion, codPensum).subscribe({
       next: (res) => {
         console.log('[Cobros] Respuesta del backend:', res);
         console.log('[Cobros] Estudiante recibido:', res?.data?.estudiante);
@@ -2076,6 +2082,14 @@ export class CobrosComponent implements OnInit {
             console.log('[RESUMEN] recuperacion_pendiente', this.resumen?.recuperacion_pendiente);
             console.log('[RESUMEN] gestion/pensum', this.resumen?.gestion, this.resumen?.inscripcion?.cod_pensum);
           } catch {}
+
+          // Procesar pensums disponibles del estudiante
+          this.pensumsDisponibles = Array.isArray(this.resumen?.pensums_disponibles) ? this.resumen.pensums_disponibles : [];
+          this.multiplePensums = this.pensumsDisponibles.length > 1;
+
+          console.log('[COBROS] Pensums disponibles:', this.pensumsDisponibles);
+          console.log('[COBROS] Múltiples pensums:', this.multiplePensums);
+
           this.showOpciones = true;
           this.showAlert('Resumen cargado', 'success');
           // Mostrar advertencias de backend si existen (fallback de gestión u otros)
@@ -2281,6 +2295,25 @@ export class CobrosComponent implements OnInit {
       this.showAlert('Ingrese el Código CETA para consultar', 'warning');
       return;
     }
+    this.loadResumen();
+  }
+
+  onPensumChange(): void {
+    // Cuando el usuario cambia el pensum en el select, recargar las asignaciones de costo
+    const cabecera = this.batchForm.get('cabecera') as FormGroup;
+    const codPensum = cabecera?.get('cod_pensum')?.value;
+    const codCeta = cabecera?.get('cod_ceta')?.value;
+    const gestion = cabecera?.get('gestion')?.value;
+
+    console.log('[COBROS] Pensum cambiado a:', codPensum);
+
+    if (!codCeta || !codPensum) {
+      this.showAlert('Seleccione un pensum válido', 'warning');
+      return;
+    }
+
+    // Actualizar el formulario de búsqueda y recargar
+    this.searchForm.patchValue({ cod_ceta: codCeta, gestion: gestion }, { emitEvent: false });
     this.loadResumen();
   }
 

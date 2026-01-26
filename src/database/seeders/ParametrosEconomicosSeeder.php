@@ -11,7 +11,7 @@ class ParametrosEconomicosSeeder extends Seeder
     /**
      * Run the database seeds.
      */
-    public function run(): void
+    public function run()
     {
         // Crear parámetros económicos predefinidos
         $parametros = [
@@ -104,7 +104,25 @@ class ParametrosEconomicosSeeder extends Seeder
                 'valor' => '1',
                 'descripcion' => 'Debe tomar valor 1 para tamaño Rollo y valor 2 para tamaño Carta',
                 'estado' => true,
-            ]
+            ],
+            [
+                'nombre' => 'dinstitucionalmanana',
+                'valor' => '51',
+                'descripcion' => 'Id de descuento institucional del turno mañana',
+                'estado' => true,
+            ],
+            [
+                'nombre' => 'dinstitucionaltarde',
+                'valor' => '52',
+                'descripcion' => 'Id descuento institucional turno tarde',
+                'estado' => true,
+            ],
+            [
+                'nombre' => 'dinstitucionalnoche',
+                'valor' => '53',
+                'descripcion' => 'id descuento institucional turno noche',
+                'estado' => true,
+            ],
         ];
 
         foreach ($parametros as $parametro) {

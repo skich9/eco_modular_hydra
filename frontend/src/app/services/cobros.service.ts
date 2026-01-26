@@ -60,9 +60,10 @@ export class CobrosService {
 		);
 	}
 
-	getResumen(cod_ceta: string, gestion?: string): Observable<CobroResumenResponse> {
+	getResumen(cod_ceta: string, gestion?: string, cod_pensum?: string): Observable<CobroResumenResponse> {
 		let params = new HttpParams().set('cod_ceta', cod_ceta);
 		if (gestion) params = params.set('gestion', gestion);
+		if (cod_pensum) params = params.set('cod_pensum', cod_pensum);
 		return this.http.get<CobroResumenResponse>(`${this.baseUrl}/resumen`, { params }).pipe(
 			map((res: any) => ({ success: !!res?.success, data: res?.data, message: res?.message }))
 		);

@@ -84,7 +84,20 @@
 									<td>{{ a.nro }}</td>
 									<td><span class="badge" [ngClass]="{ 'bg-success': a.tipo==='BECA', 'bg-info': a.tipo==='DESCUENTO' }">{{ a.tipo }}</span></td>
 									<td>{{ a.nombre }}</td>
-									<td>{{ a.valor }}</td>
+									<td>
+										<div *ngIf="a.cuotasDetalle && a.cuotasDetalle.length > 0" style="display: inline-block;">
+											<table class="table table-sm table-borderless mb-0" style="width: auto; font-size: 0.85em;">
+												<tbody>
+													<tr *ngFor="let cd of a.cuotasDetalle">
+														<td class="py-0 px-1" style="text-align: left;">C{{ cd.numero_cuota }}:</td>
+														<td class="py-0 px-1" style="text-align: right;">{{ cd.monto_descuento | number:'1.2-2' }}</td>
+														<td class="py-0 px-1" style="text-align: left;">Bs</td>
+													</tr>
+												</tbody>
+											</table>
+										</div>
+										<span *ngIf="!a.cuotasDetalle || a.cuotasDetalle.length === 0">0 Bs</span>
+									</td>
 									<td><span class="badge bg-secondary">{{ a.cuotas || 'N/A' }}</span></td>
 									<td>
 										<span class="badge" [ngClass]="{ 'bg-warning text-dark': a.inscripcion==='NORMAL', 'bg-info': a.inscripcion==='ARRASTRE' }">{{ a.inscripcion }}</span>
@@ -179,7 +192,7 @@
 							</th>
 							<th>Cuota</th>
 							<th>Estado</th>
-							<th>Monto bruto</th>
+							<th>Saldo</th>
 							<th>Descuento</th>
 							<th>Total a pagar</th>
 						</tr>
@@ -191,9 +204,20 @@
 							</td>
 							<td>{{ c.numero_cuota }}</td>
 							<td>{{ c.estado_pago }}</td>
-							<td>{{ c.monto_bruto | number:'1.2-2' }}</td>
-							<td>{{ descuentoPorCuota(c) | number:'1.2-2' }}</td>
-							<td>{{ totalPorCuota(c) | number:'1.2-2' }}</td>
+							<td>{{ calcularSaldo(c) | number:'1.2-2' }}</td>
+							<td>
+								<input type="number" class="form-control form-control-sm"
+									   style="width: 100px;"
+									   min="0"
+									   [max]="c.monto_bruto"
+									   step="1"
+									   [value]="c.descuento_manual || 0"
+									   (input)="onDescuentoChange(i, $event)"
+									   [disabled]="!isSelectable(c) || tieneDescuentoExistente(c)"
+									   [class.bg-light]="tieneDescuentoExistente(c)"
+									   [title]="'Máximo: ' + c.monto_bruto + ' Bs'" />
+							</td>
+							<td>{{ calcularSaldo(c) | number:'1.2-2' }}</td>
 						</tr>
 						<tr *ngIf="!cuotas.length">
 							<td colspan="6" class="text-center text-muted py-2">Sin cuotas</td>

@@ -66,7 +66,13 @@
 							<div class="row g-3">
 								<div class="col-12">
 									<label class="form-label">Pensum</label>
-									<input class="form-control" formControlName="cod_pensum" [readonly]="true" />
+									<select *ngIf="multiplePensums" class="form-select" formControlName="cod_pensum" (change)="onPensumChange()">
+										<option value="">-- Seleccione pensum --</option>
+										<option *ngFor="let p of pensumsDisponibles" [ngValue]="p?.cod_pensum">
+											{{ p?.cod_pensum }} - {{ p?.nombre || 'Sin nombre' }}
+										</option>
+									</select>
+									<input *ngIf="!multiplePensums" class="form-control" formControlName="cod_pensum" [readonly]="true" />
 								</div>
 								<div class="col-12">
 									<label class="form-label">Gestión</label>
