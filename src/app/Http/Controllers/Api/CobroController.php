@@ -368,6 +368,7 @@ class CobroController extends Controller
 			$validator = Validator::make($request->all(), [
 				'cod_ceta' => 'required|integer',
 				'gestion' => 'nullable|string|max:255',
+				'cod_pensum' => 'nullable|string|max:50',
 			]);
 			if ($validator->fails()) {
 				return response()->json([
@@ -379,6 +380,7 @@ class CobroController extends Controller
 
 			$codCeta = (int) $request->input('cod_ceta');
 			$gestionReq = $request->input('gestion');
+			$codPensumReq = $request->input('cod_pensum');
 			$warnings = [];
 
 			// Query para obtener documentos del estudiante
@@ -448,8 +450,15 @@ class CobroController extends Controller
 			}
 			// Seleccionar inscripción principal: priorizar NORMAL si existe, caso contrario la primera
 			$primaryInscripcion = $inscripciones->firstWhere('tipo_inscripcion', 'NORMAL') ?: $inscripciones->first();
-			// Determinar pensum a usar (desde la inscripción principal, si existe)
-			$codPensumToUse = optional($primaryInscripcion)->cod_pensum ?: optional($estudiante)->cod_pensum;
+
+			// Determinar pensum a usar: priorizar el enviado desde el frontend, luego el de la inscripción principal
+			if ($codPensumReq) {
+				$codPensumToUse = $codPensumReq;
+				// Buscar inscripción que coincida con el pensum solicitado
+				$primaryInscripcion = $inscripciones->firstWhere('cod_pensum', $codPensumReq) ?: $primaryInscripcion;
+			} else {
+				$codPensumToUse = optional($primaryInscripcion)->cod_pensum ?: optional($estudiante)->cod_pensum;
+			}
 
 			// Identificar (si existe) la inscripción ARRASTRE en la gestión seleccionada
 			$arrastreInscripcion = $inscripciones->firstWhere('tipo_inscripcion', 'ARRASTRE');
@@ -962,6 +971,26 @@ class CobroController extends Controller
 				->values()
 				->all();
 
+			// Obtener todos los pensums únicos del estudiante desde todas sus inscripciones
+			$pensumsDelEstudiante = Inscripcion::where('cod_ceta', $codCeta)
+				->whereNotNull('cod_pensum')
+				->select('cod_pensum')
+				->distinct()
+				->pluck('cod_pensum')
+				->filter()
+				->values()
+				->all();
+
+			// Obtener detalles de cada pensum (nombre, carrera, etc.)
+			$pensumsDetalle = [];
+			if (!empty($pensumsDelEstudiante)) {
+				$pensumsDetalle = DB::table('pensums')
+					->whereIn('cod_pensum', $pensumsDelEstudiante)
+					->select('cod_pensum', 'nombre', 'codigo_carrera', 'resolucion')
+					->get()
+					->toArray();
+			}
+
 			// Preparar objeto estudiante con datos adicionales de documentos y de inscripción
 			$estudianteData = $estudiante->toArray();
 			// Agregar nombre_completo desde el accessor
@@ -1065,6 +1094,7 @@ class CobroController extends Controller
 					'inscripciones' => $inscripciones,
 					'grupos' => $grupos,
 					'gestiones_all' => $gestionesAll,
+					'pensums_disponibles' => $pensumsDetalle,
 					'inscripcion' => $primaryInscripcion,
 					'gestion' => $gestionToUse,
 					'costo_semestral' => $costoSemestral,
