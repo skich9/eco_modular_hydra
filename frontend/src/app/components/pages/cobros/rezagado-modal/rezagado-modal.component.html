@@ -82,7 +82,7 @@
                     <label class="form-label">Cuenta destino</label>
                     <select class="form-select" formControlName="id_cuentas_bancarias" [class.is-invalid]="form.get('id_cuentas_bancarias')?.invalid && (form.get('id_cuentas_bancarias')?.touched || form.get('id_cuentas_bancarias')?.dirty)">
                       <option value="">Seleccione cuenta/banco</option>
-                      <option *ngFor="let c of cuentasBancarias" [value]="c.id_cuentas_bancarias">{{ c.banco }} - {{ c.numero_cuenta }}</option>
+                      <option *ngFor="let c of cuentasBancariasFiltradas" [value]="c.id_cuentas_bancarias">{{ c.banco }} - {{ c.numero_cuenta }}</option>
                     </select>
                     <div class="invalid-feedback">Seleccione una cuenta destino</div>
                   </div>
@@ -142,7 +142,7 @@
               </table>
             </div>
           </div>
-           
+
               <!-- Numeración autogenerada por backend; no se muestran campos de Nro. -->
           <div class="col-md-12">
                 <label class="form-label">Observaciones</label>
