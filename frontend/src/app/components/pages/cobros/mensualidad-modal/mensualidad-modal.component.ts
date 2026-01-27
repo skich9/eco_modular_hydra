@@ -361,6 +361,25 @@ export class MensualidadModalComponent implements OnInit, OnChanges {
     return this.isCheque || this.isDeposito || this.isTransferencia;
   }
 
+  // Filtrar cuentas bancarias según tipo de comprobante (Recibo/Factura)
+  get cuentasBancariasFiltradas(): any[] {
+    const comprobante = (this.form.get('comprobante')?.value || '').toString().toUpperCase();
+
+    if (!comprobante || (comprobante !== 'RECIBO' && comprobante !== 'FACTURA')) {
+      return this.cuentasBancarias || [];
+    }
+
+    // I_R = true → Recibo, I_R = false → Factura
+    const esRecibo = comprobante === 'RECIBO';
+
+    return (this.cuentasBancarias || []).filter((cuenta: any) => {
+      const i_r = cuenta?.I_R;
+      // Si I_R es true, la cuenta está habilitada para Recibo
+      // Si I_R es false, la cuenta está habilitada para Factura
+      return esRecibo ? i_r === true : i_r === false;
+    });
+  }
+
   ngOnInit(): void {
     console.log('[MensualidadModal] ngOnInit ejecutado');
     this.cargarParametrosDescuentoSemestre();

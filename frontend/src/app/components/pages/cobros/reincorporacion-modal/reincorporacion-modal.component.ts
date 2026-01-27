@@ -103,6 +103,22 @@ export class ReincorporacionModalComponent implements OnInit {
 		return f?.nombre || f?.descripcion || f?.id_forma_cobro || '';
 	}
 
+	get cuentasBancariasFiltradas(): any[] {
+		const comprobante = (this.form.get('comprobante')?.value || '').toString().toUpperCase();
+
+		if (!comprobante || (comprobante !== 'RECIBO' && comprobante !== 'FACTURA')) {
+			return this.cuentasBancarias || [];
+		}
+
+		// I_R = true → Recibo, I_R = false → Factura
+		const esRecibo = comprobante === 'RECIBO';
+
+		return (this.cuentasBancarias || []).filter((cuenta: any) => {
+			const i_r = cuenta?.I_R;
+			return esRecibo ? i_r === true : i_r === false;
+		});
+	}
+
 	private updateBancarioValidators(): void {
 		const metodo = (this.form.get('metodo_pago')?.value || '').toString().toUpperCase();
 		const needsBanco = ['TARJETA', 'DEPOSITO', 'TRANSFERENCIA'].includes(metodo);

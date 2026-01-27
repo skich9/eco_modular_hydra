@@ -157,8 +157,8 @@ export class RezagadoModalComponent implements OnInit {
 		return out;
 	}
 
-	private loadMateriasFallbackPensum(pensum: string): void { 
-		this.materias = []; 
+	private loadMateriasFallbackPensum(pensum: string): void {
+		this.materias = [];
 	}
 
 	get isTarjeta(): boolean {
@@ -205,9 +205,24 @@ export class RezagadoModalComponent implements OnInit {
 
 	get showBancarioBlock(): boolean {
 		if (this.isOtro) return false;
-		// QR NO debe mostrar bloque bancario
 		if (this.isQR) return false;
-		return this.isTarjeta || this.isCheque || this.isDeposito || this.isTransferencia;
+		return this.isCheque || this.isDeposito || this.isTransferencia || this.isTarjeta;
+	}
+
+	get cuentasBancariasFiltradas(): any[] {
+		const comprobante = (this.form.get('comprobante')?.value || '').toString().toUpperCase();
+
+		if (!comprobante || (comprobante !== 'RECIBO' && comprobante !== 'FACTURA')) {
+			return this.cuentasBancarias || [];
+		}
+
+		// I_R = true → Recibo, I_R = false → Factura
+		const esRecibo = comprobante === 'RECIBO';
+
+		return (this.cuentasBancarias || []).filter((cuenta: any) => {
+			const i_r = cuenta?.I_R;
+			return esRecibo ? i_r === true : i_r === false;
+		});
 	}
 
 	private getSelectedForma(): any | null {

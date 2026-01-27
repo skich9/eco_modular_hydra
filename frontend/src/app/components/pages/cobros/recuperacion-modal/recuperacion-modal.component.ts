@@ -281,6 +281,23 @@ export class RecuperacionModalComponent implements OnInit, OnChanges {
 		return this.isTarjeta || this.isCheque || this.isDeposito || this.isTransferencia;
 	}
 
+	// Filtrar cuentas bancarias según tipo de comprobante (Recibo/Factura)
+	get cuentasBancariasFiltradas(): any[] {
+		const comprobante = (this.form.get('comprobante')?.value || '').toString().toUpperCase();
+
+		if (!comprobante || (comprobante !== 'RECIBO' && comprobante !== 'FACTURA')) {
+			return this.cuentasBancarias || [];
+		}
+
+		// I_R = true → Recibo, I_R = false → Factura
+		const esRecibo = comprobante === 'RECIBO';
+
+		return (this.cuentasBancarias || []).filter((cuenta: any) => {
+			const i_r = cuenta?.I_R;
+			return esRecibo ? i_r === true : i_r === false;
+		});
+	}
+
 	private getSelectedForma(): any | null {
 		const val = (this.form.get('metodo_pago')?.value || '').toString();
 		if (!val) return null;
