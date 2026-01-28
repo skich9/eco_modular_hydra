@@ -9,7 +9,7 @@ class RecepcionPaqueteService
 {
 	/**
 	 * Envía un paquete de facturas en contingencia al SIN
-	 * 
+	 *
 	 * @param string $cuis
 	 * @param string $cufd
 	 * @param int $codigoDocumentoSector
@@ -85,6 +85,7 @@ class RecepcionPaqueteService
 			$arg->SolicitudServicioRecepcionPaquete = (object) $payload;
 
 			$result = $client->__soapCall('recepcionPaqueteFactura', [$arg]);
+            Log::debug('el resultado que llega es ggggg:'.print_r($result,true));
 			$arr = json_decode(json_encode($result), true);
 
 			Log::info('RecepcionPaqueteService.response', [

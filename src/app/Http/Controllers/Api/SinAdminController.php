@@ -37,9 +37,11 @@ class SinAdminController extends Controller
 	public function syncLeyendas(Request $request, SyncRepository $sync)
 	{
 		try {
+            $codigoAmbiente = (int) config('sin.ambiente');
+            $sucursal = 0; /// se realiza la sincorinzacion para sucursal
 			$pv = (int) $request->input('codigo_punto_venta', 0);
 			Log::info('SIN syncLeyendas: start', [ 'pv' => $pv ]);
-			$res = $sync->syncLeyendasFactura($pv);
+			$res = $sync->syncLeyendasFactura2($codigoAmbiente, $sucursal, $pv);
 			return response()->json([
 				'success' => true,
 				'data' => $res,
@@ -81,12 +83,14 @@ class SinAdminController extends Controller
 		try {
 			$pv = (int) $request->query('codigo_punto_venta', 0);
 			$sucursal = (int) $request->query('codigo_sucursal', (int) config('sin.sucursal'));
+            $codigoAmbiente = (int) config('sin.ambiente');
 			Log::info('SIN status: start', [ 'pv' => $pv, 'sucursal' => $sucursal ]);
 
-			$cuis = $cuisRepo->getVigenteOrCreate($pv);
+			$cuis = $cuisRepo->getVigenteOrCreate2($codigoAmbiente, $sucursal, $pv);
+
 			$cufd = null;
 			try {
-				$cufd = $cufdRepo->getVigenteOrCreate2(0, 0, $pv);
+				$cufd = $cufdRepo->getVigenteOrCreate2($codigoAmbiente, $sucursal, $pv);
 			} catch (\Throwable $e) {
 				Log::warning('SIN status: CUFD lookup failed', [ 'pv' => $pv, 'error' => $e->getMessage() ]);
 			}

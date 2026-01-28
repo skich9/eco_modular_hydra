@@ -24,8 +24,9 @@ class EstadoFacturaService
 	 * Verifica el estado de una factura en el SIN.
 	 * Devuelve arreglo normalizado con: success, codigoEstado, descripcion, estado, raw
 	 */
-	public function verificacionEstadoFactura($cuf, $puntoVenta = 0, $sucursal = null)
+	public function verificacionEstadoFactura($cuf, $puntoVenta = 0, $sucursal)
 	{
+        $codigoAmbiente = (int) config('sin.ambiente');
 		if ($cuf === '') {
 			return [ 'success' => false, 'message' => 'CUF vacío' ];
 		}
@@ -36,9 +37,9 @@ class EstadoFacturaService
 		];
 		try {
 			// Asegurar CUIS/CUFD vigentes
-			$cuisRow = $this->cuisRepo->getVigenteOrCreate($puntoVenta);
+			$cuisRow = $this->cuisRepo->getVigenteOrCreate2($codigoAmbiente, $sucursal, $puntoVenta);
 			$cuis = isset($cuisRow['codigo_cuis']) ? (string)$cuisRow['codigo_cuis'] : '';
-			$cufdRow = $this->cufdRepo->getVigenteOrCreate2(0,0,$puntoVenta);
+			$cufdRow = $this->cufdRepo->getVigenteOrCreate2($codigoAmbiente, $sucursal, $puntoVenta);
 			$cufd = isset($cufdRow['codigo_cufd']) ? (string)$cufdRow['codigo_cufd'] : '';
 			if ($sucursal === null) { $sucursal = isset($cuisRow['codigo_sucursal']) ? (int)$cuisRow['codigo_sucursal'] : (int)config('sin.sucursal'); }
 
@@ -78,6 +79,7 @@ class EstadoFacturaService
 							$arg = new \stdClass();
 							$arg->{$wrap} = (object) $payload;
 							$result = $client->__soapCall('verificacionEstadoFactura', [ $arg ]);
+                            Log::debug('el resultado que llega es eeeee:'.print_r($result,true));
 							$arr = json_decode(json_encode($result), true);
 							$root = is_array($arr) ? reset($arr) : null;
 							$codigoEstado = is_array($root) && isset($root['codigoEstado']) ? (int)$root['codigoEstado'] : null;

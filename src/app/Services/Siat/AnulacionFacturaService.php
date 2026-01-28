@@ -24,8 +24,9 @@ class AnulacionFacturaService
 	 * Llama al servicio SIAT de anulacionFactura.
 	 * Devuelve arreglo con success, payload, raw y codigoEstado si está disponible.
 	 */
-	public function anular($cuf, $codigoMotivo, $puntoVenta = 0, $sucursal = null)
+	public function anular($cuf, $codigoMotivo, $puntoVenta = 0, $sucursal)
 	{
+        $codigoAmbiente = (int) config('sin.ambiente');
 		if ($cuf === '') {
 			return [ 'success' => false, 'message' => 'CUF vacío' ];
 		}
@@ -37,9 +38,9 @@ class AnulacionFacturaService
 
 		try {
 			// CUIS/CUFD vigentes
-			$cuisRow = $this->cuisRepo->getVigenteOrCreate($puntoVenta);
+			$cuisRow = $this->cuisRepo->getVigenteOrCreate2($codigoAmbiente, $sucursal, $puntoVenta);
 			$cuis = isset($cuisRow['codigo_cuis']) ? (string)$cuisRow['codigo_cuis'] : '';
-			$cufdRow = $this->cufdRepo->getVigenteOrCreate($puntoVenta);
+			$cufdRow = $this->cufdRepo->getVigenteOrCreate2($codigoAmbiente, $sucursal, $puntoVenta);
 			$cufd = isset($cufdRow['codigo_cufd']) ? (string)$cufdRow['codigo_cufd'] : '';
 			if ($sucursal === null) { $sucursal = isset($cuisRow['codigo_sucursal']) ? (int)$cuisRow['codigo_sucursal'] : (int)config('sin.sucursal'); }
 
@@ -81,8 +82,11 @@ class AnulacionFacturaService
 							$arg = new \stdClass();
 							$arg->{$wrap} = (object) $payload;
 							$result = $client->__soapCall('anulacionFactura', [ $arg ]);
+                            Log::debug('el resultado que llega es aaaaaa:'.print_r($result,true));
 							$arr = json_decode(json_encode($result), true);
 							$root = is_array($arr) ? reset($arr) : null;
+
+
 							$codigoEstado = is_array($root) && isset($root['codigoEstado']) ? (int)$root['codigoEstado'] : null;
 							$lastReq = method_exists($client, '__getLastRequest') ? (string)$client->__getLastRequest() : null;
 							$lastResp = method_exists($client, '__getLastResponse') ? (string)$client->__getLastResponse() : null;

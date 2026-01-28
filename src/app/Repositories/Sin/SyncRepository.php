@@ -28,8 +28,10 @@ class SyncRepository
 	 */
 	public function syncParametrica(string $method, int $puntoVenta = 0): array
 	{
+        $codigoAmbiente = (int) config('sin.ambiente');
+        $sucursal = 0; /// se realiza la sincorinzacion para sucursal 0
 		// Aseguramos CUIS vigente
-		$cuisData = $this->cuisRepo->getVigenteOrCreate($puntoVenta);
+		$cuisData = $this->cuisRepo->getVigenteOrCreate2($codigoAmbiente, 0 , $puntoVenta);
 		$cuis = $cuisData['codigo_cuis'];
 
 		$resp = $this->sync->parametrica($method, $cuis, $puntoVenta);
@@ -94,8 +96,10 @@ class SyncRepository
 	 */
 	public function syncLeyendasFactura(int $puntoVenta = 0): array
 	{
+        $codigoAmbiente = (int) config('sin.ambiente');
+        $sucursal = 0; /// se realiza la sincorinzacion para sucursal
 		// Aseguramos CUIS vigente
-		$cuisData = $this->cuisRepo->getVigenteOrCreate($puntoVenta);
+		$cuisData = $this->cuisRepo->getVigenteOrCreate2($codigoAmbiente, $sucursal, $puntoVenta);
 		$cuis = $cuisData['codigo_cuis'];
 
 		$resp = $this->sync->leyendasFactura($cuis, $puntoVenta);
@@ -157,8 +161,10 @@ class SyncRepository
 	 */
 	public function syncTipoMetodoPago(int $puntoVenta = 0): array
 	{
+        $codigoAmbiente = (int) config('sin.ambiente');
+        $sucursal = 0; /// se realiza la sincorinzacion para sucursal
 		// Aseguramos CUIS vigente
-		$cuisData = $this->cuisRepo->getVigenteOrCreate($puntoVenta);
+		$cuisData = $this->cuisRepo->getVigenteOrCreate2($codigoAmbiente, $sucursal, $puntoVenta);
 		$cuis = $cuisData['codigo_cuis'];
 
 		$resp = $this->sync->parametrica('sincronizarParametricaTipoMetodoPago', $cuis, $puntoVenta);
@@ -280,8 +286,10 @@ class SyncRepository
 	 */
 	public function syncActividades(int $puntoVenta = 0): array
 	{
+        $codigoAmbiente = (int) config('sin.ambiente');
+        $sucursal = 0; /// se realiza la sincorinzacion para sucursal
 		// Aseguramos CUIS vigente
-		$cuisData = $this->cuisRepo->getVigenteOrCreate($puntoVenta);
+		$cuisData = $this->cuisRepo->getVigenteOrCreate2($codigoAmbiente, $sucursal, $puntoVenta);
 		$cuis = $cuisData['codigo_cuis'];
 
 		$resp = $this->sync->actividades($cuis, $puntoVenta);

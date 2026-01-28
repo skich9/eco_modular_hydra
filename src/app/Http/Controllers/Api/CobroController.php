@@ -1754,7 +1754,15 @@ class CobroController extends Controller
 						'cuf' => $cufGroup,
 						'periodo_facturado' => $gestionCtx,
 					]);
-					try { \Log::warning('batchStore: factura C creada (local, grupo)', [ 'anio' => $anioFacturaGroup, 'nro_factura' => (int)$nroFacturaGroup, 'monto_total' => (float)$factMontoTotal ]); } catch (\Throwable $e) {}
+                    try {
+                        \Log::warning('batchStore: factura C creada (local, grupo)', [
+                            'anio' => $anioFacturaGroup,
+                            'nro_factura' => (int)$nroFacturaGroup,
+                            'monto_total' => (float)$factMontoTotal
+                        ]);
+                    } catch (\Throwable $e) {
+
+                    }
 					// Inicializar contenedor para emisión post-commit
 					$emitGroupMeta = [
 						'anio' => (int)$anioFacturaGroup,
@@ -2009,7 +2017,19 @@ class CobroController extends Controller
 									'codigo_cufd' => isset($cufd['codigo_cufd']) ? $cufd['codigo_cufd'] : null,
 									'cuf' => $cuf,
 								]);
-								try { Log::warning('batchStore: factura C creada (local)', [ 'anio' => $anio, 'nro_factura' => (int)$nroFactura, 'sucursal' => $sucursal, 'pv' => $pv, 'cuf' => $cuf, 'cufd' => isset($cufd['codigo_cufd']) ? $cufd['codigo_cufd'] : null, 'monto_total' => (float)$item['monto'] ]); } catch (\Throwable $e) {}
+								try {
+                                    Log::warning('batchStore: factura C creada (local)', [
+                                        'anio' => $anio,
+                                        'nro_factura' => (int)$nroFactura,
+                                        'sucursal' => $sucursal,
+                                        'pv' => $pv,
+                                        'cuf' => $cuf,
+                                        'cufd' => isset($cufd['codigo_cufd']) ? $cufd['codigo_cufd'] : null,
+                                        'monto_total' => (float)$item['monto']
+                                    ]);
+                                } catch (\Throwable $e) {
+
+                                }
 							}
 							// Paso 3: emisión online (opcional). Si hay agrupación, se difiere al final del loop.
 							// if ($emitirOnline && !$hasFacturaGroup) {
@@ -2567,7 +2587,9 @@ class CobroController extends Controller
 							'actividad_economica' => $actividadEconomica,
 						];
 						// También acumular en meta para post-commit
-						if (is_array($emitGroupMeta)) { $emitGroupMeta['detalles'][] = end($factDetalles); }
+						if (is_array($emitGroupMeta)) {
+                            $emitGroupMeta['detalles'][] = end($factDetalles);
+                        }
 					}
 
 					// Usar valores PRE-CALCULADOS de descuento y precio unitario (aplica para recibos y facturas)
@@ -2881,17 +2903,72 @@ class CobroController extends Controller
 
 							// Construir payload DESPUÉS de actualizar todas las variables
 							$payload = $payloadBuilder->buildRecepcionFacturaPayload($payloadArgs);
-							Log::warning('batchStore: calling recepcionFactura (grupo)', [ 'anio' => (int)$anioFacturaGroup, 'nro_factura' => (int)$nroFacturaGroup, 'punto_venta' => $pv, 'sucursal' => $sucursal, 'cuf' => $cufGroup, 'cufd' => $cufdGroup, 'cuis' => $cuisCode, 'payload_meta' => [ 'len_archivo' => isset($payload['archivo']) ? strlen($payload['archivo']) : null, 'hashArchivo' => isset($payload['hashArchivo']) ? $payload['hashArchivo'] : null ]]);
+							Log::warning('batchStore: calling recepcionFactura (grupo)', [
+                                'anio' => (int)$anioFacturaGroup
+                                , 'nro_factura' => (int)$nroFacturaGroup
+                                , 'punto_venta' => $pv, 'sucursal' => $sucursal
+                                , 'cuf' => $cufGroup, 'cufd' => $cufdGroup
+                                , 'cuis' => $cuisCode
+                                , 'payload_meta' => [
+                                    'len_archivo' => isset($payload['archivo']) ? strlen($payload['archivo']) : null
+                                    , 'hashArchivo' => isset($payload['hashArchivo']) ? $payload['hashArchivo'] : null
+                                ]
+                            ]);
 							$resp = $ops->recepcionFactura($payload);
 							$root = isset($resp['RespuestaServicioFacturacion']) ? $resp['RespuestaServicioFacturacion'] : (isset($resp['RespuestaRecepcionFactura']) ? $resp['RespuestaRecepcionFactura'] : (is_array($resp) ? reset($resp) : null));
 							$codRecep = is_array($root) ? (isset($root['codigoRecepcion']) ? $root['codigoRecepcion'] : null) : null;
-							$mensajeGroup = null; $estadoCod = null;
+                            $codigoEstado = is_array($root) && isset($root['codigoEstado']) ? (int)$root['codigoEstado'] : null;
+                            $mensajes = is_array($root) && isset($root['mensajesList']) ? $root['mensajesList'] : null;
+                            // $mensajes = is_array($root) ? (isset($root['mensajesList']) ? $root['mensajesList'] : null) : null;
+							$mensajeGroup = null;
+
+                            /***********************************************/
+                            /*************** INI MODIFICACION **************/
+                            /***********************************************/
+
+                            if($codigoEstado == 901){
+                                $mensajeGroup = "Factura en estado PENDIENTE. Por favor verifique vuelva a verificar el estado, contacte con el administrador.";
+                                // Actualizar estado a PENDIENTE en DB
+                                DB::table('factura')
+                                    ->where('anio', $nroFacturaGroup)
+                                    ->where('nro_factura', $nroFacturaGroup)
+                                    ->where('codigo_sucursal', $sucursal)
+                                    ->where('codigo_punto_venta', (string) $sucursal)
+                                    ->update([
+                                        'estado' => $codigoEstado,
+                                        'codigo_recepcion' => $codRecep
+                                    ]);
+                            }
+
+                            $ListaMensajes = [];
+                            if(is_array($mensajes)) {
+
+                            }
+                            if(is_array($mensajes)){
+                                if(isset($mensajes['descripcion'])){
+                                    $ListaMensajes[] = (string)$mensajes['descripcion'];
+                                } else {
+                                    foreach($mensajes as $m){
+                                        if(is_array($m) && isset($m['descripcion'])){
+                                            $ListaMensajes[] = (string)$m['descripcion'];
+                                        }
+                                    }
+                                }
+                            }
+
+
+                            /***********************************************/
+                            /*************** FIN MODIFICACION **************/
+                            /***********************************************/
+
+
 							try {
-								$estadoCod = is_array($root) && isset($root['codigoEstado']) ? (int)$root['codigoEstado'] : null;
-								$mensajes = is_array($root) ? (isset($root['mensajesList']) ? $root['mensajesList'] : null) : null;
 								if ($mensajes) {
-									if (isset($mensajes['descripcion'])) { $mensajeGroup = (string)$mensajes['descripcion']; }
-									elseif (is_array($mensajes) && isset($mensajes[0]['descripcion'])) { $mensajeGroup = (string)$mensajes[0]['descripcion']; }
+									if (isset($mensajes['descripcion'])) {
+                                        $mensajeGroup = (string)$mensajes['descripcion'];
+                                    } elseif (is_array($mensajes) && isset($mensajes[0]['descripcion'])) {
+                                        $mensajeGroup = (string)$mensajes[0]['descripcion'];
+                                    }
 								}
 							} catch (\Throwable $e) {}
 							if ($codRecep) {
@@ -3090,11 +3167,13 @@ class CobroController extends Controller
 
 		$pv = (int) ($request->input('codigo_punto_venta', 0));
 		$sucursalInput = $request->input('codigo_sucursal');
+        $codigoAmbiente = (int) config('sin.ambiente');
 		Log::info('validar-impuestos: start', [ 'pv' => $pv, 'codigo_sucursal' => $sucursalInput ]);
 
 		try {
 			// CUIS vigente o crear
-			$cuis = $cuisRepo->getVigenteOrCreate($pv);
+            $cuis = $cuisRepo->getVigenteOrCreate2($codigoAmbiente, $sucursalInput, $pv);
+			// $cuis = $cuisRepo->getVigenteOrCreate($pv);
 			Log::info('validar-impuestos: CUIS ok', [ 'codigo_cuis' => isset($cuis['codigo_cuis']) ? $cuis['codigo_cuis'] : null, 'fecha_vigencia' => isset($cuis['fecha_vigencia']) ? $cuis['fecha_vigencia'] : null ]);
 
 			// CUFD vigente o crear

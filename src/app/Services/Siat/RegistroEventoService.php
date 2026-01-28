@@ -7,7 +7,7 @@ use App\Services\Siat\SoapClientFactory;
 
 /**
  * Servicio para registrar eventos significativos en el SIN
- * 
+ *
  * Los eventos significativos justifican por qué las facturas se emitieron en contingencia
  * Códigos de evento:
  * 1 - CORTE DEL SERVICIO DE INTERNET
@@ -22,7 +22,7 @@ class RegistroEventoService
 {
 	/**
 	 * Registra un evento significativo en el SIN
-	 * 
+	 *
 	 * @param string $cuis Código CUIS vigente
 	 * @param string $cufd Código CUFD vigente
 	 * @param string $cufdEvento CUFD del momento del evento
@@ -82,10 +82,12 @@ class RegistroEventoService
 			// Intentar con diferentes nombres de método según la versión del servicio
 			try {
 				$result = $client->__soapCall('registroEventoSignificativo', [$arg]);
+                Log::debug('el resultado que llega es hhhhh:'.print_r($result,true));
 			} catch (\SoapFault $e) {
 				// Intentar nombre alternativo
 				if (strpos($e->getMessage(), 'not a valid method') !== false) {
 					$result = $client->__soapCall('registrarEventoSignificativo', [$arg]);
+                    Log::debug('el resultado que llega es iiiii:'.print_r($result,true));
 				} else {
 					throw $e;
 				}

@@ -20,6 +20,7 @@ class SyncService
 		$arg = new \stdClass();
 		$arg->SolicitudSincronizacion = (object) $payload;
 		$result = $client->__soapCall('sincronizarParametricaTipoDocumentoIdentidad', [ $arg ]);
+        Log::debug('el resultado que llega es jjjjjj:'.print_r($result,true));
 		return json_decode(json_encode($result), true);
 	}
 
@@ -39,6 +40,7 @@ class SyncService
 		$arg = new \stdClass();
 		$arg->SolicitudSincronizacion = (object) $payload;
 		$result = $client->__soapCall('sincronizarActividades', [ $arg ]);
+        Log::debug('el resultado que llega es kkkkk:'.print_r($result,true));
 		return json_decode(json_encode($result), true);
 	}
 
@@ -58,6 +60,7 @@ class SyncService
 		$arg = new \stdClass();
 		$arg->SolicitudSincronizacion = (object) $payload;
 		$result = $client->__soapCall('sincronizarListaLeyendasFactura', [ $arg ]);
+        Log::debug('el resultado que llega es lllll:'.print_r($result,true));
 		return json_decode(json_encode($result), true);
 	}
 
@@ -88,6 +91,7 @@ class SyncService
 		$arg = new \stdClass();
 		$arg->SolicitudSincronizacion = (object) $payload;
 		$result = $client->__soapCall($method, [ $arg ]);
+        Log::debug('el resultado que llega es mmmmm:'.print_r($result,true));
 		return json_decode(json_encode($result), true);
 	}
 }

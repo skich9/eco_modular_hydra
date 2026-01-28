@@ -16,9 +16,9 @@ class FacturaPayloadBuilder
 
         $xmlPath = null;
         if ($modalidad === 2 && $docSector !== 11) {
-            // JSON computarizada (para sectores distintos a educativo)
-            $archivo = $this->buildJsonCompraVenta($args, $docSector);
-            $archivoBytes = json_encode($archivo, JSON_UNESCAPED_UNICODE | JSON_UNESCAPED_SLASHES);
+            throw new UnsupportedModeSINException('Solo modalidad XML (1) para sector educativo (11)');
+            // $archivo = $this->buildJsonCompraVenta($args, $docSector);
+            // $archivoBytes = json_encode($archivo, JSON_UNESCAPED_UNICODE | JSON_UNESCAPED_SLASHES);
         } else {
             // XML para modalidad 1 o sector educativo (11)
             $xmlCrudo = $this->buildXmlSectorEducativo($args, $docSector);
@@ -298,169 +298,169 @@ class FacturaPayloadBuilder
         }
     }
 
-    private function buildJsonCompraVenta($args, $docSector)
-    {
-        // Cabecera básica según Compra-Venta; adaptable a otros docSector cuando se requiera
-        $fechaIso = Carbon::parse($args['fecha_emision'] ?? Carbon::now())->format('Y-m-d\TH:i:s.000');
+    // private function buildJsonCompraVenta($args, $docSector)
+    // {
+    //     // Cabecera básica según Compra-Venta; adaptable a otros docSector cuando se requiera
+    //     $fechaIso = Carbon::parse($args['fecha_emision'] ?? Carbon::now())->format('Y-m-d\TH:i:s.000');
 
-        // Método de pago: mapear desde sin_forma_cobro por id_forma_cobro interno
-        $codigoMetodoPago = 1; // Efectivo default
-        if (!empty($args['id_forma_cobro'])) {
-            $m = DB::table('sin_forma_cobro')->where('id_forma_cobro', (string)$args['id_forma_cobro'])->first();
-            if ($m && isset($m->codigo_sin)) {
-                $codigoMetodoPago = (int) $m->codigo_sin;
-            }
-        }
+    //     // Método de pago: mapear desde sin_forma_cobro por id_forma_cobro interno
+    //     $codigoMetodoPago = 1; // Efectivo default
+    //     if (!empty($args['id_forma_cobro'])) {
+    //         $m = DB::table('sin_forma_cobro')->where('id_forma_cobro', (string)$args['id_forma_cobro'])->first();
+    //         if ($m && isset($m->codigo_sin)) {
+    //             $codigoMetodoPago = (int) $m->codigo_sin;
+    //         }
+    //     }
 
-        // Actividad económica y leyenda asociada (aleatoria por actividad)
-        $actividad = DB::table('sin_actividades')->value('codigo_caeb') ?: (string) config('sin.actividad_economica', '853000');
-        $leyenda = DB::table('sin_list_leyenda_factura')
-            ->where('codigo_actividad', $actividad)
-            ->inRandomOrder()
-            ->value('descripcion_leyenda');
-        if (!$leyenda) {
-            $leyenda = DB::table('sin_list_leyenda_factura')->value('descripcion_leyenda')
-                ?: 'Ley N° 453: Esta factura contribuye al desarrollo del país.';
-        }
+    //     // Actividad económica y leyenda asociada (aleatoria por actividad)
+    //     $actividad = DB::table('sin_actividades')->value('codigo_caeb') ?: (string) config('sin.actividad_economica', '853000');
+    //     $leyenda = DB::table('sin_list_leyenda_factura')
+    //         ->where('codigo_actividad', $actividad)
+    //         ->inRandomOrder()
+    //         ->value('descripcion_leyenda');
+    //     if (!$leyenda) {
+    //         $leyenda = DB::table('sin_list_leyenda_factura')->value('descripcion_leyenda')
+    //             ?: 'Ley N° 453: Esta factura contribuye al desarrollo del país.';
+    //     }
 
-        $razonEmisorCfg = (string) config('sin.razon_social', 'EMISOR');
-        $municipioCfg = (string) config('sin.municipio', 'COCHABAMBA');
-        $telefonoCfg = config('sin.telefono');
-        $codigoMonedaCfg = (int) config('sin.codigo_moneda', 1);
-        $tipoCambioCfg = (float) config('sin.tipo_cambio', 1);
-        $sucursalArg = (int) ($args['sucursal'] ?? 0);
-        $puntoVentaArg = (int) ($args['punto_venta'] ?? 0);
-        $direccionVal = isset($args['direccion']) ? (string)$args['direccion'] : '';
-        if ($direccionVal === '') {
-            try {
-                $dirRow = DB::table('sin_cufd')
-                    ->where('codigo_sucursal', $sucursalArg)
-                    ->where('codigo_punto_venta', $puntoVentaArg)
-                    ->where('fecha_vigencia', '>', now())
-                    ->orderBy('fecha_vigencia', 'desc')
-                    ->first();
-                if ($dirRow && isset($dirRow->direccion) && $dirRow->direccion !== '') {
-                    $direccionVal = (string)$dirRow->direccion;
-                }
-            } catch (\Throwable $e) {}
-        }
-        if ($direccionVal === '') { $direccionVal = 'S/D'; }
+    //     $razonEmisorCfg = (string) config('sin.razon_social', 'EMISOR');
+    //     $municipioCfg = (string) config('sin.municipio', 'COCHABAMBA');
+    //     $telefonoCfg = config('sin.telefono');
+    //     $codigoMonedaCfg = (int) config('sin.codigo_moneda', 1);
+    //     $tipoCambioCfg = (float) config('sin.tipo_cambio', 1);
+    //     $sucursalArg = (int) ($args['sucursal'] ?? 0);
+    //     $puntoVentaArg = (int) ($args['punto_venta'] ?? 0);
+    //     $direccionVal = isset($args['direccion']) ? (string)$args['direccion'] : '';
+    //     if ($direccionVal === '') {
+    //         try {
+    //             $dirRow = DB::table('sin_cufd')
+    //                 ->where('codigo_sucursal', $sucursalArg)
+    //                 ->where('codigo_punto_venta', $puntoVentaArg)
+    //                 ->where('fecha_vigencia', '>', now())
+    //                 ->orderBy('fecha_vigencia', 'desc')
+    //                 ->first();
+    //             if ($dirRow && isset($dirRow->direccion) && $dirRow->direccion !== '') {
+    //                 $direccionVal = (string)$dirRow->direccion;
+    //             }
+    //         } catch (\Throwable $e) {}
+    //     }
+    //     if ($direccionVal === '') { $direccionVal = 'S/D'; }
 
-        // numeroTarjeta: solo cuando el método es TARJETA (2)
-        $numeroTarjeta = null;
-        if ((int)$codigoMetodoPago === 2) {
-            $nt = $args['numero_tarjeta'] ?? null;
-            if (is_string($nt) || is_numeric($nt)) {
-                $ntSan = preg_replace('/\D/', '', (string)$nt);
-                $numeroTarjeta = $ntSan !== '' ? $ntSan : null;
-            }
-            // Fallback: si no llegó por args, intentar recuperar de nota_bancaria por nro_factura
-            if ($numeroTarjeta === null) {
-                $nf = isset($args['numero_factura']) ? (string)$args['numero_factura'] : '';
-                if ($nf !== '') {
-                    try {
-                        $nb = DB::table('nota_bancaria')
-                            ->where('nro_factura', (string)$nf)
-                            ->orderBy('anio_deposito', 'desc')
-                            ->orderBy('correlativo', 'desc')
-                            ->first();
-                        if ($nb && !empty($nb->nro_tarjeta)) {
-                            $ntSan = preg_replace('/\D/', '', (string)$nb->nro_tarjeta);
-                            $numeroTarjeta = $ntSan !== '' ? $ntSan : null;
-                        }
-                    } catch (\Throwable $e) {}
-                }
-            }
-        }
+    //     // numeroTarjeta: solo cuando el método es TARJETA (2)
+    //     $numeroTarjeta = null;
+    //     if ((int)$codigoMetodoPago === 2) {
+    //         $nt = $args['numero_tarjeta'] ?? null;
+    //         if (is_string($nt) || is_numeric($nt)) {
+    //             $ntSan = preg_replace('/\D/', '', (string)$nt);
+    //             $numeroTarjeta = $ntSan !== '' ? $ntSan : null;
+    //         }
+    //         // Fallback: si no llegó por args, intentar recuperar de nota_bancaria por nro_factura
+    //         if ($numeroTarjeta === null) {
+    //             $nf = isset($args['numero_factura']) ? (string)$args['numero_factura'] : '';
+    //             if ($nf !== '') {
+    //                 try {
+    //                     $nb = DB::table('nota_bancaria')
+    //                         ->where('nro_factura', (string)$nf)
+    //                         ->orderBy('anio_deposito', 'desc')
+    //                         ->orderBy('correlativo', 'desc')
+    //                         ->first();
+    //                     if ($nb && !empty($nb->nro_tarjeta)) {
+    //                         $ntSan = preg_replace('/\D/', '', (string)$nb->nro_tarjeta);
+    //                         $numeroTarjeta = $ntSan !== '' ? $ntSan : null;
+    //                     }
+    //                 } catch (\Throwable $e) {}
+    //             }
+    //         }
+    //     }
 
-        $cabecera = [
-            'nitEmisor' => (int) ($args['nit'] ?? 0),
-            'razonSocialEmisor' => (string) ($args['razon_emisor'] ?? $razonEmisorCfg),
-            'municipio' => (string) ($args['municipio'] ?? $municipioCfg),
-            'telefono' => isset($args['telefono']) ? (int)$args['telefono'] : (is_numeric($telefonoCfg) ? (int)$telefonoCfg : null),
-            'numeroFactura' => (int) ($args['numero_factura'] ?? 0),
-            'cuf' => (string) ($args['cuf'] ?? ''),
-            'cufd' => (string) ($args['cufd'] ?? ''),
-            'codigoSucursal' => $sucursalArg,
-            'direccion' => $direccionVal,
-            'codigoPuntoVenta' => $puntoVentaArg,
-            'fechaEmision' => $fechaIso,
-            'nombreRazonSocial' => (string) ($args['cliente']['razon'] ?? 'S/N'),
-            'codigoTipoDocumentoIdentidad' => (int) ($args['cliente']['tipo_doc'] ?? 5),
-            'numeroDocumento' => (string) ($args['cliente']['numero'] ?? '0'),
-            'complemento' => $args['cliente']['complemento'] ?? null,
-            'codigoCliente' => (string) ($args['cliente']['codigo'] ?? ($args['cliente']['numero'] ?? '0')),
-            'codigoMetodoPago' => (int) $codigoMetodoPago,
-            'numeroTarjeta' => $numeroTarjeta,
-            'montoTotal' => (float) ($args['monto_total'] ?? 0),
-            'montoTotalSujetoIva' => (float) ($args['monto_total'] ?? 0),
-            'codigoMoneda' => $codigoMonedaCfg,
-            'tipoCambio' => $tipoCambioCfg,
-            'montoTotalMoneda' => (float) ($args['monto_total'] ?? 0),
-            'leyenda' => $leyenda,
-            'usuario' => (string) ($args['usuario'] ?? 'system'),
-            'codigoDocumentoSector' => $docSector,
-        ];
+    //     $cabecera = [
+    //         'nitEmisor' => (int) ($args['nit'] ?? 0),
+    //         'razonSocialEmisor' => (string) ($args['razon_emisor'] ?? $razonEmisorCfg),
+    //         'municipio' => (string) ($args['municipio'] ?? $municipioCfg),
+    //         'telefono' => isset($args['telefono']) ? (int)$args['telefono'] : (is_numeric($telefonoCfg) ? (int)$telefonoCfg : null),
+    //         'numeroFactura' => (int) ($args['numero_factura'] ?? 0),
+    //         'cuf' => (string) ($args['cuf'] ?? ''),
+    //         'cufd' => (string) ($args['cufd'] ?? ''),
+    //         'codigoSucursal' => $sucursalArg,
+    //         'direccion' => $direccionVal,
+    //         'codigoPuntoVenta' => $puntoVentaArg,
+    //         'fechaEmision' => $fechaIso,
+    //         'nombreRazonSocial' => (string) ($args['cliente']['razon'] ?? 'S/N'),
+    //         'codigoTipoDocumentoIdentidad' => (int) ($args['cliente']['tipo_doc'] ?? 5),
+    //         'numeroDocumento' => (string) ($args['cliente']['numero'] ?? '0'),
+    //         'complemento' => $args['cliente']['complemento'] ?? null,
+    //         'codigoCliente' => (string) ($args['cliente']['codigo'] ?? ($args['cliente']['numero'] ?? '0')),
+    //         'codigoMetodoPago' => (int) $codigoMetodoPago,
+    //         'numeroTarjeta' => $numeroTarjeta,
+    //         'montoTotal' => (float) ($args['monto_total'] ?? 0),
+    //         'montoTotalSujetoIva' => (float) ($args['monto_total'] ?? 0),
+    //         'codigoMoneda' => $codigoMonedaCfg,
+    //         'tipoCambio' => $tipoCambioCfg,
+    //         'montoTotalMoneda' => (float) ($args['monto_total'] ?? 0),
+    //         'leyenda' => $leyenda,
+    //         'usuario' => (string) ($args['usuario'] ?? 'system'),
+    //         'codigoDocumentoSector' => $docSector,
+    //     ];
 
-        // Detalle(s) para JSON: si viene 'detalles' usar lista; si no, usar 'detalle' único
-        $detalle = [];
-        if (!empty($args['detalles']) && is_array($args['detalles'])) {
-            foreach ($args['detalles'] as $d) {
-                $actEco = (string) ($actividadEnv = (string) config('sin.actividad_economica', $actividad));
-                $codSin = (int) ($d['codigo_sin'] ?? ($args['detalle']['codigo_sin'] ?? (int) config('sin.codigo_producto_sin', 0)));
-                $codProd = (string) ($d['codigo'] ?? ($args['detalle']['codigo'] ?? 'ITEM'));
-                $desc = (string) ($d['descripcion'] ?? ($args['detalle']['descripcion'] ?? 'Servicio/Item'));
-                $cant = (float) ($d['cantidad'] ?? ($args['detalle']['cantidad'] ?? 1));
-                $uni = (int) ($d['unidad_medida'] ?? ($args['detalle']['unidad_medida'] ?? 1));
-                $sub = (float) ($d['subtotal'] ?? ($args['detalle']['subtotal'] ?? ($args['monto_total'] ?? 0)));
-                $descItem = (float) ($d['descuento'] ?? ($args['detalle']['descuento'] ?? 0));
-                $puRaw = $d['precio_unitario'] ?? ($args['detalle']['precio_unitario'] ?? null);
-                $pu = ($puRaw !== null)
-                    ? (float) $puRaw
-                    : ($cant > 0 ? (($sub + $descItem) / $cant) : ($sub + $descItem));
-                $detalle[] = [
-                    'actividadEconomica' => $actEco,
-                    'codigoProductoSin' => $codSin,
-                    'codigoProducto' => $codProd,
-                    'descripcion' => $desc,
-                    'cantidad' => $cant,
-                    'unidadMedida' => $uni,
-                    'precioUnitario' => (float) $pu,
-                    'montoDescuento' => (float) $descItem,
-                    'subTotal' => (float) $sub,
-                ];
-            }
-        } else {
-            $actEco = (string) ((string) config('sin.actividad_economica', $actividad));
-            $codSin = (int) ($args['detalle']['codigo_sin'] ?? (int) config('sin.codigo_producto_sin', 0));
-            $codProd = (string) ($args['detalle']['codigo'] ?? 'ITEM');
-            $desc = (string) ($args['detalle']['descripcion'] ?? 'Servicio/Item');
-            $cant = (float) ($args['detalle']['cantidad'] ?? 1);
-            $sub = (float) ($args['detalle']['subtotal'] ?? ($args['monto_total'] ?? 0));
-            $uni = (int) ($args['detalle']['unidad_medida'] ?? 1);
-            $descItem = (float) ($args['detalle']['descuento'] ?? 0);
-            $puRaw = $args['detalle']['precio_unitario'] ?? null;
-            $pu = ($puRaw !== null)
-                ? (float) $puRaw
-                : ($cant > 0 ? (($sub + $descItem) / $cant) : ($sub + $descItem));
-            $detalle = [[
-                'actividadEconomica' => $actEco,
-                'codigoProductoSin' => $codSin,
-                'codigoProducto' => $codProd,
-                'descripcion' => $desc,
-                'cantidad' => $cant,
-                'unidadMedida' => $uni,
-                'precioUnitario' => (float) $pu,
-                'montoDescuento' => (float) $descItem,
-                'subTotal' => (float) $sub,
-            ]];
-        }
+    //     // Detalle(s) para JSON: si viene 'detalles' usar lista; si no, usar 'detalle' único
+    //     $detalle = [];
+    //     if (!empty($args['detalles']) && is_array($args['detalles'])) {
+    //         foreach ($args['detalles'] as $d) {
+    //             $actEco = (string) ($actividadEnv = (string) config('sin.actividad_economica', $actividad));
+    //             $codSin = (int) ($d['codigo_sin'] ?? ($args['detalle']['codigo_sin'] ?? (int) config('sin.codigo_producto_sin', 0)));
+    //             $codProd = (string) ($d['codigo'] ?? ($args['detalle']['codigo'] ?? 'ITEM'));
+    //             $desc = (string) ($d['descripcion'] ?? ($args['detalle']['descripcion'] ?? 'Servicio/Item'));
+    //             $cant = (float) ($d['cantidad'] ?? ($args['detalle']['cantidad'] ?? 1));
+    //             $uni = (int) ($d['unidad_medida'] ?? ($args['detalle']['unidad_medida'] ?? 1));
+    //             $sub = (float) ($d['subtotal'] ?? ($args['detalle']['subtotal'] ?? ($args['monto_total'] ?? 0)));
+    //             $descItem = (float) ($d['descuento'] ?? ($args['detalle']['descuento'] ?? 0));
+    //             $puRaw = $d['precio_unitario'] ?? ($args['detalle']['precio_unitario'] ?? null);
+    //             $pu = ($puRaw !== null)
+    //                 ? (float) $puRaw
+    //                 : ($cant > 0 ? (($sub + $descItem) / $cant) : ($sub + $descItem));
+    //             $detalle[] = [
+    //                 'actividadEconomica' => $actEco,
+    //                 'codigoProductoSin' => $codSin,
+    //                 'codigoProducto' => $codProd,
+    //                 'descripcion' => $desc,
+    //                 'cantidad' => $cant,
+    //                 'unidadMedida' => $uni,
+    //                 'precioUnitario' => (float) $pu,
+    //                 'montoDescuento' => (float) $descItem,
+    //                 'subTotal' => (float) $sub,
+    //             ];
+    //         }
+    //     } else {
+    //         $actEco = (string) ((string) config('sin.actividad_economica', $actividad));
+    //         $codSin = (int) ($args['detalle']['codigo_sin'] ?? (int) config('sin.codigo_producto_sin', 0));
+    //         $codProd = (string) ($args['detalle']['codigo'] ?? 'ITEM');
+    //         $desc = (string) ($args['detalle']['descripcion'] ?? 'Servicio/Item');
+    //         $cant = (float) ($args['detalle']['cantidad'] ?? 1);
+    //         $sub = (float) ($args['detalle']['subtotal'] ?? ($args['monto_total'] ?? 0));
+    //         $uni = (int) ($args['detalle']['unidad_medida'] ?? 1);
+    //         $descItem = (float) ($args['detalle']['descuento'] ?? 0);
+    //         $puRaw = $args['detalle']['precio_unitario'] ?? null;
+    //         $pu = ($puRaw !== null)
+    //             ? (float) $puRaw
+    //             : ($cant > 0 ? (($sub + $descItem) / $cant) : ($sub + $descItem));
+    //         $detalle = [[
+    //             'actividadEconomica' => $actEco,
+    //             'codigoProductoSin' => $codSin,
+    //             'codigoProducto' => $codProd,
+    //             'descripcion' => $desc,
+    //             'cantidad' => $cant,
+    //             'unidadMedida' => $uni,
+    //             'precioUnitario' => (float) $pu,
+    //             'montoDescuento' => (float) $descItem,
+    //             'subTotal' => (float) $sub,
+    //         ]];
+    //     }
 
-        return [
-            'cabecera' => $cabecera,
-            'detalle' => $detalle,
-        ];
-    }
+    //     return [
+    //         'cabecera' => $cabecera,
+    //         'detalle' => $detalle,
+    //     ];
+    // }
 
     private function buildXmlSectorEducativo($args, $docSector)
     {
@@ -477,12 +477,24 @@ class FacturaPayloadBuilder
         $numeroTarjetaXml = null;
         if ((int)$codigoMetodoPago === 2) {
             $nt = $args['numero_tarjeta'] ?? null;
+            Log::debug('FacturaPayloadBuilder.buildXmlSectorEducativo.numeroTarjetaInput', [
+                'input' => $nt,
+            ]);
             if (is_string($nt) || is_numeric($nt)) {
                 $ntSan = preg_replace('/\D/', '', (string)$nt);
-                if ($ntSan !== '') { $numeroTarjetaXml = $ntSan; }
+                if ($ntSan !== '') {
+                    $numeroTarjetaXml = $ntSan;
+                    /// colocar un log aqui
+                    Log::debug('FacturaPayloadBuilder.buildXmlSectorEducativo.numeroTarjetaSanitized', [
+                        'sanitized' => $numeroTarjetaXml,
+                    ]);
+                }
             }
             if ($numeroTarjetaXml === null) {
                 $nf = isset($args['numero_factura']) ? (string)$args['numero_factura'] : '';
+                Log::debug('FacturaPayloadBuilder.buildXmlSectorEducativo.numeroTarjetaFallbackFactura', [
+                    'numero_factura' => $nf,
+                ]);
                 if ($nf !== '') {
                     try {
                         $nb = DB::table('nota_bancaria')
@@ -492,7 +504,12 @@ class FacturaPayloadBuilder
                             ->first();
                         if ($nb && !empty($nb->nro_tarjeta)) {
                             $ntSan = preg_replace('/\D/', '', (string)$nb->nro_tarjeta);
-                            if ($ntSan !== '') { $numeroTarjetaXml = $ntSan; }
+                            Log::debug('FacturaPayloadBuilder.buildXmlSectorEducativo.numeroTarjetaFallbackSanitized', [
+                                'sanitized' => $ntSan,
+                            ]);
+                            if ($ntSan !== '') {
+                                $numeroTarjetaXml = $ntSan;
+                            }
                         }
                     } catch (\Throwable $e) {}
                 }

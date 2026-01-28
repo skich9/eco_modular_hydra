@@ -9,7 +9,7 @@ class ValidacionPaqueteService
 {
 	/**
 	 * Valida un paquete de facturas enviado al SIN
-	 * 
+	 *
 	 * @param string $cuis
 	 * @param string $cufd
 	 * @param int $codigoDocumentoSector
@@ -63,6 +63,7 @@ class ValidacionPaqueteService
 			$arg->SolicitudServicioValidacionRecepcionPaquete = (object) $payload;
 
 			$result = $client->__soapCall('validacionRecepcionPaqueteFactura', [$arg]);
+            Log::debug('el resultado que llega es nnnnnn:'.print_r($result,true));
 			$arr = json_decode(json_encode($result), true);
 
 			Log::info('ValidacionPaqueteService.response', [

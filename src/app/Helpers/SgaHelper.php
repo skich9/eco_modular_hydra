@@ -8,7 +8,7 @@ use Illuminate\Support\Facades\Log;
 
 class SgaHelper
 {
-    public static function getStackTrackeThrowable(Exception $e)
+    public static function getStackTrackeException(Exception $e)
     {
         $trace = explode("\n", $e->getTraceAsString());
         // reverse array to make steps line up chronologically

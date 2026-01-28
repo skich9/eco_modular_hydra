@@ -14,7 +14,7 @@ class SinCuisCommand extends Command
 	{
 		$pv = (int) $this->argument('pv');
 		try {
-			$data = $repo->getVigenteOrCreate($pv);
+			$data = $repo->getVigenteOrCreate2(2,0,$pv);
 			$this->info('CUIS OK');
 			$this->line(json_encode($data, JSON_PRETTY_PRINT | JSON_UNESCAPED_UNICODE));
 			return self::SUCCESS;

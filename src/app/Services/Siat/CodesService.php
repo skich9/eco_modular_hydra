@@ -23,6 +23,7 @@ class CodesService
 		Log::info('CodesService.cuis: request', [ 'pv' => $puntoVenta, 'sucursal' => $payload['codigoSucursal'] ]);
 		try {
 			$result = $client->__soapCall('cuis', [ $arg ]);
+            Log::debug('el resultado que llega es bbbb:'.print_r($result,true));
 			$arr = json_decode(json_encode($result), true);
 			Log::debug('CodesService.cuis: response', [ 'hasRespuesta' => isset($arr['RespuestaCuis']) ]);
 			return $arr;
@@ -82,6 +83,7 @@ class CodesService
 		Log::info('CodesService.cuis: request', [ 'pv' => $puntoVenta, 'sucursal' => $payload['codigoSucursal'] ]);
 		try {
 			$result = $client->__soapCall('cuis', [ $arg ]);
+            Log::debug('el resultado que llega es cccccc:'.print_r($result,true));
 			$arr = json_decode(json_encode($result), true);
 			Log::debug('CodesService.cuis: response', [ 'hasRespuesta' => isset($arr['RespuestaCuis']) ]);
 			return $arr;
@@ -112,7 +114,8 @@ class CodesService
 		Log::info('CodesService.cufd: request', [ 'pv' => $puntoVenta, 'sucursal' => $payload['codigoSucursal'] ]);
 		try {
 			$result = $client->__soapCall('cufd', [ $arg ]);
-            Log::info('CodesService.cufd2: el resultado de la recuperacion del CUFD es:'.print_r($result,true));
+            Log::debug('el resultado que llega es ddddddd'.print_r($result,true));
+            // Log::info('CodesService.cufd2: el resultado de la recuperacion del CUFD es dddd:'.print_r($result,true));
 			$arr = json_decode(json_encode($result), true);
 			Log::debug('CodesService.cufd: response', [ 'hasRespuesta' => isset($arr['RespuestaCufd']) ]);
 			return $arr;
