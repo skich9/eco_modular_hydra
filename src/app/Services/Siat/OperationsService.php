@@ -8,6 +8,50 @@ use SoapFault;
 class OperationsService
 {
 	/**
+	 * Consulta de puntos de venta registrados en SIAT
+	 */
+	public function consultaPuntoVenta(int $codigoAmbiente, int $codigoSucursal, string $cuis): array
+	{
+		$client = SoapClientFactory::build(config('sin.operations_service'));
+
+		$payload = [
+			'codigoAmbiente' => $codigoAmbiente,
+			'codigoSistema' => (string) config('sin.cod_sistema'),
+			'codigoSucursal' => $codigoSucursal,
+			'cuis' => $cuis,
+			'nit' => (int) config('sin.nit'),
+		];
+
+		$arg = new \stdClass();
+		$arg->SolicitudConsultaPuntoVenta = (object) $payload;
+
+		Log::info('OperationsService.consultaPuntoVenta: request', [
+			'ambiente' => $codigoAmbiente,
+			'sucursal' => $codigoSucursal,
+			'cuis' => $cuis
+		]);
+
+		try {
+			$result = $client->__soapCall('consultaPuntoVenta', [ $arg ]);
+			$arr = json_decode(json_encode($result), true);
+			Log::debug('OperationsService.consultaPuntoVenta: response', [
+				'hasRespuesta' => isset($arr['RespuestaConsultaPuntoVenta'])
+			]);
+			return $arr;
+		} catch (SoapFault $e) {
+			Log::error('OperationsService.consultaPuntoVenta: soap fault', [
+				'error' => $e->getMessage()
+			]);
+			throw $e;
+		} catch (\Throwable $e) {
+			Log::error('OperationsService.consultaPuntoVenta: exception', [
+				'error' => $e->getMessage()
+			]);
+			throw $e;
+		}
+	}
+
+	/**
 	 * Recepción de factura computarizada (en línea)
 	 * Usa el servicio de FACTURACIÓN ELECTRÓNICA, no el de operaciones
 	 */
@@ -26,7 +70,7 @@ class OperationsService
 			try {
 				Log::info('OperationsService.recepcionFactura: trying service', [ 'service' => $svc ]);
 				$client = SoapClientFactory::build($svc);
-				
+
 				$wrappers = ['SolicitudServicioRecepcionFactura', 'SolicitudRecepcionFactura'];
 				$lastWrapperError = null;
 				$serviceNotAvailable = false; // 995 flag
@@ -71,7 +115,7 @@ class OperationsService
 						if ($estado === 902 && $has920) {
 							Log::warning('OperationsService.recepcionFactura: service returned 902/920 (archivo invalido)', [ 'service' => $svc ]);
 							$serviceNotAvailable = true;
-							break; 
+							break;
 						}
 						return $arr;
 					} catch (SoapFault $we) {
@@ -95,7 +139,7 @@ class OperationsService
 				$lastError = $e;
 				Log::error('OperationsService.recepcionFactura: exception', [ 'service' => $svc, 'error' => $e->getMessage() ]);
 			}
-			
+
 			throw $lastError ?: new \RuntimeException('No se pudo invocar recepcionFactura');
 		} catch (\Throwable $e) {
 			$lastError = $e;

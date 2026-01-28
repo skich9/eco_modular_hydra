@@ -9,6 +9,7 @@ use Illuminate\Support\Facades\Log;
 use App\Repositories\Sin\SyncRepository;
 use App\Repositories\Sin\CuisRepository;
 use App\Repositories\Sin\CufdRepository;
+use App\Repositories\Sin\PuntoVentaRepository;
 
 class SinAdminController extends Controller
 {
@@ -124,6 +125,66 @@ class SinAdminController extends Controller
 				'success' => false,
 				'message' => $e->getMessage(),
 			], 500);
+		}
+	}
+
+	// Sincronizar puntos de venta desde SIAT
+	public function syncPuntosVenta(Request $request, PuntoVentaRepository $pvRepo, CuisRepository $cuisRepo)
+	{
+		try {
+			$codigoAmbiente = (int) $request->input('codigo_ambiente', (int) config('sin.ambiente'));
+			$codigoSucursal = (int) $request->input('codigo_sucursal', (int) config('sin.sucursal'));
+			$idUsuario = (int) $request->input('id_usuario', 1);
+			$puntoVenta = (int) $request->input('codigo_punto_venta', 0);
+
+			Log::info('SIN syncPuntosVenta: start', [
+				'ambiente' => $codigoAmbiente,
+				'sucursal' => $codigoSucursal,
+				'usuario' => $idUsuario,
+				'pv' => $puntoVenta
+			]);
+
+			// Obtener CUIS vigente para la consulta
+			$cuisData = $cuisRepo->getVigenteOrCreate2($codigoAmbiente, $codigoSucursal, $puntoVenta);
+			$cuis = $cuisData['codigo_cuis'];
+
+			// Sincronizar puntos de venta
+			$resultado = $pvRepo->sincronizarDesdeSiat($codigoAmbiente, $codigoSucursal, $cuis, $idUsuario);
+
+			return response()->json($resultado);
+		} catch (\Throwable $e) {
+			Log::error('SIN syncPuntosVenta: exception', [ 'error' => $e->getMessage() ]);
+			return response()->json([
+				'success' => false,
+				'message' => 'Error al sincronizar puntos de venta: ' . $e->getMessage(),
+			], Response::HTTP_INTERNAL_SERVER_ERROR);
+		}
+	}
+
+	// Listar puntos de venta locales
+	public function listPuntosVenta(Request $request, PuntoVentaRepository $pvRepo)
+	{
+		try {
+			$codigoSucursal = $request->query('codigo_sucursal');
+			$codigoAmbiente = $request->query('codigo_ambiente');
+
+			if ($codigoSucursal !== null && $codigoAmbiente !== null) {
+				$puntosVenta = $pvRepo->getBySucursalAmbiente((int) $codigoSucursal, (int) $codigoAmbiente);
+			} else {
+				$puntosVenta = $pvRepo->getAll();
+			}
+
+			return response()->json([
+				'success' => true,
+				'data' => $puntosVenta,
+				'message' => 'Puntos de venta obtenidos'
+			]);
+		} catch (\Throwable $e) {
+			Log::error('SIN listPuntosVenta: exception', [ 'error' => $e->getMessage() ]);
+			return response()->json([
+				'success' => false,
+				'message' => 'Error al listar puntos de venta: ' . $e->getMessage(),
+			], Response::HTTP_INTERNAL_SERVER_ERROR);
 		}
 	}
 }

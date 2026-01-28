@@ -149,6 +149,8 @@ Route::get('sin/documentos-identidad', [SinCatalogoController::class, 'documento
 Route::post('sin/sync/all', [\App\Http\Controllers\Api\SinAdminController::class, 'syncAll']);
 Route::post('sin/sync/leyendas', [\App\Http\Controllers\Api\SinAdminController::class, 'syncLeyendas']);
 Route::post('sin/sync/metodo-pago', [\App\Http\Controllers\Api\SinAdminController::class, 'syncMetodoPago']);
+Route::post('sin/sync/puntos-venta', [\App\Http\Controllers\Api\SinAdminController::class, 'syncPuntosVenta']);
+Route::get('sin/puntos-venta', [\App\Http\Controllers\Api\SinAdminController::class, 'listPuntosVenta']);
 Route::get('sin/status', [\App\Http\Controllers\Api\SinAdminController::class, 'status']);
 
 // Cobros (clave compuesta)
