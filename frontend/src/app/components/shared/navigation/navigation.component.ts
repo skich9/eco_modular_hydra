@@ -31,7 +31,7 @@ export class NavigationComponent implements OnInit {
 	currentUser: Usuario | null = null;
 	showUserDropdown = false;
 	activeSubmenu: number | null = null;
-	
+
 	// Change password form
 	changePasswordForm: FormGroup;
 	changePasswordError: string = '';
@@ -73,7 +73,8 @@ export class NavigationComponent implements OnInit {
 			icon: 'fas fa-file-invoice',
 			submenu: [
 				{ name: 'Estado de Factura / Anulación', icon: 'fa-file-signature', route: '/sin/estado-factura' },
-				{ name: 'Contingencias', icon: 'fa-exclamation-triangle', route: '/sin/contingencias' }
+				{ name: 'Contingencias', icon: 'fa-exclamation-triangle', route: '/sin/contingencias' },
+				{ name: 'Configuración Punto de Venta', icon: 'fa-store', route: '/sin/configuracion-punto-venta' }
 			]
 		},
 		{
@@ -114,7 +115,7 @@ export class NavigationComponent implements OnInit {
 		document.addEventListener('click', (event) => {
 			const target = event.target as HTMLElement;
 			const isInsideMenu = target.closest('.dropdown, .dropdown-menu, .dropdown-item, .nav-user-avatar, .btn[data-user-dropdown]');
-			
+
 			if (!isInsideMenu) {
 				this.closeAllMenus();
 			}
@@ -165,7 +166,7 @@ export class NavigationComponent implements OnInit {
 
 	toggleConfigMenu(index: number): void {
 		this.showUserDropdown = false; // Cerrar dropdown de usuario
-		
+
 		if (this.activeSubmenu === index) {
 			this.activeSubmenu = null;
 		} else {
@@ -185,28 +186,28 @@ export class NavigationComponent implements OnInit {
 	contraseniaMatchValidator(form: FormGroup) {
 		const nueva = form.get('contraseniaNueva');
 		const confirmar = form.get('contraseniaNuevaConfirm');
-		
+
 		if (nueva && confirmar && nueva.value !== confirmar.value) {
 			confirmar.setErrors({ mismatch: true });
 			return { mismatch: true };
 		}
-		
+
 		if (confirmar?.hasError('mismatch')) {
 			confirmar.setErrors(null);
 		}
-		
+
 		return null;
 	}
 
 	changePassword(event: Event): void {
 		event.preventDefault();
 		this.closeAllMenus();
-		
+
 		// Reset form and messages
 		this.changePasswordForm.reset();
 		this.changePasswordError = '';
 		this.changePasswordSuccess = '';
-		
+
 		// Show modal (using Bootstrap modal)
 		const modal = document.getElementById('changePasswordModal');
 		if (modal) {
@@ -251,7 +252,7 @@ export class NavigationComponent implements OnInit {
 	logout(event: Event): void {
 		event.preventDefault();
 		this.closeAllMenus();
-		
+
 		this.authService.logout().subscribe({
 			next: () => {
 				this.router.navigate(['/login']);

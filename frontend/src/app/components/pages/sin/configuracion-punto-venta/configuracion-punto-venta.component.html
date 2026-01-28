@@ -1,0 +1,62 @@
+<div class="container py-3">
+	<h2 class="mb-3">SIN - Configuracion de Puntos de Venta</h2>
+
+	<div class="d-flex flex-wrap justify-content-between align-items-end mb-3 gap-2">
+		<button type="button" class="btn btn-primary" (click)="addPuntoVenta()">
+			<i class="fas fa-plus me-1"></i>
+			Anadir punto de venta
+		</button>
+
+		<div class="search-wrapper">
+			<label class="form-label mb-1 small">Buscar</label>
+			<input
+				type="text"
+				class="form-control"
+				[(ngModel)]="searchTerm"
+				placeholder="Buscar por codigo, nombre o sucursal..."
+			/>
+		</div>
+	</div>
+
+	<div class="table-responsive">
+		<table class="table table-sm table-hover align-middle">
+			<thead class="table-light">
+				<tr>
+					<th style="width: 110px;">Codigo</th>
+					<th>Nombre</th>
+					<th style="width: 90px;">Sucursal</th>
+					<th>Descripcion</th>
+					<th style="width: 110px;">Cuis</th>
+					<th style="width: 120px;">Tipo P.V.</th>
+					<th style="width: 120px;">Usuario</th>
+					<th style="width: 150px;">Fecha finalizacion</th>
+					<th style="width: 90px;">Activo</th>
+				</tr>
+			</thead>
+			<tbody>
+				<tr *ngFor="let pv of filteredPuntosVenta">
+					<td><code>{{ pv.codigo_punto_venta }}</code></td>
+					<td>{{ pv.nombre }}</td>
+					<td>{{ pv.sucursal ?? '0' }}</td>
+					<td>{{ pv.descripcion || '—' }}</td>
+					<td>{{ pv.cuis || '—' }}</td>
+					<td>{{ pv.tipo_pv || '—' }}</td>
+					<td>{{ pv.usuario || '—' }}</td>
+					<td>{{ pv.fecha_finalizacion || '—' }}</td>
+					<td>
+						<span class="badge" [ngClass]="pv.activo ? 'bg-success' : 'bg-secondary'">
+							{{ pv.activo ? 'Si' : 'No' }}
+						</span>
+					</td>
+				</tr>
+				<tr *ngIf="filteredPuntosVenta.length === 0">
+					<td colspan="9" class="text-center text-muted py-3">
+						No hay puntos de venta para mostrar.
+					</td>
+				</tr>
+			</tbody>
+		</table>
+	</div>
+</div>
+
+<app-add-punto-venta-modal (puntoVentaCreated)="onPuntoVentaCreated($event)"></app-add-punto-venta-modal>
