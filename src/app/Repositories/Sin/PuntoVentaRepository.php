@@ -18,8 +18,105 @@ class PuntoVentaRepository
 	}
 
 	/**
+	 * Registra un nuevo punto de venta en SIAT y lo guarda localmente
+	 *
+	 * @param int $codigoAmbiente Ambiente (1=Produccion, 2=Pruebas)
+	 * @param int $codigoSucursal Codigo de sucursal
+	 * @param string $cuis CUIS vigente
+	 * @param int $codigoTipoPuntoVenta Tipo de punto de venta
+	 * @param string $nombrePuntoVenta Nombre del punto de venta
+	 * @param string $descripcion Descripcion del punto de venta
+	 * @param int $idUsuario ID del usuario que crea el punto de venta
+	 * @return array Resultado del registro
+	 */
+	public function registrarEnSiat(int $codigoAmbiente, int $codigoSucursal, string $cuis, int $codigoTipoPuntoVenta, string $nombrePuntoVenta, string $descripcion, int $idUsuario): array
+	{
+		Log::info('PuntoVentaRepository.registrarEnSiat: iniciando', [
+			'ambiente' => $codigoAmbiente,
+			'sucursal' => $codigoSucursal,
+			'tipo' => $codigoTipoPuntoVenta,
+			'nombre' => $nombrePuntoVenta,
+			'usuario' => $idUsuario
+		]);
+
+		try {
+			// Registrar punto de venta en SIAT
+			$response = $this->operationsService->registroPuntoVenta(
+				$codigoAmbiente,
+				$codigoSucursal,
+				$cuis,
+				$codigoTipoPuntoVenta,
+				$nombrePuntoVenta,
+				$descripcion
+			);
+
+			if (!isset($response['RespuestaRegistroPuntoVenta'])) {
+				throw new Exception('Respuesta invalida de SIAT: ' . json_encode($response));
+			}
+
+			$respuesta = $response['RespuestaRegistroPuntoVenta'];
+
+			// Verificar si hay error en la respuesta
+			if (isset($respuesta['transaccion']) && !$respuesta['transaccion']) {
+				$mensajes = $respuesta['mensajesList'] ?? [];
+				$mensaje = is_array($mensajes) && isset($mensajes['descripcion'])
+					? $mensajes['descripcion']
+					: 'Error desconocido al registrar punto de venta';
+				throw new Exception('Error SIAT: ' . $mensaje);
+			}
+
+			// Obtener el codigo del punto de venta creado
+			$codigoPuntoVenta = $respuesta['codigoPuntoVenta'] ?? null;
+
+			if (!$codigoPuntoVenta) {
+				throw new Exception('SIAT no retorno codigo de punto de venta');
+			}
+
+			// Guardar en la base de datos local
+			$data = [
+				'codigo_punto_venta' => $codigoPuntoVenta,
+				'nombre' => $nombrePuntoVenta,
+				'descripcion' => $descripcion,
+				'sucursal' => $codigoSucursal,
+				'codigo_cuis_genera' => $cuis,
+				'id_usuario_crea' => (string) $idUsuario,
+				'tipo' => $codigoTipoPuntoVenta,
+				'ip' => '',
+				'activo' => true,
+				'fecha_creacion' => Carbon::now('America/La_Paz'),
+				'crear_cufd' => true,
+				'autocrear_cufd' => true,
+				'codigo_ambiente' => $codigoAmbiente
+			];
+
+			DB::table('sin_punto_venta')->insert($data);
+
+			Log::info('PuntoVentaRepository.registrarEnSiat: completado', [
+				'codigo' => $codigoPuntoVenta
+			]);
+
+			return [
+				'success' => true,
+				'codigo_punto_venta' => $codigoPuntoVenta,
+				'message' => 'Punto de venta registrado exitosamente'
+			];
+
+		} catch (Exception $e) {
+			Log::error('PuntoVentaRepository.registrarEnSiat: error', [
+				'error' => $e->getMessage(),
+				'trace' => $e->getTraceAsString()
+			]);
+
+			return [
+				'success' => false,
+				'message' => 'Error al registrar punto de venta: ' . $e->getMessage()
+			];
+		}
+	}
+
+	/**
 	 * Sincroniza puntos de venta desde SIAT a la base de datos local
-	 * 
+	 *
 	 * @param int $codigoAmbiente Ambiente (1=Produccion, 2=Pruebas)
 	 * @param int $codigoSucursal Codigo de sucursal
 	 * @param string $cuis CUIS vigente para la consulta
@@ -53,7 +150,7 @@ class PuntoVentaRepository
 
 			// Obtener lista de puntos de venta
 			$listaPuntosVenta = $respuesta['listaPuntosVentas'] ?? [];
-			
+
 			if (empty($listaPuntosVenta)) {
 				Log::warning('PuntoVentaRepository.sincronizarDesdeSiat: no hay puntos de venta');
 				return [
@@ -166,7 +263,7 @@ class PuntoVentaRepository
 
 	/**
 	 * Obtiene el codigo clasificador del tipo de punto de venta desde sin_datos_sincronizacion
-	 * 
+	 *
 	 * @param string $descripcionTexto Descripcion del tipo de punto de venta (ej: "PUNTO DE VENTA CAJEROS")
 	 * @return int|null Codigo clasificador o null si no se encuentra
 	 */
@@ -189,13 +286,17 @@ class PuntoVentaRepository
 	}
 
 	/**
-	 * Obtiene todos los puntos de venta de la base de datos local
-	 * 
+	 * Obtiene todos los puntos de venta filtrados por ambiente configurado y activos
+	 *
 	 * @return array Lista de puntos de venta
 	 */
 	public function getAll(): array
 	{
+		$codigoAmbiente = (int) config('sin.ambiente');
+
 		$rows = DB::table('sin_punto_venta')
+			->where('codigo_ambiente', $codigoAmbiente)
+			->where('activo', true)
 			->orderBy('codigo_punto_venta')
 			->get();
 
@@ -206,7 +307,7 @@ class PuntoVentaRepository
 
 	/**
 	 * Obtiene puntos de venta filtrados por sucursal y ambiente
-	 * 
+	 *
 	 * @param int $codigoSucursal
 	 * @param int $codigoAmbiente
 	 * @return array
@@ -223,5 +324,87 @@ class PuntoVentaRepository
 		return $rows->map(function($row) {
 			return (array) $row;
 		})->toArray();
+	}
+
+	/**
+	 * Cierra un punto de venta en SIAT y lo marca como inactivo localmente
+	 *
+	 * @param int $codigoAmbiente
+	 * @param int $codigoPuntoVenta
+	 * @param int $codigoSucursal
+	 * @param string $cuis
+	 * @return array Resultado del cierre
+	 */
+	public function cerrarPuntoVenta(int $codigoAmbiente, int $codigoPuntoVenta, int $codigoSucursal, string $cuis): array
+	{
+		Log::info('PuntoVentaRepository.cerrarPuntoVenta: iniciando', [
+			'ambiente' => $codigoAmbiente,
+			'puntoVenta' => $codigoPuntoVenta,
+			'sucursal' => $codigoSucursal
+		]);
+
+		try {
+			// Llamar al servicio SOAP para cerrar el punto de venta en SIAT
+			$resultado = $this->operationsService->cierrePuntoVenta(
+				$codigoAmbiente,
+				$codigoPuntoVenta,
+				$codigoSucursal,
+				$cuis
+			);
+
+			// Verificar si el cierre fue exitoso
+			if (isset($resultado['RespuestaCierrePuntoVenta'])) {
+				$respuesta = $resultado['RespuestaCierrePuntoVenta'];
+
+				if (isset($respuesta['transaccion']) && $respuesta['transaccion'] === true) {
+					// Marcar el punto de venta como inactivo en la base de datos local
+					DB::table('sin_punto_venta')
+						->where('codigo_punto_venta', $codigoPuntoVenta)
+						->where('sucursal', $codigoSucursal)
+						->where('codigo_ambiente', $codigoAmbiente)
+						->update([
+							'activo' => false
+						]);
+
+					Log::info('PuntoVentaRepository.cerrarPuntoVenta: éxito', [
+						'puntoVenta' => $codigoPuntoVenta
+					]);
+
+					return [
+						'success' => true,
+						'message' => 'Punto de venta cerrado exitosamente',
+						'data' => $respuesta
+					];
+				} else {
+					$mensajeError = $respuesta['mensajesList']['descripcion'] ?? 'Error desconocido al cerrar punto de venta';
+					Log::warning('PuntoVentaRepository.cerrarPuntoVenta: transacción fallida', [
+						'mensaje' => $mensajeError
+					]);
+
+					return [
+						'success' => false,
+						'message' => $mensajeError,
+						'data' => $respuesta
+					];
+				}
+			}
+
+			return [
+				'success' => false,
+				'message' => 'Respuesta inválida del servicio SIAT',
+				'data' => $resultado
+			];
+
+		} catch (\Throwable $e) {
+			Log::error('PuntoVentaRepository.cerrarPuntoVenta: excepción', [
+				'error' => $e->getMessage(),
+				'trace' => $e->getTraceAsString()
+			]);
+
+			return [
+				'success' => false,
+				'message' => 'Error al cerrar punto de venta: ' . $e->getMessage()
+			];
+		}
 	}
 }

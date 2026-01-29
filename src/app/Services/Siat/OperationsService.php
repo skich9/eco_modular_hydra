@@ -52,6 +52,107 @@ class OperationsService
 	}
 
 	/**
+	 * Registro de un nuevo punto de venta en SIAT
+	 */
+	public function registroPuntoVenta(int $codigoAmbiente, int $codigoSucursal, string $cuis, int $codigoTipoPuntoVenta, string $nombrePuntoVenta, string $descripcion = ''): array
+	{
+		$client = SoapClientFactory::build(config('sin.operations_service'));
+
+		$payload = [
+			'codigoAmbiente' => $codigoAmbiente,
+			'codigoModalidad' => (int) config('sin.modalidad'),
+			'codigoSistema' => (string) config('sin.cod_sistema'),
+			'codigoSucursal' => $codigoSucursal,
+			'codigoTipoPuntoVenta' => $codigoTipoPuntoVenta,
+			'cuis' => $cuis,
+			'descripcion' => $descripcion,
+			'nit' => (int) config('sin.nit'),
+			'nombrePuntoVenta' => $nombrePuntoVenta,
+		];
+
+		$arg = new \stdClass();
+		$arg->SolicitudRegistroPuntoVenta = (object) $payload;
+
+		Log::info('OperationsService.registroPuntoVenta: request', [
+			'ambiente' => $codigoAmbiente,
+			'sucursal' => $codigoSucursal,
+			'tipo' => $codigoTipoPuntoVenta,
+			'nombre' => $nombrePuntoVenta
+		]);
+
+		try {
+			$result = $client->__soapCall('registroPuntoVenta', [ $arg ]);
+			$arr = json_decode(json_encode($result), true);
+			Log::info('OperationsService.registroPuntoVenta: response', [
+				'hasRespuesta' => isset($arr['RespuestaRegistroPuntoVenta'])
+			]);
+			return $arr;
+		} catch (SoapFault $e) {
+			Log::error('OperationsService.registroPuntoVenta: soap fault', [
+				'error' => $e->getMessage()
+			]);
+			throw $e;
+		} catch (\Throwable $e) {
+			Log::error('OperationsService.registroPuntoVenta: exception', [
+				'error' => $e->getMessage()
+			]);
+			throw $e;
+		}
+	}
+
+	/**
+	 * Cierre de punto de venta en SIAT
+	 *
+	 * @param int $codigoAmbiente
+	 * @param int $codigoPuntoVenta
+	 * @param int $codigoSucursal
+	 * @param string $cuis
+	 * @return array
+	 */
+	public function cierrePuntoVenta(int $codigoAmbiente, int $codigoPuntoVenta, int $codigoSucursal, string $cuis): array
+	{
+		$client = SoapClientFactory::build(config('sin.operations_service'));
+
+		$payload = [
+			'codigoAmbiente' => $codigoAmbiente,
+			'codigoPuntoVenta' => $codigoPuntoVenta,
+			'codigoSistema' => (string) config('sin.cod_sistema'),
+			'codigoSucursal' => $codigoSucursal,
+			'cuis' => $cuis,
+			'nit' => (int) config('sin.nit'),
+		];
+
+		$arg = new \stdClass();
+		$arg->SolicitudCierrePuntoVenta = (object) $payload;
+
+		Log::info('OperationsService.cierrePuntoVenta: request', [
+			'ambiente' => $codigoAmbiente,
+			'puntoVenta' => $codigoPuntoVenta,
+			'sucursal' => $codigoSucursal,
+			'cuis' => $cuis
+		]);
+
+		try {
+			$result = $client->__soapCall('cierrePuntoVenta', [ $arg ]);
+			$arr = json_decode(json_encode($result), true);
+			Log::debug('OperationsService.cierrePuntoVenta: response', [
+				'hasRespuesta' => isset($arr['RespuestaCierrePuntoVenta'])
+			]);
+			return $arr;
+		} catch (\SoapFault $e) {
+			Log::error('OperationsService.cierrePuntoVenta: soap fault', [
+				'error' => $e->getMessage()
+			]);
+			throw $e;
+		} catch (\Throwable $e) {
+			Log::error('OperationsService.cierrePuntoVenta: exception', [
+				'error' => $e->getMessage()
+			]);
+			throw $e;
+		}
+	}
+
+	/**
 	 * Recepción de factura computarizada (en línea)
 	 * Usa el servicio de FACTURACIÓN ELECTRÓNICA, no el de operaciones
 	 */

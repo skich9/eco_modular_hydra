@@ -151,6 +151,9 @@ Route::post('sin/sync/leyendas', [\App\Http\Controllers\Api\SinAdminController::
 Route::post('sin/sync/metodo-pago', [\App\Http\Controllers\Api\SinAdminController::class, 'syncMetodoPago']);
 Route::post('sin/sync/puntos-venta', [\App\Http\Controllers\Api\SinAdminController::class, 'syncPuntosVenta']);
 Route::get('sin/puntos-venta', [\App\Http\Controllers\Api\SinAdminController::class, 'listPuntosVenta']);
+Route::post('sin/puntos-venta', [\App\Http\Controllers\Api\SinAdminController::class, 'createPuntoVenta']);
+Route::delete('sin/puntos-venta/{id}', [\App\Http\Controllers\Api\SinAdminController::class, 'deletePuntoVenta']);
+Route::get('sin/tipos-punto-venta', [\App\Http\Controllers\Api\SinAdminController::class, 'getTiposPuntoVenta']);
 Route::get('sin/status', [\App\Http\Controllers\Api\SinAdminController::class, 'status']);
 
 // Cobros (clave compuesta)
