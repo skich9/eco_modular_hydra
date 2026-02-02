@@ -37,11 +37,13 @@
 		<table class="table table-sm table-hover align-middle">
 			<thead class="table-light">
 				<tr>
-					<th style="width: 90px;">Codigo</th>
+					<th style="width: 40px;">Codigo</th>
 					<th>Nombre</th>
 					<th>Descripcion</th>
-					<th style="width: 90px;">Sucursal</th>
+					<th style="width: 80px;">Sucursal</th>
 					<th style="width: 110px;">CUIS</th>
+					<th style="width: 110px;">Asignado</th>
+					<th style="width: 110px;">Vence en</th>
 					<th style="width: 120px;">Tipo P.V.</th>
 					<th style="width: 80px;">Activo</th>
 					<th style="width: 140px;">Acciones</th>
@@ -62,6 +64,16 @@
 					<td>{{ pv.descripcion || '—' }}</td>
 					<td>{{ pv.sucursal ?? '0' }}</td>
 					<td><small>{{ pv.codigo_cuis_genera || '—' }}</small></td>
+					<td>
+						<span *ngIf="getUsuarioAsignadoVigente(pv)" class="badge bg-info">
+							{{ getUsuarioAsignadoVigente(pv) }}
+						</span>
+						<span *ngIf="!getUsuarioAsignadoVigente(pv)" class="text-muted">—</span>
+					</td>
+					<td>
+						<small *ngIf="getFechaVencimientoVigente(pv)">{{ getFechaVencimientoVigente(pv) | date:'dd/MM/yyyy HH:mm' }}</small>
+						<span *ngIf="!getFechaVencimientoVigente(pv)" class="text-muted">—</span>
+					</td>
 					<td>{{ getTipoNombre(pv.tipo) }}</td>
 					<td>
 						<span class="badge" [ngClass]="pv.activo ? 'bg-success' : 'bg-secondary'">

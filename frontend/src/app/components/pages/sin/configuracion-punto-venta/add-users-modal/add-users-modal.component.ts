@@ -1,18 +1,12 @@
 import { Component, EventEmitter, Output, Input, OnInit } from '@angular/core';
 import { CommonModule } from '@angular/common';
-import { FormsModule } from '@angular/forms';
-
-interface Usuario {
-	id: number;
-	nombre: string;
-	email: string;
-	asignado: boolean;
-}
+import { FormsModule, ReactiveFormsModule, FormBuilder, FormGroup, Validators } from '@angular/forms';
+import { PuntoVentaService, Usuario, ApiResponse, AssignUserRequest } from '../../../../../services/punto-venta.service';
 
 @Component({
 	selector: 'app-add-users-modal',
 	standalone: true,
-	imports: [CommonModule, FormsModule],
+	imports: [CommonModule, FormsModule, ReactiveFormsModule],
 	templateUrl: './add-users-modal.component.html',
 	styleUrls: ['./add-users-modal.component.scss']
 })
@@ -20,10 +14,23 @@ export class AddUsersModalComponent implements OnInit {
 	@Input() puntoVenta: any = null;
 	@Output() usersAdded = new EventEmitter<any>();
 
+	form: FormGroup;
 	usuarios: Usuario[] = [];
+	filteredUsuarios: Usuario[] = [];
 	searchTerm: string = '';
 	isLoading: boolean = false;
 	isSaving: boolean = false;
+	submitError: string = '';
+
+	constructor(
+		private fb: FormBuilder,
+		private puntoVentaService: PuntoVentaService
+	) {
+		this.form = this.fb.group({
+			id_usuario: ['', Validators.required],
+			vencimiento_asig: ['', Validators.required]
+		});
+	}
 
 	ngOnInit(): void {
 		this.loadUsuarios();
@@ -31,60 +38,78 @@ export class AddUsersModalComponent implements OnInit {
 
 	loadUsuarios(): void {
 		this.isLoading = true;
-		// TODO: Cargar usuarios desde el backend
-		// Por ahora, datos de ejemplo
-		setTimeout(() => {
-			this.usuarios = [
-				{ id: 1, nombre: 'Admin Usuario', email: 'admin@example.com', asignado: false },
-				{ id: 2, nombre: 'Cajero 1', email: 'cajero1@example.com', asignado: false },
-				{ id: 3, nombre: 'Cajero 2', email: 'cajero2@example.com', asignado: false },
-				{ id: 4, nombre: 'Supervisor', email: 'supervisor@example.com', asignado: false }
-			];
-			this.isLoading = false;
-		}, 500);
+		this.puntoVentaService.getUsuarios().subscribe({
+			next: (response: ApiResponse<Usuario[]>) => {
+				this.isLoading = false;
+				if (response.success && response.data) {
+					this.usuarios = response.data;
+					this.filteredUsuarios = response.data;
+				}
+			},
+			error: (error: any) => {
+				this.isLoading = false;
+				console.error('Error al cargar usuarios:', error);
+			}
+		});
 	}
 
-	get filteredUsuarios(): Usuario[] {
+	filterUsuarios(): void {
 		const term = this.searchTerm.toLowerCase().trim();
 		if (!term) {
-			return this.usuarios;
+			this.filteredUsuarios = this.usuarios;
+		} else {
+			this.filteredUsuarios = this.usuarios.filter(u =>
+				u.nombre.toLowerCase().includes(term) ||
+				(u.ap_materno && u.ap_materno.toLowerCase().includes(term))
+			);
 		}
-		return this.usuarios.filter(u => 
-			u.nombre.toLowerCase().includes(term) || 
-			u.email.toLowerCase().includes(term)
-		);
 	}
 
-	get selectedCount(): number {
-		return this.usuarios.filter(u => u.asignado).length;
-	}
-
-	toggleUsuario(usuario: Usuario): void {
-		usuario.asignado = !usuario.asignado;
-	}
-
-	selectAll(): void {
-		const allSelected = this.filteredUsuarios.every(u => u.asignado);
-		this.filteredUsuarios.forEach(u => u.asignado = !allSelected);
+	getUsuarioNombreCompleto(usuario: Usuario): string {
+		return `${usuario.nombre} ${usuario.ap_materno || ''}`;
 	}
 
 	onSave(): void {
-		const usuariosSeleccionados = this.usuarios.filter(u => u.asignado);
-		if (usuariosSeleccionados.length === 0) {
-			alert('Debe seleccionar al menos un usuario');
+		if (this.form.invalid) {
+			this.submitError = 'Por favor complete todos los campos requeridos';
+			return;
+		}
+
+		if (!this.puntoVenta) {
+			this.submitError = 'No se ha seleccionado un punto de venta';
 			return;
 		}
 
 		this.isSaving = true;
-		// TODO: Enviar al backend
-		setTimeout(() => {
-			this.usersAdded.emit({
-				puntoVenta: this.puntoVenta,
-				usuarios: usuariosSeleccionados
-			});
-			this.isSaving = false;
-			this.closeModal();
-		}, 1000);
+		this.submitError = '';
+
+		const requestData: AssignUserRequest = {
+			id_usuario: this.form.value.id_usuario,
+			codigo_punto_venta: this.puntoVenta.codigo_punto_venta,
+			codigo_sucursal: this.puntoVenta.sucursal || 0,
+			vencimiento_asig: this.form.value.vencimiento_asig,
+			usuario_crea: 1
+		};
+
+		this.puntoVentaService.assignUserToPuntoVenta(requestData).subscribe({
+			next: (response: ApiResponse<any>) => {
+				this.isSaving = false;
+				if (response.success) {
+					this.usersAdded.emit({
+						puntoVenta: this.puntoVenta,
+						message: response.message
+					});
+					this.closeModal();
+				} else {
+					this.submitError = response.message || 'Error al asignar usuario';
+				}
+			},
+			error: (error: any) => {
+				this.isSaving = false;
+				console.error('Error al asignar usuario:', error);
+				this.submitError = error.error?.message || 'Error al asignar usuario al punto de venta';
+			}
+		});
 	}
 
 	closeModal(): void {
@@ -99,7 +124,9 @@ export class AddUsersModalComponent implements OnInit {
 	}
 
 	resetForm(): void {
+		this.form.reset();
 		this.searchTerm = '';
-		this.usuarios.forEach(u => u.asignado = false);
+		this.submitError = '';
+		this.filteredUsuarios = this.usuarios;
 	}
 }

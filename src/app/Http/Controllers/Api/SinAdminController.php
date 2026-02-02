@@ -322,4 +322,112 @@ class SinAdminController extends Controller
 			], Response::HTTP_INTERNAL_SERVER_ERROR);
 		}
 	}
+
+	// Listar usuarios para asignar a punto de venta
+	public function listUsuarios(Request $request)
+	{
+		try {
+			$usuarios = DB::table('usuarios')
+				->select('id_usuario', 'nombre', 'ap_materno')
+				->where('estado', 1)
+				->orderBy('nombre')
+				->get();
+
+			return response()->json([
+				'success' => true,
+				'data' => $usuarios
+			]);
+		} catch (\Throwable $e) {
+			Log::error('SIN listUsuarios: exception', [ 'error' => $e->getMessage() ]);
+			return response()->json([
+				'success' => false,
+				'message' => 'Error al listar usuarios: ' . $e->getMessage(),
+			], Response::HTTP_INTERNAL_SERVER_ERROR);
+		}
+	}
+
+	// Asignar usuario a punto de venta
+	public function assignUserToPuntoVenta(Request $request)
+	{
+		try {
+			$idUsuario = (int) $request->input('id_usuario');
+			$codigoPuntoVenta = $request->input('codigo_punto_venta');
+			$codigoSucursal = (int) $request->input('codigo_sucursal');
+			$codigoAmbiente = (int) config('sin.ambiente');
+			$vencimientoAsig = $request->input('vencimiento_asig');
+			$usuarioCrea = (int) $request->input('usuario_crea', 1);
+
+			// Validar campos requeridos
+			if (empty($idUsuario)) {
+				return response()->json([
+					'success' => false,
+					'message' => 'El usuario es requerido'
+				], Response::HTTP_BAD_REQUEST);
+			}
+
+			if (empty($codigoPuntoVenta)) {
+				return response()->json([
+					'success' => false,
+					'message' => 'El código de punto de venta es requerido'
+				], Response::HTTP_BAD_REQUEST);
+			}
+
+			if (empty($vencimientoAsig)) {
+				return response()->json([
+					'success' => false,
+					'message' => 'La fecha de vencimiento es requerida'
+				], Response::HTTP_BAD_REQUEST);
+			}
+
+			Log::info('SIN assignUserToPuntoVenta: start', [
+				'usuario' => $idUsuario,
+				'puntoVenta' => $codigoPuntoVenta,
+				'sucursal' => $codigoSucursal,
+				'ambiente' => $codigoAmbiente
+			]);
+
+			// Verificar si ya existe la asignación
+			$existente = DB::table('sin_punto_venta_usuario')
+				->where('id_usuario', $idUsuario)
+				->where('codigo_punto_venta', $codigoPuntoVenta)
+				->where('codigo_sucursal', $codigoSucursal)
+				->where('codigo_ambiente', $codigoAmbiente)
+				->where('activo', 1)
+				->first();
+
+			if ($existente) {
+				return response()->json([
+					'success' => false,
+					'message' => 'El usuario ya está asignado a este punto de venta'
+				], Response::HTTP_BAD_REQUEST);
+			}
+
+			// Insertar la asignación
+			DB::table('sin_punto_venta_usuario')->insert([
+				'id_usuario' => $idUsuario,
+				'codigo_punto_venta' => $codigoPuntoVenta,
+				'codigo_sucursal' => $codigoSucursal,
+				'codigo_ambiente' => $codigoAmbiente,
+				'vencimiento_asig' => $vencimientoAsig,
+				'activo' => 1,
+				'usuario_crea' => $usuarioCrea,
+				'created_at' => now(),
+				'updated_at' => now()
+			]);
+
+			Log::info('SIN assignUserToPuntoVenta: success');
+
+			return response()->json([
+				'success' => true,
+				'message' => 'Usuario asignado exitosamente al punto de venta'
+			]);
+
+		} catch (\Throwable $e) {
+			Log::error('SIN assignUserToPuntoVenta: exception', [ 'error' => $e->getMessage() ]);
+			return response()->json([
+				'success' => false,
+				'message' => 'Error al asignar usuario: ' . $e->getMessage(),
+			], Response::HTTP_INTERNAL_SERVER_ERROR);
+		}
+	}
 }

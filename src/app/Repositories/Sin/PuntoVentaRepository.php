@@ -293,11 +293,32 @@ class PuntoVentaRepository
 	public function getAll(): array
 	{
 		$codigoAmbiente = (int) config('sin.ambiente');
+		$now = Carbon::now('America/La_Paz');
 
-		$rows = DB::table('sin_punto_venta')
-			->where('codigo_ambiente', $codigoAmbiente)
-			->where('activo', true)
-			->orderBy('codigo_punto_venta')
+		// Primero, desactivar automáticamente las asignaciones vencidas
+		DB::table('sin_punto_venta_usuario')
+			->where('activo', 1)
+			->where('vencimiento_asig', '<', $now)
+			->update(['activo' => 0]);
+
+		// Luego, obtener puntos de venta con asignaciones vigentes y activas
+		$rows = DB::table('sin_punto_venta as pv')
+			->leftJoin('sin_punto_venta_usuario as pvu', function($join) use ($now) {
+				$join->on('pv.codigo_punto_venta', '=', 'pvu.codigo_punto_venta')
+					->on('pv.sucursal', '=', 'pvu.codigo_sucursal')
+					->on('pv.codigo_ambiente', '=', 'pvu.codigo_ambiente')
+					->where('pvu.activo', '=', 1)
+					->where('pvu.vencimiento_asig', '>=', $now);
+			})
+			->leftJoin('usuarios as u', 'pvu.id_usuario', '=', 'u.id_usuario')
+			->select(
+				'pv.*',
+				'u.nickname as usuario_asignado',
+				'pvu.vencimiento_asig as vence_en'
+			)
+			->where('pv.codigo_ambiente', $codigoAmbiente)
+			->where('pv.activo', true)
+			->orderBy('pv.codigo_punto_venta')
 			->get();
 
 		return $rows->map(function($row) {

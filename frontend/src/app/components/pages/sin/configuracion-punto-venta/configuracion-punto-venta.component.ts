@@ -14,6 +14,9 @@ interface PuntoVentaRow {
 	descripcion?: string | null;
 	sucursal?: number | string | null;
 	codigo_cuis_genera?: string | null;
+	usuario_asignado?: string | null;
+	vence_en?: string | null;
+	vencimiento_cuis?: string | null;
 	tipo?: number | null;
 	activo: boolean;
 }
@@ -45,6 +48,39 @@ export class ConfiguracionPuntoVentaComponent implements OnInit {
 
 	ngOnInit(): void {
 		this.loadPuntosVenta();
+	}
+
+	/**
+	 * Método reutilizable para validar si una asignación está vigente
+	 * Condiciones:
+	 * 1. Debe tener usuario asignado
+	 * 2. Debe tener fecha de vencimiento
+	 * 3. La fecha de vencimiento debe ser mayor o igual a la fecha actual
+	 * 4. El estado activo debe ser true (validado en backend)
+	 */
+	isAsignacionVigente(puntoVenta: PuntoVentaRow): boolean {
+		if (!puntoVenta.usuario_asignado || !puntoVenta.vence_en) {
+			return false;
+		}
+
+		const fechaVencimiento = new Date(puntoVenta.vence_en);
+		const fechaActual = new Date();
+
+		return fechaVencimiento >= fechaActual;
+	}
+
+	/**
+	 * Obtiene el usuario asignado solo si la asignación está vigente
+	 */
+	getUsuarioAsignadoVigente(puntoVenta: PuntoVentaRow): string | null {
+		return this.isAsignacionVigente(puntoVenta) ? puntoVenta.usuario_asignado || null : null;
+	}
+
+	/**
+	 * Obtiene la fecha de vencimiento solo si la asignación está vigente
+	 */
+	getFechaVencimientoVigente(puntoVenta: PuntoVentaRow): string | null {
+		return this.isAsignacionVigente(puntoVenta) ? puntoVenta.vence_en || null : null;
 	}
 
 	loadPuntosVenta(): void {
@@ -255,7 +291,8 @@ export class ConfiguracionPuntoVentaComponent implements OnInit {
 
 	onUsersAdded(data: any): void {
 		console.log('Usuarios agregados:', data);
-		this.showSuccess(`Usuarios agregados al punto de venta "${data.puntoVenta.nombre}"`);
+		this.showSuccess(data.message || `Usuario asignado al punto de venta "${data.puntoVenta.nombre}"`);
 		this.puntoVentaForUsers = null;
+		this.loadPuntosVenta();
 	}
 }
