@@ -430,4 +430,121 @@ class SinAdminController extends Controller
 			], Response::HTTP_INTERNAL_SERVER_ERROR);
 		}
 	}
+
+	// Obtener asignación actual de un punto de venta
+	public function getAsignacionPuntoVenta(Request $request, $codigoPuntoVenta)
+	{
+		try {
+			$codigoAmbiente = (int) config('sin.ambiente');
+
+			// Buscar el punto de venta para obtener la sucursal
+			$puntoVenta = DB::table('sin_punto_venta')
+				->where('codigo_punto_venta', $codigoPuntoVenta)
+				->where('codigo_ambiente', $codigoAmbiente)
+				->first();
+
+			if (!$puntoVenta) {
+				return response()->json([
+					'success' => false,
+					'message' => 'Punto de venta no encontrado'
+				], Response::HTTP_NOT_FOUND);
+			}
+
+			// Buscar asignación activa (sin filtrar por fecha de vencimiento)
+			$asignacion = DB::table('sin_punto_venta_usuario as pvu')
+				->join('usuarios as u', 'pvu.id_usuario', '=', 'u.id_usuario')
+				->where('pvu.codigo_punto_venta', $codigoPuntoVenta)
+				->where('pvu.codigo_sucursal', $puntoVenta->sucursal)
+				->where('pvu.codigo_ambiente', $codigoAmbiente)
+				->select(
+					'pvu.id',
+					'pvu.id_usuario',
+					'pvu.codigo_punto_venta',
+					'pvu.codigo_sucursal',
+					'pvu.codigo_ambiente',
+					'pvu.vencimiento_asig',
+					'pvu.activo',
+					'u.nickname',
+					'u.nombre',
+					'u.ap_materno'
+				)
+				->orderBy('pvu.created_at', 'desc')
+				->first();
+
+			if (!$asignacion) {
+				return response()->json([
+					'success' => true,
+					'data' => null,
+					'message' => 'No hay asignación para este punto de venta'
+				]);
+			}
+
+			return response()->json([
+				'success' => true,
+				'data' => $asignacion
+			]);
+
+		} catch (\Throwable $e) {
+			Log::error('SIN getAsignacionPuntoVenta: exception', [ 'error' => $e->getMessage() ]);
+			return response()->json([
+				'success' => false,
+				'message' => 'Error al obtener asignación: ' . $e->getMessage(),
+			], Response::HTTP_INTERNAL_SERVER_ERROR);
+		}
+	}
+
+	// Actualizar asignación de usuario a punto de venta
+	public function updateAsignacionPuntoVenta(Request $request, $id)
+	{
+		try {
+			$vencimientoAsig = $request->input('vencimiento_asig');
+			$activo = $request->input('activo', 1);
+
+			if (empty($vencimientoAsig)) {
+				return response()->json([
+					'success' => false,
+					'message' => 'La fecha de vencimiento es requerida'
+				], Response::HTTP_BAD_REQUEST);
+			}
+
+			Log::info('SIN updateAsignacionPuntoVenta: start', [
+				'id' => $id,
+				'vencimiento' => $vencimientoAsig,
+				'activo' => $activo
+			]);
+
+			// Verificar que existe la asignación
+			$asignacion = DB::table('sin_punto_venta_usuario')->where('id', $id)->first();
+
+			if (!$asignacion) {
+				return response()->json([
+					'success' => false,
+					'message' => 'Asignación no encontrada'
+				], Response::HTTP_NOT_FOUND);
+			}
+
+			// Actualizar la asignación
+			DB::table('sin_punto_venta_usuario')
+				->where('id', $id)
+				->update([
+					'vencimiento_asig' => $vencimientoAsig,
+					'activo' => $activo ? 1 : 0,
+					'updated_at' => now()
+				]);
+
+			Log::info('SIN updateAsignacionPuntoVenta: success');
+
+			return response()->json([
+				'success' => true,
+				'message' => 'Asignación actualizada exitosamente'
+			]);
+
+		} catch (\Throwable $e) {
+			Log::error('SIN updateAsignacionPuntoVenta: exception', [ 'error' => $e->getMessage() ]);
+			return response()->json([
+				'success' => false,
+				'message' => 'Error al actualizar asignación: ' . $e->getMessage(),
+			], Response::HTTP_INTERNAL_SERVER_ERROR);
+		}
+	}
 }

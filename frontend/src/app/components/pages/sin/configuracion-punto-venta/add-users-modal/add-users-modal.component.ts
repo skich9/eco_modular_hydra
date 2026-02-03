@@ -1,7 +1,7 @@
-import { Component, EventEmitter, Output, Input, OnInit } from '@angular/core';
+import { Component, EventEmitter, Output, Input, OnInit, OnChanges, SimpleChanges } from '@angular/core';
 import { CommonModule } from '@angular/common';
 import { FormsModule, ReactiveFormsModule, FormBuilder, FormGroup, Validators } from '@angular/forms';
-import { PuntoVentaService, Usuario, ApiResponse, AssignUserRequest } from '../../../../../services/punto-venta.service';
+import { PuntoVentaService, Usuario, ApiResponse, AssignUserRequest, AsignacionPuntoVenta, UpdateAsignacionRequest } from '../../../../../services/punto-venta.service';
 
 @Component({
 	selector: 'app-add-users-modal',
@@ -10,7 +10,7 @@ import { PuntoVentaService, Usuario, ApiResponse, AssignUserRequest } from '../.
 	templateUrl: './add-users-modal.component.html',
 	styleUrls: ['./add-users-modal.component.scss']
 })
-export class AddUsersModalComponent implements OnInit {
+export class AddUsersModalComponent implements OnInit, OnChanges {
 	@Input() puntoVenta: any = null;
 	@Output() usersAdded = new EventEmitter<any>();
 
@@ -21,6 +21,10 @@ export class AddUsersModalComponent implements OnInit {
 	isLoading: boolean = false;
 	isSaving: boolean = false;
 	submitError: string = '';
+	isEditMode: boolean = false;
+	asignacionActual: AsignacionPuntoVenta | null = null;
+	isLoadingAsignacion: boolean = false;
+	private lastPuntoVentaCode: string | number | null = null;
 
 	constructor(
 		private fb: FormBuilder,
@@ -28,12 +32,106 @@ export class AddUsersModalComponent implements OnInit {
 	) {
 		this.form = this.fb.group({
 			id_usuario: ['', Validators.required],
-			vencimiento_asig: ['', Validators.required]
+			vencimiento_asig: ['', Validators.required],
+			activo: [true]
 		});
 	}
 
 	ngOnInit(): void {
 		this.loadUsuarios();
+		this.setupModalListeners();
+	}
+
+	setupModalListeners(): void {
+		const modalElement = document.getElementById('addUsersModal');
+		if (modalElement) {
+			modalElement.addEventListener('hidden.bs.modal', () => {
+				this.lastPuntoVentaCode = null;
+				this.isEditMode = false;
+				this.asignacionActual = null;
+				this.isLoadingAsignacion = false;
+				this.resetForm();
+			});
+		}
+	}
+
+	ngOnChanges(changes: SimpleChanges): void {
+		if (changes['puntoVenta'] && this.puntoVenta) {
+			const currentCode = this.puntoVenta.codigo_punto_venta;
+
+			// Solo procesar si es un punto de venta diferente o es la primera vez
+			if (currentCode !== this.lastPuntoVentaCode) {
+				this.lastPuntoVentaCode = currentCode;
+				this.isEditMode = false;
+				this.asignacionActual = null;
+				this.resetForm();
+				if (this.puntoVenta.usuario_asignado) {
+					this.isLoadingAsignacion = true;
+					this.checkExistingAsignacion();
+				} else {
+					this.isLoadingAsignacion = false;
+				}
+			}
+		}
+	}
+
+	checkExistingAsignacion(): void {
+		if (!this.puntoVenta) {
+			this.isLoadingAsignacion = false;
+			return;
+		}
+
+		this.puntoVentaService.getAsignacionPuntoVenta(this.puntoVenta.codigo_punto_venta).subscribe({
+			next: (response: ApiResponse<AsignacionPuntoVenta>) => {
+				this.isLoadingAsignacion = false;
+
+				if (response.success && response.data) {
+					// Modo edición: hay asignación existente
+					this.isEditMode = true;
+					this.asignacionActual = response.data;
+					this.loadEditForm();
+				} else {
+					// Modo creación: no hay asignación
+					this.isEditMode = false;
+					this.asignacionActual = null;
+				}
+			},
+			error: (error: any) => {
+				this.isLoadingAsignacion = false;
+				this.isEditMode = false;
+				this.asignacionActual = null;
+				console.error('Error al verificar asignación:', error);
+			}
+		});
+	}
+
+	loadEditForm(): void {
+		if (!this.asignacionActual) return;
+
+		const vencimiento = this.asignacionActual.vencimiento_asig;
+		const fechaFormateada = vencimiento ? this.formatDateForInput(vencimiento) : '';
+
+		this.form.patchValue({
+			id_usuario: this.asignacionActual.id_usuario,
+			vencimiento_asig: fechaFormateada,
+			activo: this.asignacionActual.activo === 1
+		});
+
+		this.form.get('id_usuario')?.disable();
+	}
+
+	formatDateForInput(dateString: string): string {
+		const date = new Date(dateString);
+		const year = date.getFullYear();
+		const month = String(date.getMonth() + 1).padStart(2, '0');
+		const day = String(date.getDate()).padStart(2, '0');
+		const hours = String(date.getHours()).padStart(2, '0');
+		const minutes = String(date.getMinutes()).padStart(2, '0');
+		return `${year}-${month}-${day}T${hours}:${minutes}`;
+	}
+
+	getUsuarioNombreCompleto(usuario: Usuario): string {
+		return `${usuario.nombre} ${usuario.ap_materno || ''}`;
 	}
 
 	loadUsuarios(): void {
@@ -65,11 +163,15 @@ export class AddUsersModalComponent implements OnInit {
 		}
 	}
 
-	getUsuarioNombreCompleto(usuario: Usuario): string {
-		return `${usuario.nombre} ${usuario.ap_materno || ''}`;
+	onSave(): void {
+		if (this.isEditMode) {
+			this.updateAsignacion();
+		} else {
+			this.createAsignacion();
+		}
 	}
 
-	onSave(): void {
+	createAsignacion(): void {
 		if (this.form.invalid) {
 			this.submitError = 'Por favor complete todos los campos requeridos';
 			return;
@@ -112,6 +214,47 @@ export class AddUsersModalComponent implements OnInit {
 		});
 	}
 
+	updateAsignacion(): void {
+		if (!this.asignacionActual) {
+			this.submitError = 'No hay asignación para actualizar';
+			return;
+		}
+
+		const vencimientoControl = this.form.get('vencimiento_asig');
+		if (!vencimientoControl || !vencimientoControl.value) {
+			this.submitError = 'La fecha de vencimiento es requerida';
+			return;
+		}
+
+		this.isSaving = true;
+		this.submitError = '';
+
+		const requestData: UpdateAsignacionRequest = {
+			vencimiento_asig: vencimientoControl.value,
+			activo: this.form.value.activo ? 1 : 0
+		};
+
+		this.puntoVentaService.updateAsignacionPuntoVenta(this.asignacionActual.id, requestData).subscribe({
+			next: (response: ApiResponse<any>) => {
+				this.isSaving = false;
+				if (response.success) {
+					this.usersAdded.emit({
+						puntoVenta: this.puntoVenta,
+						message: response.message
+					});
+					this.closeModal();
+				} else {
+					this.submitError = response.message || 'Error al actualizar asignación';
+				}
+			},
+			error: (error: any) => {
+				this.isSaving = false;
+				console.error('Error al actualizar asignación:', error);
+				this.submitError = error.error?.message || 'Error al actualizar la asignación';
+			}
+		});
+	}
+
 	closeModal(): void {
 		const modalElement = document.getElementById('addUsersModal');
 		if (modalElement) {
@@ -120,13 +263,19 @@ export class AddUsersModalComponent implements OnInit {
 				modal.hide();
 			}
 		}
-		this.resetForm();
 	}
 
 	resetForm(): void {
-		this.form.reset();
+		this.form.reset({
+			id_usuario: '',
+			vencimiento_asig: '',
+			activo: true
+		});
+		this.form.get('id_usuario')?.enable();
 		this.searchTerm = '';
 		this.submitError = '';
 		this.filteredUsuarios = this.usuarios;
+		this.isEditMode = false;
+		this.asignacionActual = null;
 	}
 }

@@ -230,7 +230,9 @@ export class ConfiguracionPuntoVentaComponent implements OnInit {
 	}
 
 	openAddUsersModal(puntoVenta: PuntoVentaRow): void {
-		this.puntoVentaForUsers = puntoVenta;
+		// Clonar el punto de venta para forzar que Angular detecte cambio en el @Input
+		// y el modal pueda decidir correctamente si muestra modo "editar" o "asignar".
+		this.puntoVentaForUsers = { ...puntoVenta };
 		const modalElement = document.getElementById('addUsersModal');
 		if (modalElement) {
 			const modal = new bootstrap.Modal(modalElement);

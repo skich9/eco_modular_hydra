@@ -47,6 +47,24 @@ export interface AssignUserRequest {
 	usuario_crea: number;
 }
 
+export interface AsignacionPuntoVenta {
+	id: number;
+	id_usuario: number;
+	codigo_punto_venta: string;
+	codigo_sucursal: number;
+	codigo_ambiente: number;
+	vencimiento_asig: string;
+	activo: number;
+	nickname: string;
+	nombre: string;
+	ap_materno: string;
+}
+
+export interface UpdateAsignacionRequest {
+	vencimiento_asig: string;
+	activo: number;
+}
+
 export interface ApiResponse<T> {
 	success: boolean;
 	data?: T;
@@ -102,6 +120,14 @@ export class PuntoVentaService {
 
 	assignUserToPuntoVenta(data: AssignUserRequest): Observable<ApiResponse<any>> {
 		return this.http.post<ApiResponse<any>>(`${this.apiUrl}/sin/puntos-venta/assign-user`, data);
+	}
+
+	getAsignacionPuntoVenta(codigoPuntoVenta: string | number): Observable<ApiResponse<AsignacionPuntoVenta>> {
+		return this.http.get<ApiResponse<AsignacionPuntoVenta>>(`${this.apiUrl}/sin/puntos-venta/${codigoPuntoVenta}/asignacion`);
+	}
+
+	updateAsignacionPuntoVenta(id: number, data: UpdateAsignacionRequest): Observable<ApiResponse<any>> {
+		return this.http.put<ApiResponse<any>>(`${this.apiUrl}/sin/puntos-venta/asignacion/${id}`, data);
 	}
 
 	syncPuntosVenta(codigoAmbiente: number, codigoSucursal: number, idUsuario: number, codigoPuntoVenta: number = 0): Observable<ApiResponse<any>> {

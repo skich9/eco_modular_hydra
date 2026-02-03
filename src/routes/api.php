@@ -153,7 +153,9 @@ Route::post('sin/sync/puntos-venta', [\App\Http\Controllers\Api\SinAdminControll
 Route::get('sin/puntos-venta', [\App\Http\Controllers\Api\SinAdminController::class, 'listPuntosVenta']);
 Route::post('sin/puntos-venta', [\App\Http\Controllers\Api\SinAdminController::class, 'createPuntoVenta']);
 Route::delete('sin/puntos-venta/{id}', [\App\Http\Controllers\Api\SinAdminController::class, 'deletePuntoVenta']);
+Route::get('sin/puntos-venta/{codigoPuntoVenta}/asignacion', [\App\Http\Controllers\Api\SinAdminController::class, 'getAsignacionPuntoVenta']);
 Route::post('sin/puntos-venta/assign-user', [\App\Http\Controllers\Api\SinAdminController::class, 'assignUserToPuntoVenta']);
+Route::put('sin/puntos-venta/asignacion/{id}', [\App\Http\Controllers\Api\SinAdminController::class, 'updateAsignacionPuntoVenta']);
 Route::get('sin/usuarios', [\App\Http\Controllers\Api\SinAdminController::class, 'listUsuarios']);
 Route::get('sin/tipos-punto-venta', [\App\Http\Controllers\Api\SinAdminController::class, 'getTiposPuntoVenta']);
 Route::get('sin/status', [\App\Http\Controllers\Api\SinAdminController::class, 'status']);

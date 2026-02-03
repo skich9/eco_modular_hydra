@@ -1,111 +1,151 @@
 <div class="modal fade" id="addUsersModal" tabindex="-1" aria-labelledby="addUsersModalLabel" aria-hidden="true">
 	<div class="modal-dialog modal-dialog-centered modal-lg">
 		<div class="modal-content">
-			<div class="modal-header bg-primary text-white">
-				<h5 class="modal-title" id="addUsersModalLabel">
-					<i class="fas fa-user-plus me-2"></i>
-					Agregar Usuarios al Punto de Venta
+			<div class="modal-header text-white" [ngClass]="isEditMode ? 'bg-orange-dark' : 'bg-primary'">
+				<h5 class="modal-title text-white" id="addUsersModalLabel">
+					<i class="bi me-2" [ngClass]="isEditMode ? 'bi-person-fill-gear' : 'bi-person-plus-fill'"></i>
+					{{ isEditMode ? 'Editar Asignación de Usuario' : 'Agregar Usuario al Punto de Venta' }}
 				</h5>
 				<button type="button" class="btn-close btn-close-white" data-bs-dismiss="modal" aria-label="Close"></button>
 			</div>
 			<div class="modal-body">
-				<div class="alert alert-info" *ngIf="puntoVenta">
-					<i class="fas fa-info-circle me-2"></i>
-					<strong>Punto de Venta:</strong>
-					<code>{{ puntoVenta.codigo_punto_venta }}</code> - {{ puntoVenta.nombre }}
+				<!-- Cargando asignación -->
+				<div *ngIf="isLoadingAsignacion" class="text-center py-4">
+					<div class="spinner-border text-primary" role="status">
+						<span class="visually-hidden">Cargando...</span>
+					</div>
+					<p class="text-muted mt-2">Verificando asignación...</p>
 				</div>
 
-				<!-- Mensaje de error -->
-				<div class="alert alert-danger" *ngIf="submitError">
-					<i class="fas fa-exclamation-triangle me-2"></i>
-					{{ submitError }}
-				</div>
+				<div *ngIf="!isLoadingAsignacion">
+					<div class="alert alert-info" *ngIf="puntoVenta">
+						<i class="bi bi-info-circle-fill me-2"></i>
+						<strong>Punto de Venta:</strong>
+						<code>{{ puntoVenta.codigo_punto_venta }}</code> - {{ puntoVenta.nombre }}
+					</div>
 
-				<form [formGroup]="form">
-					<!-- Select de Usuario con Buscador -->
-					<div class="mb-3">
-						<label class="form-label">
-							<i class="fas fa-user me-1"></i>
-							Usuario <span class="text-danger">*</span>
-						</label>
+					<!-- Información de asignación actual (modo edición) -->
+					<div class="alert alert-warning" *ngIf="isEditMode && asignacionActual">
+						<i class="bi bi-person-check-fill me-2"></i>
+						<strong>Usuario Asignado:</strong> {{ asignacionActual.nickname }} ({{ asignacionActual.nombre }} {{ asignacionActual.ap_materno }})
+					</div>
 
-						<!-- Buscador -->
-						<div class="input-group mb-2">
-							<span class="input-group-text">
-								<i class="fas fa-search"></i>
-							</span>
-							<input
-								type="text"
-								class="form-control"
-								[(ngModel)]="searchTerm"
-								[ngModelOptions]="{standalone: true}"
-								(ngModelChange)="filterUsuarios()"
-								placeholder="Buscar por nombre o apellido...">
-						</div>
+					<!-- Mensaje de error -->
+					<div class="alert alert-danger" *ngIf="submitError">
+						<i class="bi bi-exclamation-triangle-fill me-2"></i>
+						{{ submitError }}
+					</div>
 
-						<!-- Select con scroll -->
-						<div *ngIf="isLoading" class="text-center py-3">
-							<div class="spinner-border spinner-border-sm text-primary" role="status">
-								<span class="visually-hidden">Cargando...</span>
+					<form [formGroup]="form">
+						<!-- Select de Usuario con Buscador (solo en modo creación) -->
+						<div class="mb-3" *ngIf="!isEditMode">
+							<label class="form-label">
+								<i class="bi bi-person-fill me-1"></i>
+								Usuario <span class="text-danger">*</span>
+							</label>
+
+							<!-- Buscador -->
+							<div class="input-group mb-2">
+								<span class="input-group-text">
+									<i class="bi bi-search"></i>
+								</span>
+								<input
+									type="text"
+									class="form-control"
+									[(ngModel)]="searchTerm"
+									[ngModelOptions]="{standalone: true}"
+									(ngModelChange)="filterUsuarios()"
+									placeholder="Buscar por nombre o apellido...">
 							</div>
-							<small class="text-muted ms-2">Cargando usuarios...</small>
+
+							<!-- Select con scroll -->
+							<div *ngIf="isLoading" class="text-center py-3">
+								<div class="spinner-border spinner-border-sm text-primary" role="status">
+									<span class="visually-hidden">Cargando...</span>
+								</div>
+								<small class="text-muted ms-2">Cargando usuarios...</small>
+							</div>
+
+							<select
+								class="form-select"
+								formControlName="id_usuario"
+								size="8"
+								[class.is-invalid]="form.get('id_usuario')?.invalid && form.get('id_usuario')?.touched"
+								*ngIf="!isLoading">
+								<option value="" disabled>Seleccione un usuario</option>
+								<option
+									*ngFor="let usuario of filteredUsuarios"
+									[value]="usuario.id_usuario">
+									{{ getUsuarioNombreCompleto(usuario) }}
+								</option>
+							</select>
+							<div class="invalid-feedback" *ngIf="form.get('id_usuario')?.invalid && form.get('id_usuario')?.touched">
+								Debe seleccionar un usuario
+							</div>
+							<small class="text-muted" *ngIf="!isLoading">
+								{{ filteredUsuarios.length }} usuario(s) disponible(s)
+							</small>
 						</div>
 
-						<select
-							class="form-select"
-							formControlName="id_usuario"
-							size="8"
-							[class.is-invalid]="form.get('id_usuario')?.invalid && form.get('id_usuario')?.touched"
-							*ngIf="!isLoading">
-							<option value="" disabled>Seleccione un usuario</option>
-							<option
-								*ngFor="let usuario of filteredUsuarios"
-								[value]="usuario.id_usuario">
-								{{ getUsuarioNombreCompleto(usuario) }}
-							</option>
-						</select>
-						<div class="invalid-feedback" *ngIf="form.get('id_usuario')?.invalid && form.get('id_usuario')?.touched">
-							Debe seleccionar un usuario
+						<!-- Fecha y Hora de Vencimiento -->
+						<div class="mb-3">
+							<label class="form-label">
+								<i class="bi bi-calendar-event me-1"></i>
+								Fecha y Hora de Vencimiento <span class="text-danger">*</span>
+							</label>
+							<input
+								type="datetime-local"
+								class="form-control"
+								formControlName="vencimiento_asig"
+								[class.is-invalid]="form.get('vencimiento_asig')?.invalid && form.get('vencimiento_asig')?.touched">
+							<div class="invalid-feedback" *ngIf="form.get('vencimiento_asig')?.invalid && form.get('vencimiento_asig')?.touched">
+								La fecha de vencimiento es requerida
+							</div>
+							<small class="text-muted">
+								<i class="bi bi-info-circle me-1"></i>
+								Fecha hasta la cual el usuario tendrá acceso al punto de venta
+							</small>
 						</div>
-						<small class="text-muted" *ngIf="!isLoading">
-							{{ filteredUsuarios.length }} usuario(s) disponible(s)
-						</small>
-					</div>
 
-					<!-- Fecha y Hora de Vencimiento -->
-					<div class="mb-3">
-						<label class="form-label">
-							<i class="fas fa-calendar-alt me-1"></i>
-							Fecha y Hora de Vencimiento <span class="text-danger">*</span>
-						</label>
-						<input
-							type="datetime-local"
-							class="form-control"
-							formControlName="vencimiento_asig"
-							[class.is-invalid]="form.get('vencimiento_asig')?.invalid && form.get('vencimiento_asig')?.touched">
-						<div class="invalid-feedback" *ngIf="form.get('vencimiento_asig')?.invalid && form.get('vencimiento_asig')?.touched">
-							La fecha de vencimiento es requerida
+						<!-- Estado Activo (solo en modo edición) -->
+						<div class="mb-3" *ngIf="isEditMode">
+							<div class="form-check form-switch">
+								<input
+									class="form-check-input"
+									type="checkbox"
+									id="activoSwitch"
+									formControlName="activo">
+								<label class="form-check-label" for="activoSwitch">
+									<i class="bi bi-toggle-on me-1"></i>
+									Asignación Activa
+								</label>
+							</div>
+							<small class="text-muted">
+								<i class="bi bi-info-circle me-1"></i>
+								Desactive para revocar el acceso del usuario sin eliminar la asignación
+							</small>
 						</div>
-						<small class="text-muted">
-							<i class="fas fa-info-circle me-1"></i>
-							Fecha hasta la cual el usuario tendra acceso al punto de venta
-						</small>
-					</div>
-				</form>
+					</form>
+				</div>
 			</div>
 			<div class="modal-footer">
 				<button type="button" class="btn btn-secondary" (click)="closeModal()" [disabled]="isSaving">
-					<i class="fas fa-times me-1"></i>
+					<i class="bi bi-x-lg me-1"></i>
 					Cancelar
 				</button>
-				<button type="button" class="btn btn-primary" (click)="onSave()" [disabled]="isSaving || form.invalid">
+				<button
+					type="button"
+					class="btn"
+					[ngClass]="isEditMode ? 'btn-warning' : 'btn-primary'"
+					(click)="onSave()"
+					[disabled]="isSaving || isLoadingAsignacion">
 					<span *ngIf="!isSaving">
-						<i class="fas fa-save me-1"></i>
-						Asignar Usuario
+						<i class="bi me-1" [ngClass]="isEditMode ? 'bi-pencil-square' : 'bi-save'"></i>
+						{{ isEditMode ? 'Actualizar Asignación' : 'Asignar Usuario' }}
 					</span>
 					<span *ngIf="isSaving">
 						<span class="spinner-border spinner-border-sm me-2" role="status" aria-hidden="true"></span>
-						Asignando...
+						{{ isEditMode ? 'Actualizando...' : 'Asignando...' }}
 					</span>
 				</button>
 			</div>

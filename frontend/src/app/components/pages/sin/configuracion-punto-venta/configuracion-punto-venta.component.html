@@ -85,15 +85,15 @@
 							type="button"
 							class="btn btn-sm btn-outline-primary me-1"
 							(click)="openAddUsersModal(pv)"
-							title="Agregar usuarios">
-							<i class="fas fa-user-plus"></i>
+							[attr.title]="getUsuarioAsignadoVigente(pv) ? 'Editar asignación de usuario' : 'Asignar usuario al punto de venta'">
+							<i class="bi" [ngClass]="getUsuarioAsignadoVigente(pv) ? 'bi-pencil-square' : 'bi-person-plus-fill'"></i>
 						</button>
 						<button
 							type="button"
 							class="btn btn-sm btn-outline-danger"
 							(click)="openDeleteModal(pv)"
 							title="Eliminar">
-							<i class="fas fa-trash"></i>
+							<i class="bi bi-trash-fill"></i>
 						</button>
 					</td>
 				</tr>
