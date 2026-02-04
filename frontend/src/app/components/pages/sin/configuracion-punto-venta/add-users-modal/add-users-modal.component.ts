@@ -2,6 +2,7 @@ import { Component, EventEmitter, Output, Input, OnInit, OnChanges, SimpleChange
 import { CommonModule } from '@angular/common';
 import { FormsModule, ReactiveFormsModule, FormBuilder, FormGroup, Validators } from '@angular/forms';
 import { PuntoVentaService, Usuario, ApiResponse, AssignUserRequest, AsignacionPuntoVenta, UpdateAsignacionRequest } from '../../../../../services/punto-venta.service';
+import { AuthService } from '../../../../../services/auth.service';
 
 @Component({
 	selector: 'app-add-users-modal',
@@ -28,7 +29,8 @@ export class AddUsersModalComponent implements OnInit, OnChanges {
 
 	constructor(
 		private fb: FormBuilder,
-		private puntoVentaService: PuntoVentaService
+		private puntoVentaService: PuntoVentaService,
+		private auth: AuthService
 	) {
 		this.form = this.fb.group({
 			id_usuario: ['', Validators.required],
@@ -185,12 +187,19 @@ export class AddUsersModalComponent implements OnInit, OnChanges {
 		this.isSaving = true;
 		this.submitError = '';
 
+		// Obtener el usuario que realiza la asignación desde AuthService (usuario logueado)
+		let usuarioCrea = 1;
+		const currentUser = this.auth.getCurrentUser();
+		if (currentUser && currentUser.id_usuario) {
+			usuarioCrea = Number(currentUser.id_usuario) || 1;
+		}
+
 		const requestData: AssignUserRequest = {
 			id_usuario: this.form.value.id_usuario,
 			codigo_punto_venta: this.puntoVenta.codigo_punto_venta,
 			codigo_sucursal: this.puntoVenta.sucursal || 0,
 			vencimiento_asig: this.form.value.vencimiento_asig,
-			usuario_crea: 1
+			usuario_crea: usuarioCrea
 		};
 
 		this.puntoVentaService.assignUserToPuntoVenta(requestData).subscribe({

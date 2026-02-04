@@ -211,6 +211,9 @@ Route::get('facturas/{anio}/{nro}/pdf-anulado', [FacturaPdfController::class, 'p
 Route::get('facturas/{anio}/{nro}/pdf', [FacturaPdfController::class, 'pdf'])
     ->where(['anio' => '\\d{4}', 'nro' => '\\d+']);
 
+// Facturas: PDF por CUF (identificador fiscal único) - endpoint robusto recomendado
+Route::get('facturas/cuf/{cuf}/pdf', [FacturaPdfController::class, 'pdfByCuf']);
+
 // SIN: motivos de anulacion
 Route::get('sin/motivos-anulacion', [SinCatalogoController::class, 'motivosAnulacion']);
 

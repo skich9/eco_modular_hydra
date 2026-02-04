@@ -15,18 +15,18 @@ class FacturaPdfService
 	{
 		$entero = floor($numero);
 		$decimal = round(($numero - $entero) * 100);
-		
+
 		$unidades = ['', 'UNO', 'DOS', 'TRES', 'CUATRO', 'CINCO', 'SEIS', 'SIETE', 'OCHO', 'NUEVE'];
 		$decenas = ['', 'DIEZ', 'VEINTE', 'TREINTA', 'CUARENTA', 'CINCUENTA', 'SESENTA', 'SETENTA', 'OCHENTA', 'NOVENTA'];
 		$especiales = ['DIEZ', 'ONCE', 'DOCE', 'TRECE', 'CATORCE', 'QUINCE', 'DIECISEIS', 'DIECISIETE', 'DIECIOCHO', 'DIECINUEVE'];
 		$centenas = ['', 'CIENTO', 'DOSCIENTOS', 'TRESCIENTOS', 'CUATROCIENTOS', 'QUINIENTOS', 'SEISCIENTOS', 'SETECIENTOS', 'OCHOCIENTOS', 'NOVECIENTOS'];
-		
+
 		if ($entero == 0) {
 			return 'CERO ' . str_pad($decimal, 2, '0', STR_PAD_LEFT) . '/100 Bolivianos';
 		}
-		
+
 		$literal = '';
-		
+
 		// Miles
 		if ($entero >= 1000) {
 			$miles = floor($entero / 1000);
@@ -37,19 +37,19 @@ class FacturaPdfService
 			}
 			$entero = $entero % 1000;
 		}
-		
+
 		// Centenas, decenas y unidades
 		if ($entero > 0) {
 			$literal .= $this->convertirGrupo($entero, $unidades, $decenas, $especiales, $centenas);
 		}
-		
+
 		return trim($literal) . ' ' . str_pad($decimal, 2, '0', STR_PAD_LEFT) . '/100 Bolivianos';
 	}
-	
+
 	private function convertirGrupo($numero, $unidades, $decenas, $especiales, $centenas)
 	{
 		$literal = '';
-		
+
 		// Centenas
 		$c = floor($numero / 100);
 		if ($c > 0) {
@@ -59,9 +59,9 @@ class FacturaPdfService
 				$literal .= $centenas[$c] . ' ';
 			}
 		}
-		
+
 		$numero = $numero % 100;
-		
+
 		// Decenas y unidades
 		if ($numero >= 10 && $numero < 20) {
 			$literal .= $especiales[$numero - 10];
@@ -76,24 +76,37 @@ class FacturaPdfService
 		} elseif ($numero > 0) {
 			$literal .= $unidades[$numero];
 		}
-		
+
 		return $literal;
 	}
-	
+
 	/**
 	 * Genera el PDF de la factura. Si $anulado=true, aplica marca/etiqueta ANULADO.
 	 * Retorna la ruta absoluta del PDF generado.
 	 */
 	public function generate($anio, $nro, $anulado = false)
 	{
-		$anio = (int) $anio; $nro = (int) $nro;
-		$row = DB::table('factura')
+		$anio = (int) $anio;
+		$nro = (int) $nro;
+		$query = DB::table('factura')
 			->where('anio', $anio)
 			->where('nro_factura', $nro)
-			->first();
+			->orderByDesc('created_at')
+			->orderByDesc('codigo_sucursal')
+			->orderByDesc('codigo_punto_venta');
+		$row = $query->first();
 		if (!$row) {
 			throw new \RuntimeException('Factura no encontrada');
 		}
+		Log::info('FacturaPdfService.generate.row', [
+			'anio' => $anio,
+			'nro' => $nro,
+			'codigo_sucursal' => isset($row->codigo_sucursal) ? (int)$row->codigo_sucursal : null,
+			'codigo_punto_venta' => isset($row->codigo_punto_venta) ? (string)$row->codigo_punto_venta : null,
+			'cod_ceta' => isset($row->cod_ceta) ? (int)$row->cod_ceta : null,
+			'id_usuario' => isset($row->id_usuario) ? (int)$row->id_usuario : null,
+			'fecha_emision' => isset($row->fecha_emision) ? (string)$row->fecha_emision : null,
+		]);
 
 		$detalles = [];
 		try {
@@ -101,6 +114,8 @@ class FacturaPdfService
 				$det = DB::table('factura_detalle')
 					->where('anio', $anio)
 					->where('nro_factura', $nro)
+					->where('codigo_sucursal', isset($row->codigo_sucursal) ? (int)$row->codigo_sucursal : 0)
+					->where('codigo_punto_venta', isset($row->codigo_punto_venta) ? (string)$row->codigo_punto_venta : '0')
 					->orderBy('id_detalle')
 					->get();
 				foreach ($det as $d) {
@@ -111,7 +126,7 @@ class FacturaPdfService
 					$descuento = isset($d->descuento) ? $d->descuento : 0;
 					$subt = isset($d->subtotal) ? $d->subtotal : 0;
 					$unidadMedida = isset($d->unidad_medida) ? (int)$d->unidad_medida : 58;
-					
+
 					// Mapear código de unidad de medida a nombre
 					$nombreUnidad = 'UNIDAD';
 					if ($unidadMedida == 1) {
@@ -119,10 +134,10 @@ class FacturaPdfService
 					} elseif ($unidadMedida == 58) {
 						$nombreUnidad = 'UNIDAD (SERVICIOS)';
 					}
-					
+
 					$codigoSin = isset($d->codigo_sin) ? (int)$d->codigo_sin : 99100;
 					$codigoInterno = isset($d->codigo_interno) ? (int)$d->codigo_interno : null;
-					
+
 					$detalles[] = [
 						'codigo' => $codigo,
 						'codigo_sin' => $codigoSin,
@@ -144,19 +159,19 @@ class FacturaPdfService
 		$clienteTemp = isset($row->cliente) ? $row->cliente : (isset($row->razon) ? $row->razon : 'S/N');
 		$cliente = (string)$clienteTemp;
 		$cod_ceta = isset($row->cod_ceta) ? (int)$row->cod_ceta : 0;
-		
+
 		// Obtener datos del estudiante y del cliente
 		$nit_cliente = '0';
 		$complemento = '';
 		$nombre_estudiante = $cliente;
-		
+
 		if ($cod_ceta > 0) {
 			try {
 				// Obtener datos del estudiante desde tabla estudiantes (plural)
 				$estudiante = DB::table('estudiantes')
 					->where('cod_ceta', $cod_ceta)
 					->first();
-				
+
 				if ($estudiante) {
 					// Nombre completo del estudiante
 					$nombres = isset($estudiante->nombres) ? trim((string)$estudiante->nombres) : '';
@@ -166,7 +181,7 @@ class FacturaPdfService
 					if (empty($nombre_estudiante)) {
 						$nombre_estudiante = $cliente;
 					}
-					
+
 					// Prioridad 1: Obtener NIT/CI desde el XML de la factura (datos del request/cobro)
 					try {
 						$xmlPath = storage_path('siat_xml/xmls/' . $row->cuf . '.xml');
@@ -182,7 +197,7 @@ class FacturaPdfService
 					} catch (\Throwable $e) {
 						Log::warning('FacturaPdfService.generate.xml_error', ['error' => $e->getMessage()]);
 					}
-					
+
 					// Prioridad 2: Si no se encontró en XML, usar doc_presentados del estudiante
 					if ($nit_cliente === '0') {
 						try {
@@ -191,7 +206,7 @@ class FacturaPdfService
 								->whereIn('nombre_doc', ['CI', 'CARNET DE IDENTIDAD', 'CEX', 'CEDULA DE EXTRANJERIA', 'PASAPORTE', 'NIT'])
 								->orderByRaw("FIELD(nombre_doc, 'CI', 'CARNET DE IDENTIDAD', 'CEX', 'CEDULA DE EXTRANJERIA', 'PASAPORTE', 'NIT')")
 								->first();
-							
+
 							if ($doc && isset($doc->numero_doc)) {
 								$nit_cliente = (string)$doc->numero_doc;
 								if (isset($doc->complemento) && $doc->complemento !== '') {
@@ -211,63 +226,114 @@ class FacturaPdfService
 		$cuf = isset($row->cuf) ? (string)$row->cuf : '';
 		$codigo_control = isset($row->codigo_control) ? (string)$row->codigo_control : '';
 		$sucursal = isset($row->codigo_sucursal) ? (int)$row->codigo_sucursal : 0;
-		$pv = isset($row->codigo_punto_venta) ? (string)$row->codigo_punto_venta : '0';
+		$pv = '';
+		if (isset($row->codigo_punto_venta) && $row->codigo_punto_venta !== '' && $row->codigo_punto_venta !== '0') {
+			$pv = (string)$row->codigo_punto_venta;
+		}
+		// Si el punto de venta en la factura es 0 o vacío, intentar inferirlo desde sin_cufd usando el codigo_cufd
+		if ($pv === '' || $pv === '0') {
+			try {
+				if (!empty($row->codigo_cufd)) {
+					$cufdLookup = DB::table('sin_cufd')
+						->where('codigo_cufd', (string)$row->codigo_cufd)
+						->orderBy('fecha_vigencia', 'desc')
+						->first();
+					if ($cufdLookup) {
+						if (isset($cufdLookup->codigo_punto_venta)) {
+							$pv = (string)$cufdLookup->codigo_punto_venta;
+						}
+						if ($sucursal === 0 && isset($cufdLookup->codigo_sucursal)) {
+							$sucursal = (int)$cufdLookup->codigo_sucursal;
+						}
+					}
+				}
+			} catch (\Throwable $e) {
+				Log::warning('FacturaPdfService.generate.pv_infer_error', ['error' => $e->getMessage()]);
+			}
+		}
+		if ($pv === '' || $pv === null) {
+			$pv = '0';
+		}
 		$estado = isset($row->estado) ? (string)$row->estado : '';
-		
+
 		// Usuario que registró el cobro
 		$usuarioNombre = 'Sistema';
 		try {
 			if (isset($row->id_usuario)) {
 				$usr = DB::table('usuarios')->where('id_usuario', (int)$row->id_usuario)->first();
 				if ($usr) {
-					$usuarioNombre = isset($usr->usuario) && $usr->usuario !== ''
-						? (string)$usr->usuario
-						: (isset($usr->nombre) && $usr->nombre !== '' ? (string)$usr->nombre : 'Sistema');
+					if (isset($usr->nickname) && $usr->nickname !== '') {
+						$usuarioNombre = (string)$usr->nickname;
+					} elseif (isset($usr->usuario) && $usr->usuario !== '') {
+						$usuarioNombre = (string)$usr->usuario;
+					} elseif (isset($usr->nombre) && $usr->nombre !== '') {
+						$usuarioNombre = (string)$usr->nombre;
+					}
 				}
 			}
 		} catch (\Throwable $e) {
 			Log::warning('FacturaPdfService.generate.usuario_error', ['error' => $e->getMessage()]);
 		}
-		
+
 		// Obtener período facturado desde la factura
 		$periodoFacturado = isset($row->periodo_facturado) && $row->periodo_facturado !== '' ? (string)$row->periodo_facturado : '2/2025';
 		$gestion = $periodoFacturado;
-		
+
 		// Datos de configuración
 		$nit = config('sin.nit', '388386029');
 		$razon_social = config('sin.razon_social', 'INSTITUTO TECNOLOGICO DE ENSEÑANZA AUTOMOTRIZ "CETA" S.R.L.');
 		$municipio = config('sin.municipio', 'COCHABAMBA');
 		$telefono = config('sin.telefono', '4581736');
-		
-		// Obtener datos de sin_cufd para dirección
+
+		// Obtener datos de sin_cufd para dirección (priorizar CUFD de la factura y luego sucursal/pv)
 		$cufd_data = null;
 		$direccion = '';
 		try {
-			$cufd_data = DB::table('sin_cufd')
-				->where('codigo_sucursal', $sucursal)
-				->where('codigo_punto_venta', $pv)
-				->where('fecha_vigencia', '>', now())
-				->orderBy('fecha_vigencia', 'desc')
-				->first();
-			if ($cufd_data && isset($cufd_data->direccion)) {
+			// 1) Si la factura tiene codigo_cufd, usarlo directamente
+			if (!empty($row->codigo_cufd)) {
+				$cufd_data = DB::table('sin_cufd')
+					->where('codigo_cufd', (string)$row->codigo_cufd)
+					->orderBy('fecha_vigencia', 'desc')
+					->first();
+			}
+			// 2) Si no se encontró por codigo_cufd, buscar por sucursal/pv con vigencia futura
+			if (!$cufd_data) {
+				$cufd_data = DB::table('sin_cufd')
+					->where('codigo_sucursal', $sucursal)
+					->where('codigo_punto_venta', (string)$pv)
+					->where('fecha_vigencia', '>', now())
+					->orderBy('fecha_vigencia', 'desc')
+					->first();
+			}
+			// 3) Como último recurso, usar el último CUFD registrado para esa sucursal/pv
+			if (!$cufd_data) {
+				$cufd_data = DB::table('sin_cufd')
+					->where('codigo_sucursal', $sucursal)
+					->where('codigo_punto_venta', (string)$pv)
+					->orderBy('fecha_vigencia', 'desc')
+					->first();
+			}
+			if ($cufd_data && isset($cufd_data->direccion) && $cufd_data->direccion !== '') {
 				$direccion = (string)$cufd_data->direccion;
 			}
 		} catch (\Throwable $e) {
 			Log::warning('FacturaPdfService.generate.cufd_error', ['error' => $e->getMessage()]);
 		}
-		
+
 		// Si no hay dirección en CUFD, usar valores por defecto
 		if (empty($direccion)) {
 			$direccion = 'ZONA: NOMBRE DE LA ZONA - AVENIDA: TIPO DE AVENIDA - NÚMERO: NÚMERO DE DIRECCIÓN';
 		}
-		
+
 		// Agregar salto de línea antes de TELEFONO:
 		$direccion = str_replace(', TELEFONO:', '<br>TELEFONO:', $direccion);
-		
-		// Formatear fecha en formato 12 horas (AM/PM) sin segundos y sin cero inicial en horas 1-9
+
+		// Formatear fecha en horario de Bolivia (America/La_Paz) en formato 12 horas (AM/PM)
 		try {
-			$fechaDT = new \DateTime($fecha);
-			$hora = (int)$fechaDT->format('h'); // Hora en formato 12 sin cero inicial
+			$tz = new \DateTimeZone('America/La_Paz');
+			$fechaDT = new \DateTime($fecha, $tz);
+			$fechaDT->setTimezone($tz);
+			$hora = (int)$fechaDT->format('h');
 			$minutos = $fechaDT->format('i');
 			$ampm = $fechaDT->format('A');
 			$fechaFormateada = $fechaDT->format('d/m/Y') . ' ' . $hora . ':' . $minutos . ' ' . $ampm;
@@ -308,7 +374,7 @@ class FacturaPdfService
 			Log::warning('FacturaPdfService.generate.qr_error', ['error' => $e->getMessage()]);
 		}
 		$qrFinalSrc = $qrDataUrl ?: ('https://api.qrserver.com/v1/create-qr-code/?size=300x300&margin=4&ecc=M&data=' . urlencode($qrContent));
-		
+
 		// Leyenda aleatoria desde SIN (fallback a una por defecto)
 		$leyenda = 'Ley Nº 453: El proveedor de servicios debe habilitar medios e instrumentos para efectuar consultas y reclamaciones.';
 		try {
@@ -321,7 +387,7 @@ class FacturaPdfService
 		} catch (\Throwable $e) {
 			Log::warning('FacturaPdfService.generate.leyenda_error', ['error' => $e->getMessage()]);
 		}
-		
+
 		// Construir filas de detalles (formato rollo del SGA)
 		$rowsHtml = '';
 		$subtotal = 0;
@@ -335,7 +401,7 @@ class FacturaPdfService
 			Log::debug('PDF codigo selection', ['codigo_interno' => $codigoInterno, 'codigo_sin' => $d['codigo_sin'], 'mostrar' => $codigoMostrar]);
 			$codigoDesc = $codigoMostrar ? htmlspecialchars($codigoMostrar) . ' - ' : '';
 			$descripcionRaw = $d['descripcion'];
-			
+
 			// Transformar "Mensualidad - Cuota X (Parcial)" a "Mens. [Mes] (Parcial)" basándose en gestión
 			if (preg_match('/Mensualidad\s*-\s*Cuota\s*(\d+)(\s*\(Parcial\))?/i', $descripcionRaw, $matches)) {
 				$numeroCuota = (int)$matches[1];
@@ -348,7 +414,7 @@ class FacturaPdfService
 					'gestion' => $gestion
 				]);
 				$meses = [];
-				
+
 				// Determinar meses según gestión
 				if (strpos($gestion, '1/') === 0) {
 					// Gestión 1: Cuota 1=Febrero, 2=Marzo, 3=Abril, 4=Mayo, 5=Junio
@@ -357,26 +423,26 @@ class FacturaPdfService
 					// Gestión 2: Cuota 1=Julio, 2=Agosto, 3=Septiembre, 4=Octubre, 5=Noviembre
 					$meses = [1 => 'Julio', 2 => 'Agosto', 3 => 'Septiembre', 4 => 'Octubre', 5 => 'Noviembre'];
 				}
-				
+
 				if (isset($meses[$numeroCuota])) {
 					$descripcionRaw = preg_replace('/Mensualidad\s*-\s*Cuota\s*\d+(\s*\(Parcial\))?/i', 'Mens. ' . $meses[$numeroCuota] . $parcialTexto, $descripcionRaw);
 					Log::debug('PDF transformacion mes resultado', ['descripcion_transformada' => $descripcionRaw]);
 				}
 			}
-			
+
 			$descripcion = htmlspecialchars($descripcionRaw);
-		
+
 		// Dividir solo la descripción (sin el código) si es muy larga
 		$maxLength = 50;
 		$lineas = [];
-		
+
 		if (strlen($descripcion) > $maxLength) {
 			$palabras = explode(' ', $descripcion);
 			$lineaActual = '';
-			
+
 			foreach ($palabras as $palabra) {
 				$testLinea = $lineaActual === '' ? $palabra : $lineaActual . ' ' . $palabra;
-				
+
 				if (strlen($testLinea) <= $maxLength) {
 					$lineaActual = $testLinea;
 				} else {
@@ -386,20 +452,20 @@ class FacturaPdfService
 					$lineaActual = $palabra;
 				}
 			}
-			
+
 			if ($lineaActual !== '') {
 				$lineas[] = $lineaActual;
 			}
 		} else {
 			$lineas[] = $descripcion;
 		}
-		
+
 		// Agregar código solo a la primera línea
 		$lineas[0] = $codigoDesc . $lineas[0];
-		
+
 		// Generar HTML con saltos de línea
 		$descripcionHtml = implode('<br>', $lineas);
-		
+
 		$rowsHtml .= '<tr>
 			<td style="text-align:left; font-weight:bold; line-height:1.3;">' . $descripcionHtml . '</td>
 		</tr>
@@ -411,28 +477,41 @@ class FacturaPdfService
 			<td class="right-text" style="padding-right:2mm;">' . number_format($d['subtotal'], 2, '.', '') . '</td>
 		</tr>';
 		}
-		
-		$water = $anulado 
+
+		$water = $anulado
 			? '<div class="watermark-anulado">ANULADO</div>'
 			  . '<div class="watermark-sinlegal top">SIN VALOR LEGAL</div>'
 			  . '<div class="watermark-sinlegal bottom">SIN VALOR LEGAL</div>'
 			: '';
-		
-		$texto_sucursal = ($sucursal == 0) ? 'CASA MATRIZ' : 'SUCURSAL N. ' . $sucursal;
-		
+
+		$texto_sucursal = 'CASA MATRIZ';
+		if ($sucursal != 0) {
+			$labels = [];
+			try {
+				$labels = config('sin.sucursal_labels', []);
+			} catch (\Throwable $e) {
+				$labels = [];
+			}
+			if (is_array($labels) && array_key_exists($sucursal, $labels) && $labels[$sucursal] !== '') {
+				$texto_sucursal = 'SUCURSAL: ' . (string)$labels[$sucursal];
+			} else {
+				$texto_sucursal = 'SUCURSAL N. ' . $sucursal;
+			}
+		}
+
 		$html = '
 <!DOCTYPE html>
 <html lang="es">
 <head>
 	<meta charset="utf-8">
 	<style>
-		@page { 
-			margin: 3mm 2mm; 
+		@page {
+			margin: 3mm 2mm;
 			size: 75mm 279mm;
 		}
-		body { 
-			font-family: Arial, Helvetica, sans-serif; 
-			font-size: 7pt; 
+		body {
+			font-family: Arial, Helvetica, sans-serif;
+			font-size: 7pt;
 			margin: 0;
 			padding: 0;
 			width: 71mm;
@@ -443,13 +522,13 @@ class FacturaPdfService
 		.text-center { text-align: center; }
 		.left-text { text-align: left; }
 		.right-text { text-align: right; }
-		.line-segmentado { 
-			border-bottom: 1px dashed #000; 
+		.line-segmentado {
+			border-bottom: 1px dashed #000;
 			padding-bottom: 0.3mm;
 			margin-bottom: 2mm;
 		}
-		table { 
-			width: 95%; 
+		table {
+			width: 95%;
 			border-collapse: collapse;
 			margin: 0 auto;
 			margin-left: 2mm;
@@ -471,13 +550,13 @@ class FacturaPdfService
 			padding-left: 1mm;
 		}
 		strong { font-weight: bold; }
-		p { 
+		p {
 			margin: 1mm 0;
 			word-wrap: break-word;
 			overflow-wrap: break-word;
 		}
-		span { 
-			display: block; 
+		span {
+			display: block;
 			text-align: center;
 			margin: 2mm 0;
 		}
@@ -531,7 +610,7 @@ class FacturaPdfService
 </head>
 <body>
 	' . $water . '
-	
+
 	<div class="paddin-body text-size">
 		<div class="text-center">
 			<strong>FACTURA</strong><br>
@@ -638,7 +717,7 @@ class FacturaPdfService
 		</div>
 		<span>----------------------------------------------------------------------</span>
 		<div class="left-text text-size2">
-			<p style="padding-left:2mm;">Usuario: ' . htmlspecialchars($usuarioNombre) . ' - Fecha: ' . date('Y-m-d H:i:s') . '</p>
+			<p style="padding-left:2mm;">Usuario: ' . htmlspecialchars($usuarioNombre) . ' - Fecha: ' . htmlspecialchars($fechaFormateada) . '</p>
 			<p style="padding-left:2mm;">Código CETA: ' . htmlspecialchars((string)$cod_ceta) . '</p>
 		</div>
 	</div>
@@ -653,33 +732,33 @@ class FacturaPdfService
 				'html_length' => strlen($html),
 				'html_preview' => substr($html, 0, 200)
 			]);
-			
+
 			$dompdf = new Dompdf([ 'isRemoteEnabled' => true ]);
 			$dompdf->loadHtml($html, 'UTF-8');
 			// Forzar tamaño rollo 75mm x 279mm en puntos (ancho, alto)
 			$dompdf->setPaper([75*2.83464567, 279*2.83464567]);
 			$dompdf->render();
 			$pdf = $dompdf->output();
-			
+
 			if (empty($pdf)) {
 				throw new \RuntimeException('PDF generado está vacío');
 			}
-			
+
 			$dir = storage_path('siat_xml' . DIRECTORY_SEPARATOR . 'facturas');
 			if (!is_dir($dir)) {
 				if (!@mkdir($dir, 0775, true)) {
 					throw new \RuntimeException('No se pudo crear directorio: ' . $dir);
 				}
 			}
-			
+
 			$suffix = $anulado ? '_ANULADO' : '';
 			$path = $dir . DIRECTORY_SEPARATOR . $anio . '_' . $nro . $suffix . '.pdf';
-			
+
 			$written = @file_put_contents($path, $pdf);
 			if ($written === false) {
 				throw new \RuntimeException('No se pudo escribir archivo PDF: ' . $path);
 			}
-			
+
 			Log::debug('FacturaPdfService.generate.success', [
 				'anio' => $anio,
 				'nro' => $nro,
@@ -688,7 +767,7 @@ class FacturaPdfService
 				'size' => strlen($pdf),
 				'written' => $written
 			]);
-			
+
 			return $path;
 		} catch (\Throwable $e) {
 			Log::error('FacturaPdfService.generate.error', [

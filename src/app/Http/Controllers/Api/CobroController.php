@@ -1549,13 +1549,38 @@ class CobroController extends Controller
                     ->where('id_usuario', $request->id_usuario)
                     ->where('codigo_sucursal', $sucursal)
                     ->where('codigo_ambiente', $codigoAmbiente)
-                    ->first();
+                    ->where('activo', 1)
+                    ->where(function ($q) {
+						$q->whereNull('vencimiento_asig')
+							->orWhere('vencimiento_asig', '>=', now());
+					})
+					->orderByDesc('vencimiento_asig')
+					->orderByDesc('created_at')
+					->first();
 
                 if(!$respPuntoVenta) {
-                    throw new \Exception("No se encontró un punto de venta asociado al usuario {$request->id_usuario} en la sucursal {$sucursal}");
+                    // Construir mensaje amigable usando nickname del usuario y nombre de sucursal configurable
+					$nick = DB::table('usuarios')
+						->where('id_usuario', (int) $request->id_usuario)
+						->value('nickname');
+					$usuarioLabel = $nick ? (string) $nick : (string) $request->id_usuario;
+					$sucursalNombre = null;
+					try {
+						$labels = config('sin.sucursal_labels', []);
+						if (is_array($labels) && array_key_exists($sucursal, $labels)) {
+							$sucursalNombre = (string) $labels[$sucursal];
+						}
+					} catch (\Throwable $e) {
+						// fallback silencioso; si falla config usamos el código de sucursal
+					}
+					if (!$sucursalNombre) {
+						$sucursalNombre = 'código ' . (string) $sucursal;
+					}
+					$message = "No se puede realizar el cobro. El usuario {$usuarioLabel} no está habilitado para hacer cobros en la sucursal {$sucursalNombre}. Contáctese con el administrador.";
+					throw new \Exception($message);
                 }
                 $pv = $respPuntoVenta->codigo_punto_venta;
-                // $pv = (int) ($request->input('codigo_punto_venta', 0));
+				// $pv = (int) ($request->input('codigo_punto_venta', 0));
 
                 Log::info('batchStore: determined sucursal/punto_venta xxxxxx', [
                     'sucursal' => $sucursal,
@@ -2786,6 +2811,8 @@ class CobroController extends Controller
 							$insertData = [
 								'anio' => (int)$anioFacturaGroup,
 								'nro_factura' => (int)$nroFacturaGroup,
+								'codigo_sucursal' => (int)$sucursal,
+								'codigo_punto_venta' => (string)$pv,
 								'id_detalle' => $detIdx + 1,
 								'codigo_sin' => (int)(isset($det['codigo_sin']) ? $det['codigo_sin'] : 99100),
 								'codigo_interno' => isset($det['codigo_interno']) ? (int)$det['codigo_interno'] : null,

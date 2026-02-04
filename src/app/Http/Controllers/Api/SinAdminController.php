@@ -309,6 +309,25 @@ class SinAdminController extends Controller
 			$resultado = $pvRepo->cerrarPuntoVenta($codigoAmbiente, $codigoPuntoVenta, $codigoSucursal, $cuis);
 
 			if ($resultado['success']) {
+				// Desactivar asignaciones de usuario para este punto de venta
+				try {
+					DB::table('sin_punto_venta_usuario')
+						->where('codigo_punto_venta', $codigoPuntoVenta)
+						->where('codigo_sucursal', $codigoSucursal)
+						->where('codigo_ambiente', $codigoAmbiente)
+						->update([
+							'activo' => 0,
+							'updated_at' => now()
+						]);
+					Log::info('SIN deletePuntoVenta: asignaciones desactivadas para punto de venta cerrado', [
+						'codigo_punto_venta' => $codigoPuntoVenta,
+						'codigo_sucursal' => $codigoSucursal,
+						'codigo_ambiente' => $codigoAmbiente
+					]);
+				} catch (\Throwable $e) {
+					Log::error('SIN deletePuntoVenta: error al desactivar asignaciones', [ 'error' => $e->getMessage() ]);
+				}
+
 				return response()->json($resultado);
 			} else {
 				return response()->json($resultado, Response::HTTP_BAD_REQUEST);
@@ -355,7 +374,17 @@ class SinAdminController extends Controller
 			$codigoSucursal = (int) $request->input('codigo_sucursal');
 			$codigoAmbiente = (int) config('sin.ambiente');
 			$vencimientoAsig = $request->input('vencimiento_asig');
-			$usuarioCrea = (int) $request->input('usuario_crea', 1);
+			// Determinar el usuario que crea la asignación:
+			// 1) Priorizar el valor enviado en el request (usuario_crea)
+			// 2) Si no viene o es 0, intentar usar el usuario autenticado
+			// 3) Como último recurso, usar 1 para no romper compatibilidad
+			$usuarioCrea = (int) $request->input('usuario_crea');
+			if ($usuarioCrea <= 0 && auth()->check()) {
+				$usuarioCrea = (int) auth()->id();
+			}
+			if ($usuarioCrea <= 0) {
+				$usuarioCrea = 1;
+			}
 
 			// Validar campos requeridos
 			if (empty($idUsuario)) {
@@ -450,12 +479,17 @@ class SinAdminController extends Controller
 				], Response::HTTP_NOT_FOUND);
 			}
 
-			// Buscar asignación activa (sin filtrar por fecha de vencimiento)
+			// Buscar asignación activa y vigente (activo = 1 y sin vencer)
 			$asignacion = DB::table('sin_punto_venta_usuario as pvu')
 				->join('usuarios as u', 'pvu.id_usuario', '=', 'u.id_usuario')
 				->where('pvu.codigo_punto_venta', $codigoPuntoVenta)
 				->where('pvu.codigo_sucursal', $puntoVenta->sucursal)
 				->where('pvu.codigo_ambiente', $codigoAmbiente)
+				->where('pvu.activo', 1)
+				->where(function ($q) {
+					$q->whereNull('pvu.vencimiento_asig')
+						->orWhere('pvu.vencimiento_asig', '>=', now());
+				})
 				->select(
 					'pvu.id',
 					'pvu.id_usuario',
@@ -468,7 +502,8 @@ class SinAdminController extends Controller
 					'u.nombre',
 					'u.ap_materno'
 				)
-				->orderBy('pvu.created_at', 'desc')
+				->orderByDesc('pvu.vencimiento_asig')
+				->orderByDesc('pvu.created_at')
 				->first();
 
 			if (!$asignacion) {
