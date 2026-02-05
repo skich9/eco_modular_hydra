@@ -3,7 +3,7 @@
 		<div class="modal-content">
 			<div class="modal-header text-white" [ngClass]="isEditMode ? 'bg-orange-dark' : 'bg-primary'">
 				<h5 class="modal-title text-white" id="addUsersModalLabel">
-					<i class="bi me-2" [ngClass]="isEditMode ? 'bi-person-fill-gear' : 'bi-person-plus-fill'"></i>
+					<i class="fas me-2" [ngClass]="isEditMode ? 'fa-user-cog' : 'fa-user-plus'"></i>
 					{{ isEditMode ? 'Editar Asignación de Usuario' : 'Agregar Usuario al Punto de Venta' }}
 				</h5>
 				<button type="button" class="btn-close btn-close-white" data-bs-dismiss="modal" aria-label="Close"></button>
@@ -19,46 +19,32 @@
 
 				<div *ngIf="!isLoadingAsignacion">
 					<div class="alert alert-info" *ngIf="puntoVenta">
-						<i class="bi bi-info-circle-fill me-2"></i>
+						<i class="fas fa-info-circle me-2"></i>
 						<strong>Punto de Venta:</strong>
 						<code>{{ puntoVenta.codigo_punto_venta }}</code> - {{ puntoVenta.nombre }}
 					</div>
 
 					<!-- Información de asignación actual (modo edición) -->
 					<div class="alert alert-warning" *ngIf="isEditMode && asignacionActual">
-						<i class="bi bi-person-check-fill me-2"></i>
-						<strong>Usuario Asignado:</strong> {{ asignacionActual.nickname }} ({{ asignacionActual.nombre }} {{ asignacionActual.ap_materno }})
+						<i class="fas fa-user-check me-2"></i>
+						<strong>Usuario Asignado:</strong> {{ asignacionActual.nickname || asignacionActual.nombre + ' ' + asignacionActual.ap_materno }}
 					</div>
 
 					<!-- Mensaje de error -->
 					<div class="alert alert-danger" *ngIf="submitError">
-						<i class="bi bi-exclamation-triangle-fill me-2"></i>
+						<i class="fas fa-exclamation-triangle me-2"></i>
 						{{ submitError }}
 					</div>
 
 					<form [formGroup]="form">
-						<!-- Select de Usuario con Buscador (solo en modo creación) -->
+						<!-- Input de Usuario con Typeahead (solo en modo creación) -->
 						<div class="mb-3" *ngIf="!isEditMode">
 							<label class="form-label">
-								<i class="bi bi-person-fill me-1"></i>
-								Usuario <span class="text-danger">*</span>
+								<i class="fas fa-user me-1"></i>
+								Usuarios del Sistema <span class="text-danger">*</span>
 							</label>
 
-							<!-- Buscador -->
-							<div class="input-group mb-2">
-								<span class="input-group-text">
-									<i class="bi bi-search"></i>
-								</span>
-								<input
-									type="text"
-									class="form-control"
-									[(ngModel)]="searchTerm"
-									[ngModelOptions]="{standalone: true}"
-									(ngModelChange)="filterUsuarios()"
-									placeholder="Buscar por nombre o apellido...">
-							</div>
-
-							<!-- Select con scroll -->
+							<!-- Loading state -->
 							<div *ngIf="isLoading" class="text-center py-3">
 								<div class="spinner-border spinner-border-sm text-primary" role="status">
 									<span class="visually-hidden">Cargando...</span>
@@ -66,23 +52,56 @@
 								<small class="text-muted ms-2">Cargando usuarios...</small>
 							</div>
 
-							<select
-								class="form-select"
-								formControlName="id_usuario"
-								size="8"
-								[class.is-invalid]="form.get('id_usuario')?.invalid && form.get('id_usuario')?.touched"
-								*ngIf="!isLoading">
-								<option value="" disabled>Seleccione un usuario</option>
-								<option
-									*ngFor="let usuario of filteredUsuarios"
-									[value]="usuario.id_usuario">
-									{{ getUsuarioNombreCompleto(usuario) }}
-								</option>
-							</select>
-							<div class="invalid-feedback" *ngIf="form.get('id_usuario')?.invalid && form.get('id_usuario')?.touched">
-								Debe seleccionar un usuario
+							<!-- Typeahead input -->
+							<div class="position-relative" *ngIf="!isLoading">
+								<div class="input-group">
+									<span class="input-group-text">
+										<i class="fas fa-search"></i>
+									</span>
+									<input
+										type="text"
+										class="form-control"
+										[(ngModel)]="searchTerm"
+										[ngModelOptions]="{standalone: true}"
+										(ngModelChange)="filterUsuarios()"
+										(focus)="showDropdown = true"
+										[placeholder]="selectedUsuario ? selectedUsuario.nickname || selectedUsuario.nombre : 'Seleccione maqueta'"
+										[class.is-invalid]="form.get('id_usuario')?.invalid && form.get('id_usuario')?.touched"
+										autocomplete="off">
+									<button
+										type="button"
+										class="btn btn-outline-secondary"
+										(click)="clearSelection()">
+										<i class="fas fa-times"></i>
+									</button>
+								</div>
+
+								<!-- Dropdown list -->
+								<div
+									class="dropdown-menu w-100"
+									[class.show]="showDropdown && filteredUsuarios.length > 0"
+									style="max-height: 300px; overflow-y: auto;">
+									<button
+										type="button"
+										class="dropdown-item"
+										*ngFor="let usuario of filteredUsuarios"
+										(click)="selectUsuario(usuario)"
+										[class.active]="selectedUsuario?.id_usuario === usuario.id_usuario">
+										<i class="fas fa-user me-2 text-muted"></i>
+										<strong>{{ usuario.nickname || usuario.nombre }}</strong>
+										<span class="text-muted small" *ngIf="usuario.nickname">
+											({{ usuario.nombre }} {{ usuario.ap_materno }})
+										</span>
+									</button>
+								</div>
+
+								<div class="invalid-feedback" *ngIf="form.get('id_usuario')?.invalid && form.get('id_usuario')?.touched">
+									Debe seleccionar un usuario
+								</div>
 							</div>
+
 							<small class="text-muted" *ngIf="!isLoading">
+								<i class="fas fa-info-circle me-1"></i>
 								{{ filteredUsuarios.length }} usuario(s) disponible(s)
 							</small>
 						</div>
@@ -90,7 +109,7 @@
 						<!-- Fecha y Hora de Vencimiento -->
 						<div class="mb-3">
 							<label class="form-label">
-								<i class="bi bi-calendar-event me-1"></i>
+								<i class="fas fa-calendar-alt me-1"></i>
 								Fecha y Hora de Vencimiento <span class="text-danger">*</span>
 							</label>
 							<input
@@ -102,7 +121,7 @@
 								La fecha de vencimiento es requerida
 							</div>
 							<small class="text-muted">
-								<i class="bi bi-info-circle me-1"></i>
+								<i class="fas fa-info-circle me-1"></i>
 								Fecha hasta la cual el usuario tendrá acceso al punto de venta
 							</small>
 						</div>
@@ -116,12 +135,12 @@
 									id="activoSwitch"
 									formControlName="activo">
 								<label class="form-check-label" for="activoSwitch">
-									<i class="bi bi-toggle-on me-1"></i>
+									<i class="fas fa-toggle-on me-1"></i>
 									Asignación Activa
 								</label>
 							</div>
 							<small class="text-muted">
-								<i class="bi bi-info-circle me-1"></i>
+								<i class="fas fa-info-circle me-1"></i>
 								Desactive para revocar el acceso del usuario sin eliminar la asignación
 							</small>
 						</div>
@@ -130,7 +149,7 @@
 			</div>
 			<div class="modal-footer">
 				<button type="button" class="btn btn-secondary" (click)="closeModal()" [disabled]="isSaving">
-					<i class="bi bi-x-lg me-1"></i>
+					<i class="fas fa-times me-1"></i>
 					Cancelar
 				</button>
 				<button
@@ -140,7 +159,7 @@
 					(click)="onSave()"
 					[disabled]="isSaving || isLoadingAsignacion">
 					<span *ngIf="!isSaving">
-						<i class="bi me-1" [ngClass]="isEditMode ? 'bi-pencil-square' : 'bi-save'"></i>
+						<i class="fas me-1" [ngClass]="isEditMode ? 'fa-edit' : 'fa-save'"></i>
 						{{ isEditMode ? 'Actualizar Asignación' : 'Asignar Usuario' }}
 					</span>
 					<span *ngIf="isSaving">

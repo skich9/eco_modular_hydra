@@ -11,3 +11,34 @@
 .list-group-item:hover {
 	background-color: #f8f9fa;
 }
+
+.dropdown-menu {
+	box-shadow: 0 0.5rem 1rem rgba(0, 0, 0, 0.15);
+	border: 1px solid rgba(0, 0, 0, 0.15);
+	border-radius: 0.375rem;
+	margin-top: 0.25rem;
+}
+
+.dropdown-item {
+	padding: 0.5rem 1rem;
+	cursor: pointer;
+	transition: background-color 0.15s ease-in-out;
+	border: none;
+	text-align: left;
+	width: 100%;
+	background: transparent;
+}
+
+.dropdown-item:hover {
+	background-color: #f8f9fa;
+}
+
+.dropdown-item.active {
+	background-color: #0d6efd;
+	color: #fff;
+}
+
+.dropdown-item strong {
+	display: inline-block;
+	margin-right: 0.5rem;
+}

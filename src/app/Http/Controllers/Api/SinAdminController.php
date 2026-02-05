@@ -347,8 +347,9 @@ class SinAdminController extends Controller
 	{
 		try {
 			$usuarios = DB::table('usuarios')
-				->select('id_usuario', 'nombre', 'ap_materno')
+				->select('id_usuario', 'nombre', 'ap_materno', 'nickname')
 				->where('estado', 1)
+				->orderBy('nickname')
 				->orderBy('nombre')
 				->get();
 

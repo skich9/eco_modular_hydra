@@ -1,4 +1,4 @@
-import { Component, EventEmitter, Output, Input, OnInit, OnChanges, SimpleChanges } from '@angular/core';
+import { Component, EventEmitter, Output, Input, OnInit, OnChanges, SimpleChanges, HostListener } from '@angular/core';
 import { CommonModule } from '@angular/common';
 import { FormsModule, ReactiveFormsModule, FormBuilder, FormGroup, Validators } from '@angular/forms';
 import { PuntoVentaService, Usuario, ApiResponse, AssignUserRequest, AsignacionPuntoVenta, UpdateAsignacionRequest } from '../../../../../services/punto-venta.service';
@@ -26,6 +26,8 @@ export class AddUsersModalComponent implements OnInit, OnChanges {
 	asignacionActual: AsignacionPuntoVenta | null = null;
 	isLoadingAsignacion: boolean = false;
 	private lastPuntoVentaCode: string | number | null = null;
+	showDropdown: boolean = false;
+	selectedUsuario: Usuario | null = null;
 
 	constructor(
 		private fb: FormBuilder,
@@ -42,6 +44,15 @@ export class AddUsersModalComponent implements OnInit, OnChanges {
 	ngOnInit(): void {
 		this.loadUsuarios();
 		this.setupModalListeners();
+	}
+
+	@HostListener('document:click', ['$event'])
+	onDocumentClick(event: MouseEvent): void {
+		const target = event.target as HTMLElement;
+		const clickedInside = target.closest('.position-relative');
+		if (!clickedInside && this.showDropdown) {
+			this.showDropdown = false;
+		}
 	}
 
 	setupModalListeners(): void {
@@ -133,6 +144,9 @@ export class AddUsersModalComponent implements OnInit, OnChanges {
 	}
 
 	getUsuarioNombreCompleto(usuario: Usuario): string {
+		if (usuario.nickname) {
+			return usuario.nickname;
+		}
 		return `${usuario.nombre} ${usuario.ap_materno || ''}`;
 	}
 
@@ -159,10 +173,12 @@ export class AddUsersModalComponent implements OnInit, OnChanges {
 			this.filteredUsuarios = this.usuarios;
 		} else {
 			this.filteredUsuarios = this.usuarios.filter(u =>
+				(u.nickname && u.nickname.toLowerCase().includes(term)) ||
 				u.nombre.toLowerCase().includes(term) ||
 				(u.ap_materno && u.ap_materno.toLowerCase().includes(term))
 			);
 		}
+		this.showDropdown = true;
 	}
 
 	onSave(): void {
@@ -274,6 +290,21 @@ export class AddUsersModalComponent implements OnInit, OnChanges {
 		}
 	}
 
+	selectUsuario(usuario: Usuario): void {
+		this.selectedUsuario = usuario;
+		this.searchTerm = usuario.nickname || usuario.nombre;
+		this.form.patchValue({ id_usuario: usuario.id_usuario });
+		this.showDropdown = false;
+	}
+
+	clearSelection(): void {
+		this.selectedUsuario = null;
+		this.searchTerm = '';
+		this.form.patchValue({ id_usuario: '' });
+		this.filteredUsuarios = this.usuarios;
+		this.showDropdown = false;
+	}
+
 	resetForm(): void {
 		this.form.reset({
 			id_usuario: '',
@@ -286,5 +317,7 @@ export class AddUsersModalComponent implements OnInit, OnChanges {
 		this.filteredUsuarios = this.usuarios;
 		this.isEditMode = false;
 		this.asignacionActual = null;
+		this.selectedUsuario = null;
+		this.showDropdown = false;
 	}
 }

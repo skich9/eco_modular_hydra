@@ -37,6 +37,7 @@ export interface Usuario {
 	id_usuario: number;
 	nombre: string;
 	ap_materno: string;
+	nickname?: string;
 }
 
 export interface AssignUserRequest {
