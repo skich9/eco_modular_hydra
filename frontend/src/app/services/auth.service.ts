@@ -14,6 +14,8 @@ export class AuthService {
 	public currentUser$ = this.currentUserSubject.asObservable();
 	private tokenKey = 'auth_token';
 	private userKey = 'current_user';
+	private expiresAtKey = 'token_expires_at';
+	private expirationCheckInterval: any;
 
 	constructor(private http: HttpClient, @Inject(PLATFORM_ID) private platformId: Object) {
 		// Cargar usuario del localStorage al iniciar
@@ -23,6 +25,8 @@ export class AuthService {
 			const host = typeof window !== 'undefined' && window.location ? (window.location.hostname || 'localhost') : 'localhost';
 			const port = environment.apiPort || '8069';
 			this.apiUrl = `${protocol}//${host}:${port}/api`;
+			// Iniciar verificación periódica de expiración
+			this.startExpirationCheck();
 		} else {
 			this.apiUrl = environment.apiUrl;
 		}
@@ -32,9 +36,14 @@ export class AuthService {
 		if (typeof localStorage !== 'undefined') {
 			const storedUser = localStorage.getItem(this.userKey);
 			const storedToken = localStorage.getItem(this.tokenKey);
-			
+
 			if (storedUser && storedToken) {
-				this.currentUserSubject.next(JSON.parse(storedUser));
+				// Verificar si el token ha expirado
+				if (this.isTokenExpired()) {
+					this.clearSession();
+				} else {
+					this.currentUserSubject.next(JSON.parse(storedUser));
+				}
 			}
 		}
 	}
@@ -42,17 +51,20 @@ export class AuthService {
 	login(credentials: LoginRequest): Observable<AuthResponse> {
 		console.log('Enviando petición de login a:', `${this.apiUrl}/login`);
 		console.log('Credenciales:', credentials);
-		
+
 		return this.http.post<AuthResponse>(`${this.apiUrl}/login`, credentials)
 			.pipe(
 				tap((response: AuthResponse) => {
 					console.log('Respuesta del servidor:', response);
-					
+
 					if (response.success && response.token && response.usuario) {
 						console.log('Login exitoso, guardando datos de sesión');
-						// Guardar token y usuario
+						// Guardar token, expiración y usuario
 						if (typeof localStorage !== 'undefined') {
 							localStorage.setItem(this.tokenKey, response.token);
+							if (response.expires_at) {
+								localStorage.setItem(this.expiresAtKey, response.expires_at);
+							}
 							localStorage.setItem(this.userKey, JSON.stringify(response.usuario));
 						}
 						this.currentUserSubject.next(response.usuario);
@@ -77,8 +89,12 @@ export class AuthService {
 		if (typeof localStorage !== 'undefined') {
 			localStorage.removeItem(this.tokenKey);
 			localStorage.removeItem(this.userKey);
+			localStorage.removeItem(this.expiresAtKey);
 		}
 		this.currentUserSubject.next(null);
+		if (this.expirationCheckInterval) {
+			clearInterval(this.expirationCheckInterval);
+		}
 	}
 
 	getToken(): string | null {
@@ -89,7 +105,16 @@ export class AuthService {
 	}
 
 	isAuthenticated(): boolean {
-		return !!this.getToken();
+		const hasToken = !!this.getToken();
+		if (!hasToken) return false;
+
+		// Verificar si el token ha expirado
+		if (this.isTokenExpired()) {
+			this.clearSession();
+			return false;
+		}
+
+		return true;
 	}
 
 	getCurrentUser(): Usuario | null {
@@ -105,6 +130,32 @@ export class AuthService {
 	hasFunction(functionName: string): boolean {
 		// Implementar cuando tengamos el modelo de funciones
 		return false;
+	}
+
+	private isTokenExpired(): boolean {
+		if (typeof localStorage === 'undefined') return true;
+
+		const expiresAt = localStorage.getItem(this.expiresAtKey);
+		if (!expiresAt) return false; // Si no hay fecha de expiración, asumir que no expira
+
+		const expirationDate = new Date(expiresAt);
+		const now = new Date();
+
+		return now >= expirationDate;
+	}
+
+	private startExpirationCheck(): void {
+		// Verificar cada 30 segundos si el token ha expirado
+		this.expirationCheckInterval = setInterval(() => {
+			if (this.isTokenExpired() && this.getCurrentUser()) {
+				console.log('Token expirado, cerrando sesión automáticamente');
+				this.clearSession();
+				// Redirigir al login si es necesario
+				if (typeof window !== 'undefined') {
+					window.location.href = '/login';
+				}
+			}
+		}, 30000); // 30 segundos
 	}
 
 	// Método para cambiar la contraseña

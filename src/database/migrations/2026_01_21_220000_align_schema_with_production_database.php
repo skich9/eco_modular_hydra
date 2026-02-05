@@ -15,6 +15,15 @@ return new class extends Migration
 	{
 		// 1. MATERIA: Ajustar campos
 		if (Schema::hasTable('materia')) {
+			// Verificar y eliminar FK si existe
+			$foreignKeys = DB::select("SELECT CONSTRAINT_NAME FROM information_schema.TABLE_CONSTRAINTS WHERE TABLE_SCHEMA = DATABASE() AND TABLE_NAME = 'materia' AND CONSTRAINT_TYPE = 'FOREIGN KEY' AND CONSTRAINT_NAME LIKE '%id_parametro_economico%'");
+
+			if (!empty($foreignKeys)) {
+				Schema::table('materia', function (Blueprint $table) use ($foreignKeys) {
+					$table->dropForeign($foreignKeys[0]->CONSTRAINT_NAME);
+				});
+			}
+
 			Schema::table('materia', function (Blueprint $table) {
 				// Renombrar 'estado' a 'activo' si existe
 				if (Schema::hasColumn('materia', 'estado') && !Schema::hasColumn('materia', 'activo')) {
@@ -25,11 +34,6 @@ return new class extends Migration
 				if (Schema::hasColumn('materia', 'descripcion')) {
 					$table->text('descripcion')->nullable()->change();
 				}
-
-				// Eliminar FK a parametros_economicos si existe
-				try {
-					$table->dropForeign(['id_parametro_economico']);
-				} catch (\Throwable $e) {}
 
 				// Eliminar columna id_parametro_economico si existe
 				if (Schema::hasColumn('materia', 'id_parametro_economico')) {

@@ -112,9 +112,13 @@ Route::match(['get','post'], 'sga/eco_hydra/Reincorporacion/estado', function (R
 
 // Rutas de autenticación
 Route::post('/login', [\App\Http\Controllers\Api\AuthController::class, 'login']);
-Route::post('/logout', [\App\Http\Controllers\Api\AuthController::class, 'logout']);
-Route::post('/verify', [\App\Http\Controllers\Api\AuthController::class, 'verify']);
-Route::post('/change-password', [\App\Http\Controllers\Api\AuthController::class, 'changePassword']);
+
+// Rutas protegidas con Sanctum
+Route::middleware('auth:sanctum')->group(function () {
+	Route::post('/logout', [\App\Http\Controllers\Api\AuthController::class, 'logout']);
+	Route::post('/verify', [\App\Http\Controllers\Api\AuthController::class, 'verify']);
+	Route::post('/change-password', [\App\Http\Controllers\Api\AuthController::class, 'changePassword']);
+});
 
 // Ruta de prueba
 Route::get('/test', [\App\Http\Controllers\Api\TestController::class, 'test']);
