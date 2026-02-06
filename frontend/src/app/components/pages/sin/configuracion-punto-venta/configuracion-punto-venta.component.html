@@ -1,0 +1,158 @@
+<div class="container py-3">
+	<!-- Notificaciones animadas -->
+	<div class="position-fixed top-0 end-0 p-3" style="z-index: 9999;">
+		<div class="alert alert-success alert-dismissible fade" [class.show]="showSuccessAlert" role="alert" *ngIf="showSuccessAlert">
+			<i class="fas fa-check-circle me-2"></i>
+			<strong>¡Éxito!</strong> {{ alertMessage }}
+			<button type="button" class="btn-close" (click)="showSuccessAlert = false"></button>
+		</div>
+		<div class="alert alert-danger alert-dismissible fade" [class.show]="showErrorAlert" role="alert" *ngIf="showErrorAlert">
+			<i class="fas fa-exclamation-circle me-2"></i>
+			<strong>¡Error!</strong> {{ alertMessage }}
+			<button type="button" class="btn-close" (click)="showErrorAlert = false"></button>
+		</div>
+	</div>
+
+	<h2 class="mb-3">SIN - Configuracion de Puntos de Venta</h2>
+
+	<div class="d-flex flex-wrap justify-content-between align-items-end mb-3 gap-2">
+		<button type="button" class="btn btn-primary" (click)="addPuntoVenta()">
+			<i class="fas fa-plus me-1"></i>
+			Anadir punto de venta
+		</button>
+
+		<div class="search-wrapper">
+			<label class="form-label mb-1 small">Buscar</label>
+			<input
+				type="text"
+				class="form-control"
+				[(ngModel)]="searchTerm"
+				(ngModelChange)="onSearchChange()"
+				placeholder="Buscar por codigo, nombre o sucursal..."
+			/>
+		</div>
+	</div>
+
+	<div class="table-responsive" style="max-height: 600px; overflow-y: auto;">
+		<table class="table table-sm table-hover align-middle">
+			<thead class="table-light">
+				<tr>
+					<th style="width: 40px;">Codigo</th>
+					<th>Nombre</th>
+					<th>Descripcion</th>
+					<th style="width: 80px;">Sucursal</th>
+					<th style="width: 110px;">CUIS</th>
+					<th style="width: 110px;">Asignado</th>
+					<th style="width: 110px;">Vence en</th>
+					<th style="width: 120px;">Tipo P.V.</th>
+					<th style="width: 80px;">Activo</th>
+					<th style="width: 140px;">Acciones</th>
+				</tr>
+			</thead>
+			<tbody>
+				<tr *ngIf="isLoading">
+					<td colspan="8" class="text-center py-3">
+						<div class="spinner-border spinner-border-sm me-2" role="status">
+							<span class="visually-hidden">Cargando...</span>
+						</div>
+						Cargando puntos de venta...
+					</td>
+				</tr>
+				<tr *ngFor="let pv of paginatedPuntosVenta">
+					<td><code>{{ pv.codigo_punto_venta }}</code></td>
+					<td>{{ pv.nombre }}</td>
+					<td>{{ pv.descripcion || '—' }}</td>
+					<td>{{ pv.sucursal ?? '0' }}</td>
+					<td><small>{{ pv.codigo_cuis_genera || '—' }}</small></td>
+					<td>
+						<span *ngIf="getUsuarioAsignadoVigente(pv)" class="badge bg-info">
+							{{ getUsuarioAsignadoVigente(pv) }}
+						</span>
+						<span *ngIf="!getUsuarioAsignadoVigente(pv)" class="text-muted">—</span>
+					</td>
+					<td>
+						<small *ngIf="getFechaVencimientoVigente(pv)">{{ getFechaVencimientoVigente(pv) | date:'dd/MM/yyyy HH:mm' }}</small>
+						<span *ngIf="!getFechaVencimientoVigente(pv)" class="text-muted">—</span>
+					</td>
+					<td>{{ getTipoNombre(pv.tipo) }}</td>
+					<td>
+						<span class="badge" [ngClass]="pv.activo ? 'bg-success' : 'bg-secondary'">
+							{{ pv.activo ? 'Si' : 'No' }}
+						</span>
+					</td>
+					<td>
+						<button
+							type="button"
+							class="btn btn-sm btn-outline-primary me-1"
+							(click)="openAddUsersModal(pv)"
+							[attr.title]="getUsuarioAsignadoVigente(pv) ? 'Editar asignación de usuario' : 'Asignar usuario al punto de venta'">
+							<i class="fas" [ngClass]="getUsuarioAsignadoVigente(pv) ? 'fa-user-edit' : 'fa-user-plus'"></i>
+						</button>
+						<button
+							type="button"
+							class="btn btn-sm btn-outline-danger"
+							(click)="openDeleteModal(pv)"
+							title="Eliminar">
+							<i class="fas fa-trash"></i>
+						</button>
+					</td>
+				</tr>
+				<tr *ngIf="!isLoading && paginatedPuntosVenta.length === 0">
+					<td colspan="8" class="text-center text-muted py-3">
+						No hay puntos de venta para mostrar.
+					</td>
+				</tr>
+			</tbody>
+		</table>
+	</div>
+
+	<!-- Paginación -->
+	<div class="d-flex justify-content-between align-items-center mt-3" *ngIf="!isLoading && filteredPuntosVenta.length > 0">
+		<div class="text-muted small">
+			Mostrando {{ (currentPage - 1) * itemsPerPage + 1 }} - {{ Math.min(currentPage * itemsPerPage, filteredPuntosVenta.length) }} de {{ filteredPuntosVenta.length }} registros
+		</div>
+		<nav aria-label="Paginación">
+			<ul class="pagination pagination-sm mb-0">
+				<li class="page-item" [class.disabled]="currentPage === 1">
+					<a class="page-link" (click)="goToPage(1)" style="cursor: pointer;">
+						<i class="fas fa-angle-double-left"></i>
+					</a>
+				</li>
+				<li class="page-item" [class.disabled]="currentPage === 1">
+					<a class="page-link" (click)="goToPage(currentPage - 1)" style="cursor: pointer;">
+						<i class="fas fa-angle-left"></i>
+					</a>
+				</li>
+				<li class="page-item" *ngFor="let page of pageNumbers" [class.active]="page === currentPage">
+					<a class="page-link" (click)="goToPage(page)" style="cursor: pointer;">{{ page }}</a>
+				</li>
+				<li class="page-item" [class.disabled]="currentPage === totalPages">
+					<a class="page-link" (click)="goToPage(currentPage + 1)" style="cursor: pointer;">
+						<i class="fas fa-angle-right"></i>
+					</a>
+				</li>
+				<li class="page-item" [class.disabled]="currentPage === totalPages">
+					<a class="page-link" (click)="goToPage(totalPages)" style="cursor: pointer;">
+						<i class="fas fa-angle-double-right"></i>
+					</a>
+				</li>
+			</ul>
+		</nav>
+	</div>
+</div>
+
+<app-add-punto-venta-modal
+	(puntoVentaCreated)="onPuntoVentaCreated($event)"
+	(puntoVentaError)="onPuntoVentaError($event)">
+</app-add-punto-venta-modal>
+
+<app-delete-punto-venta-modal
+	[puntoVenta]="puntoVentaToDelete"
+	(confirmDelete)="onConfirmDelete($event)"
+	(cancelDelete)="onCancelDelete()">
+</app-delete-punto-venta-modal>
+
+<app-add-users-modal
+	[puntoVenta]="puntoVentaForUsers"
+	(usersAdded)="onUsersAdded($event)">
+</app-add-users-modal>

@@ -5,9 +5,14 @@ use Illuminate\Database\Schema\Blueprint;
 use Illuminate\Support\Facades\Schema;
 use Illuminate\Support\Facades\DB;
 
-return new class extends Migration {
+return new class extends Migration
+{
 	public function up(): void
 	{
+		// Actualizar valores NULL a 0 antes de cambiar la estructura
+		DB::statement('UPDATE qr_conceptos_detalle SET descuento = 0 WHERE descuento IS NULL');
+		DB::statement('UPDATE qr_conceptos_detalle SET multa = 0 WHERE multa IS NULL');
+
 		Schema::table('qr_conceptos_detalle', function (Blueprint $table) {
 			$table->decimal('descuento', 10, 2)->default(0)->change();
 			$table->decimal('multa', 10, 2)->default(0)->change();

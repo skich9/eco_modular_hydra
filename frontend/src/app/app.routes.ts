@@ -12,13 +12,13 @@ import { authGuard, publicOnlyGuard } from './guards/auth.guard';
 
 export const routes: Routes = [
 	// Rutas públicas
-	{ 
-		path: 'login', 
+	{
+		path: 'login',
 		component: LoginComponent,
 		canActivate: [publicOnlyGuard]
 	},
 	{ path: 'api-test', component: ApiTestComponent },
-	
+
 	// Rutas protegidas (requieren autenticación)
 	{
 		path: '',
@@ -29,22 +29,22 @@ export const routes: Routes = [
 				path: 'dashboard',
 				loadComponent: () => import('./components/pages/dashboard/dashboard.component').then(m => m.DashboardComponent)
 			},
-			
+
 			// Rutas para usuarios
 			{ path: 'usuarios', component: UsuariosListComponent },
 			{ path: 'usuarios/nuevo', component: UsuarioFormComponent },
 			{ path: 'usuarios/editar/:id', component: UsuarioFormComponent },
-			
+
 			// Rutas para materias
 			{ path: 'materias', component: MateriasListComponent },
 			{ path: 'materias/nuevo', component: MateriaFormComponent },
 			{ path: 'materias/editar/:sigla/:pensum', component: MateriaFormComponent },
-			
+
 			// Rutas para roles
 			{ path: 'roles', component: RolesListComponent },
 			{ path: 'roles/nuevo', component: RolFormComponent },
 			{ path: 'roles/editar/:id', component: RolFormComponent },
-            
+
             // Ruta para Académico: página específica (debe ir antes de la parametrizada)
             {
                 path: 'academico/asignacion-becas-descuentos',
@@ -56,13 +56,13 @@ export const routes: Routes = [
                 path: 'academico/:codigo',
                 loadComponent: () => import('./components/pages/academico/academico.component').then(m => m.AcademicoComponent)
             },
-            
+
 			// Ruta para descuentos
 			{
 				path: 'descuentos',
 				loadComponent: () => import('./components/pages/descuentos-config/descuentos-config.component').then(m => m.DescuentosConfigComponent)
 			},
-			
+
 			// Rutas para parámetros del sistema
 			{
 				path: 'parametros',
@@ -104,18 +104,23 @@ export const routes: Routes = [
                 path: 'sin/contingencias',
                 loadComponent: () => import('./components/pages/sin/contingencias/contingencias.component').then(m => m.ContingenciasComponent)
             },
-            
+            // SIN: Configuración Punto de Venta
+            {
+                path: 'sin/configuracion-punto-venta',
+                loadComponent: () => import('./components/pages/sin/configuracion-punto-venta/configuracion-punto-venta.component').then(m => m.ConfiguracionPuntoVentaComponent)
+            },
+
             // Reportes
             {
                 path: 'reportes/libro-diario',
                 loadComponent: () => import('./components/pages/reportes/libro-diario/libro-diario.component').then(m => m.LibroDiarioComponent)
             },
-			
+
 			// Ruta por defecto
 			{ path: '', redirectTo: 'dashboard', pathMatch: 'full' }
 		]
 	},
-	
+
 	// Redirección por defecto
 	{ path: '', redirectTo: '/login', pathMatch: 'full' },
 	{ path: '**', redirectTo: '/login' }

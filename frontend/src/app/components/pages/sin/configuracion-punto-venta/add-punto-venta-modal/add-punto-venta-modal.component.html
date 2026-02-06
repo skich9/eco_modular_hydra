@@ -1,0 +1,67 @@
+<div class="modal fade" id="addPuntoVentaModal" tabindex="-1" aria-labelledby="addPuntoVentaModalLabel" aria-hidden="true">
+	<div class="modal-dialog modal-lg">
+		<div class="modal-content">
+			<div class="modal-header">
+				<h5 class="modal-title" id="addPuntoVentaModalLabel">Anadir Punto de Venta</h5>
+				<button type="button" class="btn-close" data-bs-dismiss="modal" aria-label="Close" (click)="closeModal()"></button>
+			</div>
+			<div class="modal-body">
+				<form [formGroup]="form" (ngSubmit)="onSubmit()">
+					<div class="row g-3">
+						<!-- Sucursal -->
+						<div class="col-md-6">
+							<label class="form-label">Sucursal <span class="text-danger">*</span></label>
+							<select class="form-select" formControlName="sucursal" (change)="onSucursalChange()" [class.is-invalid]="form.get('sucursal')?.invalid && form.get('sucursal')?.touched">
+								<option *ngFor="let s of sucursales" [value]="s.codigo">{{ s.codigo }} - {{ s.nombre }}</option>
+							</select>
+							<div class="invalid-feedback">Seleccione una sucursal</div>
+						</div>
+
+						<!-- Tipo Punto de Venta -->
+						<div class="col-md-6">
+							<label class="form-label">Tipo Punto de Venta <span class="text-danger">*</span></label>
+							<select class="form-select" formControlName="tipo_punto_venta" [class.is-invalid]="form.get('tipo_punto_venta')?.invalid && form.get('tipo_punto_venta')?.touched">
+								<option value="">-- Seleccione --</option>
+								<option *ngFor="let t of tiposPuntoVenta" [value]="t.codigo_clasificador">{{ t.descripcion }}</option>
+							</select>
+							<div class="invalid-feedback">Seleccione un tipo de punto de venta</div>
+						</div>
+
+						<!-- CUIS Creacion (bloqueado) -->
+						<div class="col-md-6">
+							<label class="form-label">CUIS Creacion</label>
+							<input type="text" class="form-control bg-light" formControlName="cuis_creacion" readonly style="background-color: #e9ecef; cursor: not-allowed;" />
+							<small class="text-muted" *ngIf="loadingCuis">Cargando CUIS...</small>
+						</div>
+
+						<!-- Nombre Punto de Venta -->
+						<div class="col-md-6">
+							<label class="form-label">Nombre Punto de Venta <span class="text-danger">*</span></label>
+							<input type="text" class="form-control" formControlName="nombre_punto_venta" placeholder="Ingrese nombre" maxlength="100" [class.is-invalid]="form.get('nombre_punto_venta')?.invalid && form.get('nombre_punto_venta')?.touched" />
+							<div class="invalid-feedback">Ingrese el nombre del punto de venta</div>
+						</div>
+
+						<!-- Descripcion (obligatoria) -->
+						<div class="col-12">
+							<label class="form-label">Descripcion <span class="text-danger">*</span></label>
+							<textarea class="form-control" formControlName="descripcion" rows="2" placeholder="Ingrese una descripcion" maxlength="255" [class.is-invalid]="form.get('descripcion')?.invalid && form.get('descripcion')?.touched"></textarea>
+							<div class="invalid-feedback">Ingrese una descripcion</div>
+						</div>
+					</div>
+
+					<!-- Error message -->
+					<div *ngIf="submitError" class="alert alert-danger mt-3 mb-0">
+						{{ submitError }}
+					</div>
+				</form>
+			</div>
+			<div class="modal-footer">
+				<button type="button" class="btn btn-primary" (click)="onSubmit()">
+					<i class="fas fa-save me-1"></i>
+					Guardar
+				</button>
+        <button type="button" class="btn btn-secondary" data-bs-dismiss="modal" (click)="closeModal()">Cancelar</button>
+			</div>
+		</div>
+	</div>
+</div>

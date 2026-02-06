@@ -1,0 +1,44 @@
+<div class="modal fade" id="deletePuntoVentaModal" tabindex="-1" aria-labelledby="deletePuntoVentaModalLabel" aria-hidden="true">
+	<div class="modal-dialog modal-dialog-centered">
+		<div class="modal-content">
+			<div class="modal-header bg-danger text-white">
+				<h5 class="modal-title" id="deletePuntoVentaModalLabel">
+					<i class="fas fa-exclamation-triangle me-2"></i>
+					Confirmar Eliminacion
+				</h5>
+				<button type="button" class="btn-close btn-close-white" data-bs-dismiss="modal" aria-label="Close"></button>
+			</div>
+			<div class="modal-body">
+				<div class="text-center py-3" *ngIf="puntoVenta">
+					<i class="fas fa-trash-alt text-danger" style="font-size: 3rem;"></i>
+					<h5 class="mt-3">¿Esta seguro de eliminar este punto de venta?</h5>
+					<div class="alert alert-warning mt-3 text-start">
+						<strong>Punto de Venta:</strong><br>
+						<code class="text-dark">{{ puntoVenta.codigo_punto_venta }}</code> - {{ puntoVenta.nombre }}<br>
+						<small class="text-muted">{{ puntoVenta.descripcion || 'Sin descripcion' }}</small>
+					</div>
+					<p class="text-muted">
+						<i class="fas fa-info-circle me-1"></i>
+						Esta accion no se puede deshacer.
+					</p>
+				</div>
+			</div>
+			<div class="modal-footer">
+				<button type="button" class="btn btn-secondary" (click)="onCancel()" [disabled]="isDeleting">
+					<i class="fas fa-times me-1"></i>
+					Cancelar
+				</button>
+				<button type="button" class="btn btn-danger" (click)="onConfirm()" [disabled]="isDeleting">
+					<span *ngIf="!isDeleting">
+						<i class="fas fa-trash me-1"></i>
+						Si, eliminar
+					</span>
+					<span *ngIf="isDeleting">
+						<span class="spinner-border spinner-border-sm me-2" role="status" aria-hidden="true"></span>
+						Eliminando...
+					</span>
+				</button>
+			</div>
+		</div>
+	</div>
+</div>

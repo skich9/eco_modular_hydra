@@ -112,9 +112,13 @@ Route::match(['get','post'], 'sga/eco_hydra/Reincorporacion/estado', function (R
 
 // Rutas de autenticación
 Route::post('/login', [\App\Http\Controllers\Api\AuthController::class, 'login']);
-Route::post('/logout', [\App\Http\Controllers\Api\AuthController::class, 'logout']);
-Route::post('/verify', [\App\Http\Controllers\Api\AuthController::class, 'verify']);
-Route::post('/change-password', [\App\Http\Controllers\Api\AuthController::class, 'changePassword']);
+
+// Rutas protegidas con Sanctum
+Route::middleware('auth:sanctum')->group(function () {
+	Route::post('/logout', [\App\Http\Controllers\Api\AuthController::class, 'logout']);
+	Route::post('/verify', [\App\Http\Controllers\Api\AuthController::class, 'verify']);
+	Route::post('/change-password', [\App\Http\Controllers\Api\AuthController::class, 'changePassword']);
+});
 
 // Ruta de prueba
 Route::get('/test', [\App\Http\Controllers\Api\TestController::class, 'test']);
@@ -149,6 +153,15 @@ Route::get('sin/documentos-identidad', [SinCatalogoController::class, 'documento
 Route::post('sin/sync/all', [\App\Http\Controllers\Api\SinAdminController::class, 'syncAll']);
 Route::post('sin/sync/leyendas', [\App\Http\Controllers\Api\SinAdminController::class, 'syncLeyendas']);
 Route::post('sin/sync/metodo-pago', [\App\Http\Controllers\Api\SinAdminController::class, 'syncMetodoPago']);
+Route::post('sin/sync/puntos-venta', [\App\Http\Controllers\Api\SinAdminController::class, 'syncPuntosVenta']);
+Route::get('sin/puntos-venta', [\App\Http\Controllers\Api\SinAdminController::class, 'listPuntosVenta']);
+Route::post('sin/puntos-venta', [\App\Http\Controllers\Api\SinAdminController::class, 'createPuntoVenta']);
+Route::delete('sin/puntos-venta/{id}', [\App\Http\Controllers\Api\SinAdminController::class, 'deletePuntoVenta']);
+Route::get('sin/puntos-venta/{codigoPuntoVenta}/asignacion', [\App\Http\Controllers\Api\SinAdminController::class, 'getAsignacionPuntoVenta']);
+Route::post('sin/puntos-venta/assign-user', [\App\Http\Controllers\Api\SinAdminController::class, 'assignUserToPuntoVenta']);
+Route::put('sin/puntos-venta/asignacion/{id}', [\App\Http\Controllers\Api\SinAdminController::class, 'updateAsignacionPuntoVenta']);
+Route::get('sin/usuarios', [\App\Http\Controllers\Api\SinAdminController::class, 'listUsuarios']);
+Route::get('sin/tipos-punto-venta', [\App\Http\Controllers\Api\SinAdminController::class, 'getTiposPuntoVenta']);
 Route::get('sin/status', [\App\Http\Controllers\Api\SinAdminController::class, 'status']);
 
 // Cobros (clave compuesta)
@@ -201,6 +214,9 @@ Route::get('facturas/{anio}/{nro}/pdf-anulado', [FacturaPdfController::class, 'p
 // Facturas: PDF (si está ANULADA, se devuelve con marca de agua) - DEPRECATED: usar /datos y generar en frontend
 Route::get('facturas/{anio}/{nro}/pdf', [FacturaPdfController::class, 'pdf'])
     ->where(['anio' => '\\d{4}', 'nro' => '\\d+']);
+
+// Facturas: PDF por CUF (identificador fiscal único) - endpoint robusto recomendado
+Route::get('facturas/cuf/{cuf}/pdf', [FacturaPdfController::class, 'pdfByCuf']);
 
 // SIN: motivos de anulacion
 Route::get('sin/motivos-anulacion', [SinCatalogoController::class, 'motivosAnulacion']);

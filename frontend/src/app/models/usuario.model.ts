@@ -24,6 +24,7 @@ export interface AuthResponse {
 	success: boolean;
 	message?: string;
 	token?: string;
+	expires_at?: string;
 	usuario?: Usuario;
 }
 

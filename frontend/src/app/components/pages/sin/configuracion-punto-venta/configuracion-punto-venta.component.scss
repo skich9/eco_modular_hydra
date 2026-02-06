@@ -1,0 +1,9 @@
+.search-wrapper {
+	min-width: 260px;
+}
+
+@media (max-width: 576px) {
+	.search-wrapper {
+		width: 100%;
+	}
+}

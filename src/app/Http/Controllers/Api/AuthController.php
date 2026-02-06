@@ -64,13 +64,19 @@ class AuthController extends Controller
 				], 403);
 			}
 
-			// Generar token simple (en producción usar Laravel Sanctum)
-			$token = base64_encode($usuario->id_usuario . '|' . time() . '|' . hash('sha256', $usuario->nickname));
+			// Generar token Sanctum con expiración de 8 horas
+			$expiresAt = now()->addHours(8);
+			$token = $usuario->createToken(
+				'auth_token',
+				['*'],
+				$expiresAt
+			)->plainTextToken;
 
 			return response()->json([
 				'success' => true,
 				'message' => 'Login exitoso',
 				'token' => $token,
+				'expires_at' => $expiresAt->toIso8601String(),
 				'usuario' => [
 					'id_usuario' => $usuario->id_usuario,
 					'nickname' => $usuario->nickname,
@@ -103,6 +109,8 @@ class AuthController extends Controller
 	 */
 	public function logout(Request $request)
 	{
+		$request->user()->currentAccessToken()->delete();
+
 		return response()->json([
 			'success' => true,
 			'message' => 'Sesión cerrada correctamente'
@@ -114,58 +122,37 @@ class AuthController extends Controller
 	 */
 	public function verify(Request $request)
 	{
-		$token = $request->bearerToken();
-		
-		if (!$token) {
+		$usuario = $request->user();
+
+		if (!$usuario || !$usuario->estado) {
 			return response()->json([
 				'success' => false,
-				'message' => 'Token no proporcionado'
+				'message' => 'Token inválido o usuario inactivo'
 			], 401);
 		}
 
-		// Validación básica del token
-		try {
-			$decoded = base64_decode($token);
-			$parts = explode('|', $decoded);
-			
-			if (count($parts) !== 3) {
-				throw new \Exception('Token inválido');
-			}
+		$usuario->load('rol');
 
-			$userId = $parts[0];
-			$usuario = Usuario::with('rol')->find($userId);
-
-			if (!$usuario || !$usuario->estado) {
-				throw new \Exception('Usuario no válido');
-			}
-
-			return response()->json([
-				'success' => true,
-				'usuario' => [
-					'id_usuario' => $usuario->id_usuario,
-					'nickname' => $usuario->nickname,
-					'nombre' => $usuario->nombre,
-					'ap_paterno' => $usuario->ap_paterno,
-					'ap_materno' => $usuario->ap_materno,
-					'ci' => $usuario->ci,
-					'estado' => $usuario->estado,
-					'id_rol' => $usuario->id_rol,
-					'nombre_completo' => $usuario->nombre . ' ' . $usuario->ap_paterno . ' ' . $usuario->ap_materno,
-					'rol' => [
-						'id_rol' => $usuario->rol->id_rol,
-						'nombre' => $usuario->rol->nombre,
-						'descripcion' => $usuario->rol->descripcion,
-						'estado' => $usuario->rol->estado
-					]
+		return response()->json([
+			'success' => true,
+			'usuario' => [
+				'id_usuario' => $usuario->id_usuario,
+				'nickname' => $usuario->nickname,
+				'nombre' => $usuario->nombre,
+				'ap_paterno' => $usuario->ap_paterno,
+				'ap_materno' => $usuario->ap_materno,
+				'ci' => $usuario->ci,
+				'estado' => $usuario->estado,
+				'id_rol' => $usuario->id_rol,
+				'nombre_completo' => $usuario->nombre . ' ' . $usuario->ap_paterno . ' ' . $usuario->ap_materno,
+				'rol' => [
+					'id_rol' => $usuario->rol->id_rol,
+					'nombre' => $usuario->rol->nombre,
+					'descripcion' => $usuario->rol->descripcion,
+					'estado' => $usuario->rol->estado
 				]
-			]);
-
-		} catch (\Exception $e) {
-			return response()->json([
-				'success' => false,
-				'message' => 'Token inválido'
-			], 401);
-		}
+			]
+		]);
 	}
 
     /**
@@ -173,75 +160,51 @@ class AuthController extends Controller
      */
     public function changePassword(Request $request)
     {
-        $token = $request->bearerToken();
-        if (!$token) {
+        $usuario = $request->user();
+
+        if (!$usuario || !$usuario->estado) {
             return response()->json([
                 'success' => false,
-                'message' => 'Token no proporcionado'
+                'message' => 'Usuario no autorizado'
             ], 401);
         }
 
-        try {
-            $decoded = base64_decode($token);
-            $parts = explode('|', $decoded);
+        // Validación de campos
+        $validator = Validator::make($request->all(), [
+            'contrasenia_actual' => 'required|string',
+            'contrasenia_nueva' => 'required|string|min:6|confirmed',
+        ], [
+            'contrasenia_actual.required' => 'La contraseña actual es obligatoria',
+            'contrasenia_nueva.required' => 'La nueva contraseña es obligatoria',
+            'contrasenia_nueva.min' => 'La nueva contraseña debe tener al menos 6 caracteres',
+            'contrasenia_nueva.confirmed' => 'La confirmación de contraseña no coincide',
+        ]);
 
-            if (count($parts) !== 3) {
-                throw new \Exception('Token inválido');
-            }
-
-            $userId = $parts[0];
-            $usuario = Usuario::find($userId);
-
-            if (!$usuario || !$usuario->estado) {
-                return response()->json([
-                    'success' => false,
-                    'message' => 'Usuario no autorizado'
-                ], 401);
-            }
-
-            // Validación de campos
-            $validator = Validator::make($request->all(), [
-                'contrasenia_actual' => 'required|string',
-                'contrasenia_nueva' => 'required|string|min:6|confirmed',
-            ], [
-                'contrasenia_actual.required' => 'La contraseña actual es obligatoria',
-                'contrasenia_nueva.required' => 'La nueva contraseña es obligatoria',
-                'contrasenia_nueva.min' => 'La nueva contraseña debe tener al menos 6 caracteres',
-                'contrasenia_nueva.confirmed' => 'La confirmación de contraseña no coincide',
-            ]);
-
-            if ($validator->fails()) {
-                return response()->json([
-                    'success' => false,
-                    'message' => 'Datos de entrada inválidos',
-                    'errors' => $validator->errors()
-                ], 422);
-            }
-
-            // Verificar contraseña actual
-            if (!Hash::check($request->contrasenia_actual, $usuario->contrasenia)) {
-                return response()->json([
-                    'success' => false,
-                    'message' => 'La contraseña actual no es correcta',
-                    'errors' => [ 'contrasenia_actual' => ['La contraseña actual no es correcta'] ]
-                ], 422);
-            }
-
-            // Actualizar contraseña (mutator aplica hash)
-            $usuario->update([
-                'contrasenia' => $request->contrasenia_nueva
-            ]);
-
-            return response()->json([
-                'success' => true,
-                'message' => 'Contraseña actualizada correctamente'
-            ]);
-
-        } catch (\Exception $e) {
+        if ($validator->fails()) {
             return response()->json([
                 'success' => false,
-                'message' => 'Error al actualizar la contraseña'
-            ], 500);
+                'message' => 'Datos de entrada inválidos',
+                'errors' => $validator->errors()
+            ], 422);
         }
+
+        // Verificar contraseña actual
+        if (!Hash::check($request->contrasenia_actual, $usuario->contrasenia)) {
+            return response()->json([
+                'success' => false,
+                'message' => 'La contraseña actual no es correcta',
+                'errors' => [ 'contrasenia_actual' => ['La contraseña actual no es correcta'] ]
+            ], 422);
+        }
+
+        // Actualizar contraseña (mutator aplica hash)
+        $usuario->update([
+            'contrasenia' => $request->contrasenia_nueva
+        ]);
+
+        return response()->json([
+            'success' => true,
+            'message' => 'Contraseña actualizada correctamente'
+        ]);
     }
 }

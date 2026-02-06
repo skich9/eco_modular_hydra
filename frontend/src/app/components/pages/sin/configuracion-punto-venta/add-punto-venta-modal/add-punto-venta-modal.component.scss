@@ -1,0 +1,26 @@
+.modal-header {
+	background-color: #f8f9fa;
+	border-bottom: 2px solid #dee2e6;
+}
+
+.modal-title {
+	font-weight: 600;
+	color: #212529;
+}
+
+.form-label {
+	font-weight: 500;
+	margin-bottom: 0.25rem;
+}
+
+.text-danger {
+	color: #dc3545;
+}
+
+textarea.form-control {
+	resize: vertical;
+}
+
+.invalid-feedback {
+	display: block;
+}

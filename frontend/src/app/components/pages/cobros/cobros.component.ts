@@ -124,6 +124,7 @@ export class CobrosComponent implements OnInit {
   private startCuotaOverrideValue: number | null = null;
   metodoPagoLocked: boolean = false;
   descuentoInstitucionalFechaLimite: string | null = null;
+  private alertTimeoutHandle: any = null;
 
   constructor(
     private fb: FormBuilder,
@@ -1517,13 +1518,42 @@ export class CobrosComponent implements OnInit {
             if (!seen.has(key)) { docs.push({ tipo: 'R', anio, nro_recibo: it?.nro_recibo }); seen.add(key); }
           } else if ((it?.tipo_documento === 'F') && (it?.medio_doc === 'C') && it?.nro_factura) {
             const key = `F:${anio}:${it?.nro_factura}`;
-            if (!seen.has(key)) { docs.push({ tipo: 'F', anio, nro_factura: it?.nro_factura, codigo_recepcion: it?.codigo_recepcion }); seen.add(key); }
+            if (!seen.has(key)) { docs.push({ tipo: 'F', anio, nro_factura: it?.nro_factura, codigo_recepcion: it?.codigo_recepcion, cuf: it?.cuf }); seen.add(key); }
           }
         } catch {}
       }
       return { cod_ceta, estudiante: nombre, carrera, pensum, gestion, rows, total, docs };
     } catch {
       return { rows: [] };
+    }
+  }
+
+  private onSuccessPrint(): void {
+    try {
+      const docs: any[] = (this.successSummary?.docs || []) as any[];
+      if (!docs.length) {
+        try { window.print(); } catch {}
+        return;
+      }
+      const firstFactura = docs.find((x: any) => x && x.nro_factura && x.anio);
+      const firstRecibo = docs.find((x: any) => x && x.nro_recibo && x.anio);
+      const d: any = firstFactura || firstRecibo || null;
+      if (!d) {
+        try { window.print(); } catch {}
+        return;
+      }
+      const base = this.apiBase();
+      const url = firstFactura
+        ? (d.cuf ? `${base}/facturas/cuf/${encodeURIComponent(d.cuf)}/pdf` : `${base}/facturas/${d.anio}/${d.nro_factura}/pdf`)
+        : `${base}/recibos/${d.anio}/${d.nro_recibo}/pdf`;
+      const a = document.createElement('a');
+      a.href = url;
+      a.target = '_blank';
+      document.body.appendChild(a);
+      try { a.click(); } catch {}
+      try { a.remove(); } catch {}
+    } catch {
+      try { window.print(); } catch {}
     }
   }
 
@@ -1563,37 +1593,11 @@ export class CobrosComponent implements OnInit {
     }
     const bs = (window as any).bootstrap;
     if (modalEl && bs?.Modal) {
-      const modal = new bs.Modal(modalEl, { backdrop: 'static', keyboard: false });
-      modal.show();
+      const instance = bs.Modal.getInstance(modalEl) || new bs.Modal(modalEl);
+      instance.show();
     }
   }
 
-  onSuccessPrint(): void {
-    try {
-      const docs: any[] = (this.successSummary?.docs || []) as any[];
-      if (docs.length) {
-        const firstFactura = docs.find((x: any) => x?.nro_factura && x?.anio);
-        const firstRecibo = docs.find((x: any) => x?.nro_recibo && x?.anio);
-        const d: any = firstFactura || firstRecibo || null;
-        if (d) {
-          try {
-            const base = this.apiBase();
-            const url = firstFactura
-              ? `${base}/facturas/${d.anio}/${d.nro_factura}/pdf`
-              : `${base}/recibos/${d.anio}/${d.nro_recibo}/pdf`;
-            const a = document.createElement('a');
-            a.href = url;
-            a.target = '_blank';
-            document.body.appendChild(a);
-            a.click();
-            a.remove();
-            return;
-          } catch {}
-        }
-      }
-    } catch {}
-    try { window.print(); } catch {}
-  }
 
   private apiBase(): string {
     try {
@@ -3430,7 +3434,8 @@ export class CobrosComponent implements OnInit {
           }
           if (parts.length) msg += ` | Detalles: ${parts.join(' | ')}`;
         }
-        this.showAlert(msg, 'error');
+        // Errores de backend (incluidos los de asignación de punto de venta) deben ser muy visibles
+        this.showAlert(msg, 'error', 8000);
         this.loading = false;
       }
     });
@@ -3900,10 +3905,22 @@ export class CobrosComponent implements OnInit {
   }
 
   private showAlert(message: string, type: 'success' | 'error' | 'warning', durationMs: number = 4000): void {
+    // Limpiar timeout previo para que alertas nuevas no se oculten por timeouts antiguos
+    if (this.alertTimeoutHandle) {
+      clearTimeout(this.alertTimeoutHandle);
+      this.alertTimeoutHandle = null;
+    }
     this.alertMessage = message;
     this.alertType = type;
+    // Asegurar que el usuario vea la alerta (especialmente para errores de backend)
+    try {
+      window.scrollTo({ top: 0, behavior: 'smooth' });
+    } catch {}
     if (durationMs > 0) {
-      setTimeout(() => (this.alertMessage = ''), durationMs);
+      this.alertTimeoutHandle = setTimeout(() => {
+        this.alertMessage = '';
+        this.alertTimeoutHandle = null;
+      }, durationMs);
     }
   }
 }
