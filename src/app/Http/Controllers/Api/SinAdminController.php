@@ -85,23 +85,14 @@ class SinAdminController extends Controller
 		try {
 			$pv = (int) $request->query('codigo_punto_venta', 0);
 			$sucursal = (int) $request->query('codigo_sucursal', (int) config('sin.sucursal'));
-<<<<<<< HEAD
             $codigoAmbiente = (int) config('sin.ambiente');
 			Log::info('SIN status: start', [ 'pv' => $pv, 'sucursal' => $sucursal ]);
-=======
-			$ambiente = (int) config('sin.ambiente');
-			Log::info('SIN status: start', [ 'pv' => $pv, 'sucursal' => $sucursal, 'ambiente' => $ambiente ]);
->>>>>>> integracionesH
 
 			$cuis = $cuisRepo->getVigenteOrCreate2($codigoAmbiente, $sucursal, $pv);
 
 			$cufd = null;
 			try {
-<<<<<<< HEAD
 				$cufd = $cufdRepo->getVigenteOrCreate2($codigoAmbiente, $sucursal, $pv);
-=======
-				$cufd = $cufdRepo->getVigenteOrCreate2($ambiente, $sucursal, $pv);
->>>>>>> integracionesH
 			} catch (\Throwable $e) {
 				Log::warning('SIN status: CUFD lookup failed', [ 'pv' => $pv, 'error' => $e->getMessage() ]);
 			}
