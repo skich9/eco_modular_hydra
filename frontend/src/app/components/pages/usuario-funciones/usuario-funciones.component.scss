@@ -1,0 +1,156 @@
+.container-fluid {
+	max-width: 1400px;
+}
+
+.table {
+	background-color: white;
+	border-radius: 8px;
+	overflow: hidden;
+	box-shadow: 0 2px 4px rgba(0, 0, 0, 0.1);
+
+	thead {
+		background-color: #f8f9fa;
+		
+		th {
+			font-weight: 600;
+			text-transform: uppercase;
+			font-size: 0.85rem;
+			color: #495057;
+			border-bottom: 2px solid #dee2e6;
+		}
+	}
+
+	tbody {
+		tr {
+			transition: background-color 0.2s;
+
+			&:hover {
+				background-color: #f8f9fa;
+			}
+		}
+
+		td {
+			vertical-align: middle;
+		}
+	}
+}
+
+code {
+	background-color: #f8f9fa;
+	padding: 2px 6px;
+	border-radius: 4px;
+	font-size: 0.9em;
+	color: #e83e8c;
+}
+
+.badge {
+	padding: 0.4em 0.8em;
+	font-weight: 500;
+}
+
+.modal {
+	&.show {
+		display: block !important;
+	}
+
+	.modal-dialog {
+		margin-top: 5vh;
+	}
+
+	.modal-content {
+		border-radius: 8px;
+		border: none;
+		box-shadow: 0 10px 40px rgba(0, 0, 0, 0.2);
+	}
+
+	.modal-header {
+		border-bottom: 2px solid #dee2e6;
+		padding: 1.25rem 1.5rem;
+
+		.modal-title {
+			font-weight: 600;
+			font-size: 1.25rem;
+		}
+	}
+
+	.modal-body {
+		padding: 1.5rem;
+	}
+
+	.modal-footer {
+		border-top: 1px solid #dee2e6;
+		padding: 1rem 1.5rem;
+	}
+}
+
+.modal-backdrop {
+	&.show {
+		opacity: 0.5;
+	}
+}
+
+.alert {
+	border-radius: 8px;
+	border: none;
+	box-shadow: 0 2px 4px rgba(0, 0, 0, 0.1);
+	
+	&.alert-success {
+		background-color: #d4edda;
+		color: #155724;
+	}
+
+	&.alert-danger {
+		background-color: #f8d7da;
+		color: #721c24;
+	}
+
+	&.alert-warning {
+		background-color: #fff3cd;
+		color: #856404;
+	}
+}
+
+.btn {
+	border-radius: 6px;
+	font-weight: 500;
+	transition: all 0.2s;
+
+	&:hover {
+		transform: translateY(-1px);
+		box-shadow: 0 4px 8px rgba(0, 0, 0, 0.15);
+	}
+
+	&.btn-sm {
+		padding: 0.25rem 0.5rem;
+		font-size: 0.875rem;
+	}
+}
+
+.input-group {
+	.input-group-text {
+		background-color: #f8f9fa;
+		border-right: none;
+	}
+
+	.form-control {
+		border-left: none;
+
+		&:focus {
+			border-color: #ced4da;
+			box-shadow: none;
+		}
+	}
+}
+
+h2, h4 {
+	color: #2c3e50;
+}
+
+.text-primary {
+	color: #007bff !important;
+}
+
+.spinner-border {
+	width: 3rem;
+	height: 3rem;
+}

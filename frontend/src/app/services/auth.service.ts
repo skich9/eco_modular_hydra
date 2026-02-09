@@ -59,13 +59,21 @@ export class AuthService {
 
 					if (response.success && response.token && response.usuario) {
 						console.log('Login exitoso, guardando datos de sesión');
+						console.log('Token recibido:', response.token);
 						// Guardar token, expiración y usuario
 						if (typeof localStorage !== 'undefined') {
 							localStorage.setItem(this.tokenKey, response.token);
+							console.log('Token guardado en localStorage');
 							if (response.expires_at) {
 								localStorage.setItem(this.expiresAtKey, response.expires_at);
+								console.log('Expiración guardada:', response.expires_at);
 							}
 							localStorage.setItem(this.userKey, JSON.stringify(response.usuario));
+							console.log('Usuario guardado en localStorage');
+
+							// Verificar que se guardó correctamente
+							const savedToken = localStorage.getItem(this.tokenKey);
+							console.log('Token verificado en localStorage:', savedToken);
 						}
 						this.currentUserSubject.next(response.usuario);
 					} else {

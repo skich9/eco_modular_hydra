@@ -10,19 +10,25 @@ class Rol extends Model
     use HasFactory;
 
     protected $table = 'rol'; // Nombre exacto de la tabla
-    
+
     protected $primaryKey = 'id_rol';
     protected $fillable = ['nombre', 'descripcion', 'estado'];
-    
+
     // Añade esto para evitar pluralización
     public function getTable()
     {
         return 'rol';
     }
-    
+
     // Relación con usuarios
     public function usuarios()
     {
         return $this->hasMany(Usuario::class, 'id_rol', 'id_rol');
+    }
+
+    public function funciones()
+    {
+        return $this->belongsToMany(Funcion::class, 'rol_funcion', 'id_rol', 'id_funcion')
+            ->withTimestamps();
     }
 }

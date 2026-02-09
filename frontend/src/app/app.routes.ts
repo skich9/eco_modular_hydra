@@ -45,6 +45,12 @@ export const routes: Routes = [
 			{ path: 'roles/nuevo', component: RolFormComponent },
 			{ path: 'roles/editar/:id', component: RolFormComponent },
 
+			// Ruta para funciones de usuario
+			{
+				path: 'mis-funciones',
+				loadComponent: () => import('./components/pages/usuario-funciones/usuario-funciones.component').then(m => m.UsuarioFuncionesComponent)
+			},
+
             // Ruta para Académico: página específica (debe ir antes de la parametrizada)
             {
                 path: 'academico/asignacion-becas-descuentos',

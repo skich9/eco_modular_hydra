@@ -4,6 +4,7 @@ namespace App\Http\Controllers\Api;
 
 use App\Http\Controllers\Controller;
 use App\Models\Usuario;
+use App\Services\PermissionService;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\Hash;
 use Illuminate\Support\Facades\Validator;
@@ -72,6 +73,9 @@ class AuthController extends Controller
 				$expiresAt
 			)->plainTextToken;
 
+			$permissionService = new PermissionService();
+			$funciones = $permissionService->getUserFunctions($usuario->id_usuario);
+
 			return response()->json([
 				'success' => true,
 				'message' => 'Login exitoso',
@@ -92,7 +96,8 @@ class AuthController extends Controller
 						'nombre' => $usuario->rol->nombre,
 						'descripcion' => $usuario->rol->descripcion,
 						'estado' => $usuario->rol->estado
-					]
+					],
+					'funciones' => $funciones
 				]
 			]);
 
@@ -133,6 +138,9 @@ class AuthController extends Controller
 
 		$usuario->load('rol');
 
+		$permissionService = new PermissionService();
+		$funciones = $permissionService->getUserFunctions($usuario->id_usuario);
+
 		return response()->json([
 			'success' => true,
 			'usuario' => [
@@ -150,7 +158,8 @@ class AuthController extends Controller
 					'nombre' => $usuario->rol->nombre,
 					'descripcion' => $usuario->rol->descripcion,
 					'estado' => $usuario->rol->estado
-				]
+				],
+				'funciones' => $funciones
 			]
 		]);
 	}

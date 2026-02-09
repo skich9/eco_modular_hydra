@@ -408,6 +408,30 @@ Route::get('sga/eco_hydra/Recuperacion/autorizaciones', function (Request $reque
 Route::get('roles/active', [RolController::class, 'rolesActivos']);
 Route::apiResource('roles', RolController::class);
 Route::patch('roles/{id}/toggle-status', [RolController::class, 'cambiarEstado']);
+Route::get('roles/{id}/funciones', [RolController::class, 'getFunciones']);
+Route::post('roles/{id}/funciones', [RolController::class, 'assignFunciones']);
+Route::delete('roles/{id}/funciones/{funcionId}', [RolController::class, 'removeFuncion']);
+
+// ===================== Funciones =====================
+Route::middleware('auth:sanctum')->group(function () {
+	Route::get('funciones', [\App\Http\Controllers\Api\FuncionController::class, 'index']);
+	Route::get('funciones/by-module', [\App\Http\Controllers\Api\FuncionController::class, 'byModule']);
+	Route::get('funciones/{id}', [\App\Http\Controllers\Api\FuncionController::class, 'show']);
+	Route::post('funciones', [\App\Http\Controllers\Api\FuncionController::class, 'store']);
+	Route::put('funciones/{id}', [\App\Http\Controllers\Api\FuncionController::class, 'update']);
+	Route::delete('funciones/{id}', [\App\Http\Controllers\Api\FuncionController::class, 'destroy']);
+});
+
+// ===================== Usuario Funciones =====================
+Route::middleware('auth:sanctum')->group(function () {
+	Route::get('usuarios/{usuarioId}/funciones', [\App\Http\Controllers\Api\UsuarioFuncionController::class, 'index']);
+	Route::get('usuarios/{usuarioId}/funciones/by-module', [\App\Http\Controllers\Api\UsuarioFuncionController::class, 'byModule']);
+	Route::post('usuarios/{usuarioId}/funciones', [\App\Http\Controllers\Api\UsuarioFuncionController::class, 'store']);
+	Route::put('usuarios/{usuarioId}/funciones/{funcionId}', [\App\Http\Controllers\Api\UsuarioFuncionController::class, 'update']);
+	Route::delete('usuarios/{usuarioId}/funciones/{funcionId}', [\App\Http\Controllers\Api\UsuarioFuncionController::class, 'destroy']);
+	Route::post('usuarios/{usuarioId}/funciones/copy-from-role', [\App\Http\Controllers\Api\UsuarioFuncionController::class, 'copyFromRole']);
+	Route::post('usuarios/{usuarioId}/funciones/check-permission', [\App\Http\Controllers\Api\UsuarioFuncionController::class, 'checkPermission']);
+});
 
 // ===================== Razón Social =====================
 Route::get('razon-social/search', [RazonSocialController::class, 'search']);

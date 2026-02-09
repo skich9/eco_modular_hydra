@@ -1,0 +1,265 @@
+<div class="container-fluid py-4">
+	<!-- Header -->
+	<div class="d-flex justify-content-between align-items-center mb-4">
+		<h2 class="mb-0">
+			<i class="fas fa-user-shield me-2"></i>
+			Mis Funciones
+		</h2>
+		<button class="btn btn-primary" (click)="openAddModal()">
+			<i class="fas fa-plus me-2"></i>
+			Solicitar Función
+		</button>
+	</div>
+
+	<!-- Alert -->
+	<div *ngIf="alertMessage" 
+		class="alert alert-dismissible fade show"
+		[ngClass]="{
+			'alert-success': alertType === 'success',
+			'alert-danger': alertType === 'error',
+			'alert-warning': alertType === 'warning'
+		}"
+		role="alert">
+		{{ alertMessage }}
+		<button type="button" class="btn-close" (click)="alertMessage = ''"></button>
+	</div>
+
+	<!-- Búsqueda -->
+	<div class="row mb-3">
+		<div class="col-md-6">
+			<div class="input-group">
+				<span class="input-group-text">
+					<i class="fas fa-search"></i>
+				</span>
+				<input 
+					type="text" 
+					class="form-control" 
+					placeholder="Buscar funciones..."
+					[(ngModel)]="searchTerm">
+			</div>
+		</div>
+	</div>
+
+	<!-- Loading -->
+	<div *ngIf="loading" class="text-center py-5">
+		<div class="spinner-border text-primary" role="status">
+			<span class="visually-hidden">Cargando...</span>
+		</div>
+	</div>
+
+	<!-- Funciones agrupadas por módulo -->
+	<div *ngIf="!loading && funciones.length > 0">
+		<div *ngFor="let modulo of modulos" class="mb-4">
+			<h4 class="text-primary mb-3">
+				<i class="fas fa-folder me-2"></i>
+				{{ modulo | titlecase }}
+			</h4>
+			
+			<div class="table-responsive">
+				<table class="table table-hover">
+					<thead class="table-light">
+						<tr>
+							<th>Código</th>
+							<th>Nombre</th>
+							<th>Descripción</th>
+							<th>Fecha Inicio</th>
+							<th>Fecha Fin</th>
+							<th>Estado</th>
+							<th>Acciones</th>
+						</tr>
+					</thead>
+					<tbody>
+						<tr *ngFor="let funcion of funcionesAgrupadas[modulo]">
+							<td>
+								<code>{{ funcion.codigo }}</code>
+							</td>
+							<td>
+								<i *ngIf="funcion.icono" [class]="'fas ' + funcion.icono + ' me-2'"></i>
+								{{ funcion.nombre }}
+							</td>
+							<td>{{ funcion.descripcion || '-' }}</td>
+							<td>{{ funcion.fecha_ini | date:'dd/MM/yyyy' }}</td>
+							<td>
+								<span *ngIf="funcion.fecha_fin" 
+									[class.text-danger]="estaExpirada(funcion)">
+									{{ funcion.fecha_fin | date:'dd/MM/yyyy' }}
+								</span>
+								<span *ngIf="!funcion.fecha_fin" class="badge bg-success">
+									Permanente
+								</span>
+							</td>
+							<td>
+								<span *ngIf="estaExpirada(funcion)" class="badge bg-danger">
+									<i class="fas fa-times-circle me-1"></i>
+									Expirada
+								</span>
+								<span *ngIf="!estaExpirada(funcion) && esTemporal(funcion)" class="badge bg-warning">
+									<i class="fas fa-clock me-1"></i>
+									Temporal
+								</span>
+								<span *ngIf="!estaExpirada(funcion) && !esTemporal(funcion)" class="badge bg-success">
+									<i class="fas fa-check-circle me-1"></i>
+									Activa
+								</span>
+							</td>
+							<td>
+								<button class="btn btn-sm btn-outline-primary me-1" 
+									(click)="openEditModal(funcion)"
+									title="Editar">
+									<i class="fas fa-edit"></i>
+								</button>
+								<button class="btn btn-sm btn-outline-danger" 
+									(click)="openDeleteModal(funcion)"
+									title="Quitar">
+									<i class="fas fa-trash"></i>
+								</button>
+							</td>
+						</tr>
+					</tbody>
+				</table>
+			</div>
+		</div>
+	</div>
+
+	<!-- Sin funciones -->
+	<div *ngIf="!loading && funciones.length === 0" class="text-center py-5">
+		<i class="fas fa-inbox fa-3x text-muted mb-3"></i>
+		<p class="text-muted">No tienes funciones asignadas</p>
+	</div>
+</div>
+
+<!-- Modal Agregar Función -->
+<div class="modal fade" [class.show]="showAddModal" [style.display]="showAddModal ? 'block' : 'none'" 
+	tabindex="-1" *ngIf="showAddModal">
+	<div class="modal-dialog">
+		<div class="modal-content">
+			<div class="modal-header">
+				<h5 class="modal-title">
+					<i class="fas fa-plus-circle me-2"></i>
+					Solicitar Función
+				</h5>
+				<button type="button" class="btn-close" (click)="closeAddModal()"></button>
+			</div>
+			<form [formGroup]="funcionForm" (ngSubmit)="asignarFuncion()">
+				<div class="modal-body">
+					<div class="mb-3">
+						<label class="form-label">Función *</label>
+						<select class="form-select" formControlName="id_funcion" required>
+							<option value="">Seleccionar función...</option>
+							<option *ngFor="let func of funcionesDisponibles" [value]="func.id_funcion">
+								{{ func.nombre }} ({{ func.codigo }})
+							</option>
+						</select>
+					</div>
+
+					<div class="mb-3">
+						<label class="form-label">Fecha Inicio *</label>
+						<input type="date" class="form-control" formControlName="fecha_ini" required>
+					</div>
+
+					<div class="mb-3">
+						<label class="form-label">Fecha Fin (opcional)</label>
+						<input type="date" class="form-control" formControlName="fecha_fin">
+						<small class="form-text text-muted">
+							Dejar vacío para función permanente
+						</small>
+					</div>
+
+					<div class="mb-3">
+						<label class="form-label">Observaciones</label>
+						<textarea class="form-control" formControlName="observaciones" rows="3"></textarea>
+					</div>
+				</div>
+				<div class="modal-footer">
+					<button type="button" class="btn btn-secondary" (click)="closeAddModal()">
+						Cancelar
+					</button>
+					<button type="submit" class="btn btn-primary" [disabled]="funcionForm.invalid || loading">
+						<span *ngIf="loading" class="spinner-border spinner-border-sm me-2"></span>
+						Solicitar
+					</button>
+				</div>
+			</form>
+		</div>
+	</div>
+</div>
+<div class="modal-backdrop fade" [class.show]="showAddModal" *ngIf="showAddModal"></div>
+
+<!-- Modal Editar Función -->
+<div class="modal fade" [class.show]="showEditModal" [style.display]="showEditModal ? 'block' : 'none'" 
+	tabindex="-1" *ngIf="showEditModal">
+	<div class="modal-dialog">
+		<div class="modal-content">
+			<div class="modal-header">
+				<h5 class="modal-title">
+					<i class="fas fa-edit me-2"></i>
+					Editar Función
+				</h5>
+				<button type="button" class="btn-close" (click)="closeEditModal()"></button>
+			</div>
+			<form [formGroup]="funcionForm" (ngSubmit)="actualizarFuncion()">
+				<div class="modal-body">
+					<div class="mb-3">
+						<label class="form-label">Función</label>
+						<input type="text" class="form-control" [value]="editingFuncion?.nombre" disabled>
+					</div>
+
+					<div class="mb-3">
+						<label class="form-label">Fecha Inicio *</label>
+						<input type="date" class="form-control" formControlName="fecha_ini" required>
+					</div>
+
+					<div class="mb-3">
+						<label class="form-label">Fecha Fin (opcional)</label>
+						<input type="date" class="form-control" formControlName="fecha_fin">
+					</div>
+
+					<div class="mb-3">
+						<label class="form-label">Observaciones</label>
+						<textarea class="form-control" formControlName="observaciones" rows="3"></textarea>
+					</div>
+				</div>
+				<div class="modal-footer">
+					<button type="button" class="btn btn-secondary" (click)="closeEditModal()">
+						Cancelar
+					</button>
+					<button type="submit" class="btn btn-primary" [disabled]="funcionForm.invalid || loading">
+						<span *ngIf="loading" class="spinner-border spinner-border-sm me-2"></span>
+						Actualizar
+					</button>
+				</div>
+			</form>
+		</div>
+	</div>
+</div>
+<div class="modal-backdrop fade" [class.show]="showEditModal" *ngIf="showEditModal"></div>
+
+<!-- Modal Eliminar -->
+<div class="modal fade" [class.show]="showDeleteModal" [style.display]="showDeleteModal ? 'block' : 'none'" 
+	tabindex="-1" *ngIf="showDeleteModal">
+	<div class="modal-dialog">
+		<div class="modal-content">
+			<div class="modal-header bg-danger text-white">
+				<h5 class="modal-title">
+					<i class="fas fa-exclamation-triangle me-2"></i>
+					Confirmar Eliminación
+				</h5>
+				<button type="button" class="btn-close btn-close-white" (click)="closeDeleteModal()"></button>
+			</div>
+			<div class="modal-body">
+				<p>¿Está seguro que desea quitar la función?</p>
+				<p class="mb-0"><strong>{{ deletingFuncion?.nombre }}</strong></p>
+			</div>
+			<div class="modal-footer">
+				<button type="button" class="btn btn-secondary" (click)="closeDeleteModal()">
+					Cancelar
+				</button>
+				<button type="button" class="btn btn-danger" (click)="quitarFuncion()" [disabled]="loading">
+					<span *ngIf="loading" class="spinner-border spinner-border-sm me-2"></span>
+					Quitar Función
+				</button>
+			</div>
+		</div>
+	</div>
+</div>
+<div class="modal-backdrop fade" [class.show]="showDeleteModal" *ngIf="showDeleteModal"></div>

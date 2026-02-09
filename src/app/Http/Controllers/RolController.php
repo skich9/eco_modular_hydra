@@ -16,7 +16,7 @@ class RolController extends Controller
     public function index()
     {
         try {
-            $roles = Rol::withCount('usuarios')->get();
+            $roles = Rol::withCount(['usuarios', 'funciones'])->get();
             return response()->json([
                 'success' => true,
                 'data' => $roles,
@@ -72,7 +72,7 @@ class RolController extends Controller
             $rol = Rol::with(['usuarios' => function($query) {
                 $query->select('id_usuario', 'nickname', 'nombre', 'ap_paterno', 'ap_materno', 'estado', 'id_rol');
             }])->find($id);
-            
+
             if (!$rol) {
                 return response()->json([
                     'success' => false,
@@ -100,7 +100,7 @@ class RolController extends Controller
     {
         try {
             $rol = Rol::find($id);
-            
+
             if (!$rol) {
                 return response()->json([
                     'success' => false,
@@ -142,7 +142,7 @@ class RolController extends Controller
     {
         try {
             $rol = Rol::find($id);
-            
+
             if (!$rol) {
                 return response()->json([
                     'success' => false,
@@ -180,7 +180,7 @@ class RolController extends Controller
     {
         try {
             $rol = Rol::find($id);
-            
+
             if (!$rol) {
                 return response()->json([
                     'success' => false,
@@ -220,7 +220,7 @@ class RolController extends Controller
     {
         try {
             $roles = Rol::where('estado', true)->get();
-            
+
             return response()->json([
                 'success' => true,
                 'data' => $roles,
@@ -230,6 +230,107 @@ class RolController extends Controller
             return response()->json([
                 'success' => false,
                 'message' => 'Error al obtener roles activos: ' . $e->getMessage()
+            ], 500);
+        }
+    }
+
+    /**
+     * Obtener funciones asignadas a un rol
+     */
+    public function getFunciones($id)
+    {
+        try {
+            $rol = Rol::find($id);
+
+            if (!$rol) {
+                return response()->json([
+                    'success' => false,
+                    'message' => 'Rol no encontrado'
+                ], 404);
+            }
+
+            $funciones = $rol->funciones()->get();
+
+            return response()->json([
+                'success' => true,
+                'data' => $funciones,
+                'message' => 'Funciones del rol obtenidas exitosamente'
+            ], 200);
+        } catch (\Exception $e) {
+            return response()->json([
+                'success' => false,
+                'message' => 'Error al obtener funciones: ' . $e->getMessage()
+            ], 500);
+        }
+    }
+
+    /**
+     * Asignar funciones a un rol
+     */
+    public function assignFunciones(Request $request, $id)
+    {
+        try {
+            $rol = Rol::find($id);
+
+            if (!$rol) {
+                return response()->json([
+                    'success' => false,
+                    'message' => 'Rol no encontrado'
+                ], 404);
+            }
+
+            $validated = $request->validate([
+                'funciones' => 'required|array',
+                'funciones.*' => 'exists:funciones,id_funcion'
+            ]);
+
+            // Sincronizar funciones (reemplaza las existentes)
+            $rol->funciones()->sync($validated['funciones']);
+
+            return response()->json([
+                'success' => true,
+                'data' => $rol->funciones()->get(),
+                'message' => 'Funciones asignadas exitosamente'
+            ], 200);
+        } catch (\Illuminate\Validation\ValidationException $e) {
+            return response()->json([
+                'success' => false,
+                'message' => 'Error de validación',
+                'errors' => $e->errors()
+            ], 422);
+        } catch (\Exception $e) {
+            return response()->json([
+                'success' => false,
+                'message' => 'Error al asignar funciones: ' . $e->getMessage()
+            ], 500);
+        }
+    }
+
+    /**
+     * Eliminar una función de un rol
+     */
+    public function removeFuncion($id, $funcionId)
+    {
+        try {
+            $rol = Rol::find($id);
+
+            if (!$rol) {
+                return response()->json([
+                    'success' => false,
+                    'message' => 'Rol no encontrado'
+                ], 404);
+            }
+
+            $rol->funciones()->detach($funcionId);
+
+            return response()->json([
+                'success' => true,
+                'message' => 'Función eliminada del rol exitosamente'
+            ], 200);
+        } catch (\Exception $e) {
+            return response()->json([
+                'success' => false,
+                'message' => 'Error al eliminar función: ' . $e->getMessage()
             ], 500);
         }
     }
