@@ -20,16 +20,35 @@ class UsuarioFuncionController extends Controller
 
 	public function index($usuarioId)
 	{
+		\Log::info('UsuarioFuncionController@index - Solicitando funciones', [
+			'usuario_id' => $usuarioId
+		]);
+
 		$usuario = Usuario::find($usuarioId);
 
 		if (!$usuario) {
+			\Log::warning('UsuarioFuncionController@index - Usuario no encontrado', [
+				'usuario_id' => $usuarioId
+			]);
 			return response()->json([
 				'success' => false,
 				'message' => 'Usuario no encontrado'
 			], 404);
 		}
 
+		\Log::info('UsuarioFuncionController@index - Usuario encontrado', [
+			'usuario_id' => $usuarioId,
+			'nickname' => $usuario->nickname,
+			'nombre' => $usuario->nombre
+		]);
+
 		$funciones = $this->permissionService->getUserFunctions($usuarioId);
+
+		\Log::info('UsuarioFuncionController@index - Funciones obtenidas', [
+			'usuario_id' => $usuarioId,
+			'total_funciones' => count($funciones),
+			'funciones' => $funciones
+		]);
 
 		return response()->json([
 			'success' => true,

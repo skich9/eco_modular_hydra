@@ -18,19 +18,19 @@ export class UsuarioFuncionesComponent implements OnInit {
 	funciones: UsuarioFuncion[] = [];
 	funcionesDisponibles: Funcion[] = [];
 	funcionesAgrupadas: { [modulo: string]: UsuarioFuncion[] } = {};
-	
+
 	loading = false;
 	alertMessage = '';
 	alertType: 'success' | 'error' | 'warning' = 'success';
-	
+
 	showAddModal = false;
 	showEditModal = false;
 	showDeleteModal = false;
-	
+
 	funcionForm: FormGroup;
 	editingFuncion: UsuarioFuncion | null = null;
 	deletingFuncion: UsuarioFuncion | null = null;
-	
+
 	usuarioId: number | null = null;
 	searchTerm = '';
 
@@ -50,28 +50,45 @@ export class UsuarioFuncionesComponent implements OnInit {
 
 	ngOnInit(): void {
 		this.authService.currentUser$.subscribe(user => {
+			console.log('👤 Usuario actual:', user);
 			if (user) {
 				this.usuarioId = user.id_usuario;
+				console.log('🔑 ID de usuario:', this.usuarioId);
 				this.loadFunciones();
+			} else {
+				console.warn('⚠️ No hay usuario autenticado');
 			}
 		});
 		this.loadFuncionesDisponibles();
 	}
 
 	loadFunciones(): void {
-		if (!this.usuarioId) return;
-		
+		if (!this.usuarioId) {
+			console.warn('⚠️ No se puede cargar funciones: usuarioId es null');
+			return;
+		}
+
+		console.log('🔄 Cargando funciones para usuario:', this.usuarioId);
 		this.loading = true;
 		this.funcionService.getUsuarioFunciones(this.usuarioId).subscribe({
 			next: (response) => {
+				console.log('✅ Respuesta del servidor:', response);
 				if (response.success && response.data) {
 					this.funciones = response.data;
+					console.log('📋 Funciones cargadas:', this.funciones.length, 'funciones');
 					this.agruparPorModulo();
+				} else {
+					console.warn('⚠️ Respuesta sin datos:', response);
 				}
 				this.loading = false;
 			},
 			error: (error) => {
-				console.error('Error al cargar funciones:', error);
+				console.error('❌ Error al cargar funciones:', error);
+				console.error('Detalles del error:', {
+					status: error.status,
+					message: error.message,
+					error: error.error
+				});
 				this.showAlert('Error al cargar funciones', 'error');
 				this.loading = false;
 			}
@@ -108,9 +125,9 @@ export class UsuarioFuncionesComponent implements OnInit {
 
 	get funcionesFiltradas(): UsuarioFuncion[] {
 		if (!this.searchTerm) return this.funciones;
-		
+
 		const term = this.searchTerm.toLowerCase();
-		return this.funciones.filter(f => 
+		return this.funciones.filter(f =>
 			f.nombre.toLowerCase().includes(term) ||
 			f.codigo.toLowerCase().includes(term) ||
 			f.modulo.toLowerCase().includes(term)
@@ -195,8 +212,8 @@ export class UsuarioFuncionesComponent implements OnInit {
 
 		this.loading = true;
 		this.funcionService.actualizarFuncion(
-			this.usuarioId, 
-			this.editingFuncion.id_funcion, 
+			this.usuarioId,
+			this.editingFuncion.id_funcion,
 			request
 		).subscribe({
 			next: (response) => {
@@ -220,7 +237,7 @@ export class UsuarioFuncionesComponent implements OnInit {
 
 		this.loading = true;
 		this.funcionService.quitarFuncion(
-			this.usuarioId, 
+			this.usuarioId,
 			this.deletingFuncion.id_funcion
 		).subscribe({
 			next: (response) => {
