@@ -3,6 +3,7 @@ import { CommonModule } from '@angular/common';
 import { Router, RouterModule } from '@angular/router';
 import { ReactiveFormsModule, FormBuilder, FormGroup, Validators } from '@angular/forms';
 import { AuthService } from '../../../services/auth.service';
+import { PermissionService } from '../../../services/permission.service';
 import { Carrera } from '../../../models/carrera.model';
 import { CarreraService } from '../../../services/carrera.service';
 import { Usuario } from '../../../models/usuario.model';
@@ -11,6 +12,7 @@ interface MenuItem {
 	name: string;
 	icon: string;
 	submenu: SubMenuItem[];
+	modulo?: string; // Nombre del módulo para verificar permisos
 }
 
 interface SubMenuItem {
@@ -18,6 +20,7 @@ interface SubMenuItem {
 	icon: string;
 	route: string;
 	params?: any;
+	permissionCode?: string; // Código de permiso para mostrar la opción
 }
 
 @Component({
@@ -41,59 +44,70 @@ export class NavigationComponent implements OnInit {
 	carreras: Carrera[] = [];
 	loadingCarreras = false;
 
-	menuItems: MenuItem[] = [
+	// Definición completa de menús con módulos
+	private allMenuItems: MenuItem[] = [
 		{
 			name: 'Cobros',
 			icon: 'fas fa-money-bill-wave',
+			modulo: 'Cobros',
 			submenu: [
-				{ name: 'Gestionar Cobros', icon: 'fa-cash-register', route: '/cobros' }
+				{ name: 'Gestionar Cobros', icon: 'fa-cash-register', route: '/cobros', permissionCode: 'cobros_gestionar' }
 			]
 		},
 		{
 			name: 'Reportes',
 			icon: 'fas fa-chart-bar',
+			modulo: 'Reportes',
 			submenu: [
-				{ name: 'Libro Diario', icon: 'fa-book', route: '/reportes/libro-diario' }
+				{ name: 'Libro Diario', icon: 'fa-book', route: '/reportes/libro-diario', permissionCode: 'reportes_libro_diario' }
 			]
 		},
 		{
 			name: 'Reimpresión',
 			icon: 'fas fa-print',
+			modulo: 'Reimpresión',
 			submenu: [
-				{ name: 'Facturación posterior', icon: 'fa-file-invoice-dollar', route: '/reimpresion/facturacion-posterior' }
+				{ name: 'Facturación posterior', icon: 'fa-file-invoice-dollar', route: '/reimpresion/facturacion-posterior', permissionCode: 'reimpresion_facturacion_posterior' }
 			]
 		},
-        {
-            name: 'Académico',
-            icon: 'fas fa-graduation-cap',
-            submenu: []
-        },
-        {
+		{
+			name: 'Académico',
+			icon: 'fas fa-graduation-cap',
+			modulo: 'Académico',
+			submenu: []
+		},
+		{
 			name: 'SIN',
 			icon: 'fas fa-file-invoice',
+			modulo: 'SIN',
 			submenu: [
-				{ name: 'Estado de Factura / Anulación', icon: 'fa-file-signature', route: '/sin/estado-factura' },
-				{ name: 'Contingencias', icon: 'fa-exclamation-triangle', route: '/sin/contingencias' },
-				{ name: 'Configuración Punto de Venta', icon: 'fa-store', route: '/sin/configuracion-punto-venta' }
+				{ name: 'Estado de Factura / Anulación', icon: 'fa-file-signature', route: '/sin/estado-factura', permissionCode: 'sin_estado_factura' },
+				{ name: 'Contingencias', icon: 'fa-exclamation-triangle', route: '/sin/contingencias', permissionCode: 'sin_contingencias' },
+				{ name: 'Configuración Punto de Venta', icon: 'fa-store', route: '/sin/configuracion-punto-venta', permissionCode: 'sin_configuracion_punto_venta' }
 			]
 		},
 		{
 			name: 'Configuración',
 			icon: 'fas fa-cog',
+			modulo: 'Configuración',
 			submenu: [
-				{ name: 'Usuarios', icon: 'fa-users', route: '/usuarios' },
-				{ name: 'Roles', icon: 'fa-user-shield', route: '/roles' },
-				{ name: 'Parámetros de Sistema', icon: 'fa-sliders-h', route: '/parametros' },
-				{ name: 'Configuración de Descuentos', icon: 'fa-percent', route: '/descuentos' },
-				{ name: 'Configuración de Costos', icon: 'fa-coins', route: '/costos' },
-				{ name: 'Configuración de Costos por Créditos', icon: 'fa-calculator', route: '/costos-creditos' },
-				{ name: 'Configuraciones Generales', icon: 'fa-cogs', route: '/configuraciones-generales' }
+				{ name: 'Usuarios', icon: 'fa-users', route: '/usuarios', permissionCode: 'configuracion_usuarios' },
+				{ name: 'Roles', icon: 'fa-user-shield', route: '/roles', permissionCode: 'configuracion_roles' },
+				{ name: 'Parámetros de Sistema', icon: 'fa-sliders-h', route: '/parametros', permissionCode: 'configuracion_parametros' },
+				{ name: 'Configuración de Descuentos', icon: 'fa-percent', route: '/descuentos', permissionCode: 'configuracion_descuentos' },
+				{ name: 'Configuración de Costos', icon: 'fa-coins', route: '/costos', permissionCode: 'configuracion_costos' },
+				{ name: 'Configuración de Costos por Créditos', icon: 'fa-calculator', route: '/costos-creditos', permissionCode: 'configuracion_costos_creditos' },
+				{ name: 'Configuraciones Generales', icon: 'fa-cogs', route: '/configuraciones-generales', permissionCode: 'configuracion_generales' }
 			]
 		}
 	];
 
+	// Menús filtrados según permisos del usuario
+	menuItems: MenuItem[] = [];
+
 	constructor(
 		private authService: AuthService,
+		private permissionService: PermissionService,
 		private router: Router,
 		private formBuilder: FormBuilder,
 		private carreraService: CarreraService
@@ -109,6 +123,8 @@ export class NavigationComponent implements OnInit {
 		// Suscribirse a los cambios del usuario actual
 		this.authService.currentUser$.subscribe((user: Usuario | null) => {
 			this.currentUser = user;
+			// Filtrar menús según permisos del usuario
+			this.filterMenusByPermissions();
 		});
 
 		// Cerrar menús al hacer clic fuera
@@ -125,6 +141,44 @@ export class NavigationComponent implements OnInit {
 		this.loadCarreras();
 	}
 
+	private filterMenusByPermissions(): void {
+		this.menuItems = this.allMenuItems
+			.map(menu => {
+				// Filtrar submenús según permisos
+				const filteredSubmenu = menu.submenu.filter(subitem => {
+					if (subitem.permissionCode) {
+						return this.permissionService.hasPermission(subitem.permissionCode);
+					}
+					return true; // Si no tiene código de permiso, mostrar por defecto
+				});
+
+				// Si el menú tiene módulo, verificar si el usuario tiene al menos una función de ese módulo
+				if (menu.modulo) {
+					const hasFuncionDelModulo = this.permissionService.hasAnyFunctionFromModule(menu.modulo);
+					if (!hasFuncionDelModulo) {
+						return null;
+					}
+				}
+
+				// Si el menú no tiene submenús después del filtrado, no mostrarlo
+				if (filteredSubmenu.length === 0 && menu.submenu.length > 0) {
+					return null;
+				}
+
+				return {
+					...menu,
+					submenu: filteredSubmenu
+				};
+			})
+			.filter(menu => menu !== null) as MenuItem[];
+
+		// Cargar carreras para el menú académico si está visible
+		const academicoIndex = this.menuItems.findIndex(mi => mi.name === 'Académico');
+		if (academicoIndex !== -1) {
+			this.loadCarreras();
+		}
+	}
+
 	private loadCarreras(): void {
 		this.loadingCarreras = true;
 		this.carreraService.getAll().subscribe({
@@ -132,15 +186,27 @@ export class NavigationComponent implements OnInit {
 				this.carreras = res.data || [];
 				const idx = this.menuItems.findIndex(mi => mi.name === 'Académico');
 				if (idx !== -1) {
-					const fixedItem = { name: 'Asignación de Becas/Descuentos', icon: 'fa-percent', route: '/academico/asignacion-becas-descuentos' };
-					this.menuItems[idx].submenu = [
-						fixedItem,
-						...this.carreras.map(c => ({
-							name: c.nombre,
-							icon: 'fa-university',
-							route: `/academico/${c.codigo_carrera}`
-						}))
-					];
+					const fixedItem = {
+						name: 'Asignación de Becas/Descuentos',
+						icon: 'fa-percent',
+						route: '/academico/asignacion-becas-descuentos',
+						permissionCode: 'academico_asignacion_becas'
+					};
+
+					// Filtrar item fijo según permisos
+					const submenuItems: SubMenuItem[] = [];
+					if (!fixedItem.permissionCode || this.permissionService.hasPermission(fixedItem.permissionCode)) {
+						submenuItems.push(fixedItem);
+					}
+
+					// Agregar carreras (sin permiso específico por ahora)
+					submenuItems.push(...this.carreras.map(c => ({
+						name: c.nombre,
+						icon: 'fa-university',
+						route: `/academico/${c.codigo_carrera}`
+					})));
+
+					this.menuItems[idx].submenu = submenuItems;
 				}
 			},
 			error: (err: any) => {

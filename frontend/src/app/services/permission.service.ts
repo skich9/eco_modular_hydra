@@ -30,6 +30,10 @@ export class PermissionService {
 		return this.funciones.filter(f => f.modulo === modulo);
 	}
 
+	hasAnyFunctionFromModule(modulo: string): boolean {
+		return this.funciones.some(f => f.modulo === modulo);
+	}
+
 	getAllFunciones(): UsuarioFuncion[] {
 		return this.funciones;
 	}

@@ -5,6 +5,7 @@ import { Router, ActivatedRoute, RouterModule } from '@angular/router';
 import { Usuario, Rol } from '../../../models/usuario.model';
 import { UsuarioService } from '../../../services/usuario.service';
 import { RolService } from '../../../services/rol.service';
+import { FuncionService } from '../../../services/funcion.service';
 
 @Component({
 	selector: 'app-usuario-form',
@@ -24,6 +25,19 @@ export class UsuarioFormComponent implements OnInit {
 	showPassword = false;
 	showConfirmPassword = false;
 
+	// Gestión de funciones
+	showFuncionesModal = false;
+	funcionesDisponibles: any[] = [];
+	filteredFuncionesDisponibles: any[] = [];
+	funcionesSearchTerm = '';
+	selectedFunciones: number[] = [];
+	loadingFunciones = false;
+	modulos: string[] = [];
+	selectedModulo = 'Todos';
+	funcionesCount = 0;
+	selectedRolId: number | null = null;
+	loadingRolFunciones = false;
+
 	// Modal support
 	@Input() modalMode: boolean = false;
 	@Input() usuarioIdInput: number | null = null;
@@ -33,6 +47,7 @@ export class UsuarioFormComponent implements OnInit {
 		private formBuilder: FormBuilder,
 		private usuarioService: UsuarioService,
 		private rolService: RolService,
+		private funcionService: FuncionService,
 		private router: Router,
 		private route: ActivatedRoute
 	) {
@@ -42,7 +57,7 @@ export class UsuarioFormComponent implements OnInit {
 			ap_paterno: ['', Validators.required],
 			ap_materno: [''],
 			ci: ['', Validators.required],
-			id_rol: [null, Validators.required],
+			id_rol: [null],
 			estado: [true],
 			contrasenia: ['', [Validators.required, Validators.minLength(6)]],
 			contraseniaConfirm: ['', [Validators.required]],
@@ -54,7 +69,7 @@ export class UsuarioFormComponent implements OnInit {
 
 	ngOnInit(): void {
 		this.loadRoles();
-		
+
 		// Verificar si estamos en modo edición (por ruta o por @Input)
 		const idFromRoute = this.route.snapshot.paramMap.get('id');
 		const resolvedId = this.usuarioIdInput ?? (idFromRoute ? +idFromRoute : null);
@@ -62,7 +77,8 @@ export class UsuarioFormComponent implements OnInit {
 			this.isEditMode = true;
 			this.usuarioId = resolvedId;
 			this.loadUsuario(this.usuarioId);
-			
+			this.loadUsuarioFunciones(this.usuarioId);
+
 			// No requerir contraseña en modo edición
 			this.usuarioForm.get('contrasenia')?.clearValidators();
 			this.usuarioForm.get('contraseniaConfirm')?.clearValidators();
@@ -89,6 +105,9 @@ export class UsuarioFormComponent implements OnInit {
 				conf?.updateValueAndValidity();
 			});
 		}
+
+		// Cargar siempre todas las funciones disponibles para el modal
+		this.loadAllFunciones();
 	}
 
 	loadRoles(): void {
@@ -128,18 +147,18 @@ export class UsuarioFormComponent implements OnInit {
 		});
 	}
 
-	get f() { 
-		return this.usuarioForm.controls; 
+	get f() {
+		return this.usuarioForm.controls;
 	}
 
 	passwordMatchValidator(formGroup: FormGroup) {
 		const password = formGroup.get('contrasenia')?.value;
 		const passwordConfirmation = formGroup.get('contraseniaConfirm')?.value;
-		
+
 		if (password === passwordConfirmation) {
 			return null;
 		}
-		
+
 		return { matching: true };
 	}
 
@@ -232,6 +251,20 @@ export class UsuarioFormComponent implements OnInit {
 			return;
 		}
 
+		// El backend requiere id_rol. En creación lo tomamos del selector de rol del modal.
+		const rolControl = this.usuarioForm.get('id_rol');
+		if (!this.isEditMode && !this.selectedRolId) {
+			this.error = 'Debe seleccionar un rol en la sección "Funciones del Usuario".';
+			rolControl?.setErrors({ required: true });
+			rolControl?.markAsTouched();
+			return;
+		}
+
+		// Si el usuario eligió un rol en el modal, sincronizarlo con el formulario
+		if (this.selectedRolId) {
+			this.usuarioForm.patchValue({ id_rol: this.selectedRolId });
+		}
+
 		this.isSubmitting = true;
 		const formData = this.usuarioForm.value as any;
 
@@ -244,15 +277,11 @@ export class UsuarioFormComponent implements OnInit {
 			this.usuarioService.update(this.usuarioId, payload).subscribe({
 				next: (response: { success: boolean; data: Usuario; message: string }) => {
 					if (response.success) {
-						if (this.modalMode) {
-							this.closed.emit(true);
-						} else {
-							this.router.navigate(['/usuarios']);
-						}
+						this.saveFunciones(this.usuarioId!);
 					} else {
 						this.error = response.message || 'Error al actualizar usuario';
+						this.isSubmitting = false;
 					}
-					this.isSubmitting = false;
 				},
 				error: (error: any) => this.handleHttpError(error)
 			});
@@ -261,19 +290,61 @@ export class UsuarioFormComponent implements OnInit {
 			const { contraseniaConfirm, resetPassword: _rp, ...payload } = formData;
 			this.usuarioService.create(payload).subscribe({
 				next: (response: { success: boolean; data: Usuario; message: string }) => {
-					if (response.success) {
-						if (this.modalMode) {
-							this.closed.emit(true);
-						} else {
-							this.router.navigate(['/usuarios']);
-						}
+					if (response.success && response.data) {
+						this.saveFunciones(response.data.id_usuario);
 					} else {
 						this.error = response.message || 'Error al crear usuario';
+						this.isSubmitting = false;
 					}
-					this.isSubmitting = false;
 				},
 				error: (error: any) => this.handleHttpError(error)
 			});
+		}
+	}
+
+	saveFunciones(usuarioId: number): void {
+		if (this.selectedFunciones.length === 0) {
+			// Si no hay funciones seleccionadas, solo navegar
+			this.finalizarGuardado();
+			return;
+		}
+
+		// Asignar cada función seleccionada al usuario
+		let funcionesAsignadas = 0;
+		let erroresAsignacion = 0;
+
+		this.selectedFunciones.forEach((funcionId, index) => {
+			const request = {
+				id_funcion: funcionId,
+				fecha_ini: new Date().toISOString().split('T')[0],
+				fecha_fin: null,
+				observaciones: 'Asignado desde formulario de usuario'
+			};
+
+			this.funcionService.asignarFuncion(usuarioId, request).subscribe({
+				next: (response) => {
+					funcionesAsignadas++;
+					if (funcionesAsignadas + erroresAsignacion === this.selectedFunciones.length) {
+						this.finalizarGuardado();
+					}
+				},
+				error: (error) => {
+					console.error('Error al asignar función:', error);
+					erroresAsignacion++;
+					if (funcionesAsignadas + erroresAsignacion === this.selectedFunciones.length) {
+						this.finalizarGuardado();
+					}
+				}
+			});
+		});
+	}
+
+	finalizarGuardado(): void {
+		this.isSubmitting = false;
+		if (this.modalMode) {
+			this.closed.emit(true);
+		} else {
+			this.router.navigate(['/usuarios']);
 		}
 	}
 
@@ -283,5 +354,142 @@ export class UsuarioFormComponent implements OnInit {
 		} else {
 			this.router.navigate(['/usuarios']);
 		}
+	}
+
+	// Gestión de funciones
+	openFuncionesModal(): void {
+		this.showFuncionesModal = true;
+	}
+
+	closeFuncionesModal(): void {
+		this.showFuncionesModal = false;
+	}
+
+	loadAllFunciones(): void {
+		this.loadingFunciones = true;
+		this.funcionService.getFunciones(true).subscribe({
+			next: (response) => {
+				if (response.success && response.data) {
+					this.funcionesDisponibles = response.data;
+					this.modulos = ['Todos', ...new Set(response.data.map((f: any) => f.modulo).filter((m: any) => m))];
+					this.filterFunciones();
+				}
+				this.loadingFunciones = false;
+			},
+			error: (error) => {
+				console.error('Error al cargar funciones:', error);
+				this.loadingFunciones = false;
+			}
+		});
+	}
+
+	loadUsuarioFunciones(usuarioId: number): void {
+		this.funcionService.getUsuarioFunciones(usuarioId).subscribe({
+			next: (response) => {
+				if (response.success && response.data) {
+					this.selectedFunciones = response.data.map((f: any) => f.id_funcion);
+					this.funcionesCount = this.selectedFunciones.length;
+				}
+			},
+			error: (error) => {
+				console.error('Error al cargar funciones del usuario:', error);
+			}
+		});
+	}
+
+	filterFunciones(): void {
+		let filtered = this.funcionesDisponibles;
+
+		if (this.selectedModulo !== 'Todos') {
+			filtered = filtered.filter(f => f.modulo === this.selectedModulo);
+		}
+
+		if (this.funcionesSearchTerm) {
+			const term = this.funcionesSearchTerm.toLowerCase();
+			filtered = filtered.filter(f =>
+				f.nombre.toLowerCase().includes(term) ||
+				f.codigo.toLowerCase().includes(term) ||
+				(f.descripcion && f.descripcion.toLowerCase().includes(term))
+			);
+		}
+
+		this.filteredFuncionesDisponibles = filtered;
+	}
+
+	isFuncionSelected(funcionId: number): boolean {
+		return this.selectedFunciones.includes(funcionId);
+	}
+
+	toggleFuncion(funcionId: number): void {
+		const index = this.selectedFunciones.indexOf(funcionId);
+		if (index > -1) {
+			this.selectedFunciones.splice(index, 1);
+		} else {
+			this.selectedFunciones.push(funcionId);
+		}
+		this.funcionesCount = this.selectedFunciones.length;
+	}
+
+	moduloHasFuncionesSeleccionadas(modulo: string): boolean {
+		if (modulo === 'Todos') {
+			return this.selectedFunciones.length > 0;
+		}
+		const funcionesDelModulo = this.funcionesDisponibles.filter(f => f.modulo === modulo);
+		return funcionesDelModulo.some(f => this.isFuncionSelected(f.id_funcion));
+	}
+
+	allFuncionesSelected(): boolean {
+		if (!this.filteredFuncionesDisponibles || this.filteredFuncionesDisponibles.length === 0) {
+			return false;
+		}
+		return this.filteredFuncionesDisponibles.every(f => this.isFuncionSelected(f.id_funcion));
+	}
+
+	toggleAllFunciones(event: any): void {
+		const checked = event.target.checked;
+		if (checked) {
+			this.filteredFuncionesDisponibles.forEach(f => {
+				if (!this.isFuncionSelected(f.id_funcion)) {
+					this.selectedFunciones.push(f.id_funcion);
+				}
+			});
+		} else {
+			this.filteredFuncionesDisponibles.forEach(f => {
+				const index = this.selectedFunciones.indexOf(f.id_funcion);
+				if (index > -1) {
+					this.selectedFunciones.splice(index, 1);
+				}
+			});
+		}
+		this.funcionesCount = this.selectedFunciones.length;
+	}
+
+	onRolChange(): void {
+		if (!this.selectedRolId) {
+			return;
+		}
+
+		this.loadingRolFunciones = true;
+		this.rolService.getRolFunciones(this.selectedRolId).subscribe({
+			next: (response) => {
+				if (response.success && response.data) {
+					const funcionesDelRol = response.data.map((f: any) => f.id_funcion);
+
+					// Agregar funciones del rol a las seleccionadas (sin duplicar)
+					funcionesDelRol.forEach((funcionId: number) => {
+						if (!this.selectedFunciones.includes(funcionId)) {
+							this.selectedFunciones.push(funcionId);
+						}
+					});
+
+					this.funcionesCount = this.selectedFunciones.length;
+				}
+				this.loadingRolFunciones = false;
+			},
+			error: (error) => {
+				console.error('Error al cargar funciones del rol:', error);
+				this.loadingRolFunciones = false;
+			}
+		});
 	}
 }

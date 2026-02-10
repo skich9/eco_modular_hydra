@@ -31,11 +31,11 @@ export class UsuariosListComponent implements OnInit {
     roles: Rol[] = [];
     showPassword = false;
     showConfirmPassword = false;
-    
+
     // Modal de edición
     showEditModal = false;
     editUsuarioId: number | null = null;
-    
+
     // Paginación
     currentPage = 1;
     pageSize = 10;
@@ -88,7 +88,7 @@ export class UsuariosListComponent implements OnInit {
             this.filteredUsuarios = [...this.allUsuarios];
         } else {
             const term = this.searchTerm.toLowerCase().trim();
-            this.filteredUsuarios = this.allUsuarios.filter(usuario => 
+            this.filteredUsuarios = this.allUsuarios.filter(usuario =>
                 usuario.nickname.toLowerCase().includes(term) ||
                 usuario.nombre.toLowerCase().includes(term) ||
                 usuario.ap_paterno.toLowerCase().includes(term) ||
@@ -151,11 +151,11 @@ export class UsuariosListComponent implements OnInit {
 
     applyPagination(): void {
         this.totalPages = Math.ceil(this.filteredUsuarios.length / this.pageSize) || 1;
-        
+
         // Asegurarse de que la página actual es válida
         if (this.currentPage < 1) this.currentPage = 1;
         if (this.currentPage > this.totalPages) this.currentPage = this.totalPages;
-        
+
         const startIndex = (this.currentPage - 1) * this.pageSize;
         const endIndex = startIndex + this.pageSize;
         this.paginatedUsuarios = this.filteredUsuarios.slice(startIndex, endIndex);
@@ -172,7 +172,6 @@ export class UsuariosListComponent implements OnInit {
     openCreateModal(): void {
         this.createError = '';
         this.showCreateModal = true;
-        this.initCreateForm();
     }
 
     closeCreateModal(): void {
@@ -199,6 +198,13 @@ export class UsuariosListComponent implements OnInit {
         const pc = group.get('contraseniaConfirm')?.value;
         return p === pc ? null : { matching: true };
     };
+
+    onCreateClosed(saved: boolean): void {
+        this.showCreateModal = false;
+        if (saved) {
+            this.loadUsuarios();
+        }
+    }
 
     togglePasswordVisibility(): void {
         this.showPassword = !this.showPassword;
