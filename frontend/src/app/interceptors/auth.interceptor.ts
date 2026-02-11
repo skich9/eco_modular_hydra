@@ -1,7 +1,7 @@
 import { HttpInterceptorFn, HttpErrorResponse } from '@angular/common/http';
 import { inject } from '@angular/core';
 import { Router } from '@angular/router';
-import { catchError, throwError } from 'rxjs';
+import { catchError, throwError, switchMap } from 'rxjs';
 import { AuthService } from '../services/auth.service';
 
 export const authInterceptor: HttpInterceptorFn = (req, next) => {
@@ -21,6 +21,28 @@ export const authInterceptor: HttpInterceptorFn = (req, next) => {
 		console.log('[AuthInterceptor] Authorization header agregado');
 	} else {
 		console.log('[AuthInterceptor] Sin token, request sin modificar');
+	}
+
+	// Si hay token y NO es la ruta de login o refresh-token, verificar si necesita refresh
+	const isLoginRequest = req.url.includes('/login');
+	const isRefreshRequest = req.url.includes('/refresh-token');
+	const needsRefresh = token && !isLoginRequest && !isRefreshRequest && authService.shouldRefreshToken();
+
+	if (needsRefresh) {
+		console.log('[AuthInterceptor] Token próximo a expirar, refrescando antes de la petición...');
+		// Primero refrescar el token, luego hacer la petición original
+		return authService.refreshToken().pipe(
+			switchMap(() => {
+				console.log('[AuthInterceptor] Token refrescado, continuando con petición original');
+				return next(clonedReq);
+			}),
+			catchError((refreshError: HttpErrorResponse) => {
+				// Si el refresh falla (token expirado), continuar con la petición original
+				// El error 401/419 será manejado por el catchError principal
+				console.warn('[AuthInterceptor] Error al refrescar token, continuando con petición:', refreshError.status);
+				return next(clonedReq);
+			})
+		);
 	}
 
 	// Manejar la respuesta y capturar errores

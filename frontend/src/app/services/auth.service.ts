@@ -114,6 +114,21 @@ export class AuthService {
 			);
 	}
 
+	refreshToken(): Observable<any> {
+		return this.http.post<any>(`${this.apiUrl}/refresh-token`, {})
+			.pipe(
+				tap((response: any) => {
+					if (response.success && response.expires_at) {
+						// Actualizar la fecha de expiración en localStorage
+						if (typeof localStorage !== 'undefined') {
+							localStorage.setItem(this.expiresAtKey, response.expires_at);
+							console.log('[AuthService] Token actualizado. Nueva expiración:', response.expires_at);
+						}
+					}
+				})
+			);
+	}
+
 	clearSession(): void {
 		console.log('[AuthService] Limpiando sesión...');
 		if (typeof localStorage !== 'undefined') {
@@ -164,6 +179,23 @@ export class AuthService {
 	hasFunction(functionName: string): boolean {
 		// Implementar cuando tengamos el modelo de funciones
 		return false;
+	}
+
+	/**
+	 * Verifica si el token necesita ser refrescado (le quedan menos de 5 minutos)
+	 */
+	shouldRefreshToken(): boolean {
+		if (typeof localStorage === 'undefined') return false;
+
+		const expiresAt = localStorage.getItem(this.expiresAtKey);
+		if (!expiresAt) return false;
+
+		const expirationDate = new Date(expiresAt);
+		const now = new Date();
+		const minutesUntilExpiration = (expirationDate.getTime() - now.getTime()) / 60000;
+
+		// Refrescar si quedan menos de 5 minutos
+		return minutesUntilExpiration < 5 && minutesUntilExpiration > 0;
 	}
 
 	private isTokenExpired(): boolean {

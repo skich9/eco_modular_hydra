@@ -117,6 +117,7 @@ Route::post('/login', [\App\Http\Controllers\Api\AuthController::class, 'login']
 Route::middleware('auth:sanctum')->group(function () {
 	Route::post('/logout', [\App\Http\Controllers\Api\AuthController::class, 'logout']);
 	Route::post('/verify', [\App\Http\Controllers\Api\AuthController::class, 'verify']);
+	Route::post('/refresh-token', [\App\Http\Controllers\Api\AuthController::class, 'refreshToken']);
 	Route::post('/change-password', [\App\Http\Controllers\Api\AuthController::class, 'changePassword']);
 });
 

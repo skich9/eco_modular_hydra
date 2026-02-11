@@ -165,6 +165,48 @@ class AuthController extends Controller
 		]);
 	}
 
+	/**
+	 * Refresh token - Extender la expiración del token actual
+	 */
+	public function refreshToken(Request $request)
+	{
+		$usuario = $request->user();
+
+		if (!$usuario || !$usuario->estado) {
+			return response()->json([
+				'success' => false,
+				'message' => 'Token inválido o usuario inactivo'
+			], 401);
+		}
+
+		// Obtener el token actual
+		$currentToken = $request->user()->currentAccessToken();
+
+		if (!$currentToken) {
+			return response()->json([
+				'success' => false,
+				'message' => 'No se pudo obtener el token actual'
+			], 401);
+		}
+
+		// Obtener minutos de refresh desde configuración
+		$refreshMinutes = (int) config('sanctum.refresh_minutes', 10);
+
+		// Calcular nueva fecha de expiración: SIEMPRE desde ahora + refresh_minutes
+		// Esto asegura que cada actividad extienda el token por el tiempo configurado
+		$newExpiresAt = now()->addMinutes($refreshMinutes);
+
+		// Actualizar la fecha de expiración del token
+		$currentToken->expires_at = $newExpiresAt;
+		$currentToken->save();
+
+		return response()->json([
+			'success' => true,
+			'message' => 'Token actualizado correctamente',
+			'expires_at' => $newExpiresAt->toIso8601String()
+		]);
+	}
+
     /**
      * Cambiar contraseña (API)
      */
