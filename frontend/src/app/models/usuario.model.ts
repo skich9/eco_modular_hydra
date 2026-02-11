@@ -20,7 +20,6 @@ export interface UsuarioFuncion {
 	nombre: string;
 	descripcion?: string;
 	modulo: string;
-	icono?: string;
 	fecha_ini: string;
 	fecha_fin?: string | null;
 	observaciones?: string;

@@ -78,7 +78,7 @@ class UsuarioController extends Controller
     {
         try {
             $usuario = Usuario::with(['rol', 'funciones'])->find($id);
-            
+
             if (!$usuario) {
                 return response()->json([
                     'success' => false,
@@ -106,7 +106,7 @@ class UsuarioController extends Controller
     {
         try {
             $usuario = Usuario::find($id);
-            
+
             if (!$usuario) {
                 return response()->json([
                     'success' => false,
@@ -154,7 +154,7 @@ class UsuarioController extends Controller
     {
         try {
             $usuario = Usuario::find($id);
-            
+
             if (!$usuario) {
                 return response()->json([
                     'success' => false,
@@ -183,7 +183,7 @@ class UsuarioController extends Controller
     {
         try {
             $usuario = Usuario::find($id);
-            
+
             if (!$usuario) {
                 return response()->json([
                     'success' => false,
@@ -195,8 +195,7 @@ class UsuarioController extends Controller
                 'funciones' => 'required|array',
                 'funciones.*.id_funcion' => 'required|exists:funciones,id_funcion',
                 'funciones.*.fecha_ini' => 'required|date',
-                'funciones.*.fecha_fin' => 'nullable|date|after:funciones.*.fecha_ini',
-                'funciones.*.usuario_asig' => 'required|string|max:255'
+                'funciones.*.fecha_fin' => 'nullable|date|after:funciones.*.fecha_ini'
             ]);
 
             // Sincronizar funciones con datos pivot
@@ -204,8 +203,7 @@ class UsuarioController extends Controller
             foreach ($validated['funciones'] as $funcion) {
                 $funcionesData[$funcion['id_funcion']] = [
                     'fecha_ini' => $funcion['fecha_ini'],
-                    'fecha_fin' => $funcion['fecha_fin'] ?? null,
-                    'usuario_asig' => $funcion['usuario_asig']
+                    'fecha_fin' => $funcion['fecha_fin'] ?? null
                 ];
             }
 
@@ -261,7 +259,7 @@ class UsuarioController extends Controller
     {
         try {
             $usuario = Usuario::find($id);
-            
+
             if (!$usuario) {
                 return response()->json([
                     'success' => false,

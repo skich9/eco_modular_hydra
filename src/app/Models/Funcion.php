@@ -17,7 +17,6 @@ class Funcion extends Model
 		'nombre',
 		'descripcion',
 		'modulo',
-		'icono',
 		'activo'
 	];
 
