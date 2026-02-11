@@ -65,8 +65,9 @@ class AuthController extends Controller
 				], 403);
 			}
 
-			// Generar token Sanctum con expiración de 8 horas
-			$expiresAt = now()->addHours(8);
+			// Generar token Sanctum con expiración configurable desde .env (SANCTUM_EXPIRATION en minutos)
+			$expirationMinutes = (int) config('sanctum.expiration', 480);
+			$expiresAt = now()->addMinutes($expirationMinutes);
 			$token = $usuario->createToken(
 				'auth_token',
 				['*'],

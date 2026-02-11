@@ -1,4 +1,15 @@
 <div class="container-fluid py-4">
+	<!-- Alerta de error por falta de permisos -->
+	<div class="row" *ngIf="errorMessage">
+		<div class="col-12">
+			<div class="alert alert-warning alert-dismissible fade show" role="alert">
+				<i class="fas fa-exclamation-triangle me-2"></i>
+				<strong>Acceso Denegado:</strong> {{ errorMessage }}
+				<button type="button" class="btn-close" (click)="errorMessage = null" aria-label="Close"></button>
+			</div>
+		</div>
+	</div>
+
 	<div class="row">
 		<div class="col-12">
 			<div class="d-flex justify-content-between align-items-center mb-4">

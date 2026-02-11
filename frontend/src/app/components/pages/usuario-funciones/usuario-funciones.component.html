@@ -12,7 +12,7 @@
 	</div>
 
 	<!-- Alert -->
-	<div *ngIf="alertMessage" 
+	<div *ngIf="alertMessage"
 		class="alert alert-dismissible fade show"
 		[ngClass]="{
 			'alert-success': alertType === 'success',
@@ -31,9 +31,9 @@
 				<span class="input-group-text">
 					<i class="fas fa-search"></i>
 				</span>
-				<input 
-					type="text" 
-					class="form-control" 
+				<input
+					type="text"
+					class="form-control"
 					placeholder="Buscar funciones..."
 					[(ngModel)]="searchTerm">
 			</div>
@@ -54,7 +54,7 @@
 				<i class="fas fa-folder me-2"></i>
 				{{ modulo | titlecase }}
 			</h4>
-			
+
 			<div class="table-responsive">
 				<table class="table table-hover">
 					<thead class="table-light">
@@ -74,13 +74,12 @@
 								<code>{{ funcion.codigo }}</code>
 							</td>
 							<td>
-								<i *ngIf="funcion.icono" [class]="'fas ' + funcion.icono + ' me-2'"></i>
 								{{ funcion.nombre }}
 							</td>
 							<td>{{ funcion.descripcion || '-' }}</td>
 							<td>{{ funcion.fecha_ini | date:'dd/MM/yyyy' }}</td>
 							<td>
-								<span *ngIf="funcion.fecha_fin" 
+								<span *ngIf="funcion.fecha_fin"
 									[class.text-danger]="estaExpirada(funcion)">
 									{{ funcion.fecha_fin | date:'dd/MM/yyyy' }}
 								</span>
@@ -103,12 +102,12 @@
 								</span>
 							</td>
 							<td>
-								<button class="btn btn-sm btn-outline-primary me-1" 
+								<button class="btn btn-sm btn-outline-primary me-1"
 									(click)="openEditModal(funcion)"
 									title="Editar">
 									<i class="fas fa-edit"></i>
 								</button>
-								<button class="btn btn-sm btn-outline-danger" 
+								<button class="btn btn-sm btn-outline-danger"
 									(click)="openDeleteModal(funcion)"
 									title="Quitar">
 									<i class="fas fa-trash"></i>
@@ -129,7 +128,7 @@
 </div>
 
 <!-- Modal Agregar Función -->
-<div class="modal fade" [class.show]="showAddModal" [style.display]="showAddModal ? 'block' : 'none'" 
+<div class="modal fade" [class.show]="showAddModal" [style.display]="showAddModal ? 'block' : 'none'"
 	tabindex="-1" *ngIf="showAddModal">
 	<div class="modal-dialog">
 		<div class="modal-content">
@@ -186,7 +185,7 @@
 <div class="modal-backdrop fade" [class.show]="showAddModal" *ngIf="showAddModal"></div>
 
 <!-- Modal Editar Función -->
-<div class="modal fade" [class.show]="showEditModal" [style.display]="showEditModal ? 'block' : 'none'" 
+<div class="modal fade" [class.show]="showEditModal" [style.display]="showEditModal ? 'block' : 'none'"
 	tabindex="-1" *ngIf="showEditModal">
 	<div class="modal-dialog">
 		<div class="modal-content">
@@ -235,7 +234,7 @@
 <div class="modal-backdrop fade" [class.show]="showEditModal" *ngIf="showEditModal"></div>
 
 <!-- Modal Eliminar -->
-<div class="modal fade" [class.show]="showDeleteModal" [style.display]="showDeleteModal ? 'block' : 'none'" 
+<div class="modal fade" [class.show]="showDeleteModal" [style.display]="showDeleteModal ? 'block' : 'none'"
 	tabindex="-1" *ngIf="showDeleteModal">
 	<div class="modal-dialog">
 		<div class="modal-content">

@@ -1,7 +1,7 @@
-import { Component } from '@angular/core';
+import { Component, OnInit } from '@angular/core';
 import { CommonModule } from '@angular/common';
 import { FormBuilder, FormGroup, ReactiveFormsModule, Validators } from '@angular/forms';
-import { Router } from '@angular/router';
+import { Router, ActivatedRoute } from '@angular/router';
 // Importamos ambos servicios
 import { AuthService } from '../../../services/auth.service';
 import { AuthMockService } from '../../../services/auth-mock.service';
@@ -27,6 +27,12 @@ const USE_MOCK_AUTH = false; // Cambiar a false para usar el servicio real
 
 				<!-- Login Form -->
 				<form [formGroup]="loginForm" (ngSubmit)="onSubmit()" class="login-form">
+					<!-- Mensaje de sesión expirada -->
+					<div *ngIf="sessionExpiredMessage" class="alert alert-warning d-flex align-items-center" role="alert">
+						<i class="fas fa-clock me-2"></i>
+						<span>{{ sessionExpiredMessage }}</span>
+					</div>
+
 					<!-- Errores -->
 					<div *ngIf="errorMessage" class="alert alert-danger d-flex align-items-center" role="alert">
 						<i class="fas fa-exclamation-triangle me-2"></i>
@@ -37,10 +43,10 @@ const USE_MOCK_AUTH = false; // Cambiar a false para usar el servicio real
 					<div class="login-form-group">
 						<label for="nickname" class="login-label">Usuario</label>
 						<div class="position-relative">
-							<input 
-								id="nickname" 
-								formControlName="nickname" 
-								type="text" 
+							<input
+								id="nickname"
+								formControlName="nickname"
+								type="text"
 								class="login-input"
 								[class.is-invalid]="loginForm.get('nickname')?.invalid && loginForm.get('nickname')?.touched"
 								placeholder="Ingrese su usuario o CI"
@@ -58,16 +64,16 @@ const USE_MOCK_AUTH = false; // Cambiar a false para usar el servicio real
 					<div class="login-form-group">
 						<label for="contrasenia" class="login-label">Contraseña</label>
 						<div class="login-password-container">
-							<input 
-								id="contrasenia" 
-								formControlName="contrasenia" 
-								[type]="showPassword ? 'text' : 'password'" 
+							<input
+								id="contrasenia"
+								formControlName="contrasenia"
+								[type]="showPassword ? 'text' : 'password'"
 								class="login-input"
 								[class.is-invalid]="loginForm.get('contrasenia')?.invalid && loginForm.get('contrasenia')?.touched"
 								placeholder="••••••••"
 							>
-							<button 
-								type="button" 
+							<button
+								type="button"
 								class="login-password-toggle btn btn-link p-0"
 								(click)="togglePasswordVisibility()"
 							>
@@ -102,10 +108,11 @@ const USE_MOCK_AUTH = false; // Cambiar a false para usar el servicio real
 	styles: []
 
 })
-export class LoginComponent {
+export class LoginComponent implements OnInit {
 	loginForm: FormGroup;
 	isLoading = false;
 	errorMessage = '';
+	sessionExpiredMessage = '';
 	showPassword = false;
 	currentYear = new Date().getFullYear();
 
@@ -113,11 +120,25 @@ export class LoginComponent {
 		private fb: FormBuilder,
 		private authService: AuthService,
 		private authMockService: AuthMockService,
-		private router: Router
+		private router: Router,
+		private route: ActivatedRoute
 	) {
 		this.loginForm = this.fb.group({
 			nickname: ['', [Validators.required]],
 			contrasenia: ['', [Validators.required]]
+		});
+	}
+
+	ngOnInit(): void {
+		// Verificar si viene de una sesión expirada
+		this.route.queryParams.subscribe(params => {
+			if (params['sessionExpired'] === 'true') {
+				this.sessionExpiredMessage = 'Tu sesión ha expirado. Por favor, inicia sesión nuevamente.';
+				// Limpiar el mensaje después de 10 segundos
+				setTimeout(() => {
+					this.sessionExpiredMessage = '';
+				}, 10000);
+			}
 		});
 	}
 
