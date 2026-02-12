@@ -348,6 +348,13 @@ Route::get('sga/eco_hydra/Recuperacion/elegibilidad', function (Request $request
             if ($resp->ok()) {
                 return response()->json($resp->json(), 200);
             }
+            // Si el SGA devuelve error, usar fallback
+            Log::warning('SGA Recuperacion/elegibilidad error', [
+                'status' => $resp->status(),
+                'url' => $url,
+                'cod_ceta' => $request->query('cod_ceta'),
+                'cod_pensum' => $codPensum
+            ]);
             return response()->json([
                 'success' => true,
                 'data' => [
@@ -393,7 +400,18 @@ Route::get('sga/eco_hydra/Recuperacion/autorizaciones', function (Request $reque
             if ($resp->ok()) {
                 return response()->json($resp->json(), 200);
             }
-            return response()->json($resp->json(), $resp->status());
+            // Si el SGA devuelve 403 (sin permisos) o cualquier otro error, usar fallback
+            Log::warning('SGA Recuperacion/autorizaciones error', [
+                'status' => $resp->status(),
+                'url' => $url,
+                'cod_ceta' => $request->query('cod_ceta'),
+                'cod_pensum' => $codPensum
+            ]);
+            return response()->json([
+                'success' => true,
+                'data' => [],
+                'message' => 'SGA_BASE_URL no configurado o SGA no disponible. Respuesta local por defecto.'
+            ], 200);
         }
     } catch (\Throwable $e) {
         // fallthrough al fallback
