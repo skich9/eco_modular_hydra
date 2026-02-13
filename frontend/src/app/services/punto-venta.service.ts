@@ -1,6 +1,7 @@
 import { Injectable } from '@angular/core';
 import { HttpClient } from '@angular/common/http';
 import { Observable } from 'rxjs';
+import { environment } from '../../environments/environment';
 
 export interface TipoPuntoVenta {
 	codigo_clasificador: number;
@@ -81,7 +82,7 @@ export interface CuisData {
 	providedIn: 'root'
 })
 export class PuntoVentaService {
-	private apiUrl = 'http://localhost:8069/api';
+	private apiUrl = environment.apiUrl;
 
 	constructor(private http: HttpClient) {}
 

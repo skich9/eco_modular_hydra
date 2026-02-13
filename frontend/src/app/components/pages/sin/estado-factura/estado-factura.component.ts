@@ -4,6 +4,7 @@ import { ReactiveFormsModule, FormBuilder, FormGroup, Validators } from '@angula
 import { FormsModule } from '@angular/forms';
 import { CobrosService } from '../../../../services/cobros.service';
 import { saveBlobAsFile } from '../../../../utils/pdf.helpers';
+import { environment } from '../../../../../environments/environment';
 
 @Component({
 	selector: 'app-estado-factura',
@@ -339,7 +340,7 @@ export class EstadoFacturaComponent implements OnInit {
 	}
 
 	private descargarPdfAnulado(anio: number, nro: number): void {
-		const url = `http://localhost:8069/api/facturas/${anio}/${nro}/pdf-anulado`;
+		const url = `${environment.apiUrl}/facturas/${anio}/${nro}/pdf-anulado`;
 		fetch(url, { method: 'GET', headers: { 'Accept': 'application/pdf' }, cache: 'no-store' })
 			.then(res => {
 				if (!res.ok) throw new Error(String(res.status));
