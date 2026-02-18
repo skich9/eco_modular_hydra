@@ -22,7 +22,7 @@ return new class extends Migration
 				$table->string('gestion', 30);
 
 				// Tipo de cálculo de mora
-				$table->enum('tipo_calculo', ['PORCENTAJE', 'MONTO_FIJO', 'AMBOS'])->default('PORCENTAJE');
+				$table->enum('tipo_calculo', ['PORCENTAJE', 'MONTO_FIJO', 'AMBOS'])->default('MONTO_FIJO');
 
 				// Monto de mora
 				$table->decimal('monto', 10, 2)->nullable()->comment('Monto de mora en Bs');

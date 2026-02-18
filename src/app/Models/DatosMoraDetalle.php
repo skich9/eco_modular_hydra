@@ -17,25 +17,19 @@ class DatosMoraDetalle extends Model
 	protected $fillable = [
 		'id_datos_mora',
 		'semestre',
-		'numero_cuota',
-		'dia_corte',
-		'siguiente_dia_habil',
-		'porcentaje_override',
-		'monto_fijo_override',
-		'fecha_inicio_vigencia',
-		'fecha_fin_vigencia',
+		'cod_pensum',
+		'cuota',
+		'monto',
+		'fecha_inicio',
+		'fecha_fin',
 		'activo',
-		'descripcion',
 	];
 
 	protected $casts = [
-		'numero_cuota' => 'integer',
-		'dia_corte' => 'integer',
-		'siguiente_dia_habil' => 'boolean',
-		'porcentaje_override' => 'decimal:4',
-		'monto_fijo_override' => 'decimal:2',
-		'fecha_inicio_vigencia' => 'date',
-		'fecha_fin_vigencia' => 'date',
+		'cuota' => 'integer',
+		'monto' => 'decimal:2',
+		'fecha_inicio' => 'date',
+		'fecha_fin' => 'date',
 		'activo' => 'boolean',
 	];
 
@@ -48,11 +42,19 @@ class DatosMoraDetalle extends Model
 	}
 
 	/**
-	 * Obtiene los recargos de mora que usan esta configuración.
+	 * Obtiene las asignaciones de mora que usan esta configuración.
 	 */
-	public function recargosMora()
+	public function asignacionesMora()
 	{
-		return $this->hasMany(RecargoMora::class, 'id_datos_mora_detalle', 'id_datos_mora_detalle');
+		return $this->hasMany(AsignacionMora::class, 'id_datos_mora_detalle', 'id_datos_mora_detalle');
+	}
+
+	/**
+	 * Obtiene el pensum asociado.
+	 */
+	public function pensum()
+	{
+		return $this->belongsTo(Pensum::class, 'cod_pensum', 'cod_pensum');
 	}
 
 	/**
@@ -78,11 +80,11 @@ class DatosMoraDetalle extends Model
 	{
 		$fecha = $fecha ?? now();
 		return $query->where(function ($q) use ($fecha) {
-			$q->whereNull('fecha_inicio_vigencia')
-				->orWhere('fecha_inicio_vigencia', '<=', $fecha);
+			$q->whereNull('fecha_inicio')
+				->orWhere('fecha_inicio', '<=', $fecha);
 		})->where(function ($q) use ($fecha) {
-			$q->whereNull('fecha_fin_vigencia')
-				->orWhere('fecha_fin_vigencia', '>=', $fecha);
+			$q->whereNull('fecha_fin')
+				->orWhere('fecha_fin', '>=', $fecha);
 		});
 	}
 }

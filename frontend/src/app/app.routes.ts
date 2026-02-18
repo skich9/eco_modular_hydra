@@ -163,6 +163,13 @@ export const routes: Routes = [
 				canActivate: [permissionGuard],
 				data: { requiredPermission: 'configuracion_generales' }
 			},
+			// Ruta para Configuración de Moras
+			{
+				path: 'configuracion-mora',
+				loadComponent: () => import('./components/pages/configuracion-mora/configuracion-mora.component').then(m => m.ConfiguracionMoraComponent),
+				canActivate: [permissionGuard],
+				data: { requiredPermission: 'configuracion_mora' }
+			},
 
             // SIN: Estado de Factura / Anulación
             {

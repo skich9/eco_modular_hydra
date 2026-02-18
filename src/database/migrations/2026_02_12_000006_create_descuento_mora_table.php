@@ -24,9 +24,6 @@ return new class extends Migration
 				// Porcentaje (true = es porcentaje, false = es monto fijo)
 				$table->boolean('porcentaje')->default(true)->comment('true = porcentaje, false = monto fijo');
 
-				// Porcentaje de descuento (ej: 0.50 = 50%)
-				$table->decimal('porcentaje_descuento', 5, 4)->nullable()->comment('Porcentaje de descuento (0.50 = 50%)');
-
 				// Monto fijo de descuento
 				$table->decimal('monto_descuento', 10, 2)->nullable()->comment('Monto fijo de descuento en Bs');
 

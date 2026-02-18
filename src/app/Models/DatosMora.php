@@ -17,15 +17,12 @@ class DatosMora extends Model
 	protected $fillable = [
 		'gestion',
 		'tipo_calculo',
-		'porcentaje_diario',
-		'monto_fijo_diario',
+		'monto',
 		'activo',
-		'descripcion',
 	];
 
 	protected $casts = [
-		'porcentaje_diario' => 'decimal:4',
-		'monto_fijo_diario' => 'decimal:2',
+		'monto' => 'decimal:2',
 		'activo' => 'boolean',
 	];
 

@@ -1,0 +1,250 @@
+<div class="container py-3">
+	<div class="d-flex flex-wrap justify-content-between align-items-center mb-3 gap-2">
+		<h1 class="h4 m-0">Configuración de Moras</h1>
+		<div class="d-flex gap-2 align-items-center">
+			<div class="position-relative">
+				<input type="text" class="form-control pe-5" placeholder="Buscar configuración..." [(ngModel)]="searchText">
+			</div>
+			<button class="btn btn-primary" (click)="openNewMora()">
+				<i class="fas fa-plus me-1"></i> Nueva Configuración
+			</button>
+		</div>
+	</div>
+
+	<!-- Alertas -->
+	<div *ngIf="alertMessage" class="alert" [ngClass]="{
+		'alert-success': alertType==='success',
+		'alert-danger': alertType==='error',
+		'alert-warning': alertType==='warning'
+	}">
+		{{ alertMessage }}
+	</div>
+
+	<!-- Información del sistema -->
+	<div class="alert alert-info mb-3">
+		<i class="fas fa-info-circle me-2"></i>
+		<strong>Configuración de Moras:</strong> Aquí puede configurar el monto de mora que se aplicará a los estudiantes por pagos atrasados.
+		Puede definir si el cálculo será por porcentaje, monto fijo o ambos.
+	</div>
+
+	<!-- Tabla de Configuraciones -->
+	<div class="table-responsive">
+		<table class="table align-middle">
+			<thead class="table-light">
+				<tr>
+					<th>Pensum</th>
+					<th>Cuota</th>
+					<th>Semestre</th>
+					<th>Fecha Inicio</th>
+					<th>Fecha Fin</th>
+					<th>Importe/día (Bs)</th>
+					<th>Estado</th>
+					<th class="text-nowrap">Acciones</th>
+				</tr>
+			</thead>
+			<tbody>
+				<tr *ngFor="let config of filteredConfiguraciones">
+					<td>{{ config.cod_pensum || '-' }}</td>
+					<td><strong>Cuota {{ config.cuota }}</strong></td>
+					<td>{{ config.semestre }}</td>
+					<td>{{ config.fecha_inicio | date:'dd/MM/yyyy' }}</td>
+					<td>{{ config.fecha_fin | date:'dd/MM/yyyy' }}</td>
+					<td>{{ config.monto !== null ? (config.monto | number:'1.2-2') : '-' }}</td>
+					<td>
+						<span class="badge" [ngClass]="config.activo ? 'bg-success' : 'bg-danger'">
+							{{ config.activo ? 'Activo' : 'Inactivo' }}
+						</span>
+					</td>
+					<td class="text-nowrap">
+						<button class="btn btn-sm btn-outline-primary me-1" (click)="openEditMora(config)" title="Editar">
+							<i class="fas fa-edit"></i>
+						</button>
+						<button class="btn btn-sm btn-outline-secondary" (click)="toggleMora(config)" title="Cambiar estado">
+							<i class="fas" [ngClass]="config.activo ? 'fa-toggle-on' : 'fa-toggle-off'"></i>
+						</button>
+					</td>
+				</tr>
+				<tr *ngIf="filteredConfiguraciones.length === 0">
+					<td colspan="8" class="text-center py-4">
+						<div *ngIf="loading">Cargando configuraciones...</div>
+						<div *ngIf="!loading">No se encontraron configuraciones de mora</div>
+					</td>
+				</tr>
+			</tbody>
+		</table>
+	</div>
+
+	<!-- Modal Configuración -->
+	<div class="modal" *ngIf="showMoraModal">
+		<div class="modal-content modal-lg">
+			<div class="modal-header">
+				<h2 class="modal-title">{{ editingMora ? 'Editar Configuración' : 'Nueva Configuración' }}</h2>
+				<button class="modal-close" (click)="closeModals()">×</button>
+			</div>
+			<div class="modal-body">
+				<!-- Alertas dentro del modal -->
+				<div *ngIf="alertMessage" class="alert" [ngClass]="'alert-' + alertType" role="alert">
+					{{ alertMessage }}
+				</div>
+
+				<form [formGroup]="moraForm">
+					<div class="row g-3">
+						<!-- Primera fila: Gestión, Carrera, Pensum -->
+						<div class="col-md-4">
+							<label>Gestión <span class="text-danger">*</span></label>
+							<select class="form-control" formControlName="gestion">
+								<option value="">-- Seleccione --</option>
+								<option *ngFor="let g of gestiones" [value]="g.gestion">{{ g.gestion }}</option>
+							</select>
+							<small class="error" *ngIf="moraForm.get('gestion')?.touched && moraForm.get('gestion')?.hasError('required')">
+								Este campo es requerido.
+							</small>
+						</div>
+
+						<div class="col-md-4">
+							<label>Carrera <span class="text-danger">*</span></label>
+							<select class="form-control" formControlName="carrera" (change)="onCarreraChange()">
+								<option value="">-- Seleccione --</option>
+								<option *ngFor="let c of carreras" [value]="c.codigo_carrera">
+									{{ c.nombre || c.descripcion || c.codigo_carrera }}
+								</option>
+							</select>
+							<small class="error" *ngIf="moraForm.get('carrera')?.touched && moraForm.get('carrera')?.hasError('required')">
+								Debe seleccionar una carrera.
+							</small>
+						</div>
+
+						<div class="col-md-4">
+							<label>Pensum <span class="text-danger">*</span></label>
+							<select class="form-control" formControlName="pensum">
+								<option value="">-- Seleccione --</option>
+								<option *ngFor="let p of pensums" [value]="p.cod_pensum">
+									{{ p.nombre || p.descripcion || p.cod_pensum }}
+								</option>
+							</select>
+							<small class="error" *ngIf="moraForm.get('pensum')?.touched && moraForm.get('pensum')?.hasError('required')">
+								Debe seleccionar un pensum.
+							</small>
+						</div>
+
+						<!-- Segunda fila: Cuotas y Semestres lado a lado -->
+						<div class="col-md-6">
+							<div class="card h-100">
+								<div class="card-header"><strong>Cuotas <span class="text-danger">*</span></strong></div>
+								<div class="card-body" [formGroup]="cuotasGroup">
+									<div class="form-check mb-2">
+										<input class="form-check-input" type="checkbox" id="chkAllCuotas" formControlName="marcarTodasCuotas" />
+										<label class="form-check-label" for="chkAllCuotas"><strong>Marcar Todas</strong></label>
+									</div>
+									<div class="d-flex flex-column gap-1">
+										<div class="form-check">
+											<input class="form-check-input" type="checkbox" id="cuota_1" formControlName="cuota_1" />
+											<label class="form-check-label" for="cuota_1">Cuota 1</label>
+										</div>
+										<div class="form-check">
+											<input class="form-check-input" type="checkbox" id="cuota_2" formControlName="cuota_2" />
+											<label class="form-check-label" for="cuota_2">Cuota 2</label>
+										</div>
+										<div class="form-check">
+											<input class="form-check-input" type="checkbox" id="cuota_3" formControlName="cuota_3" />
+											<label class="form-check-label" for="cuota_3">Cuota 3</label>
+										</div>
+										<div class="form-check">
+											<input class="form-check-input" type="checkbox" id="cuota_4" formControlName="cuota_4" />
+											<label class="form-check-label" for="cuota_4">Cuota 4</label>
+										</div>
+										<div class="form-check">
+											<input class="form-check-input" type="checkbox" id="cuota_5" formControlName="cuota_5" />
+											<label class="form-check-label" for="cuota_5">Cuota 5</label>
+										</div>
+									</div>
+								</div>
+							</div>
+						</div>
+
+						<div class="col-md-6">
+							<div class="card h-100">
+								<div class="card-header"><strong>Semestres <span class="text-danger">*</span></strong></div>
+								<div class="card-body" [formGroup]="semestresGroup">
+									<div class="form-check mb-2">
+										<input class="form-check-input" type="checkbox" id="chkAllSem" formControlName="marcarTodosSemestres" />
+										<label class="form-check-label" for="chkAllSem"><strong>Marcar Todos</strong></label>
+									</div>
+									<div class="d-flex flex-column gap-1">
+										<div class="form-check">
+											<input class="form-check-input" type="checkbox" id="sem1" formControlName="sem1" />
+											<label class="form-check-label" for="sem1">1er Semestre</label>
+										</div>
+										<div class="form-check">
+											<input class="form-check-input" type="checkbox" id="sem2" formControlName="sem2" />
+											<label class="form-check-label" for="sem2">2do Semestre</label>
+										</div>
+										<div class="form-check">
+											<input class="form-check-input" type="checkbox" id="sem3" formControlName="sem3" />
+											<label class="form-check-label" for="sem3">3er Semestre</label>
+										</div>
+										<div class="form-check">
+											<input class="form-check-input" type="checkbox" id="sem4" formControlName="sem4" />
+											<label class="form-check-label" for="sem4">4to Semestre</label>
+										</div>
+										<div class="form-check">
+											<input class="form-check-input" type="checkbox" id="sem5" formControlName="sem5" />
+											<label class="form-check-label" for="sem5">5to Semestre</label>
+										</div>
+										<div class="form-check">
+											<input class="form-check-input" type="checkbox" id="sem6" formControlName="sem6" />
+											<label class="form-check-label" for="sem6">6to Semestre</label>
+										</div>
+									</div>
+								</div> <!-- Agregado cierre de div card-body -->
+							</div>
+						</div>
+
+						<!-- Tercera fila: Fechas y Monto -->
+						<div class="col-md-4">
+							<label>Fecha de Inicio <span class="text-danger">*</span></label>
+							<input class="form-control" type="date" formControlName="fecha_inicio" />
+							<small class="text-muted">Desde cuándo comenzará a aplicarse la mora</small>
+							<small class="error" *ngIf="moraForm.get('fecha_inicio')?.touched && moraForm.get('fecha_inicio')?.hasError('required')">
+								Este campo es requerido.
+							</small>
+						</div>
+
+						<div class="col-md-4">
+							<label>Fecha de Fin</label>
+							<input class="form-control" type="date" formControlName="fecha_fin" />
+							<small class="text-muted">Opcional - Dejar vacío si no tiene fin</small>
+						</div>
+
+						<div class="col-md-4">
+							<label>Importe mora por día <span class="text-danger">*</span></label>
+							<input class="form-control" type="number" formControlName="monto" placeholder="Ej: 5.00" step="0.01" min="0" />
+							<small class="text-muted">Monto de mora diaria en bolivianos</small>
+							<small class="error" *ngIf="moraForm.get('monto')?.touched && moraForm.get('monto')?.hasError('required')">
+								Este campo es requerido.
+							</small>
+							<small class="error" *ngIf="moraForm.get('monto')?.hasError('min')">
+								El monto debe ser mayor o igual a 0.
+							</small>
+						</div>
+
+						<div class="col-12">
+							<div class="form-check">
+								<input class="form-check-input" type="checkbox" id="activo" formControlName="activo" />
+								<label class="form-check-label" for="activo">
+									<strong>Activo</strong>
+									<small class="text-muted d-block">Solo las configuraciones activas se aplicarán</small>
+								</label>
+							</div>
+						</div>
+					</div>
+				</form>
+			</div>
+			<div class="modal-footer">
+				<button class="btn btn-secondary" (click)="closeModals()">Cancelar</button>
+				<button class="btn btn-primary" (click)="saveMora()" [disabled]="!moraForm.valid">Guardar</button>
+			</div>
+		</div>
+	</div>
+
+</div>

@@ -97,6 +97,7 @@ export class NavigationComponent implements OnInit {
 				{ name: 'Configuración de Descuentos', icon: 'fa-percent', route: '/descuentos', permissionCode: 'configuracion_descuentos' },
 				{ name: 'Configuración de Costos', icon: 'fa-coins', route: '/costos', permissionCode: 'configuracion_costos' },
 				{ name: 'Configuración de Costos por Créditos', icon: 'fa-calculator', route: '/costos-creditos', permissionCode: 'configuracion_costos_creditos' },
+				{ name: 'Configuración de Moras', icon: 'fa-exclamation-triangle', route: '/configuracion-mora', permissionCode: 'configuracion_mora' },
 				{ name: 'Configuraciones Generales', icon: 'fa-cogs', route: '/configuraciones-generales', permissionCode: 'configuracion_generales' }
 			]
 		}

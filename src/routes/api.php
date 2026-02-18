@@ -278,6 +278,15 @@ Route::patch('def-descuentos-beca/{id}/toggle-status', [DefDescuentoBecaControll
 Route::apiResource('parametros-generales', ParametroGeneralController::class);
 Route::patch('parametros-generales/{id}/toggle-status', [ParametroGeneralController::class, 'toggleStatus']);
 
+// Configuración de Moras
+Route::post('datos-mora/find-or-create', [\App\Http\Controllers\DatosMoraController::class, 'findOrCreate']);
+Route::apiResource('datos-mora', \App\Http\Controllers\DatosMoraController::class);
+Route::patch('datos-mora/{id}/toggle-status', [\App\Http\Controllers\DatosMoraController::class, 'toggleStatus']);
+
+// Configuración de Moras - Detalles
+Route::apiResource('datos-mora-detalle', \App\Http\Controllers\DatosMoraDetalleController::class);
+Route::patch('datos-mora-detalle/{id}/toggle-status', [\App\Http\Controllers\DatosMoraDetalleController::class, 'toggleStatus']);
+
 // Carreras
 Route::get('carreras', [ApiCarreraController::class, 'index']);
 Route::get('carreras/{codigo}/pensums', [ApiCarreraController::class, 'pensums']);

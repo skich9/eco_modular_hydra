@@ -15,35 +15,22 @@ class DescuentoMora extends Model
 	public $timestamps = true;
 
 	protected $fillable = [
-		'id_recargo_mora',
-		'tipo_descuento',
-		'porcentaje_descuento',
+		'id_asignacion_mora',
+		'porcentaje',
 		'monto_descuento',
-		'motivo',
-		'autorizado_por',
-		'fecha_autorizacion',
 		'observaciones',
 	];
 
 	protected $casts = [
-		'porcentaje_descuento' => 'decimal:4',
+		'porcentaje' => 'boolean',
 		'monto_descuento' => 'decimal:2',
-		'fecha_autorizacion' => 'datetime',
 	];
 
 	/**
-	 * Obtiene el recargo de mora asociado.
+	 * Obtiene la asignación de mora asociada.
 	 */
-	public function recargoMora()
+	public function asignacionMora()
 	{
-		return $this->belongsTo(RecargoMora::class, 'id_recargo_mora', 'id_recargo_mora');
-	}
-
-	/**
-	 * Obtiene el usuario que autorizó el descuento.
-	 */
-	public function autorizador()
-	{
-		return $this->belongsTo(Usuario::class, 'autorizado_por', 'id_usuario');
+		return $this->belongsTo(AsignacionMora::class, 'id_asignacion_mora', 'id_asignacion_mora');
 	}
 }
