@@ -91,44 +91,47 @@
 					<div class="row g-3">
 						<!-- Primera fila: Gestión, Carrera, Pensum -->
 						<div class="col-md-4">
-							<label>Gestión <span class="text-danger">*</span></label>
-							<select class="form-control" formControlName="gestion">
+							<label>Gestión <span class="text-danger" *ngIf="!editingMora">*</span></label>
+							<select *ngIf="!editingMora" class="form-control" formControlName="gestion">
 								<option value="">-- Seleccione --</option>
 								<option *ngFor="let g of gestiones" [value]="g.gestion">{{ g.gestion }}</option>
 							</select>
-							<small class="error" *ngIf="moraForm.get('gestion')?.touched && moraForm.get('gestion')?.hasError('required')">
+							<input *ngIf="editingMora" type="text" class="form-control" [value]="editingMora.datos_mora?.gestion || '-'" readonly />
+							<small class="error" *ngIf="!editingMora && moraForm.get('gestion')?.touched && moraForm.get('gestion')?.hasError('required')">
 								Este campo es requerido.
 							</small>
 						</div>
 
 						<div class="col-md-4">
-							<label>Carrera <span class="text-danger">*</span></label>
-							<select class="form-control" formControlName="carrera" (change)="onCarreraChange()">
+							<label>Carrera <span class="text-danger" *ngIf="!editingMora">*</span></label>
+							<select *ngIf="!editingMora" class="form-control" formControlName="carrera" (change)="onCarreraChange()">
 								<option value="">-- Seleccione --</option>
 								<option *ngFor="let c of carreras" [value]="c.codigo_carrera">
 									{{ c.nombre || c.descripcion || c.codigo_carrera }}
 								</option>
 							</select>
-							<small class="error" *ngIf="moraForm.get('carrera')?.touched && moraForm.get('carrera')?.hasError('required')">
+							<input *ngIf="editingMora" type="text" class="form-control" [value]="editingMora.pensum?.carrera?.nombre || editingMora.pensum?.carrera?.codigo_carrera || '-'" readonly />
+							<small class="error" *ngIf="!editingMora && moraForm.get('carrera')?.touched && moraForm.get('carrera')?.hasError('required')">
 								Debe seleccionar una carrera.
 							</small>
 						</div>
 
 						<div class="col-md-4">
-							<label>Pensum <span class="text-danger">*</span></label>
-							<select class="form-control" formControlName="pensum">
+							<label>Pensum <span class="text-danger" *ngIf="!editingMora">*</span></label>
+							<select *ngIf="!editingMora" class="form-control" formControlName="pensum">
 								<option value="">-- Seleccione --</option>
 								<option *ngFor="let p of pensums" [value]="p.cod_pensum">
 									{{ p.nombre || p.descripcion || p.cod_pensum }}
 								</option>
 							</select>
-							<small class="error" *ngIf="moraForm.get('pensum')?.touched && moraForm.get('pensum')?.hasError('required')">
+							<input *ngIf="editingMora" type="text" class="form-control" [value]="editingMora.pensum?.nombre || editingMora.cod_pensum || '-'" readonly />
+							<small class="error" *ngIf="!editingMora && moraForm.get('pensum')?.touched && moraForm.get('pensum')?.hasError('required')">
 								Debe seleccionar un pensum.
 							</small>
 						</div>
 
 						<!-- Segunda fila: Cuotas y Semestres lado a lado -->
-						<div class="col-md-6">
+						<div class="col-md-6" *ngIf="!editingMora">
 							<div class="card h-100">
 								<div class="card-header"><strong>Cuotas <span class="text-danger">*</span></strong></div>
 								<div class="card-body" [formGroup]="cuotasGroup">
@@ -162,7 +165,7 @@
 							</div>
 						</div>
 
-						<div class="col-md-6">
+						<div class="col-md-6" *ngIf="!editingMora">
 							<div class="card h-100">
 								<div class="card-header"><strong>Semestres <span class="text-danger">*</span></strong></div>
 								<div class="card-body" [formGroup]="semestresGroup">
@@ -201,7 +204,7 @@
 						</div>
 
 						<!-- Tercera fila: Fechas y Monto -->
-						<div class="col-md-4">
+						<div class="col-md-4" *ngIf="!editingMora">
 							<label>Fecha de Inicio <span class="text-danger">*</span></label>
 							<input class="form-control" type="date" formControlName="fecha_inicio" />
 							<small class="text-muted">Desde cuándo comenzará a aplicarse la mora</small>
@@ -210,14 +213,30 @@
 							</small>
 						</div>
 
+						<!-- Modo edición: Mostrar datos de solo lectura -->
+						<div class="col-md-4" *ngIf="editingMora">
+							<label>Cuota</label>
+							<input type="text" class="form-control" [value]="'Cuota ' + editingMora.cuota" readonly />
+						</div>
+
+						<div class="col-md-4" *ngIf="editingMora">
+							<label>Semestre</label>
+							<input type="text" class="form-control" [value]="editingMora.semestre" readonly />
+						</div>
+
+						<div class="col-md-4" *ngIf="editingMora">
+							<label>Fecha de Inicio</label>
+							<input type="text" class="form-control" [value]="editingMora.fecha_inicio | date:'dd/MM/yyyy'" readonly />
+						</div>
+
 						<div class="col-md-4">
-							<label>Fecha de Fin</label>
+							<label>Fecha de Fin <span class="text-success" *ngIf="editingMora">(Editable)</span></label>
 							<input class="form-control" type="date" formControlName="fecha_fin" />
 							<small class="text-muted">Opcional - Dejar vacío si no tiene fin</small>
 						</div>
 
 						<div class="col-md-4">
-							<label>Importe mora por día <span class="text-danger">*</span></label>
+							<label>Importe mora por día <span class="text-danger" *ngIf="!editingMora">*</span><span class="text-success" *ngIf="editingMora">(Editable)</span></label>
 							<input class="form-control" type="number" formControlName="monto" placeholder="Ej: 5.00" step="0.01" min="0" />
 							<small class="text-muted">Monto de mora diaria en bolivianos</small>
 							<small class="error" *ngIf="moraForm.get('monto')?.touched && moraForm.get('monto')?.hasError('required')">
@@ -228,7 +247,7 @@
 							</small>
 						</div>
 
-						<div class="col-12">
+						<div class="col-12" *ngIf="!editingMora">
 							<div class="form-check">
 								<input class="form-check-input" type="checkbox" id="activo" formControlName="activo" />
 								<label class="form-check-label" for="activo">

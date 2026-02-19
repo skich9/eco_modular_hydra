@@ -243,8 +243,11 @@ export class ConfiguracionMoraComponent implements OnInit {
 
 	openEditMora(mora: DatosMoraDetalle): void {
 		this.editingMora = mora;
-		this.moraForm.patchValue(mora);
-		// TODO: Cargar semestres y cuotas seleccionados si se implementa edición
+		// En modo edición solo cargar fecha_fin y monto
+		this.moraForm.patchValue({
+			fecha_fin: mora.fecha_fin || '',
+			monto: mora.monto
+		});
 		this.showMoraModal = true;
 	}
 
@@ -255,6 +258,30 @@ export class ConfiguracionMoraComponent implements OnInit {
 
 	// Guardar
 	saveMora(): void {
+		// Modo edición: solo actualizar fecha_fin y monto
+		if (this.editingMora) {
+			const updateData = {
+				fecha_fin: this.moraForm.value.fecha_fin || null,
+				monto: this.moraForm.value.monto
+			};
+
+			this.moraService.updateDetalle(this.editingMora.id_datos_mora_detalle!, updateData as any).subscribe({
+				next: (res) => {
+					if (res.success) {
+						this.loadConfiguraciones();
+						this.closeModals();
+						this.showAlert('Configuración actualizada exitosamente', 'success');
+					}
+				},
+				error: (err) => {
+					console.error('Error al actualizar:', err);
+					this.showAlert('Error al actualizar la configuración', 'error');
+				}
+			});
+			return;
+		}
+
+		// Modo creación
 		if (!this.moraForm.valid) {
 			this.showAlert('Por favor complete todos los campos requeridos', 'warning');
 			return;
