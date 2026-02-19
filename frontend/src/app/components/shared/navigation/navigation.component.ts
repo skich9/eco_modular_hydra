@@ -87,6 +87,14 @@ export class NavigationComponent implements OnInit {
 			]
 		},
 		{
+			name: 'Económico',
+			icon: 'fas fa-dollar-sign',
+			modulo: 'Económico',
+			submenu: [
+				{ name: 'Prórroga Mora', icon: 'fa-calendar-times', route: '/prorroga-mora', permissionCode: 'economico_prorroga_mora' }
+			]
+		},
+		{
 			name: 'Configuración',
 			icon: 'fas fa-cog',
 			modulo: 'Configuración',

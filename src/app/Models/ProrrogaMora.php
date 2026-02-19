@@ -20,6 +20,8 @@ class ProrrogaMora extends Model
 		'id_asignacion_costo',
 		'fecha_inicio_prorroga',
 		'fecha_fin_prorroga',
+		'activo',
+		'motivo',
 	];
 
 	protected $casts = [
@@ -49,5 +51,48 @@ class ProrrogaMora extends Model
 	public function asignacionCosto()
 	{
 		return $this->belongsTo(AsignacionCostos::class, 'id_asignacion_costo', 'id_asignacion_costo');
+	}
+
+	/**
+	 * Verifica si la prórroga está activa en una fecha dada.
+	 *
+	 * @param string|null $fecha
+	 * @return bool
+	 */
+	public function estaActiva($fecha = null)
+	{
+		$fecha = $fecha ? \Carbon\Carbon::parse($fecha) : \Carbon\Carbon::today();
+
+		return $fecha->between(
+			\Carbon\Carbon::parse($this->fecha_inicio_prorroga),
+			\Carbon\Carbon::parse($this->fecha_fin_prorroga)
+		);
+	}
+
+	/**
+	 * Scope para obtener prórrogas activas en una fecha.
+	 *
+	 * @param mixed $query
+	 * @param mixed $fecha
+	 * @return mixed
+	 */
+	public function scopeActivas($query, $fecha = null)
+	{
+		$fecha = $fecha ? $fecha : \Carbon\Carbon::today();
+
+		return $query->where('activo', true)
+			->where('fecha_inicio_prorroga', '<=', $fecha)
+			->where('fecha_fin_prorroga', '>=', $fecha);
+	}
+
+	/**
+	 * Scope para obtener solo prórrogas activas (sin filtro de fecha).
+	 *
+	 * @param mixed $query
+	 * @return mixed
+	 */
+	public function scopeSoloActivas($query)
+	{
+		return $query->where('activo', true);
 	}
 }

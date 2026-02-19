@@ -170,6 +170,13 @@ export const routes: Routes = [
 				canActivate: [permissionGuard],
 				data: { requiredPermission: 'configuracion_mora' }
 			},
+			// Ruta para Prórroga de Mora
+			{
+				path: 'prorroga-mora',
+				loadComponent: () => import('./components/pages/prorroga-mora/prorroga-mora.component').then(m => m.ProrrogaMoraComponent),
+				canActivate: [permissionGuard],
+				data: { requiredPermission: 'economico_prorroga_mora' }
+			},
 
             // SIN: Estado de Factura / Anulación
             {

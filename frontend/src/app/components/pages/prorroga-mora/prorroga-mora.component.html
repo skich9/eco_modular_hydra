@@ -1,0 +1,210 @@
+<div class="prorroga-mora-container">
+	<!-- Header -->
+	<div class="page-header">
+		<h1 class="page-title">
+			<i class="fas fa-calendar-times"></i>
+			Gestión de Prórrogas de Mora
+		</h1>
+	</div>
+
+	<!-- Alert -->
+	<div *ngIf="showAlert" class="alert" [ngClass]="'alert-' + alertType">
+		<i class="fas" [ngClass]="{
+			'fa-check-circle': alertType === 'success',
+			'fa-exclamation-circle': alertType === 'warning',
+			'fa-times-circle': alertType === 'error'
+		}"></i>
+		{{ alertMessage }}
+	</div>
+
+	<!-- Datos del estudiante (estilo reimpresión) + Card lateral de prórroga -->
+	<div class="search-section">
+		<div style="display: grid; grid-template-columns: 1fr 1fr; gap: 1.25rem; align-items: start;">
+			<!-- Columna izquierda: datos del estudiante -->
+			<div class="search-card">
+			<h3 class="search-title">
+				<i class="fas fa-search"></i>
+				Datos del estudiante
+			</h3>
+			<div class="search-form">
+				<div class="search-input-group" style="flex-direction: column; gap: 0.5rem;">
+					<label class="form-label">Código CETA</label>
+					<div style="display: flex; gap: 0.5rem;">
+						<input type="text" class="search-input" [(ngModel)]="searchCodCeta" placeholder="Ingrese código CETA" (keyup.enter)="buscarPorCodCeta()" />
+						<button class="btn btn-primary" (click)="buscarPorCodCeta()" [disabled]="loading">
+							<i class="fas fa-search"></i>
+						</button>
+						<button class="btn btn-secondary" (click)="limpiarBusqueda()" *ngIf="estudianteEncontrado">
+							<i class="fas fa-times"></i>
+						</button>
+					</div>
+				</div>
+				<div class="search-input-group" style="flex-direction: column; gap: 0.5rem; margin-top: 1rem;">
+					<label class="form-label">Pensum</label>
+					<input type="text" class="search-input" [value]="pensumNombre" disabled />
+				</div>
+				<div class="search-input-group" style="flex-direction: column; gap: 0.5rem; margin-top: 1rem;">
+					<label class="form-label">Estudiante</label>
+					<input type="text" class="search-input" [value]="studentDisplayName" disabled />
+				</div>
+				<div class="search-input-group" style="flex-direction: column; gap: 0.5rem; margin-top: 1rem;">
+					<label class="form-label">Grupos</label>
+					<div *ngIf="(grupos && grupos.length) > 0; else noGrupos">
+						<span *ngFor="let g of grupos" class="badge badge-success" style="margin-right: 0.5rem;">{{ g }}</span>
+					</div>
+					<ng-template #noGrupos>
+						<span class="info-value">Sin grupos</span>
+					</ng-template>
+				</div>
+			</div>
+			</div>
+
+			<!-- Columna derecha: formulario de prórroga -->
+			<div class="search-card">
+				<h3 class="search-title">
+					<i class="fas fa-calendar-plus"></i>
+					Prórroga
+				</h3>
+				<div class="search-form">
+					<div class="search-input-group" style="flex-direction: column; gap: 0.75rem;">
+						<label class="form-label">Fecha fin de prórroga</label>
+						<input type="date" class="search-input" [ngModelOptions]="{standalone: true}" [(ngModel)]="fechaFinProrrogaTmp" />
+					</div>
+					<div class="search-input-group" style="flex-direction: column; gap: 0.5rem; margin-top: 0.5rem;">
+						<label class="form-label">Cuotas</label>
+						<div style="display: grid; grid-template-columns: repeat(5, minmax(70px, 1fr)); gap: 0.5rem;">
+							<label *ngFor="let n of [1,2,3,4,5]" style="display:flex; align-items:center; gap:0.4rem;">
+								<input type="radio" name="cuotaSel" [value]="n" [(ngModel)]="selectedCuota" [ngModelOptions]="{standalone: true}" />
+								<span>Cuota {{ n }}</span>
+							</label>
+						</div>
+					</div>
+					<div class="search-input-group" style="flex-direction: column; gap: 0.5rem; margin-top: 0.5rem;">
+						<label class="form-label">Motivo</label>
+						<textarea class="search-input" rows="4" [(ngModel)]="motivo" [ngModelOptions]="{standalone: true}" placeholder="Ingrese el motivo de la prórroga..."></textarea>
+					</div>
+					<div class="search-input-group" style="gap: 0.5rem; margin-top: 1rem;">
+						<button class="btn btn-primary" (click)="saveProrroga()" [disabled]="loading">
+							<i class="fas fa-save"></i>
+							Registrar prórroga
+						</button>
+						<button class="btn btn-secondary" (click)="limpiarFormularioProrroga()">
+							<i class="fas fa-eraser"></i>
+							Limpiar
+						</button>
+						<button class="btn" (click)="limpiarBusqueda()">
+							<i class="fas fa-times"></i>
+							Cancelar
+						</button>
+					</div>
+				</div>
+			</div>
+		</div>
+	</div>
+
+	<!-- Tabla de Prórrogas -->
+	<div class="table-section">
+		<div class="table-header">
+			<h3 class="table-title">
+				<i class="fas fa-list"></i>
+				Prórrogas Registradas
+			</h3>
+		</div>
+		<div class="table-responsive">
+			<table class="table">
+				<thead>
+					<tr>
+						<th>Código Estudiante</th>
+						<th>Estudiante</th>
+						<th>Pensum</th>
+						<th>Gestión</th>
+						<th>Cuota</th>
+						<th>Fecha Inicio</th>
+						<th>Fecha Fin</th>
+						<th>Motivo</th>
+						<th>Usuario</th>
+						<th>Estado</th>
+						<th>Acciones</th>
+					</tr>
+				</thead>
+				<tbody>
+					<tr *ngFor="let prorroga of prorrogas">
+						<td>{{ prorroga.cod_ceta }}</td>
+						<td>{{ getNombreCompleto(prorroga.estudiante) }}</td>
+						<td>{{ prorroga.asignacionCosto?.cod_pensum }}</td>
+						<td>{{ prorroga.asignacionCosto?.gestion }}</td>
+						<td>Cuota {{ prorroga.asignacionCosto?.numero_cuota }}</td>
+						<td>{{ formatDate(prorroga.fecha_inicio_prorroga) }}</td>
+						<td>{{ formatDate(prorroga.fecha_fin_prorroga) }}</td>
+						<td>{{ prorroga.motivo || 'N/A' }}</td>
+						<td>{{ prorroga.usuario?.nombre || 'N/A' }}</td>
+						<td>
+							<span class="badge" [ngClass]="prorroga.activo ? 'badge-success' : 'badge-danger'">
+								{{ prorroga.activo ? 'Activa' : 'Inactiva' }}
+							</span>
+						</td>
+						<td>
+							<button
+								class="btn btn-sm"
+								[ngClass]="prorroga.activo ? 'btn-danger' : 'btn-success'"
+								(click)="toggleStatus(prorroga)"
+								[disabled]="loading"
+							>
+								<i class="fas" [ngClass]="prorroga.activo ? 'fa-ban' : 'fa-check'"></i>
+								{{ prorroga.activo ? 'Desactivar' : 'Activar' }}
+							</button>
+						</td>
+					</tr>
+					<tr *ngIf="prorrogas.length === 0">
+						<td colspan="11" class="text-center">No hay prórrogas registradas</td>
+					</tr>
+				</tbody>
+			</table>
+		</div>
+	</div>
+</div>
+
+<!-- Modal de Prórroga -->
+<div *ngIf="showModal" class="modal-overlay" (click)="closeModal()">
+	<div class="modal-content" (click)="$event.stopPropagation()">
+		<div class="modal-header">
+			<h3 class="modal-title">
+				<i class="fas fa-calendar-plus"></i>
+				Crear Prórroga de Mora
+			</h3>
+			<button class="modal-close" (click)="closeModal()">
+				<i class="fas fa-times"></i>
+			</button>
+		</div>
+		<form [formGroup]="prorrogaForm" (ngSubmit)="saveProrroga()">
+			<div class="modal-body">
+				<div class="form-group">
+					<label class="form-label">Fecha Inicio Prórroga *</label>
+					<input
+						type="date"
+						class="form-control"
+						formControlName="fecha_inicio_prorroga"
+					/>
+				</div>
+				<div class="form-group">
+					<label class="form-label">Fecha Fin Prórroga *</label>
+					<input
+						type="date"
+						class="form-control"
+						formControlName="fecha_fin_prorroga"
+					/>
+				</div>
+			</div>
+			<div class="modal-footer">
+				<button type="button" class="btn btn-secondary" (click)="closeModal()">
+					<i class="fas fa-times"></i>
+					Cancelar
+				</button>
+				<button type="submit" class="btn btn-primary" [disabled]="prorrogaForm.invalid || loading">
+					<i class="fas fa-save"></i>
+					Guardar
+				</button>
+			</div>
+		</form>
+	</div>
+</div>

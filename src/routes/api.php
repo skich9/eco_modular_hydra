@@ -287,6 +287,12 @@ Route::patch('datos-mora/{id}/toggle-status', [\App\Http\Controllers\DatosMoraCo
 Route::apiResource('datos-mora-detalle', \App\Http\Controllers\DatosMoraDetalleController::class);
 Route::patch('datos-mora-detalle/{id}/toggle-status', [\App\Http\Controllers\DatosMoraDetalleController::class, 'toggleStatus']);
 
+// Prórrogas de Mora
+Route::get('prorrogas-mora/activas', [\App\Http\Controllers\ProrrogaMoraController::class, 'activas']);
+Route::get('prorrogas-mora/estudiante/{codCeta}', [\App\Http\Controllers\ProrrogaMoraController::class, 'porEstudiante']);
+Route::patch('prorrogas-mora/{id}/toggle-status', [\App\Http\Controllers\ProrrogaMoraController::class, 'toggleStatus']);
+Route::apiResource('prorrogas-mora', \App\Http\Controllers\ProrrogaMoraController::class);
+
 // Carreras
 Route::get('carreras', [ApiCarreraController::class, 'index']);
 Route::get('carreras/{codigo}/pensums', [ApiCarreraController::class, 'pensums']);

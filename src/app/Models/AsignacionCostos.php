@@ -8,28 +8,28 @@ use Illuminate\Database\Eloquent\Model;
 class AsignacionCostos extends Model
 {
 	use HasFactory;
-	
+
 	/**
 	 * Nombre de la tabla asociada al modelo.
 	 *
 	 * @var string
 	 */
 	protected $table = 'asignacion_costos';
-	
+
 	/**
 	 * Clave primaria del modelo.
 	 *
 	 * @var string
 	 */
 	protected $primaryKey = 'id_asignacion_costo';
-	
+
 	/**
 	 * Indica si la clave primaria es auto-incrementable.
 	 *
 	 * @var bool
 	 */
 	public $incrementing = true;
-	
+
 	/**
 	 * Atributos que son asignables en masa.
 	 *
@@ -54,7 +54,7 @@ class AsignacionCostos extends Model
 		'monto_pagado',
 		'id_cuota_template',
 	];
-	
+
 	/**
 	 * Atributos que deben ser convertidos.
 	 *
@@ -67,7 +67,7 @@ class AsignacionCostos extends Model
 		'fecha_vencimiento' => 'date',
 		'fecha_pago' => 'date',
 	];
-	
+
 	/**
 	 * Obtiene el pensum asociado con esta asignación de costo.
 	 */
@@ -75,7 +75,7 @@ class AsignacionCostos extends Model
 	{
 		return $this->belongsTo(Pensum::class, 'cod_pensum', 'cod_pensum');
 	}
-	
+
 	/**
 	 * Obtiene la inscripción asociada con esta asignación de costo.
 	 */
@@ -83,7 +83,7 @@ class AsignacionCostos extends Model
 	{
 		return $this->belongsTo(Inscripcion::class, 'cod_inscrip', 'cod_inscrip');
 	}
-	
+
 	/**
 	 * Obtiene el costo semestral asociado con esta asignación de costo.
 	 */
@@ -91,13 +91,38 @@ class AsignacionCostos extends Model
 	{
 		return $this->belongsTo(CostoSemestral::class, 'id_costo_semestral', 'id_costo_semestral');
 	}
-	
+
 	/**
 	 * Obtiene los recargos por mora asociados con esta asignación de costo.
 	 */
 	public function recargosMora()
 	{
 		return $this->hasMany(RecargoMora::class, 'id_asignacion_costo', 'id_asignacion_costo');
+	}
+
+	/**
+	 * Obtiene las asignaciones de mora asociadas con esta asignación de costo.
+	 */
+	public function asignacionesMora()
+	{
+		return $this->hasMany(AsignacionMora::class, 'id_asignacion_costo', 'id_asignacion_costo');
+	}
+
+	/**
+	 * Obtiene la mora activa (pendiente) de esta asignación de costo.
+	 */
+	public function moraActiva()
+	{
+		return $this->hasOne(AsignacionMora::class, 'id_asignacion_costo', 'id_asignacion_costo')
+			->where('estado', 'PENDIENTE');
+	}
+
+	/**
+	 * Obtiene la prórroga de mora asociada con esta asignación de costo.
+	 */
+	public function prorrogaMora()
+	{
+		return $this->hasOne(ProrrogaMora::class, 'id_asignacion_costo', 'id_asignacion_costo');
 	}
 }
 
