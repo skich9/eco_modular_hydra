@@ -1,0 +1,22 @@
+// Estilos para el modal de pago de moras
+.modal-body {
+	max-height: 70vh;
+	overflow-y: auto;
+}
+
+.form-label {
+	font-weight: 500;
+	margin-bottom: 0.25rem;
+}
+
+.bg-primary.bg-opacity-10 {
+	background-color: rgba(13, 110, 253, 0.1) !important;
+}
+
+.text-danger {
+	color: #dc3545 !important;
+}
+
+.border.rounded {
+	border-color: #dee2e6 !important;
+}

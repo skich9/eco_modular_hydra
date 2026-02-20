@@ -25,7 +25,7 @@ export class MensualidadModalComponent implements OnInit, OnChanges {
 
   @Input() formasCobro: any[] = [];
   @Input() cuentasBancarias: any[] = [];
-  @Input() tipo: 'mensualidad' | 'rezagado' | 'recuperacion' | 'arrastre' | 'reincorporacion' = 'mensualidad';
+  @Input() tipo: 'mensualidad' | 'rezagado' | 'recuperacion' | 'arrastre' | 'reincorporacion' | 'mora' = 'mensualidad';
   // Nota: también soporta 'reincorporacion' como tipo adicional
   @Input() pendientes = 0;
   @Input() pu = 0; // precio unitario de mensualidad
@@ -633,6 +633,14 @@ export class MensualidadModalComponent implements OnInit, OnChanges {
         total = Number(this.form.get('monto_parcial')?.value || 0);
       } else {
         total = Number(this.pu || 0);
+      }
+    } else if (this.tipo === 'mora') {
+      // Mora: calcular según cantidad y pago parcial
+      if (this.form.get('pago_parcial')?.value) {
+        total = Number(this.form.get('monto_parcial')?.value || 0);
+      } else {
+        const cant = Math.max(0, Number(this.form.get('cantidad')?.value || 0));
+        total = cant * Number(this.pu || 0);
       }
     } else {
       total = Number(this.form.get('monto_manual')?.value || 0);
@@ -1441,6 +1449,66 @@ export class MensualidadModalComponent implements OnInit, OnChanges {
         nro_factura: this.form.get('comprobante')?.value === 'FACTURA' ? (this.form.get('nro_factura')?.value || null) : null,
         nro_recibo: this.form.get('comprobante')?.value === 'RECIBO' ? (this.form.get('nro_recibo')?.value || null) : null,
       });
+    } else if (this.tipo === 'mora') {
+      // Mora: generar pagos por cada mora seleccionada (similar a mensualidades)
+      const cant = Math.max(1, Number(this.form.get('cantidad')?.value || 1));
+      const isParcial = this.form.get('pago_parcial')?.value;
+      const montoParcial = isParcial ? Number(this.form.get('monto_parcial')?.value || 0) : 0;
+
+      if (isParcial && montoParcial > 0) {
+        // Pago parcial: un solo registro con el monto parcial
+        pagos.push({
+          id_forma_cobro: this.form.get('metodo_pago')?.value || null,
+          nro_cobro: this.baseNro || 1,
+          monto: montoParcial,
+          fecha_cobro: hoy,
+          observaciones: this.composeObservaciones(),
+          pu_mensualidad: Number(this.pu || 0),
+          detalle: 'Pago Parcial de Mora',
+          tipo_pago: 'MORA',
+          tipo_documento,
+          medio_doc,
+          comprobante: compSel || 'NINGUNO',
+          computarizada: this.form.get('computarizada')?.value,
+          id_cuentas_bancarias: this.form.get('id_cuentas_bancarias')?.value || null,
+          banco_origen: this.form.get('banco_origen')?.value || null,
+          fecha_deposito: this.form.get('fecha_deposito')?.value || null,
+          nro_deposito: this.form.get('nro_deposito')?.value || null,
+          tarjeta_first4: this.form.get('tarjeta_first4')?.value || null,
+          tarjeta_last4: this.form.get('tarjeta_last4')?.value || null,
+          descuento: 0,
+          nro_factura: this.form.get('comprobante')?.value === 'FACTURA' ? (this.form.get('nro_factura')?.value || null) : null,
+          nro_recibo: this.form.get('comprobante')?.value === 'RECIBO' ? (this.form.get('nro_recibo')?.value || null) : null,
+        });
+      } else {
+        // Pago completo: generar un pago por cada mora seleccionada
+        const puMora = Number(this.pu || 0);
+        for (let i = 0; i < cant; i++) {
+          pagos.push({
+            id_forma_cobro: this.form.get('metodo_pago')?.value || null,
+            nro_cobro: (this.baseNro || 1) + i,
+            monto: puMora,
+            fecha_cobro: hoy,
+            observaciones: this.composeObservaciones(),
+            pu_mensualidad: puMora,
+            detalle: `Pago de Mora ${i + 1}`,
+            tipo_pago: 'MORA',
+            tipo_documento,
+            medio_doc,
+            comprobante: compSel || 'NINGUNO',
+            computarizada: this.form.get('computarizada')?.value,
+            id_cuentas_bancarias: this.form.get('id_cuentas_bancarias')?.value || null,
+            banco_origen: this.form.get('banco_origen')?.value || null,
+            fecha_deposito: this.form.get('fecha_deposito')?.value || null,
+            nro_deposito: this.form.get('nro_deposito')?.value || null,
+            tarjeta_first4: this.form.get('tarjeta_first4')?.value || null,
+            tarjeta_last4: this.form.get('tarjeta_last4')?.value || null,
+            descuento: 0,
+            nro_factura: this.form.get('comprobante')?.value === 'FACTURA' ? (this.form.get('nro_factura')?.value || null) : null,
+            nro_recibo: this.form.get('comprobante')?.value === 'RECIBO' ? (this.form.get('nro_recibo')?.value || null) : null,
+          });
+        }
+      }
     } else {
       // Rezagado o Recuperación: generamos un único registro
       const monto = Number(this.form.get('monto_manual')?.value || 0);

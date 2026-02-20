@@ -13,6 +13,7 @@ import { ItemsModalComponent } from './items-modal/items-modal.component';
 import { KardexModalComponent } from './kardex-modal/kardex-modal.component';
 import { BusquedaEstudianteModalComponent } from './busqueda-estudiante-modal/busqueda-estudiante-modal.component';
 import { DescuentoFormModalComponent } from './descuento-form-modal/descuento-form-modal.component';
+import { MoraModalComponent } from './mora-modal/mora-modal.component';
 import { QrPanelComponent } from './qr-panel/qr-panel.component';
 import { ClickLockDirective } from '../../../directives/click-lock.directive';
 import { environment } from '../../../../environments/environment';
@@ -24,7 +25,7 @@ import { forkJoin } from 'rxjs';
 @Component({
   selector: 'app-cobros-page',
   standalone: true,
-  imports: [CommonModule, ReactiveFormsModule, FormsModule, MensualidadModalComponent, ItemsModalComponent, RezagadoModalComponent, RecuperacionModalComponent, ReincorporacionModalComponent, BusquedaEstudianteModalComponent, DescuentoFormModalComponent, KardexModalComponent, QrPanelComponent, ClickLockDirective],
+  imports: [CommonModule, ReactiveFormsModule, FormsModule, MensualidadModalComponent, ItemsModalComponent, RezagadoModalComponent, RecuperacionModalComponent, ReincorporacionModalComponent, BusquedaEstudianteModalComponent, DescuentoFormModalComponent, MoraModalComponent, KardexModalComponent, QrPanelComponent, ClickLockDirective],
   templateUrl: './cobros.component.html',
   styleUrls: ['./cobros.component.scss']
 })
@@ -54,7 +55,7 @@ export class CobrosComponent implements OnInit {
   mensualidadesPendientes = 0;
   mensualidadPU = 0;
   // Tipo de modal activo
-  modalTipo: 'mensualidad' | 'rezagado' | 'recuperacion' | 'arrastre' | 'reincorporacion' = 'mensualidad';
+  modalTipo: 'mensualidad' | 'rezagado' | 'recuperacion' | 'arrastre' | 'reincorporacion' | 'mora' = 'mensualidad';
 
   // Datos
   resumen: any = null;
@@ -78,6 +79,8 @@ export class CobrosComponent implements OnInit {
   rezagadoCosto: number | null = null;
   // Costo de Reincorporación (desde costo_semestral)
   reincorporacionCosto: number | null = null;
+  // Moras pendientes del estudiante
+  morasPendientes: any[] = [];
 
   // Estado QR recibido desde el panel QR
   private qrPanelStatus: 'pendiente' | 'procesando' | 'completado' | 'expirado' | 'cancelado' | null = null;
@@ -2087,6 +2090,10 @@ export class CobrosComponent implements OnInit {
             console.log('[RESUMEN] gestion/pensum', this.resumen?.gestion, this.resumen?.inscripcion?.cod_pensum);
           } catch {}
 
+          // Cargar moras pendientes desde asignacion_mora
+          this.morasPendientes = Array.isArray(this.resumen?.moras_pendientes) ? this.resumen.moras_pendientes : [];
+          console.log('[COBROS] Moras pendientes:', this.morasPendientes);
+
           // Procesar pensums disponibles del estudiante
           this.pensumsDisponibles = Array.isArray(this.resumen?.pensums_disponibles) ? this.resumen.pensums_disponibles : [];
           this.multiplePensums = this.pensumsDisponibles.length > 1;
@@ -2774,6 +2781,34 @@ export class CobrosComponent implements OnInit {
         modal.show();
       }
     } catch {}
+  }
+
+  openMoraModal(): void {
+    if (!this.resumen) {
+      this.showAlert('Debe consultar primero un estudiante/gestión', 'warning');
+      return;
+    }
+    if (!this.morasPendientes || this.morasPendientes.length === 0) {
+      this.showAlert('No hay moras pendientes para este estudiante', 'warning');
+      return;
+    }
+    if (!this.ensureMetodoPagoPermitido(['EFECTIVO','TARJETA','CHEQUE','DEPOSITO','TRANSFERENCIA','QR','OTRO'])) return;
+    this.computeModalFormasFromSelection();
+
+    const modalEl = document.getElementById('moraModal');
+    if (modalEl && (window as any).bootstrap?.Modal) {
+      const modal = new (window as any).bootstrap.Modal(modalEl);
+      modal.show();
+    }
+  }
+
+  getTotalMorasPendientes(): number {
+    if (!this.morasPendientes || this.morasPendientes.length === 0) return 0;
+    return this.morasPendientes.reduce((total, mora) => {
+      const monto = Number(mora?.monto_mora || 0);
+      const descuento = Number(mora?.monto_descuento || 0);
+      return total + Math.max(0, monto - descuento);
+    }, 0);
   }
 
   private recalcMensualidadTotal(): void {

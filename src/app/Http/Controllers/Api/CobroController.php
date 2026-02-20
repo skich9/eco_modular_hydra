@@ -1360,6 +1360,8 @@ class CobroController extends Controller
 					'documentos_presentados' => $documentosPresentados,
 					'documento_identidad' => $documentoIdentidad,
 					'warnings' => $warnings,
+					// Moras pendientes del estudiante
+					'moras_pendientes' => $this->getMorasPendientes($codCeta, $gestionToUse),
 				]
 			]);
 		} catch (\Exception $e) {
@@ -3268,6 +3270,66 @@ class CobroController extends Controller
 				'success' => false,
 				'message' => 'Error al marcar recibo: ' . $e->getMessage(),
 			], 500);
+		}
+	}
+
+	/**
+	 * Obtener moras pendientes del estudiante para una gestión
+	 */
+	private function getMorasPendientes($codCeta, $gestion)
+	{
+		try {
+			// Identificar inscripciones del estudiante en la gestión solicitada
+			$insIds = DB::table('inscripciones')
+				->where('cod_ceta', $codCeta)
+				->where('gestion', $gestion)
+				->pluck('cod_inscrip')
+				->toArray();
+
+			if (empty($insIds)) {
+				return [];
+			}
+
+			// Obtener asignaciones de costo asociadas a esas inscripciones
+			$asignacionIds = DB::table('asignacion_costos')
+				->whereIn('cod_inscrip', $insIds)
+				->pluck('id_asignacion_costo')
+				->toArray();
+
+			if (empty($asignacionIds)) {
+				return [];
+			}
+
+			// Obtener moras pendientes con información de la cuota asociada
+			$moras = DB::table('asignacion_mora as am')
+				->join('asignacion_costos as ac', 'am.id_asignacion_costo', '=', 'ac.id_asignacion_costo')
+				->whereIn('am.id_asignacion_costo', $asignacionIds)
+				->where('am.estado', 'PENDIENTE')
+				->select(
+					'am.id_asignacion_mora',
+					'am.id_asignacion_costo',
+					'am.fecha_inicio_mora',
+					'am.fecha_fin_mora',
+					'am.monto_base',
+					'am.monto_mora',
+					'am.monto_descuento',
+					'am.estado',
+					'am.observaciones',
+					'ac.numero_cuota',
+					'ac.id_cuota_template'
+				)
+				->orderBy('ac.numero_cuota', 'asc')
+				->get()
+				->toArray();
+
+			return $moras;
+		} catch (\Throwable $e) {
+			Log::error('Error al obtener moras pendientes:', [
+				'cod_ceta' => $codCeta,
+				'gestion' => $gestion,
+				'error' => $e->getMessage()
+			]);
+			return [];
 		}
 	}
 }

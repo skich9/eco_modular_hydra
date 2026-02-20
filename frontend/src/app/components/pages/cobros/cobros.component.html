@@ -343,6 +343,15 @@
 										  </button>
 										</td>
 									</tr>
+									<tr *ngIf="morasPendientes && morasPendientes.length > 0">
+										<td>Mora</td>
+										<td>{{ getTotalMorasPendientes() | number:'1.2-2' }}</td>
+										<td class="text-center">
+											<button type="button" class="btn btn-sm btn-warning" (click)="openMoraModal()">
+												<i class="fa fa-plus"></i>
+											</button>
+										</td>
+									</tr>
 									<tr>
 										<td colspan="3" class="p-0 border-0"></td>
 								    </tr>
@@ -543,6 +552,17 @@
       [costoReincorporacion]="reincorporacionCosto || 0"
       (addReincorporacion)="onAddPagosFromModal($event)"
     ></app-reincorporacion-modal>
+
+    <!-- Modal: Pago de Mora -->
+    <app-mora-modal
+      [resumen]="resumen"
+      [morasPendientes]="morasPendientes"
+      [formasCobro]="modalFormasCobro"
+      [cuentasBancarias]="cuentasBancarias"
+      [baseNro]="getNextCobroNro()"
+      [defaultMetodoPago]="modalFormasCobro[0]?.id_forma_cobro || selectedFormaCobroId"
+      (addPagos)="onAddPagosFromModal($event)"
+    ></app-mora-modal>
 
     <!-- Modal: Búsqueda de Estudiante -->
     <app-busqueda-estudiante-modal

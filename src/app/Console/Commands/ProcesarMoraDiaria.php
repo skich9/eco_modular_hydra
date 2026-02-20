@@ -85,18 +85,25 @@ class ProcesarMoraDiaria extends Command
 						continue;
 					}
 
-					// Buscar configuración de mora aplicable por gestión, pensum, cuota y semestre
-					$configuracionMora = DatosMoraDetalle::where('cod_pensum', $codPensum)
+					// Buscar configuración de mora aplicable por gestión, pensum y cuota.
+					// El semestre es opcional para evitar perder coincidencias por normalización.
+					$queryCfg = DatosMoraDetalle::where('cod_pensum', $codPensum)
 						->where('cuota', $numeroCuota)
-						->where('semestre', $semestre)
 						->where('activo', true)
 						->whereHas('datosMora', function($query) use ($gestion) {
 							$query->where('gestion', $gestion);
-						})
-						->with('datosMora')
-						->first();
+						});
+					if (!empty($semestre)) {
+						$queryCfg->where('semestre', $semestre);
+					}
+					$configuracionMora = $queryCfg->with('datosMora')->first();
 
 					if (!$configuracionMora) {
+						static $noCfg = 0;
+						$noCfg++;
+						if ($noCfg <= 10) {
+							$this->warn("Sin configuración de mora para id_asignacion={$asignacion->id_asignacion_costo} pensum={$codPensum} cuota={$numeroCuota} semestre={$semestre} gestion={$gestion}");
+						}
 						$progressBar->advance();
 						continue;
 					}
@@ -147,7 +154,8 @@ class ProcesarMoraDiaria extends Command
 
 								if (!$moraPostProrroga) {
 									// Crear nueva mora desde el día siguiente al fin de prórroga
-									$diasPostProrroga = $fechaInicioPosterior->diffInDays($hoy) + 1;
+									$fechaFinMora = Carbon::parse($configuracionMora->fecha_fin);
+									$diasPostProrroga = $fechaInicioPosterior->diffInDays($fechaFinMora) + 1;
 									$montoMoraPostProrroga = $configuracionMora->monto * $diasPostProrroga;
 
 									AsignacionMora::create([
@@ -165,7 +173,8 @@ class ProcesarMoraDiaria extends Command
 									$morasCreadas++;
 								} else {
 									// Actualizar mora post-prórroga existente
-									$diasPostProrroga = Carbon::parse($moraPostProrroga->fecha_inicio_mora)->diffInDays($hoy) + 1;
+									$fechaFinMora = Carbon::parse($moraPostProrroga->fecha_fin_mora);
+									$diasPostProrroga = Carbon::parse($moraPostProrroga->fecha_inicio_mora)->diffInDays($fechaFinMora) + 1;
 									$montoMoraPostProrroga = $configuracionMora->monto * $diasPostProrroga;
 
 									$moraPostProrroga->monto_mora = $montoMoraPostProrroga;
@@ -175,7 +184,8 @@ class ProcesarMoraDiaria extends Command
 								}
 							} else {
 								// Actualizar mora normal (sin prórroga o mora ya posterior)
-								$diasTranscurridos = Carbon::parse($asignacionMora->fecha_inicio_mora)->diffInDays($hoy) + 1;
+								$fechaFinMora = Carbon::parse($asignacionMora->fecha_fin_mora);
+								$diasTranscurridos = Carbon::parse($asignacionMora->fecha_inicio_mora)->diffInDays($fechaFinMora) + 1;
 								$montoMoraCalculado = $configuracionMora->monto * $diasTranscurridos;
 
 								$asignacionMora->monto_mora = $montoMoraCalculado;
@@ -185,7 +195,8 @@ class ProcesarMoraDiaria extends Command
 							}
 						} else {
 							// Actualizar mora existente sin prórroga
-							$diasTranscurridos = Carbon::parse($asignacionMora->fecha_inicio_mora)->diffInDays($hoy) + 1;
+							$fechaFinMora = Carbon::parse($asignacionMora->fecha_fin_mora);
+							$diasTranscurridos = Carbon::parse($asignacionMora->fecha_inicio_mora)->diffInDays($fechaFinMora) + 1;
 							$montoMoraCalculado = $configuracionMora->monto * $diasTranscurridos;
 
 							$asignacionMora->monto_mora = $montoMoraCalculado;
@@ -199,7 +210,8 @@ class ProcesarMoraDiaria extends Command
 							// Caso 2: Hubo prórroga, crear mora desde fin de prórroga
 							$fechaFinProrroga = Carbon::parse($prorrogaTerminada->fecha_fin_prorroga);
 							$fechaInicioPosterior = $fechaFinProrroga->copy()->addDay();
-							$diasPostProrroga = $fechaInicioPosterior->diffInDays($hoy) + 1;
+							$fechaFinMora = Carbon::parse($configuracionMora->fecha_fin);
+							$diasPostProrroga = $fechaInicioPosterior->diffInDays($fechaFinMora) + 1;
 							$montoMoraPostProrroga = $configuracionMora->monto * $diasPostProrroga;
 
 							AsignacionMora::create([
@@ -217,7 +229,8 @@ class ProcesarMoraDiaria extends Command
 							$morasCreadas++;
 						} else {
 							// Caso normal: Crear nueva asignación de mora
-							$diasTranscurridos = $fechaInicioMora->diffInDays($hoy) + 1;
+							$fechaFinMora = Carbon::parse($configuracionMora->fecha_fin);
+							$diasTranscurridos = $fechaInicioMora->diffInDays($fechaFinMora) + 1;
 							$montoMoraCalculado = $configuracionMora->monto * $diasTranscurridos;
 
 							AsignacionMora::create([
@@ -313,24 +326,27 @@ class ProcesarMoraDiaria extends Command
 			return null;
 		}
 
-		// Obtener el semestre desde la inscripción
-		// Puede estar en diferentes campos según la estructura
 		$inscripcion = $asignacion->inscripcion;
 
-		// Intentar obtener semestre de diferentes campos posibles
 		if (isset($inscripcion->semestre)) {
-			return (string) $inscripcion->semestre;
+			return (string) ((int) $inscripcion->semestre);
 		}
 
 		if (isset($inscripcion->nro_semestre)) {
-			return (string) $inscripcion->nro_semestre;
+			return (string) ((int) $inscripcion->nro_semestre);
 		}
 
-		// Si no hay campo directo, intentar obtener del pensum o curso
+		if (isset($inscripcion->gestion) && is_string($inscripcion->gestion)) {
+			if (preg_match('/-(\d+)/', $inscripcion->gestion, $m)) {
+				return (string) ((int) $m[1]);
+			}
+		}
+
 		if (isset($inscripcion->cod_curso)) {
-			// El código de curso puede contener información del semestre
-			// Esto depende de la estructura específica del sistema
-			return $this->extraerSemestreDeCurso($inscripcion->cod_curso);
+			$sem = $this->extraerSemestreDeCurso($inscripcion->cod_curso);
+			if ($sem !== null && $sem !== '') {
+				return (string) ((int) $sem);
+			}
 		}
 
 		return null;
@@ -348,10 +364,16 @@ class ProcesarMoraDiaria extends Command
 			return null;
 		}
 
-		// Intentar extraer número de semestre del código
-		// Esto es una implementación genérica que puede necesitar ajustes
-		if (preg_match('/(\d+)/', $codCurso, $matches)) {
-			return $matches[1];
+		if (preg_match('/(\d{3})/', $codCurso, $m)) {
+			$n = (int) $m[1];
+			if ($n >= 200) {
+				return '2';
+			}
+			return '1';
+		}
+
+		if (preg_match('/(\d)/', $codCurso, $m)) {
+			return (string) ((int) $m[1]);
 		}
 
 		return null;
