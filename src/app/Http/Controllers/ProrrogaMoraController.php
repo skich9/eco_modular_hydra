@@ -21,7 +21,12 @@ class ProrrogaMoraController extends Controller
 	public function index()
 	{
 		try {
-			$prorrogas = ProrrogaMora::with(['estudiante', 'asignacionCosto', 'usuario'])
+			$prorrogas = ProrrogaMora::with([
+				'estudiante',
+				'asignacionCosto.inscripcion',
+				'asignacionCosto.pensum',
+				'usuario'
+			])
 				->orderBy('created_at', 'desc')
 				->get();
 
@@ -88,16 +93,11 @@ class ProrrogaMoraController extends Controller
 				], Response::HTTP_NOT_FOUND);
 			}
 
-			// Verificar si ya existe una prórroga ACTIVA para esta asignación
-			$prorrogaExistente = ProrrogaMora::where('id_asignacion_costo', $input['id_asignacion_costo'])
+			// Desactivar prórrogas anteriores para el mismo estudiante y asignación de costo
+			ProrrogaMora::where('cod_ceta', $input['cod_ceta'])
+				->where('id_asignacion_costo', $input['id_asignacion_costo'])
 				->where('activo', true)
-				->first();
-			if ($prorrogaExistente) {
-				return response()->json([
-					'success' => false,
-					'message' => 'Ya existe una prórroga activa para esta cuota'
-				], Response::HTTP_CONFLICT);
-			}
+				->update(['activo' => false]);
 
 			// Buscar si existe mora activa para esta cuota (opcional, para congelarla si existe)
 			$moraActiva = AsignacionMora::where('id_asignacion_costo', $input['id_asignacion_costo'])
@@ -123,7 +123,12 @@ class ProrrogaMoraController extends Controller
 
 			return response()->json([
 				'success' => true,
-				'data' => $prorroga->load(['estudiante', 'asignacionCosto', 'usuario']),
+				'data' => $prorroga->load([
+					'estudiante',
+					'asignacionCosto.inscripcion',
+					'asignacionCosto.pensum',
+					'usuario'
+				]),
 				'message' => 'Prórroga creada exitosamente' . ($moraActiva ? ' (mora congelada)' : ''),
 				'mora_congelada' => $moraActiva ? true : false
 			], Response::HTTP_CREATED);
@@ -132,6 +137,128 @@ class ProrrogaMoraController extends Controller
 			return response()->json([
 				'success' => false,
 				'message' => 'Error al crear la prórroga de mora: ' . $e->getMessage()
+			], Response::HTTP_INTERNAL_SERVER_ERROR);
+		}
+	}
+
+	/**
+	 * Store multiple prorrogas in storage (batch creation).
+	 *
+	 * @param Request $request
+	 * @return JsonResponse
+	 */
+	public function storeBatch(Request $request)
+	{
+		try {
+			$prorrogas = $request->input('prorrogas', []);
+
+			if (empty($prorrogas) || !is_array($prorrogas)) {
+				return response()->json([
+					'success' => false,
+					'message' => 'No se proporcionaron prórrogas para crear'
+				], Response::HTTP_BAD_REQUEST);
+			}
+
+			$created = [];
+			$errors = [];
+
+			foreach ($prorrogas as $index => $prorrogaData) {
+				try {
+					// Validar cada prórroga
+					$validator = Validator::make($prorrogaData, [
+						'id_usuario' => 'required|exists:usuarios,id_usuario',
+						'cod_ceta' => 'required|exists:estudiantes,cod_ceta',
+						'id_asignacion_costo' => 'required|exists:asignacion_costos,id_asignacion_costo',
+						'fecha_inicio_prorroga' => 'required|date',
+						'fecha_fin_prorroga' => 'required|date|after:fecha_inicio_prorroga',
+						'activo' => 'boolean',
+						'motivo' => 'required|string|min:5',
+					]);
+
+					if ($validator->fails()) {
+						$errors[] = [
+							'index' => $index,
+							'id_asignacion_costo' => isset($prorrogaData['id_asignacion_costo']) ? $prorrogaData['id_asignacion_costo'] : null,
+							'errors' => $validator->errors()
+						];
+						continue;
+					}
+
+					$input = $validator->validated();
+					$hoy = Carbon::now();
+					$fechaInicioProrroga = Carbon::parse($input['fecha_inicio_prorroga']);
+					$fechaFinProrroga = Carbon::parse($input['fecha_fin_prorroga']);
+
+					// Validar que fecha_fin_prorroga sea posterior a hoy
+					if ($fechaFinProrroga->lte($hoy)) {
+						$errors[] = [
+							'index' => $index,
+							'id_asignacion_costo' => $input['id_asignacion_costo'],
+							'message' => 'La fecha fin de prórroga debe ser posterior a la fecha actual'
+						];
+						continue;
+					}
+
+					// Buscar mora activa para esta asignación de costo
+					$moraActiva = AsignacionMora::where('id_asignacion_costo', $input['id_asignacion_costo'])
+						->where('estado', 'PENDIENTE')
+						->first();
+
+					// Desactivar prórrogas anteriores para el mismo estudiante y asignación de costo
+					ProrrogaMora::where('cod_ceta', $input['cod_ceta'])
+						->where('id_asignacion_costo', $input['id_asignacion_costo'])
+						->where('activo', true)
+						->update(['activo' => false]);
+
+					// Si hay mora activa, congelarla
+					if ($moraActiva) {
+						$fechaFinMora = $fechaInicioProrroga->copy()->subDay();
+						$moraActiva->fecha_fin_mora = $fechaFinMora;
+
+						$diasHastaCongela = Carbon::parse($moraActiva->fecha_inicio_mora)->diffInDays($fechaFinMora) + 1;
+						$moraActiva->monto_mora = $moraActiva->monto_base * $diasHastaCongela;
+						$moraActiva->observaciones = ($moraActiva->observaciones ? $moraActiva->observaciones : '') .
+							" | Congelada el {$hoy->format('Y-m-d')} por prórroga hasta {$fechaFinMora->format('Y-m-d')}";
+						$moraActiva->save();
+					}
+
+					// Crear la prórroga
+					$prorroga = ProrrogaMora::create($input);
+					$prorroga->load([
+						'estudiante',
+						'asignacionCosto.inscripcion',
+						'asignacionCosto.pensum',
+						'usuario'
+					]);
+
+					$created[] = $prorroga;
+
+				} catch (\Exception $e) {
+					$errors[] = [
+						'index' => $index,
+						'id_asignacion_costo' => isset($prorrogaData['id_asignacion_costo']) ? $prorrogaData['id_asignacion_costo'] : null,
+						'message' => $e->getMessage()
+					];
+				}
+			}
+
+			$response = [
+				'success' => count($created) > 0,
+				'data' => $created,
+				'message' => count($created) . ' prórroga(s) creada(s) exitosamente'
+			];
+
+			if (!empty($errors)) {
+				$response['errors'] = $errors;
+				$response['message'] .= ', ' . count($errors) . ' error(es)';
+			}
+
+			return response()->json($response, Response::HTTP_CREATED);
+
+		} catch (\Exception $e) {
+			return response()->json([
+				'success' => false,
+				'message' => 'Error al crear las prórrogas de mora: ' . $e->getMessage()
 			], Response::HTTP_INTERNAL_SERVER_ERROR);
 		}
 	}

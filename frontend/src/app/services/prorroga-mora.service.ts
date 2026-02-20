@@ -32,6 +32,10 @@ export class ProrrogaMoraService {
 		return this.http.post<any>(this.apiUrl, prorroga);
 	}
 
+	createMultiple(prorrogas: any[]): Observable<any> {
+		return this.http.post<any>(`${this.apiUrl}/batch`, { prorrogas });
+	}
+
 	update(id: number, prorroga: Partial<ProrrogaMora>): Observable<any> {
 		return this.http.put<any>(`${this.apiUrl}/${id}`, prorroga);
 	}

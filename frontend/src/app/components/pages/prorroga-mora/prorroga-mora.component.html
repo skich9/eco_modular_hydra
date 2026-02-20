@@ -114,12 +114,12 @@
 			<table class="table">
 				<thead>
 					<tr>
-						<th>Código Estudiante</th>
+						<th>Gestión</th>
+            <th>Código Estudiante</th>
 						<th>Estudiante</th>
 						<th>Pensum</th>
-						<th>Gestión</th>
+						<th>Tipo Inscripción</th>
 						<th>Cuota</th>
-						<th>Fecha Inicio</th>
 						<th>Fecha Fin</th>
 						<th>Motivo</th>
 						<th>Usuario</th>
@@ -129,12 +129,16 @@
 				</thead>
 				<tbody>
 					<tr *ngFor="let prorroga of prorrogas">
-						<td>{{ prorroga.cod_ceta }}</td>
+						<td>{{ prorroga.asignacion_costo?.inscripcion?.gestion || 'N/A' }}</td>
+            <td>{{ prorroga.cod_ceta }}</td>
 						<td>{{ getNombreCompleto(prorroga.estudiante) }}</td>
-						<td>{{ prorroga.asignacionCosto?.cod_pensum }}</td>
-						<td>{{ prorroga.asignacionCosto?.gestion }}</td>
-						<td>Cuota {{ prorroga.asignacionCosto?.numero_cuota }}</td>
-						<td>{{ formatDate(prorroga.fecha_inicio_prorroga) }}</td>
+						<td>{{ prorroga.asignacion_costo?.pensum?.nombre || prorroga.asignacion_costo?.cod_pensum || 'N/A' }}</td>
+						<td>
+							<span class="badge" [ngClass]="getTipoInscripcionClass(prorroga)">
+								{{ getTipoInscripcion(prorroga) }}
+							</span>
+						</td>
+						<td>{{ prorroga.asignacion_costo?.numero_cuota || 'N/A' }}</td>
 						<td>{{ formatDate(prorroga.fecha_fin_prorroga) }}</td>
 						<td>{{ prorroga.motivo || 'N/A' }}</td>
 						<td>{{ prorroga.usuario?.nombre || 'N/A' }}</td>
@@ -156,7 +160,7 @@
 						</td>
 					</tr>
 					<tr *ngIf="prorrogas.length === 0">
-						<td colspan="11" class="text-center">No hay prórrogas registradas</td>
+						<td colspan="12" class="text-center">No hay prórrogas registradas</td>
 					</tr>
 				</tbody>
 			</table>

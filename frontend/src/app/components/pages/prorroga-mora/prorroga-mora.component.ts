@@ -17,7 +17,7 @@ export class ProrrogaMoraComponent implements OnInit {
 	searchCodCeta: string = '';
 	estudianteEncontrado: any = null;
 	cuotasPendientes: any[] = [];
-	prorrogas: ProrrogaMora[] = [];
+	prorrogas: any[] = [];
 	prorrogaForm: FormGroup;
 	showModal: boolean = false;
 	currentUser: any = null;
@@ -89,8 +89,21 @@ export class ProrrogaMoraComponent implements OnInit {
 			.map((i: any) => String(i?.cod_curso || ''))
 			.filter((c: string) => !!c);
 
-		// Cuotas: el resumen devuelve 'asignaciones', no 'cuotas'
-		this.allCuotas = Array.isArray(data?.asignaciones) ? data.asignaciones : [];
+		// Cuotas: combinar 'asignaciones' (NORMAL) y 'asignaciones_arrastre' (ARRASTRE)
+		console.log('=== DEBUG APPLYRESUMENDATA ===');
+		console.log('data completo:', data);
+		console.log('data.asignaciones:', data?.asignaciones);
+		console.log('data.asignaciones_arrastre:', data?.asignaciones_arrastre);
+
+		const asignacionesNormales = Array.isArray(data?.asignaciones) ? data.asignaciones : [];
+		const asignacionesArrastre = Array.isArray(data?.asignaciones_arrastre) ? data.asignaciones_arrastre : [];
+
+		console.log('asignacionesNormales length:', asignacionesNormales.length);
+		console.log('asignacionesArrastre length:', asignacionesArrastre.length);
+
+		this.allCuotas = [...asignacionesNormales, ...asignacionesArrastre];
+		console.log('allCuotas combinadas length:', this.allCuotas.length);
+
 		this.cuotasPendientes = this.allCuotas.filter((cuota: any) => {
 			const estado = String(cuota?.estado_pago || '').toUpperCase();
 			return estado === 'PENDIENTE' || estado === 'PARCIAL' || estado === '';
@@ -119,8 +132,12 @@ export class ProrrogaMoraComponent implements OnInit {
 		this.cobrosService.getResumen(this.estudianteEncontrado.cod_ceta).subscribe({
 			next: (res: any) => {
 				if (res.success && res.data) {
-					const asignaciones = res.data.asignaciones || [];
-					this.cuotasPendientes = asignaciones.filter((cuota: any) => {
+					// Combinar asignaciones normales y de arrastre
+					const asignacionesNormales = res.data.asignaciones || [];
+					const asignacionesArrastre = res.data.asignaciones_arrastre || [];
+					const todasAsignaciones = [...asignacionesNormales, ...asignacionesArrastre];
+
+					this.cuotasPendientes = todasAsignaciones.filter((cuota: any) => {
 						const estado = String(cuota?.estado_pago || '').toUpperCase();
 						return estado === 'PENDIENTE' || estado === 'PARCIAL' || estado === '';
 					});
@@ -141,6 +158,13 @@ export class ProrrogaMoraComponent implements OnInit {
 			next: (res: any) => {
 				if (res.success && res.data) {
 					this.prorrogas = res.data;
+					console.log('Prórrogas cargadas:', this.prorrogas);
+					if (this.prorrogas.length > 0) {
+						console.log('Primera prórroga:', this.prorrogas[0]);
+						console.log('AsignacionCosto:', this.prorrogas[0]?.asignacion_costo);
+						console.log('Pensum:', this.prorrogas[0]?.asignacion_costo?.pensum);
+						console.log('Inscripcion:', this.prorrogas[0]?.asignacion_costo?.inscripcion);
+					}
 				}
 				this.loading = false;
 			},
@@ -195,9 +219,17 @@ export class ProrrogaMoraComponent implements OnInit {
 			return;
 		}
 
-		// Buscar la asignación de la cuota seleccionada (en todas las cuotas del resumen)
-		const cuotaSel = (this.allCuotas || []).find((c: any) => Number(c?.numero_cuota) === Number(this.selectedCuota));
-		if (!cuotaSel) {
+		// Buscar TODAS las asignaciones de la cuota seleccionada (puede haber NORMAL y ARRASTRE)
+		console.log('=== DEBUG SAVEPRORROGA ===');
+		console.log('allCuotas total:', this.allCuotas?.length);
+		console.log('selectedCuota:', this.selectedCuota);
+		console.log('Todas las cuotas:', this.allCuotas);
+
+		const cuotasSeleccionadas = (this.allCuotas || []).filter((c: any) => Number(c?.numero_cuota) === Number(this.selectedCuota));
+		console.log('Cuotas filtradas para numero_cuota', this.selectedCuota, ':', cuotasSeleccionadas);
+		console.log('Total cuotas seleccionadas:', cuotasSeleccionadas.length);
+
+		if (!cuotasSeleccionadas || cuotasSeleccionadas.length === 0) {
 			this.displayAlert('La cuota seleccionada no se encuentra en el resumen del estudiante', 'warning');
 			return;
 		}
@@ -205,21 +237,24 @@ export class ProrrogaMoraComponent implements OnInit {
 		// fecha_inicio_prorroga = hoy, fecha_fin_prorroga = fecha ingresada por usuario
 		const hoy = new Date().toISOString().split('T')[0];
 
-		const payload: ProrrogaMora = {
-			id_asignacion_costo: cuotaSel.id_asignacion_costo,
+		// Crear array de payloads para todas las asignaciones de la cuota (NORMAL y ARRASTRE)
+		const payloads = cuotasSeleccionadas.map((cuota: any) => ({
+			id_asignacion_costo: cuota.id_asignacion_costo,
 			fecha_inicio_prorroga: hoy,
 			fecha_fin_prorroga: fechaFin,
 			id_usuario: this.currentUser.id_usuario,
 			cod_ceta: this.estudianteEncontrado.cod_ceta,
 			activo: true,
 			motivo: this.motivo
-		};
+		}));
 
 		this.loading = true;
-		this.prorrogaService.create(payload).subscribe({
+		// Enviar todas las prórrogas al backend
+		this.prorrogaService.createMultiple(payloads).subscribe({
 			next: (res: any) => {
 				if (res?.success) {
-					this.displayAlert('Prórroga creada exitosamente', 'success');
+					const count = res?.data?.length || payloads.length;
+					this.displayAlert(`Prórroga(s) creada(s) exitosamente (${count} registro(s))`, 'success');
 					this.loadProrrogas();
 					this.loadCuotasPendientes();
 					this.limpiarFormularioProrroga();
@@ -284,5 +319,22 @@ export class ProrrogaMoraComponent implements OnInit {
 	formatDate(date: string): string {
 		if (!date) return '';
 		return new Date(date).toLocaleDateString('es-BO');
+	}
+
+	getTipoInscripcion(prorroga: any): string {
+		// Obtener el tipo de inscripción desde la relación inscripcion
+		const tipoInscripcion = prorroga?.asignacion_costo?.inscripcion?.tipo_inscripcion;
+
+		// Si no hay datos, asumimos NORMAL
+		if (!tipoInscripcion) return 'NORMAL';
+
+		// Retornar el tipo de inscripción (NORMAL, ARRASTRE, REGULAR, NUEVO, etc.)
+		const tipo = String(tipoInscripcion).toUpperCase();
+		return tipo === 'ARRASTRE' ? 'ARRASTRE' : 'NORMAL';
+	}
+
+	getTipoInscripcionClass(prorroga: any): string {
+		const tipo = this.getTipoInscripcion(prorroga);
+		return tipo === 'ARRASTRE' ? 'badge-warning' : 'badge-info';
 	}
 }

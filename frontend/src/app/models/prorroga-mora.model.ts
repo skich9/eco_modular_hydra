@@ -29,6 +29,15 @@ export interface ProrrogaMora {
 		monto?: number;
 		estado_pago?: string;
 		cod_pensum?: string;
+		cod_inscrip?: number;
 		gestion?: string;
+		pensum?: {
+			cod_pensum: string;
+			nombre?: string;
+		};
+		inscripcion?: {
+			cod_inscrip: number;
+			gestion?: string;
+		};
 	};
 }
