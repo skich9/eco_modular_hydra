@@ -18,7 +18,7 @@ class PensumSeeder extends Seeder
             'nombre' => 'Pensum-1998 - Electricidad y Electrónica',
             'descripcion' => 'Plan de estudios Electricidad y Electrónica 1998',
             'codigo_carrera' => 'EEA', // coincidencia exacta con CarreraSeeder
-            'estado' => true,
+            'activo' => true,
             'created_at' => now(),
             'updated_at' => now(),
         ]);
@@ -28,7 +28,7 @@ class PensumSeeder extends Seeder
             'nombre' => 'Pensum 1998 - Mecanica Automotriz',
             'descripcion' => 'Plan de estudios Mecanica Automotriz 1998',
             'codigo_carrera' => 'MEA', // coincidencia exacta
-            'estado' => true,
+            'activo' => true,
             'created_at' => now(),
             'updated_at' => now(),
         ]);
@@ -38,7 +38,7 @@ class PensumSeeder extends Seeder
             'nombre' => 'Pensum 1998 - Secretariado Ejecutivo',
             'descripcion' => 'Plan de estudios Secretariado Ejecutivo 1998',
             'codigo_carrera' => 'SEA', // coincidencia exacta
-            'estado' => true,
+            'activo' => true,
             'created_at' => now(),
             'updated_at' => now(),
         ]);

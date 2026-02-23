@@ -16,8 +16,7 @@ return new class extends Migration {
 			}
 		});
 
-		$sm = Schema::getConnection()->getDoctrineSchemaManager();
-		$indexes = $sm->listTableIndexes('cobro');
+		$indexes = collect(Schema::getIndexes('cobro'))->keyBy('name');
 
 		Schema::table('cobro', function (Blueprint $table) use ($indexes) {
 			if (!isset($indexes['idx_cobro_fecha_cobro'])) {

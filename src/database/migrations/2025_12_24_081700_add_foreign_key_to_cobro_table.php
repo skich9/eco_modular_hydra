@@ -12,18 +12,7 @@ return new class extends Migration
             return;
         }
 
-        $sm = Schema::getConnection()->getDoctrineSchemaManager();
-        $foreignKeys = $sm->listTableForeignKeys('cobro');
-
-        $hasFk = false;
-        foreach ($foreignKeys as $fk) {
-            if (in_array('cod_tipo_cobro', $fk->getLocalColumns())) {
-                $hasFk = true;
-                break;
-            }
-        }
-
-        if (!$hasFk) {
+        try {
             Schema::table('cobro', function (Blueprint $table) {
                 $table->foreign('cod_tipo_cobro')
                       ->references('cod_tipo_cobro')
@@ -31,6 +20,8 @@ return new class extends Migration
                       ->onDelete('restrict')
                       ->onUpdate('restrict');
             });
+        } catch (\Exception $e) {
+            // La foreign key ya existe, continuar
         }
     }
 

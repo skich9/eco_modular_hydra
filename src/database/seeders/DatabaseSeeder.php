@@ -26,30 +26,30 @@ class DatabaseSeeder extends Seeder
 
             // Tablas SIN (facturación electrónica)
             SinActividadesSeeder::class,
-            SinDatosSincronizacionSeeder::class,
-            SinCafcSeeder::class,
+            // SinDatosSincronizacionSeeder::class,  // Requiere archivo SQL externo
+            // SinCafcSeeder::class,  // Causa duplicados
             TipoCobroSeeder::class,
             // sin_forma_cobro depende de formas_cobro -> se ejecuta más abajo
 
             // Descuentos y becas
-            DefDescuentosBecaSeeder::class,
+            // DefDescuentosBecaSeeder::class,  // Causa duplicados
 
             // Estructura académica
             CarreraSeeder::class,
-            PensumSeeder::class,
+            // PensumSeeder::class,  // Causa duplicados
             PensumResolucionSeeder::class,
             GestionSeeder::class,
 
             // Costos y cobros
-            CostoSemestralSeeder::class,
+            // CostoSemestralSeeder::class,  // Problemas con factory
             AsignacionCostosSeeder::class,
             FormasCobroSeeder::class,
             // Luego de formas_cobro, poblar el mapeo SIN
             SinFormaCobroSeeder::class,
-            SinListLeyendaFacturaSeeder::class,
+            // SinListLeyendaFacturaSeeder::class,  // Problemas de estructura
             SinMotivoAnulacionFacturaSeeder::class,
-            CuentasBancariasSeeder::class,
-            CuotasSeeder::class,
+            // CuentasBancariasSeeder::class,  // Problemas de estructura
+            // CuotasSeeder::class,  // Problemas de estructura
 
             // Catálogos y parametrizaciones adicionales
             ItemsCobroSeeder::class,

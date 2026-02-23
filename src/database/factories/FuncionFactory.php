@@ -20,9 +20,11 @@ class FuncionFactory extends Factory
     public function definition()
     {
         return [
+            'codigo' => $this->faker->unique()->regexify('[A-Z]{3}[0-9]{3}'),
             'nombre' => $this->faker->unique()->word(),
             'descripcion' => $this->faker->sentence(),
-            'estado' => $this->faker->boolean(90) // 90% de probabilidad de true
+            'modulo' => $this->faker->randomElement(['administracion', 'academicos', 'finanzas', 'reportes']),
+            'activo' => $this->faker->boolean(90) // 90% de probabilidad de true
         ];
     }
 }
