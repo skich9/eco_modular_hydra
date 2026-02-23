@@ -294,6 +294,12 @@ Route::get('prorrogas-mora/estudiante/{codCeta}', [\App\Http\Controllers\Prorrog
 Route::patch('prorrogas-mora/{id}/toggle-status', [\App\Http\Controllers\ProrrogaMoraController::class, 'toggleStatus']);
 Route::apiResource('prorrogas-mora', \App\Http\Controllers\ProrrogaMoraController::class);
 
+// Descuentos de Mora
+Route::post('descuentos-mora/batch', [\App\Http\Controllers\DescuentoMoraController::class, 'storeBatch']);
+Route::get('descuentos-mora/estudiante/{codCeta}', [\App\Http\Controllers\DescuentoMoraController::class, 'porEstudiante']);
+Route::patch('descuentos-mora/{id}/toggle-status', [\App\Http\Controllers\DescuentoMoraController::class, 'toggleStatus']);
+Route::apiResource('descuentos-mora', \App\Http\Controllers\DescuentoMoraController::class)->only(['index']);
+
 // Carreras
 Route::get('carreras', [ApiCarreraController::class, 'index']);
 Route::get('carreras/{codigo}/pensums', [ApiCarreraController::class, 'pensums']);

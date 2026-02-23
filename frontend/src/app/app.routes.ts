@@ -177,6 +177,13 @@ export const routes: Routes = [
 				canActivate: [permissionGuard],
 				data: { requiredPermission: 'economico_prorroga_mora' }
 			},
+			// Ruta para Descuentos de Mora
+			{
+				path: 'descuento-mora',
+				loadComponent: () => import('./components/pages/descuento-mora/descuento-mora.component').then(m => m.DescuentoMoraComponent),
+				canActivate: [permissionGuard],
+				data: { requiredPermission: 'economico_descuento_mora' }
+			},
 
             // SIN: Estado de Factura / Anulación
             {

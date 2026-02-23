@@ -19,11 +19,13 @@ class DescuentoMora extends Model
 		'porcentaje',
 		'monto_descuento',
 		'observaciones',
+		'activo',
 	];
 
 	protected $casts = [
 		'porcentaje' => 'boolean',
 		'monto_descuento' => 'decimal:2',
+		'activo' => 'boolean',
 	];
 
 	/**

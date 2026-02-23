@@ -155,7 +155,8 @@ class ProcesarMoraDiaria extends Command
 								if (!$moraPostProrroga) {
 									// Crear nueva mora desde el día siguiente al fin de prórroga
 									$fechaFinMora = Carbon::parse($configuracionMora->fecha_fin);
-									$diasPostProrroga = $fechaInicioPosterior->diffInDays($fechaFinMora) + 1;
+									$fechaCalculo = $hoy->lt($fechaFinMora) ? $hoy : $fechaFinMora;
+									$diasPostProrroga = $fechaInicioPosterior->diffInDays($fechaCalculo) + 1;
 									$montoMoraPostProrroga = $configuracionMora->monto * $diasPostProrroga;
 
 									AsignacionMora::create([
@@ -174,7 +175,8 @@ class ProcesarMoraDiaria extends Command
 								} else {
 									// Actualizar mora post-prórroga existente
 									$fechaFinMora = Carbon::parse($moraPostProrroga->fecha_fin_mora);
-									$diasPostProrroga = Carbon::parse($moraPostProrroga->fecha_inicio_mora)->diffInDays($fechaFinMora) + 1;
+									$fechaCalculo = $hoy->lt($fechaFinMora) ? $hoy : $fechaFinMora;
+									$diasPostProrroga = Carbon::parse($moraPostProrroga->fecha_inicio_mora)->diffInDays($fechaCalculo) + 1;
 									$montoMoraPostProrroga = $configuracionMora->monto * $diasPostProrroga;
 
 									$moraPostProrroga->monto_mora = $montoMoraPostProrroga;
@@ -185,7 +187,8 @@ class ProcesarMoraDiaria extends Command
 							} else {
 								// Actualizar mora normal (sin prórroga o mora ya posterior)
 								$fechaFinMora = Carbon::parse($asignacionMora->fecha_fin_mora);
-								$diasTranscurridos = Carbon::parse($asignacionMora->fecha_inicio_mora)->diffInDays($fechaFinMora) + 1;
+								$fechaCalculo = $hoy->lt($fechaFinMora) ? $hoy : $fechaFinMora;
+								$diasTranscurridos = Carbon::parse($asignacionMora->fecha_inicio_mora)->diffInDays($fechaCalculo) + 1;
 								$montoMoraCalculado = $configuracionMora->monto * $diasTranscurridos;
 
 								$asignacionMora->monto_mora = $montoMoraCalculado;
@@ -196,7 +199,8 @@ class ProcesarMoraDiaria extends Command
 						} else {
 							// Actualizar mora existente sin prórroga
 							$fechaFinMora = Carbon::parse($asignacionMora->fecha_fin_mora);
-							$diasTranscurridos = Carbon::parse($asignacionMora->fecha_inicio_mora)->diffInDays($fechaFinMora) + 1;
+							$fechaCalculo = $hoy->lt($fechaFinMora) ? $hoy : $fechaFinMora;
+							$diasTranscurridos = Carbon::parse($asignacionMora->fecha_inicio_mora)->diffInDays($fechaCalculo) + 1;
 							$montoMoraCalculado = $configuracionMora->monto * $diasTranscurridos;
 
 							$asignacionMora->monto_mora = $montoMoraCalculado;
@@ -211,7 +215,8 @@ class ProcesarMoraDiaria extends Command
 							$fechaFinProrroga = Carbon::parse($prorrogaTerminada->fecha_fin_prorroga);
 							$fechaInicioPosterior = $fechaFinProrroga->copy()->addDay();
 							$fechaFinMora = Carbon::parse($configuracionMora->fecha_fin);
-							$diasPostProrroga = $fechaInicioPosterior->diffInDays($fechaFinMora) + 1;
+							$fechaCalculo = $hoy->lt($fechaFinMora) ? $hoy : $fechaFinMora;
+							$diasPostProrroga = $fechaInicioPosterior->diffInDays($fechaCalculo) + 1;
 							$montoMoraPostProrroga = $configuracionMora->monto * $diasPostProrroga;
 
 							AsignacionMora::create([
@@ -230,7 +235,8 @@ class ProcesarMoraDiaria extends Command
 						} else {
 							// Caso normal: Crear nueva asignación de mora
 							$fechaFinMora = Carbon::parse($configuracionMora->fecha_fin);
-							$diasTranscurridos = $fechaInicioMora->diffInDays($fechaFinMora) + 1;
+							$fechaCalculo = $hoy->lt($fechaFinMora) ? $hoy : $fechaFinMora;
+							$diasTranscurridos = $fechaInicioMora->diffInDays($fechaCalculo) + 1;
 							$montoMoraCalculado = $configuracionMora->monto * $diasTranscurridos;
 
 							AsignacionMora::create([

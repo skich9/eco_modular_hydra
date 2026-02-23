@@ -38,6 +38,15 @@ class FuncionesMenuSeeder extends Seeder
 				'created_at' => $now,
 				'updated_at' => $now
 			],
+			[
+				'codigo' => 'economico_descuento_mora',
+				'nombre' => 'Descuento Mora',
+				'descripcion' => 'Acceso a la gestión de descuentos de mora',
+				'modulo' => 'Económico',
+				'activo' => true,
+				'created_at' => $now,
+				'updated_at' => $now
+			],
 
 			// Reportes
 			[

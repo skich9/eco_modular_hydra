@@ -50,24 +50,25 @@ class AsignarFuncionesUsuarioAdminSeeder extends Seeder
 			->whereIn('codigo', [
 				// Cobros
 				'cobros_gestionar',
-				
+
 				// Reportes
 				'reportes_libro_diario',
-				
+
 				// Reimpresión
 				'reimpresion_facturacion_posterior',
-				
+
 				// Académico
 				'academico_asignacion_becas',
-				
+
 				// SIN
 				'sin_estado_factura',
 				'sin_contingencias',
 				'sin_configuracion_punto_venta',
-				
+
 				// Económico
 				'economico_prorroga_mora',
-				
+				'economico_descuento_mora',
+
 				// Configuración
 				'configuracion_usuarios',
 				'configuracion_roles',
