@@ -33,36 +33,34 @@ class AsignarFuncionesAdminSeeder extends Seeder
 		$funciones = DB::table('funciones')
 			->where('activo', true)
 			->whereIn('codigo', [
-				// Menú Cobros
-				'menu_cobros',
+				// Cobros
 				'cobros_gestionar',
 				
-				// Menú Reportes
-				'menu_reportes',
+				// Reportes
 				'reportes_libro_diario',
 				
-				// Menú Reimpresión
-				'menu_reimpresion',
+				// Reimpresión
 				'reimpresion_facturacion_posterior',
 				
-				// Menú Académico
-				'menu_academico',
+				// Académico
 				'academico_asignacion_becas',
 				
-				// Menú SIN
-				'menu_sin',
+				// SIN
 				'sin_estado_factura',
 				'sin_contingencias',
 				'sin_configuracion_punto_venta',
 				
-				// Menú Configuración
-				'menu_configuracion',
+				// Económico
+				'economico_prorroga_mora',
+				
+				// Configuración
 				'configuracion_usuarios',
 				'configuracion_roles',
 				'configuracion_parametros',
 				'configuracion_descuentos',
 				'configuracion_costos',
 				'configuracion_costos_creditos',
+				'configuracion_mora',
 				'configuracion_generales'
 			])
 			->get();

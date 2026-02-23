@@ -28,6 +28,17 @@ class FuncionesMenuSeeder extends Seeder
 				'updated_at' => $now
 			],
 
+			// Económico
+			[
+				'codigo' => 'economico_prorroga_mora',
+				'nombre' => 'Prórroga Mora',
+				'descripcion' => 'Acceso a la gestión de prórroga de mora',
+				'modulo' => 'Económico',
+				'activo' => true,
+				'created_at' => $now,
+				'updated_at' => $now
+			],
+
 			// Reportes
 			[
 				'codigo' => 'reportes_libro_diario',
@@ -140,6 +151,15 @@ class FuncionesMenuSeeder extends Seeder
 				'codigo' => 'configuracion_costos_creditos',
 				'nombre' => 'Configuración de Costos por Créditos',
 				'descripcion' => 'Acceso a la configuración de costos por créditos',
+				'modulo' => 'Configuración',
+				'activo' => true,
+				'created_at' => $now,
+				'updated_at' => $now
+			],
+			[
+				'codigo' => 'configuracion_mora',
+				'nombre' => 'Configuración de Moras',
+				'descripcion' => 'Acceso a la configuración de moras',
 				'modulo' => 'Configuración',
 				'activo' => true,
 				'created_at' => $now,
