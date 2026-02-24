@@ -2619,32 +2619,46 @@ class CobroController extends Controller
 				}
 
 					// Formatear concepto según tipo de cobro (DESPUÉS de derivar cod_tipo_cobro)
-					$mesNombre = '';
-					$numeroCuota = isset($numeroCuota) ? $numeroCuota : 0;
-					$parcial = isset($parcial) ? $parcial : false;
-					if ($numeroCuota > 0) {
-						$meses = $this->calcularMesesPorGestion(isset($request->gestion) ? $request->gestion : null);
-						if (is_array($meses)) {
-							foreach ($meses as $m) {
-								$nq = (int)(isset($m['numero_cuota']) ? $m['numero_cuota'] : 0);
-								if ($nq === (int)$numeroCuota) { $mesNombre = (string)(isset($m['mes_nombre']) ? $m['mes_nombre'] : ''); break; }
+				$mesNombre = '';
+				$numeroCuotaForConcepto = 0;
+				$parcialForConcepto = false;
+
+				// Intentar extraer numero_cuota y mes del detalle que viene del frontend
+				if ($detalle !== '') {
+					// Extraer número de cuota del detalle: "Mensualidad - Cuota 3 (Abril)"
+					$matches = [];
+					if (preg_match('/Cuota\s+(\d+)/', $detalle, $matches)) {
+						$numeroCuotaForConcepto = (int)$matches[1];
+					}
+					// Extraer mes del detalle: "Mensualidad - Cuota 3 (Abril)"
+					if (preg_match('/\(([^)]+)\)/', $detalle, $matches)) {
+						$mesNombre = (string)$matches[1];
+					}
+					// Detectar si es parcial
+					$parcialForConcepto = (stripos($detalle, 'Parcial') !== false);
+				}
+
+				// Si no se pudo extraer del detalle, intentar calcular desde gestión
+				if ($numeroCuotaForConcepto > 0 && $mesNombre === '') {
+					$meses = $this->calcularMesesPorGestion(isset($request->gestion) ? $request->gestion : null);
+					if (is_array($meses)) {
+						foreach ($meses as $m) {
+							$nq = (int)(isset($m['numero_cuota']) ? $m['numero_cuota'] : 0);
+							if ($nq === $numeroCuotaForConcepto) {
+								$mesNombre = (string)(isset($m['mes_nombre']) ? $m['mes_nombre'] : '');
+								break;
 							}
 						}
 					}
-					if ($mesNombre === '' && $detalle !== '') {
-						$mm = [];
-						if (preg_match('/\(([^)]+)\)/', $detalle, $mm) === 1) {
-							$mesNombre = (string)(isset($mm[1]) ? $mm[1] : '');
-						}
-					}
+}
 					$conceptoOut = isset($item['concepto']) && $item['concepto'] !== '' ? (string)$item['concepto'] : '';
 					if ($conceptoOut === '') {
 						if ($codTipoCobroItem === 'ARRASTRE') {
-							$conceptoOut = 'Nivelacion' . ($parcial ? ' parcial' : '') . ($mesNombre !== '' ? " '" . $mesNombre . "'" : '');
+							$conceptoOut = 'Mens.' . ($mesNombre !== '' ? ' ' . $mesNombre : '') . ' Niv';
 						} elseif ($codTipoCobroItem === 'MENSUALIDAD') {
-							$conceptoOut = 'Mensualidad' . ($parcial ? ' Parcial' : '') . ($mesNombre !== '' ? " '" . $mesNombre . "'" : '');
+							$conceptoOut = 'Mensualidad' . ($parcialForConcepto ? ' Parcial' : '') . ($mesNombre !== '' ? " '" . $mesNombre . "'" : '');
 						} elseif ($codTipoCobroItem === 'NIVELACION') {
-							$conceptoOut = 'Nivelacion Mensualidad' . ($mesNombre !== '' ? " '" . $mesNombre . "'" : '');
+							$conceptoOut = 'Mensualidad' . ($mesNombre !== '' ? ' ' . $mesNombre : '') . ' Niv';
 						} elseif ($codTipoCobroItem === 'REINCORPORACION') {
 							$conceptoOut = 'Reincorporación';
 						} else {
@@ -2856,7 +2870,6 @@ class CobroController extends Controller
 								'medio_doc' => $medioDoc,
 								'pu_original' => isset($item['pu_mensualidad']) ? $item['pu_mensualidad'] : 0,
 								'pu_prorrateado' => $puMensualidadFinal,
-								'desc_original' => isset($item['descuento']) ? $item['descuento'] : null,
 								'desc_prorrateado' => $descuentoFinal,
 								'es_pago_parcial' => $descuentosCalculados[$idx]['es_pago_parcial'],
 								'monto_pagado_previo' => $descuentosCalculados[$idx]['monto_pagado_previo']
@@ -2869,6 +2882,7 @@ class CobroController extends Controller
 						'fecha_cobro' => $fechaCobroSave,
 						'cobro_completo' => isset($item['cobro_completo']) ? $item['cobro_completo'] : null,
 						'observaciones' => isset($item['observaciones']) ? $item['observaciones'] : null,
+						'detalle' => $detalle,
 						'id_usuario' => $idUsuarioReposicion ?: (int)$request->id_usuario,
 						'id_forma_cobro' => isset($item['id_forma_cobro']) ? $item['id_forma_cobro'] : $formaIdItem,
 						'pu_mensualidad' => $puMensualidadFinal,
