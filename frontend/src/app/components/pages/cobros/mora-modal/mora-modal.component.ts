@@ -254,6 +254,9 @@ export class MoraModalComponent implements OnInit, OnChanges {
 		const medio_doc = this.form.get('computarizada')?.value === 'COMPUTARIZADA' ? 'C' : 'M';
 
 		const pagos: any[] = [];
+		const firstMora = (this.morasPendientes && this.morasPendientes.length > 0) ? this.morasPendientes[0] : null;
+		const firstMoraId = firstMora ? Number(firstMora?.id_asignacion_mora || 0) : 0;
+		const firstMoraAsignId = firstMora ? Number(firstMora?.id_asignacion_costo || 0) : 0;
 
 		if (isParcial && montoParcial > 0) {
 			pagos.push({
@@ -265,6 +268,9 @@ export class MoraModalComponent implements OnInit, OnChanges {
 				pu_mensualidad: this.puPorMora,
 				detalle: 'Pago Parcial de Mora',
 				tipo_pago: 'MORA',
+				cod_tipo_cobro: 'MORA',
+				id_asignacion_mora: firstMoraId || null,
+				id_asignacion_costo: firstMoraAsignId || null,
 				tipo_documento,
 				medio_doc,
 				comprobante: compSel,
@@ -297,6 +303,9 @@ export class MoraModalComponent implements OnInit, OnChanges {
 					pu_mensualidad: Number(mora?.monto_base || 0),
 					detalle,
 					tipo_pago: 'MORA',
+					cod_tipo_cobro: 'MORA',
+					id_asignacion_mora: Number(mora?.id_asignacion_mora || 0) || null,
+					id_asignacion_costo: Number(mora?.id_asignacion_costo || 0) || null,
 					tipo_documento,
 					medio_doc,
 					comprobante: compSel,

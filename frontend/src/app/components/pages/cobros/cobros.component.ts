@@ -3027,16 +3027,24 @@ export class CobrosComponent implements OnInit {
         numeroCuota = fromPayload;
       }
       const esParcial = !!p.pago_parcial;
-      const mesLabel = this.getMesNombreByCuotaFromResumen(numeroCuota);
-      const mesSuffix = mesLabel ? ` (${mesLabel})` : '';
-      const baseDetalle = isMensualidad
-        ? `Mensualidad - Cuota ${numeroCuota}${mesSuffix}`
-        : (isArrastre
-            ? `Mensualidad (Arrastre) - Cuota ${numeroCuota ?? ''}${mesSuffix}`.trim()
-            : (isReincorporacion
-                ? 'Reincorporación'
-                : (p.detalle || '')));
-      const detalle = esParcial ? `${baseDetalle} (Parcial)` : baseDetalle;
+
+      // IMPORTANTE: Si el payload trae un detalle explícito (ej: items de NIVELACION), usarlo directamente
+      let detalle: string;
+      if (p.detalle && p.detalle.trim() !== '') {
+        detalle = p.detalle;
+      } else {
+        // Solo construir detalle automático si NO viene del payload
+        const mesLabel = this.getMesNombreByCuotaFromResumen(numeroCuota);
+        const mesSuffix = mesLabel ? ` (${mesLabel})` : '';
+        const baseDetalle = isMensualidad
+          ? `Mensualidad - Cuota ${numeroCuota}${mesSuffix}`
+          : (isArrastre
+              ? `Mensualidad (Arrastre) - Cuota ${numeroCuota ?? ''}${mesSuffix}`.trim()
+              : (isReincorporacion
+                  ? 'Reincorporación'
+                  : ''));
+        detalle = esParcial ? `${baseDetalle} (Parcial)` : baseDetalle;
+      }
 
       // Para mensualidad/arrastre: calcular desde PU y descuento
       // Para otros (Reincorporación, Rezagado, etc.): usar monto directo del payload
@@ -3084,6 +3092,10 @@ export class CobrosComponent implements OnInit {
         medio_doc: [medioDoc],
         pu_mensualidad: [pu],
         order: [p.order ?? 0],
+        // IMPORTANTE: Campos para identificar tipo de cobro y mora
+        cod_tipo_cobro: [p.cod_tipo_cobro ?? null],
+        tipo_pago: [p.tipo_pago ?? null],
+        id_asignacion_mora: [p.id_asignacion_mora ?? null],
         // Datos bancarios/tarjeta para nota_bancaria
         id_cuentas_bancarias: [p.id_cuentas_bancarias ?? null],
         banco_origen: [p.banco_origen ?? null],
@@ -3339,7 +3351,26 @@ export class CobrosComponent implements OnInit {
       const observacionesFinal = this.formatObservacionesByPaymentMethod(it);
       console.log('Observaciones finales a enviar al backend:', observacionesFinal);
 
-      return { ...it, tipo_documento: tipo || 'R', medio_doc: medio || 'C', observaciones: observacionesFinal };
+      // IMPORTANTE: Preservar campos críticos del modal (cod_tipo_cobro, tipo_pago, id_asignacion_mora)
+      const result: any = {
+        ...it,
+        tipo_documento: tipo || 'R',
+        medio_doc: medio || 'C',
+        observaciones: observacionesFinal
+      };
+
+      // Preservar explícitamente estos campos si existen en el item original
+      if (it.cod_tipo_cobro !== undefined && it.cod_tipo_cobro !== null) {
+        result.cod_tipo_cobro = it.cod_tipo_cobro;
+      }
+      if (it.tipo_pago !== undefined && it.tipo_pago !== null) {
+        result.tipo_pago = it.tipo_pago;
+      }
+      if (it.id_asignacion_mora !== undefined && it.id_asignacion_mora !== null) {
+        result.id_asignacion_mora = it.id_asignacion_mora;
+      }
+
+      return result;
     });
 
     console.log('HOIla 10 - Payload final con observaciones formateadas:', {

@@ -1402,6 +1402,7 @@ class CobroController extends Controller
 			'items.*.nro_factura' => 'nullable|integer',
 			'items.*.nro_recibo' => 'nullable|integer',
 			'items.*.id_item' => 'nullable|integer|exists:items_cobro,id_item',
+			'items.*.id_asignacion_mora' => 'nullable|integer',
 			'items.*.id_asignacion_costo' => 'nullable|integer',
 			'items.*.id_cuota' => 'nullable|integer|exists:cuotas,id_cuota',
 			'items.*.tipo_documento' => 'nullable|in:F,R',
@@ -1419,6 +1420,7 @@ class CobroController extends Controller
 			'pagos.*.nro_factura' => 'nullable|integer',
 			'pagos.*.nro_recibo' => 'nullable|integer',
 			'pagos.*.id_item' => 'nullable|integer|exists:items_cobro,id_item',
+			'pagos.*.id_asignacion_mora' => 'nullable|integer',
 			'pagos.*.id_asignacion_costo' => 'nullable|integer',
 			'pagos.*.id_cuota' => 'nullable|integer|exists:cuotas,id_cuota',
 			'pagos.*.tipo_documento' => 'nullable|in:F,R',
@@ -1511,22 +1513,215 @@ class CobroController extends Controller
 			// Validación: detectar si múltiples items usan el mismo id_asignacion_costo
 			try {
 				$asignCounts = [];
-				foreach ((array)$items as $it) {
-					$idAsignItem = isset($it['id_asignacion_costo']) ? (int)$it['id_asignacion_costo'] : 0;
-					if ($idAsignItem > 0) {
-						$asignCounts[$idAsignItem] = (isset($asignCounts[$idAsignItem]) ? $asignCounts[$idAsignItem] : 0) + 1;
+				foreach ((array)$items as $idx => $it) {
+					$codTipoCobro = isset($it['cod_tipo_cobro']) ? strtoupper((string)$it['cod_tipo_cobro']) : '';
+					$idAsignMora = isset($it['id_asignacion_mora']) ? (int)$it['id_asignacion_mora'] : 0;
+					$idAsignCosto = isset($it['id_asignacion_costo']) ? (int)$it['id_asignacion_costo'] : 0;
+					\Log::info('[batchStore] Validación item:', [
+						'idx' => $idx,
+						'cod_tipo_cobro' => $codTipoCobro,
+						'id_asignacion_mora' => $idAsignMora,
+						'id_asignacion_costo' => $idAsignCosto
+					]);
+					$esMoraONivelacion = in_array($codTipoCobro, ['MORA', 'NIVELACION']);
+
+					// Para MORA/NIVELACION, usar id_asignacion_mora como identificador único
+					// Para otros tipos, usar id_asignacion_costo
+					if ($esMoraONivelacion) {
+						$idMora = isset($it['id_asignacion_mora']) ? (int)$it['id_asignacion_mora'] : 0;
+						if ($idMora > 0) {
+							$key = 'mora_' . $idMora;
+							$asignCounts[$key] = (isset($asignCounts[$key]) ? $asignCounts[$key] : 0) + 1;
+						}
+					} else {
+						$idAsignItem = isset($it['id_asignacion_costo']) ? (int)$it['id_asignacion_costo'] : 0;
+						if ($idAsignItem > 0) {
+							$key = 'costo_' . $idAsignItem;
+							$asignCounts[$key] = (isset($asignCounts[$key]) ? $asignCounts[$key] : 0) + 1;
+						}
 					}
 				}
-				foreach ($asignCounts as $idAsign => $count) {
+
+				// Verificar duplicados
+				foreach ($asignCounts as $key => $count) {
 					if ($count > 1) {
-						Log::warning('batchStore: múltiples items con mismo id_asignacion_costo', ['id_asignacion_costo' => $idAsign, 'count' => $count]);
+						$idValue = (int)str_replace(['mora_', 'costo_'], '', $key);
+						$tipo = strpos($key, 'mora_') === 0 ? 'mora' : 'costo';
+						Log::warning('batchStore: múltiples items con mismo identificador', [
+							'tipo' => $tipo,
+							'id' => $idValue,
+							'count' => $count
+						]);
 						return response()->json([
 							'success' => false,
-							'message' => 'Error: Múltiples cuotas están usando la misma asignación de costo. Por favor, contacte al administrador para corregir los datos de las cuotas.',
+							'message' => 'Error: Múltiples items están usando el mismo identificador. Por favor, contacte al administrador.',
 						], 422);
 					}
 				}
 			} catch (\Throwable $e) { /* no bloquear si la inspección falla */ }
+
+			// Reglas de negocio de mora/arrastre/mensualidad:
+			// - No permitir pagar cuotas futuras si existen cuotas previas pendientes
+			// - Si existe ARRASTRE y NORMAL en la gestión, deben completarse ambos para avanzar
+			// - La mora solo se cobra (se exige) cuando el pago completa la(s) cuota(s) del mes
+			try {
+				$codCetaCtx = (int) $request->input('cod_ceta');
+				$codPensumCtx = (string) $request->input('cod_pensum');
+				$gestionCtx = $request->input('gestion');
+				$itemsList = (array) $items;
+
+				$insList = Inscripcion::query()
+					->where('cod_ceta', $codCetaCtx)
+					->when($gestionCtx, function($q) use ($gestionCtx){ $q->where('gestion', $gestionCtx); })
+					->orderByDesc('fecha_inscripcion')
+					->orderByDesc('created_at')
+					->get();
+				$insNormal = $insList->firstWhere('tipo_inscripcion', 'NORMAL');
+				$insArrastre = $insList->firstWhere('tipo_inscripcion', 'ARRASTRE');
+
+				$getAsignaciones = function($ins) use ($codPensumCtx) {
+					if (!$ins) return collect();
+					return AsignacionCostos::query()
+						->where('cod_pensum', $codPensumCtx)
+						->where('cod_inscrip', (int) $ins->cod_inscrip)
+						->orderBy('numero_cuota')
+						->get();
+				};
+				$asigNormal = $getAsignaciones($insNormal);
+				$asigArrastre = $getAsignaciones($insArrastre);
+
+				$descuentoByAsign = function($asigRow) {
+					try {
+						$idDet = (int) ($asigRow->id_descuentoDetalle ?? 0);
+						if ($idDet) {
+							$dr = DB::table('descuento_detalle')->where('id_descuento_detalle', $idDet)->first(['monto_descuento']);
+							return $dr ? (float) ($dr->monto_descuento ?? 0) : 0.0;
+						}
+						$dr = DB::table('descuento_detalle')->where('id_cuota', (int) ($asigRow->id_asignacion_costo ?? 0))->first(['monto_descuento']);
+						return $dr ? (float) ($dr->monto_descuento ?? 0) : 0.0;
+					} catch (\Throwable $e) {
+						return 0.0;
+					}
+				};
+
+				$batchByAsign = [];
+				$batchByNumero = [ 'NORMAL' => [], 'ARRASTRE' => [] ];
+				$batchMoraByAsign = [];
+				foreach ($itemsList as $it) {
+					$tipoCobro = strtoupper((string)($it['cod_tipo_cobro'] ?? ''));
+					$idAsign = isset($it['id_asignacion_costo']) ? (int) $it['id_asignacion_costo'] : 0;
+					$monto = (float) (isset($it['monto']) ? $it['monto'] : 0);
+					if ($tipoCobro === 'MORA') {
+						if ($idAsign > 0) {
+							$batchMoraByAsign[$idAsign] = (isset($batchMoraByAsign[$idAsign]) ? $batchMoraByAsign[$idAsign] : 0) + $monto;
+						}
+						continue;
+					}
+					if ($idAsign > 0) {
+						$batchByAsign[$idAsign] = (isset($batchByAsign[$idAsign]) ? $batchByAsign[$idAsign] : 0) + $monto;
+					}
+				}
+
+				$nextPendNumero = function($asigs) use ($batchByAsign, $descuentoByAsign) {
+					foreach ($asigs as $a) {
+						$nom = (float) ($a->monto ?? 0);
+						$pag = (float) ($a->monto_pagado ?? 0);
+						$desc = $descuentoByAsign($a);
+						$neto = max(0, $nom - $desc);
+						$add = (float) ($batchByAsign[(int)($a->id_asignacion_costo ?? 0)] ?? 0);
+						$rest = $neto - ($pag + $add);
+						if ($rest > 0.0001) {
+							return (int) ($a->numero_cuota ?? 0);
+						}
+					}
+					return null;
+				};
+
+				$nextNormal = $nextPendNumero($asigNormal);
+				$nextArr = $insArrastre ? $nextPendNumero($asigArrastre) : null;
+
+				$gateNumero = $nextNormal;
+				if ($nextArr !== null) {
+					if ($gateNumero === null) { $gateNumero = $nextArr; }
+					else { $gateNumero = min((int)$gateNumero, (int)$nextArr); }
+				}
+
+				// Bloquear pago de cuotas futuras: ningún item puede apuntar a numero_cuota > gateNumero
+				$findNumeroByAsign = function($idAsign) use ($asigNormal, $asigArrastre) {
+					$idAsign = (int) $idAsign;
+					if ($idAsign <= 0) return null;
+					$hitN = $asigNormal->firstWhere('id_asignacion_costo', $idAsign);
+					if ($hitN) return (int) ($hitN->numero_cuota ?? 0);
+					$hitA = $asigArrastre->firstWhere('id_asignacion_costo', $idAsign);
+					if ($hitA) return (int) ($hitA->numero_cuota ?? 0);
+					return null;
+				};
+
+				if ($gateNumero !== null) {
+					foreach ($itemsList as $it) {
+						$tipoCobro = strtoupper((string)($it['cod_tipo_cobro'] ?? ''));
+						if ($tipoCobro === 'MORA') continue;
+						$idAsign = isset($it['id_asignacion_costo']) ? (int) $it['id_asignacion_costo'] : 0;
+						if ($idAsign <= 0) continue;
+						$numero = $findNumeroByAsign($idAsign);
+						if ($numero !== null && $numero > (int)$gateNumero) {
+							return response()->json([
+								'success' => false,
+								'message' => 'No puede pagar mensualidades de meses posteriores si tiene cuotas pendientes anteriores (incluyendo arrastre/mora).',
+							], 422);
+						}
+					}
+				}
+
+				// Exigir mora solo cuando el lote completa la(s) cuota(s) del mes
+				$completaCuota = function($asigs, $numero) use ($batchByAsign, $descuentoByAsign) {
+					if ($numero === null) return false;
+					$hit = $asigs->firstWhere('numero_cuota', (int)$numero);
+					if (!$hit) return false;
+					$nom = (float) ($hit->monto ?? 0);
+					$pag = (float) ($hit->monto_pagado ?? 0);
+					$desc = $descuentoByAsign($hit);
+					$neto = max(0, $nom - $desc);
+					$add = (float) ($batchByAsign[(int)($hit->id_asignacion_costo ?? 0)] ?? 0);
+					return ($pag + $add) >= ($neto - 0.0001);
+				};
+
+				$mesCompletadoNormal = ($gateNumero !== null) ? $completaCuota($asigNormal, $gateNumero) : false;
+				$mesCompletadoArr = ($gateNumero !== null && $insArrastre) ? $completaCuota($asigArrastre, $gateNumero) : true;
+				$mesCompletado = ($mesCompletadoNormal && $mesCompletadoArr);
+
+				if ($mesCompletado && $gateNumero !== null) {
+					// Buscar si existe mora pendiente para la(s) cuota(s) del mes completado y exigir pago en el lote
+					$idsAsignMes = [];
+					$hitN = $asigNormal->firstWhere('numero_cuota', (int)$gateNumero);
+					if ($hitN) { $idsAsignMes[] = (int) $hitN->id_asignacion_costo; }
+					if ($insArrastre) {
+						$hitA = $asigArrastre->firstWhere('numero_cuota', (int)$gateNumero);
+						if ($hitA) { $idsAsignMes[] = (int) $hitA->id_asignacion_costo; }
+					}
+					$idsAsignMes = array_values(array_unique(array_filter($idsAsignMes)));
+					if (!empty($idsAsignMes) && Schema::hasTable('asignacion_mora')) {
+						$morasPend = DB::table('asignacion_mora')
+							->whereIn('id_asignacion_costo', $idsAsignMes)
+							->where('estado', 'PENDIENTE')
+							->get(['id_asignacion_mora','id_asignacion_costo','monto_mora','monto_descuento']);
+						foreach ($morasPend as $mp) {
+							$idAsignMora = (int) ($mp->id_asignacion_costo ?? 0);
+							$netoMora = max(0, (float)($mp->monto_mora ?? 0) - (float)($mp->monto_descuento ?? 0));
+							$pagadoEnLote = (float) ($batchMoraByAsign[$idAsignMora] ?? 0);
+							if ($netoMora > 0.0001 && $pagadoEnLote < ($netoMora - 0.0001)) {
+								return response()->json([
+									'success' => false,
+									'message' => 'Para completar la mensualidad/arrastre del mes, debe pagar también la mora correspondiente.',
+								], 422);
+							}
+						}
+					}
+				}
+			} catch (\Throwable $e) {
+				// Si falla la validación de negocio, no bloquear por defecto; pero registrar para depurar
+				try { Log::warning('batchStore: validacion mora/arrastre fallo', ['error' => $e->getMessage()]); } catch (\Throwable $e2) {}
+			}
 			$emitGroupMeta = null; // meta para emisión agrupada post-commit
 			DB::transaction(function () use ($request, $items, $descuentosFromFrontend, $reciboService, $facturaService, $cufdRepo, $ops, $cufGen, $payloadBuilder, $cuisRepo, &$results, &$emitGroupMeta) {
                 $codigoAmbiente = env('CODIGO_AMBIENTE', '2'); // 2=PRUEBAS, 1=PRODUCCION
@@ -2283,7 +2478,13 @@ class CobroController extends Controller
 					$idAsign = isset($item['id_asignacion_costo']) ? $item['id_asignacion_costo'] : null;
 					$idCuota = isset($item['id_cuota']) ? $item['id_cuota'] : null;
 					$asignRow = null;
-					if (!$isSecundario && ((!$idAsign || !$idCuota) && $primaryInscripcion)) {
+
+				// IMPORTANTE: Detectar si es un item de MORA/NIVELACION para NO derivar id_asignacion_costo ni id_cuota
+				$codTipoCobroCheck = isset($item['cod_tipo_cobro']) ? strtoupper(trim((string)$item['cod_tipo_cobro'])) : '';
+				$isMoraONivelacion = in_array($codTipoCobroCheck, ['MORA', 'NIVELACION']);
+
+				// NO derivar id_asignacion_costo ni id_cuota para items de MORA/NIVELACION
+				if (!$isSecundario && !$isMoraONivelacion && ((!$idAsign || !$idCuota) && $primaryInscripcion)) {
 						if ($idAsign) {
 							$asignRow = AsignacionCostos::find((int)$idAsign);
 						} elseif ($idCuota) {
@@ -2345,59 +2546,77 @@ class CobroController extends Controller
 					$order = isset($item['order']) ? (int)$item['order'] : ($idx + 1);
 
 					// Construir detalle de cuota para notas: "Mensualidad - Cuota N (Parcial)"
-					$detalle = (string)(isset($item['observaciones']) ? $item['observaciones'] : '');
-					$obsOriginal = $detalle;
-					if ($idCuota) {
-						$cuotaRow = $asignRow;
-						if (!$cuotaRow && $primaryInscripcion) {
-							$cuotaRow = AsignacionCostos::where('cod_pensum', $codPensumCtx)
-								->where('cod_inscrip', $primaryInscripcion->cod_inscrip)
-								->where('id_cuota_template', (int)$idCuota)
-								->first();
-						}
-						if ($cuotaRow) {
-							$numeroCuota = (int)($cuotaRow->numero_cuota ?? 0);
-							$prevPag = (float)($cuotaRow->monto_pagado ?? 0);
-							$totalCuota = (float)($cuotaRow->monto ?? 0);
-							$descN = 0.0;
-							try {
-								$idDet = (int)($cuotaRow->id_descuentoDetalle ?? 0);
-								if ($idDet) {
-									$dr = DescuentoDetalle::where('id_descuento_detalle', $idDet)->first(['monto_descuento']);
-									$descN = $dr ? (float)($dr->monto_descuento ?? 0) : 0.0;
-								} else {
-									$dr = DescuentoDetalle::where('id_cuota', (int)($cuotaRow->id_asignacion_costo ?? 0))->first(['monto_descuento']);
-									$descN = $dr ? (float)($dr->monto_descuento ?? 0) : 0.0;
-								}
-							} catch (\Throwable $e) { $descN = 0.0; }
-							$neto = max(0, $totalCuota - $descN);
-							$parcial = ($prevPag + (float)$item['monto']) < $neto;
-							$detalle = 'Mensualidad - Cuota ' . ($numeroCuota ?: $idCuota) . ($parcial ? ' (Parcial)' : '');
-						}
-					} else {
-						if (!empty(isset($item['id_item']) ? $item['id_item'] : null)) {
-							$detFromItem = (string)(isset($item['detalle']) ? $item['detalle'] : '');
-							$detalle = $detFromItem !== '' ? $detFromItem : ($detalle !== '' ? $detalle : 'Item');
-						}
+				// IMPORTANTE: Si el item viene con 'detalle' desde el frontend, usarlo directamente (ej: items de NIVELACION)
+				$detalleFromFront = (string)(isset($item['detalle']) ? $item['detalle'] : '');
+				$detalle = (string)(isset($item['observaciones']) ? $item['observaciones'] : '');
+				$obsOriginal = $detalle;
+
+				// Si viene detalle del frontend, usarlo y no sobrescribirlo
+				if ($detalleFromFront !== '') {
+					$detalle = $detalleFromFront;
+				} elseif ($idCuota) {
+					$cuotaRow = $asignRow;
+					if (!$cuotaRow && $primaryInscripcion) {
+						$cuotaRow = AsignacionCostos::where('cod_pensum', $codPensumCtx)
+							->where('cod_inscrip', $primaryInscripcion->cod_inscrip)
+							->where('id_cuota_template', (int)$idCuota)
+							->first();
 					}
+					if ($cuotaRow) {
+						$numeroCuota = (int)($cuotaRow->numero_cuota ?? 0);
+						$prevPag = (float)($cuotaRow->monto_pagado ?? 0);
+						$totalCuota = (float)($cuotaRow->monto ?? 0);
+						$descN = 0.0;
+						try {
+							$idDet = (int)($cuotaRow->id_descuentoDetalle ?? 0);
+							if ($idDet) {
+								$dr = DescuentoDetalle::where('id_descuento_detalle', $idDet)->first(['monto_descuento']);
+								$descN = $dr ? (float)($dr->monto_descuento ?? 0) : 0.0;
+							} else {
+								$dr = DescuentoDetalle::where('id_cuota', (int)($cuotaRow->id_asignacion_costo ?? 0))->first(['monto_descuento']);
+								$descN = $dr ? (float)($dr->monto_descuento ?? 0) : 0.0;
+							}
+						} catch (\Throwable $e) { $descN = 0.0; }
+						$neto = max(0, $totalCuota - $descN);
+						$parcial = ($prevPag + (float)$item['monto']) < $neto;
+						$detalle = 'Mensualidad - Cuota ' . ($numeroCuota ?: $idCuota) . ($parcial ? ' (Parcial)' : '');
+					}
+				} else {
+					if (!empty(isset($item['id_item']) ? $item['id_item'] : null)) {
+						$detFromItem = (string)(isset($item['detalle']) ? $item['detalle'] : '');
+						$detalle = $detFromItem !== '' ? $detFromItem : ($detalle !== '' ? $detalle : 'Item');
+					}
+				}
 
 					// Derivar cod_tipo_cobro por ítem y normalizar fecha con hora
-					$codTipoCobroItem = isset($item['cod_tipo_cobro']) ? (string)$item['cod_tipo_cobro'] : null;
-					if (!$codTipoCobroItem) {
-						$obsCheck = (string)(isset($item['observaciones']) ? $item['observaciones'] : (isset($request->observaciones) ? $request->observaciones : ''));
-						$hasItem = isset($item['id_item']) && !empty($item['id_item']);
-						$isRezagado = ($obsCheck !== '') ? (preg_match('/\[\s*REZAGADO\s*\]/i', $obsCheck) === 1) : false;
-						$isRecuperacion = ($obsCheck !== '') ? (preg_match('/\[\s*PRUEBA\s+DE\s+RECUPERACI[OÓ]N\s*\]/i', $obsCheck) === 1) : false;
-						$isReincorporacion = ($obsCheck !== '') ? (preg_match('/\[\s*REINCORPORACI[OÓ]N\s*\]/i', $obsCheck) === 1) : false;
-						$detRaw = strtoupper(trim((string)(isset($detalle) ? $detalle : '')));
-						if (!$isReincorporacion && $detRaw !== '' && strpos($detRaw, 'REINCORPOR') !== false) { $isReincorporacion = true; }
-						if ($hasItem) { $codTipoCobroItem = 'MATERIAL_EXTRA'; }
-						elseif ($isRezagado) { $codTipoCobroItem = 'REZAGADOS'; }
-						elseif ($isRecuperacion) { $codTipoCobroItem = 'PRUEBA_RECUPERACION'; }
-						elseif ($isReincorporacion) { $codTipoCobroItem = 'REINCORPORACION'; }
-						elseif (strtoupper((string)$request->tipo_inscripcion) === 'ARRASTRE') { $codTipoCobroItem = 'ARRASTRE'; }
-						else { $codTipoCobroItem = 'MENSUALIDAD'; }
-					}
+				$codTipoCobroItem = isset($item['cod_tipo_cobro']) ? (string)$item['cod_tipo_cobro'] : null;
+
+				\Log::info('[CobroController] Procesando item:', [
+					'idx' => $idx,
+					'cod_tipo_cobro_recibido' => $codTipoCobroItem,
+					'detalle_recibido' => isset($item['detalle']) ? $item['detalle'] : null,
+					'detalle_final_usado' => $detalle,
+					'tipo_pago' => isset($item['tipo_pago']) ? $item['tipo_pago'] : null,
+					'id_asignacion_mora' => isset($item['id_asignacion_mora']) ? $item['id_asignacion_mora'] : null
+				]);
+
+				if (!$codTipoCobroItem) {
+					$obsCheck = (string)(isset($item['observaciones']) ? $item['observaciones'] : (isset($request->observaciones) ? $request->observaciones : ''));
+					$hasItem = isset($item['id_item']) && !empty($item['id_item']);
+					$isRezagado = ($obsCheck !== '') ? (preg_match('/\[\s*REZAGADO\s*\]/i', $obsCheck) === 1) : false;
+					$isRecuperacion = ($obsCheck !== '') ? (preg_match('/\[\s*PRUEBA\s+DE\s+RECUPERACI[OÓ]N\s*\]/i', $obsCheck) === 1) : false;
+					$isReincorporacion = ($obsCheck !== '') ? (preg_match('/\[\s*REINCORPORACI[OÓ]N\s*\]/i', $obsCheck) === 1) : false;
+					$detRaw = strtoupper(trim((string)(isset($detalle) ? $detalle : '')));
+					if (!$isReincorporacion && $detRaw !== '' && strpos($detRaw, 'REINCORPOR') !== false) { $isReincorporacion = true; }
+					if ($hasItem) { $codTipoCobroItem = 'MATERIAL_EXTRA'; }
+					elseif ($isRezagado) { $codTipoCobroItem = 'REZAGADOS'; }
+					elseif ($isRecuperacion) { $codTipoCobroItem = 'PRUEBA_RECUPERACION'; }
+					elseif ($isReincorporacion) { $codTipoCobroItem = 'REINCORPORACION'; }
+					elseif (strtoupper((string)$request->tipo_inscripcion) === 'ARRASTRE') { $codTipoCobroItem = 'ARRASTRE'; }
+					else { $codTipoCobroItem = 'MENSUALIDAD'; }
+
+					\Log::info('[CobroController] cod_tipo_cobro derivado:', ['cod_tipo_cobro' => $codTipoCobroItem]);
+				}
 
 					// Formatear concepto según tipo de cobro (DESPUÉS de derivar cod_tipo_cobro)
 					$mesNombre = '';
@@ -2424,6 +2643,8 @@ class CobroController extends Controller
 							$conceptoOut = 'Nivelacion' . ($parcial ? ' parcial' : '') . ($mesNombre !== '' ? " '" . $mesNombre . "'" : '');
 						} elseif ($codTipoCobroItem === 'MENSUALIDAD') {
 							$conceptoOut = 'Mensualidad' . ($parcial ? ' Parcial' : '') . ($mesNombre !== '' ? " '" . $mesNombre . "'" : '');
+						} elseif ($codTipoCobroItem === 'NIVELACION') {
+							$conceptoOut = 'Nivelacion Mensualidad' . ($mesNombre !== '' ? " '" . $mesNombre . "'" : '');
 						} elseif ($codTipoCobroItem === 'REINCORPORACION') {
 							$conceptoOut = 'Reincorporación';
 						} else {
@@ -2668,6 +2889,52 @@ class CobroController extends Controller
 						'reposicion_factura' => $isReposicionFactura ? 1 : null,
 					]);
 					$created = Cobro::create($payload)->load(['usuario', 'cuota', 'formaCobro', 'cuentaBancaria', 'itemCobro']);
+
+					// Si es MORA o NIVELACION y viene identificada, actualizar monto_pagado y marcar como PAGADO cuando corresponda
+					$esMoraONivelacion = in_array(strtoupper((string)$codTipoCobroItem), ['MORA', 'NIVELACION']);
+					if ($esMoraONivelacion) {
+						try {
+							$idMora = isset($item['id_asignacion_mora']) ? (int)$item['id_asignacion_mora'] : 0;
+							$idAsignMora = isset($item['id_asignacion_costo']) ? (int)$item['id_asignacion_costo'] : 0;
+							$moraQ = DB::table('asignacion_mora')->where('estado', 'PENDIENTE');
+							if ($idMora > 0) { $moraQ->where('id_asignacion_mora', $idMora); }
+							elseif ($idAsignMora > 0) { $moraQ->where('id_asignacion_costo', $idAsignMora)->orderByDesc('id_asignacion_mora'); }
+							else { $moraQ = null; }
+							$moraRow = $moraQ ? $moraQ->first(['id_asignacion_mora','monto_mora','monto_descuento','monto_pagado']) : null;
+							if ($moraRow) {
+								$neto = max(0, (float)($moraRow->monto_mora ?? 0) - (float)($moraRow->monto_descuento ?? 0));
+								$montoPago = (float)($item['monto'] ?? 0);
+								$montoPagadoPrevio = (float)($moraRow->monto_pagado ?? 0);
+								$nuevoMontoPagado = $montoPagadoPrevio + $montoPago;
+
+								// Actualizar monto_pagado siempre
+								$updateData = [
+									'monto_pagado' => $nuevoMontoPagado,
+									'updated_at' => now()
+								];
+
+								// Si se completó el pago, cambiar estado a PAGADO
+								if ($neto <= 0.0001 || $nuevoMontoPagado >= ($neto - 0.0001)) {
+									$updateData['estado'] = 'PAGADO';
+								}
+
+								DB::table('asignacion_mora')
+									->where('id_asignacion_mora', (int)$moraRow->id_asignacion_mora)
+									->update($updateData);
+
+								\Log::info('[CobroController] Mora actualizada:', [
+									'id_asignacion_mora' => (int)$moraRow->id_asignacion_mora,
+									'monto_pago' => $montoPago,
+									'monto_pagado_previo' => $montoPagadoPrevio,
+									'nuevo_monto_pagado' => $nuevoMontoPagado,
+									'neto_mora' => $neto,
+									'estado' => $updateData['estado'] ?? 'PENDIENTE'
+								]);
+							}
+						} catch (\Throwable $e) {
+							Log::warning('batchStore: no se pudo actualizar mora', ['err' => $e->getMessage()]);
+						}
+					}
 
 					if (!$isSecundario) {
 						try {

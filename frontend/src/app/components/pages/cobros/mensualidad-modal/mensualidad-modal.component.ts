@@ -25,6 +25,7 @@ export class MensualidadModalComponent implements OnInit, OnChanges {
 
   @Input() formasCobro: any[] = [];
   @Input() cuentasBancarias: any[] = [];
+  @Input() morasPendientes: any[] = [];
   @Input() tipo: 'mensualidad' | 'rezagado' | 'recuperacion' | 'arrastre' | 'reincorporacion' | 'mora' = 'mensualidad';
   // Nota: también soporta 'reincorporacion' como tipo adicional
   @Input() pendientes = 0;
@@ -78,6 +79,118 @@ export class MensualidadModalComponent implements OnInit, OnChanges {
       fecha_deposito: [''],
       nro_deposito: ['']
     });
+  }
+
+  private getMoraPendienteByAsign(idAsignacionCosto: any): any {
+    try {
+      const id = Number(idAsignacionCosto || 0);
+      if (!id) return null;
+      const list: any[] = Array.isArray(this.morasPendientes) ? this.morasPendientes : [];
+      const hit = list.find((m: any) => Number(m?.id_asignacion_costo || 0) === id && (m?.estado ? String(m.estado).toUpperCase() === 'PENDIENTE' : true));
+      return hit || null;
+    } catch { return null; }
+  }
+
+  private getMoraNetoFromRow(mora: any): number {
+    try {
+      const monto = Number(mora?.monto_mora || 0);
+      const desc = Number(mora?.monto_descuento || 0);
+      return Math.max(0, monto - desc);
+    } catch { return 0; }
+  }
+
+  private shouldCobrarMoraForPago(montoPago: number, numeroCuota: number | null, idAsignacionCosto: any): boolean {
+    try {
+      if (!idAsignacionCosto) return false;
+      if (!numeroCuota) return false;
+      const restante = this.getCuotaRestanteByNumero(numeroCuota);
+      if (!(restante > 0)) return false;
+      return Number(montoPago || 0) >= (restante - 0.0001);
+    } catch { return false; }
+  }
+
+  private buildPagoMoraItem(mora: any, hoy: any, compSel: string, tipo_documento: string, medio_doc: string): any {
+    console.log('[MensualidadModal] ===== buildPagoMoraItem INICIO =====');
+    console.log('[MensualidadModal] mora recibida:', mora);
+
+    const neto = this.getMoraNetoFromRow(mora);
+    const numeroCuota = Number(mora?.numero_cuota || 0);
+    const mesNombre = numeroCuota > 0 ? this.getMesNombreByCuota(numeroCuota) : null;
+
+    console.log('[MensualidadModal] numeroCuota:', numeroCuota);
+    console.log('[MensualidadModal] mesNombre:', mesNombre);
+
+    const detalle = mesNombre
+      ? `Nivelacion Mensualidad - Cuota ${numeroCuota} (${mesNombre})`
+      : `Nivelacion Mensualidad - Cuota ${numeroCuota || ''}`;
+
+    console.log('[MensualidadModal] detalle construido:', detalle);
+
+    const moraItem = {
+      id_forma_cobro: this.form.get('metodo_pago')?.value || null,
+      nro_cobro: null,
+      monto: neto,
+      fecha_cobro: hoy,
+      observaciones: this.composeObservaciones(),
+      pu_mensualidad: Number(mora?.monto_mora || 0),
+      detalle: detalle.trim(),
+      tipo_pago: 'NIVELACION',
+      cod_tipo_cobro: 'NIVELACION',
+      id_asignacion_mora: Number(mora?.id_asignacion_mora || 0) || null,
+      // IMPORTANTE: NO enviar id_asignacion_costo ni id_cuota para items de mora
+      // El cobro de mora debe registrarse SOLO con id_asignacion_mora
+      id_asignacion_costo: null,
+      id_cuota: null,
+      tipo_documento,
+      medio_doc,
+      comprobante: compSel || 'NINGUNO',
+      computarizada: this.form.get('computarizada')?.value,
+      id_cuentas_bancarias: this.form.get('id_cuentas_bancarias')?.value || null,
+      banco_origen: this.form.get('banco_origen')?.value || null,
+      fecha_deposito: this.form.get('fecha_deposito')?.value || null,
+      nro_deposito: this.form.get('nro_deposito')?.value || null,
+      tarjeta_first4: this.form.get('tarjeta_first4')?.value || null,
+      tarjeta_last4: this.form.get('tarjeta_last4')?.value || null,
+      descuento: Number(mora?.monto_descuento || 0) || 0,
+    };
+
+    console.log('[MensualidadModal] moraItem final:', moraItem);
+    console.log('[MensualidadModal] ===== buildPagoMoraItem FIN =====');
+
+    return moraItem;
+  }
+
+  // Mora a mostrar en el modal según la selección actual
+  get moraDisplay(): number {
+    try {
+      if (!(this.tipo === 'mensualidad' || this.tipo === 'arrastre')) return 0;
+
+      if (this.tipo === 'arrastre') {
+        const next = this.resumen?.arrastre?.next_cuota || null;
+        const idAsign = next ? (next?.id_asignacion_costo ?? null) : null;
+        const mora = this.getMoraPendienteByAsign(idAsign);
+        return mora ? this.getMoraNetoFromRow(mora) : 0;
+      }
+
+      const esParcial = !!this.form.get('pago_parcial')?.value;
+      if (esParcial) {
+        const start = this.getStartCuotaFromResumen();
+        const list = this.getOrderedCuotasRestantes();
+        const first = list.find(it => Number(it.numero) === Number(start)) || list[0] || null;
+        const idAsign = first ? (first.id_asignacion_costo ?? null) : null;
+        const mora = this.getMoraPendienteByAsign(idAsign);
+        return mora ? this.getMoraNetoFromRow(mora) : 0;
+      }
+
+      const cant = Math.max(0, Number(this.form.get('cantidad')?.value || 0));
+      const list = this.getOrderedCuotasRestantes().slice(0, cant);
+      let acc = 0;
+      for (const it of list) {
+        const mora = this.getMoraPendienteByAsign(it?.id_asignacion_costo ?? null);
+        if (mora) acc += this.getMoraNetoFromRow(mora);
+      }
+      return acc;
+    } catch { return 0; }
   }
 
   // Suma del MONTO BRUTO de las próximas k cuotas (para mostrar en Precio Unitario)
@@ -312,74 +425,6 @@ export class MensualidadModalComponent implements OnInit, OnChanges {
     return true;
   }
 
-  // Indica si el método seleccionado corresponde a pago con QR
-  get isQR(): boolean {
-    const f = this.getSelectedForma();
-    const code = this.getSelectedCodigoSin();
-    if (code !== null) {
-      // No existe código estándar de QR en SIN; usar fallback textual
-    }
-    const match = this.getSelectedForma();
-    const raw = (match?.descripcion_sin ?? match?.nombre ?? match?.name ?? match?.descripcion ?? match?.label ?? '').toString().trim().toUpperCase();
-    const nombre = raw.normalize('NFD').replace(/\p{Diacritic}/gu, '');
-    return nombre.includes('QR');
-  }
-
-  // Indica si el método seleccionado corresponde a TRANSFERENCIA
-  get isTransferencia(): boolean {
-    // Si es QR, no considerarlo transferencia para efectos de UI/validaciones
-    if (this.isQR) return false;
-    const f = this.getSelectedForma();
-    const code = this.getSelectedCodigoSin();
-    if (code !== null) {
-      if ([5].includes(code)) return true; // 5 ~ Transferencia bancaria (usual en SIN)
-    }
-    const match = this.getSelectedForma();
-    const raw = (match?.descripcion_sin ?? match?.nombre ?? match?.name ?? match?.descripcion ?? match?.label ?? '').toString().trim().toUpperCase();
-    const nombre = raw.normalize('NFD').replace(/\p{Diacritic}/gu, '');
-    return nombre.includes('TRANSFER');
-  }
-
-  // Indica si el método seleccionado es OTRO (id_forma_cobro = 'O')
-  get isOtro(): boolean {
-    const f = this.getSelectedForma();
-    const raw = (f?.descripcion_sin ?? f?.nombre ?? f?.name ?? f?.descripcion ?? f?.label ?? '').toString().trim().toUpperCase();
-    const id = (f?.id_forma_cobro ?? '').toString().trim().toUpperCase();
-    // Tratar explícitamente VALES por id_forma_cobro
-    if (id === 'V') return true;
-    const nombre = raw.normalize('NFD').replace(/\p{Diacritic}/gu, '');
-    if (!nombre) return false;
-    if (nombre.includes('TRANSFER') || nombre.includes('TARJETA') || nombre.includes('CHEQUE') || nombre.includes('DEPOSITO') || nombre.includes('QR')) return false;
-    return nombre.includes('OTRO') || nombre.includes('VALES') || nombre.includes('PAGO POSTERIOR');
-  }
-
-  // Controla visibilidad del bloque bancario (Cheque/Depósito/Transferencia/QR)
-  get showBancarioBlock(): boolean {
-    if (this.isOtro) return false;
-    if (this.isQR) return false; // QR no muestra bloque bancario
-    // Para TARJETA ya existe un bloque específico arriba; evitar duplicar campos
-    return this.isCheque || this.isDeposito || this.isTransferencia;
-  }
-
-  // Filtrar cuentas bancarias según tipo de comprobante (Recibo/Factura)
-  get cuentasBancariasFiltradas(): any[] {
-    const comprobante = (this.form.get('comprobante')?.value || '').toString().toUpperCase();
-
-    if (!comprobante || (comprobante !== 'RECIBO' && comprobante !== 'FACTURA')) {
-      return this.cuentasBancarias || [];
-    }
-
-    // I_R = true → Recibo, I_R = false → Factura
-    const esRecibo = comprobante === 'RECIBO';
-
-    return (this.cuentasBancarias || []).filter((cuenta: any) => {
-      const i_r = cuenta?.I_R;
-      // Si I_R es true, la cuenta está habilitada para Recibo
-      // Si I_R es false, la cuenta está habilitada para Factura
-      return esRecibo ? i_r === true : i_r === false;
-    });
-  }
-
   ngOnInit(): void {
     console.log('[MensualidadModal] ngOnInit ejecutado');
     this.cargarParametrosDescuentoSemestre();
@@ -395,7 +440,7 @@ export class MensualidadModalComponent implements OnInit, OnChanges {
     this.form.get('monto_manual')?.valueChanges.subscribe(() => this.recalcTotal());
 
     // Recalcular total al cambiar monto parcial (sin modificar el campo descuento)
-    this.form.get('monto_parcial')?.valueChanges.subscribe((value) => {
+    this.form.get('monto_parcial')?.valueChanges.subscribe((value: any) => {
       // Redondear automáticamente a entero si se ingresa un decimal
       if (value && !Number.isInteger(Number(value))) {
         const rounded = Math.round(Number(value));
@@ -601,6 +646,19 @@ export class MensualidadModalComponent implements OnInit, OnChanges {
     if (this.tipo === 'mensualidad') {
       if (this.form.get('pago_parcial')?.value) {
         total = Number(this.form.get('monto_parcial')?.value || 0);
+
+        // Si el parcial completa la cuota, sumar mora pendiente de esa cuota
+        try {
+          const start = this.getStartCuotaFromResumen();
+          const list = this.getOrderedCuotasRestantes();
+          const first = list.find(it => Number(it.numero) === Number(start)) || list[0] || null;
+          const numero_cuota = first ? (Number(first.numero || 0) || null) : null;
+          const id_asignacion_costo = first ? (first.id_asignacion_costo ?? null) : null;
+          const mora = this.getMoraPendienteByAsign(id_asignacion_costo);
+          if (mora && this.shouldCobrarMoraForPago(total, numero_cuota, id_asignacion_costo)) {
+            total += this.getMoraNetoFromRow(mora);
+          }
+        } catch {}
       } else {
         const cant = Math.max(0, Number(this.form.get('cantidad')?.value || 0));
         // Usar deuda real: monto - (monto_pagado + descuento)
@@ -608,13 +666,24 @@ export class MensualidadModalComponent implements OnInit, OnChanges {
         if (deudaReal > 0) {
           total = deudaReal;
           const totalCuotasPendientes = this.pendientes || 0;
-          // Descuento automático de semestre completo
+
           if (cant === totalCuotasPendientes && this.validarCuotasSinDescuentoPrevio(cant)) {
             const descuentoAuto = this.calcularDescuentoSemestreCompleto(cant);
             if (descuentoAuto > 0) {
               total = Math.max(0, total - descuentoAuto);
             }
           }
+
+          // Sumar mora de las cuotas seleccionadas (si existe mora pendiente)
+          try {
+            const list = this.getOrderedCuotasRestantes().slice(0, cant);
+            let moraAcc = 0;
+            for (const it of list) {
+              const mora = this.getMoraPendienteByAsign(it?.id_asignacion_costo ?? null);
+              if (mora) moraAcc += this.getMoraNetoFromRow(mora);
+            }
+            total += moraAcc;
+          } catch {}
         } else {
           // Fallback si no hay datos de asignaciones
           const puNext = Number(this.pu || 0);
@@ -627,6 +696,13 @@ export class MensualidadModalComponent implements OnInit, OnChanges {
     } else if (this.tipo === 'arrastre') {
       const cant = Math.max(0, Number(this.form.get('cantidad')?.value || 0));
       total = cant * Number(this.pu || 0);
+      try {
+        // Arrastre: sumar mora si hay mora pendiente para la cuota de arrastre a pagar
+        const next = this.resumen?.arrastre?.next_cuota || null;
+        const idAsign = next ? (next?.id_asignacion_costo ?? null) : null;
+        const mora = this.getMoraPendienteByAsign(idAsign);
+        if (mora) total += this.getMoraNetoFromRow(mora);
+      } catch {}
     } else if (this.tipo === 'reincorporacion') {
       // Total = monto parcial si aplica, caso contrario = PU (monto de reincorporación)
       if (this.form.get('pago_parcial')?.value) {
@@ -959,6 +1035,122 @@ export class MensualidadModalComponent implements OnInit, OnChanges {
     return isNaN(n) ? 0 : n;
   }
 
+  private getSelectedForma(): any {
+    try {
+      const metodo = (this.form.get('metodo_pago')?.value || '').toString().trim();
+      if (!metodo) return null;
+      const list: any[] = Array.isArray(this.formasCobro) ? this.formasCobro : [];
+      const hit = list.find((x: any) => `${x?.id_forma_cobro ?? ''}` === metodo || `${x?.codigo_sin ?? ''}` === metodo);
+      return hit || null;
+    } catch { return null; }
+  }
+
+  private getSelectedCodigoSin(): number | null {
+    try {
+      const f = this.getSelectedForma();
+      const raw = f?.codigo_sin ?? f?.codigo ?? null;
+      const n = Number(raw);
+      return isFinite(n) && n > 0 ? n : null;
+    } catch { return null; }
+  }
+
+  get isQR(): boolean {
+    try {
+      const f = this.getSelectedForma();
+      const nameRaw = (f?.descripcion_sin ?? f?.nombre ?? f?.name ?? f?.descripcion ?? f?.label ?? '').toString().trim().toUpperCase();
+      if (!nameRaw) return false;
+      const nombre = nameRaw.normalize('NFD').replace(/\p{Diacritic}/gu, '');
+      return nombre.includes('QR');
+    } catch { return false; }
+  }
+
+  get isTransferencia(): boolean {
+    try {
+      const f = this.getSelectedForma();
+      const nameRaw = (f?.descripcion_sin ?? f?.nombre ?? f?.name ?? f?.descripcion ?? f?.label ?? '').toString().trim().toUpperCase();
+      if (!nameRaw) return false;
+      const nombre = nameRaw.normalize('NFD').replace(/\p{Diacritic}/gu, '');
+      return nombre.includes('TRANSFER');
+    } catch { return false; }
+  }
+
+  get isOtro(): boolean {
+    try {
+      const f = this.getSelectedForma();
+      const id = (f?.id_forma_cobro ?? '').toString().trim().toUpperCase();
+      if (id === 'OTRO') return true;
+      const nameRaw = (f?.descripcion_sin ?? f?.nombre ?? f?.name ?? f?.descripcion ?? f?.label ?? '').toString().trim().toUpperCase();
+      if (!nameRaw) return false;
+      const nombre = nameRaw.normalize('NFD').replace(/\p{Diacritic}/gu, '');
+      return nombre.includes('OTRO');
+    } catch { return false; }
+  }
+
+  labelForma(f: any): string {
+    try {
+      return (f?.descripcion_sin ?? f?.nombre ?? f?.name ?? f?.descripcion ?? f?.label ?? f?.id_forma_cobro ?? '').toString().trim();
+    } catch { return ''; }
+  }
+
+  get showBancarioBlock(): boolean {
+    return this.isCheque || this.isDeposito || this.isTransferencia;
+  }
+
+  private updateTarjetaValidators(): void {
+    try {
+      const setReq = (name: string, req: boolean, extra: any[] = []) => {
+        const c = this.form.get(name);
+        if (!c) return;
+        if (req) {
+          c.setValidators([Validators.required, ...extra]);
+          c.enable({ emitEvent: false });
+        } else {
+          c.clearValidators();
+          if (name !== 'metodo_pago' && name !== 'comprobante' && name !== 'computarizada') {
+            c.disable({ emitEvent: false });
+          }
+        }
+        c.updateValueAndValidity({ emitEvent: false });
+      };
+
+      setReq('id_cuentas_bancarias', false);
+      setReq('fecha_deposito', false);
+      setReq('nro_deposito', false);
+      setReq('banco_origen', false);
+      setReq('tarjeta_first4', false);
+      setReq('tarjeta_last4', false);
+
+      if (this.isTarjeta) {
+        setReq('id_cuentas_bancarias', true);
+        setReq('fecha_deposito', true);
+        setReq('nro_deposito', true);
+        setReq('banco_origen', true);
+        setReq('tarjeta_first4', true, [Validators.pattern(/^\d{4}$/)]);
+        setReq('tarjeta_last4', true, [Validators.pattern(/^\d{4}$/)]);
+        return;
+      }
+      if (this.isTransferencia) {
+        setReq('id_cuentas_bancarias', true);
+        setReq('fecha_deposito', true);
+        setReq('nro_deposito', true);
+        setReq('banco_origen', true);
+        return;
+      }
+      if (this.isCheque || this.isDeposito) {
+        setReq('id_cuentas_bancarias', true);
+        setReq('fecha_deposito', true);
+        setReq('nro_deposito', true);
+        return;
+      }
+      if (this.isQR) {
+        setReq('id_cuentas_bancarias', true);
+        return;
+      }
+    } catch {
+      // No-op
+    }
+  }
+
   // Indica si el método seleccionado corresponde a TARJETA según el catálogo recibido
   get isTarjeta(): boolean {
     const f = this.getSelectedForma();
@@ -1006,109 +1198,23 @@ export class MensualidadModalComponent implements OnInit, OnChanges {
     return nombre.includes('DEPOSITO');
   }
 
-  // Helper: encuentra la forma seleccionada por codigo_sin o por id_forma_cobro (fallback)
-  private getSelectedForma(): any | null {
-    const val = (this.form.get('metodo_pago')?.value || '').toString();
-    if (!val) return null;
-    const list = (this.formasCobro || []) as any[];
-    let match = list.find((f: any) => `${f?.codigo_sin}` === val);
-    if (!match) match = list.find((f: any) => `${f?.id_forma_cobro}` === val);
-    return match || null;
-  }
+  // Filtrar cuentas bancarias según tipo de comprobante (Recibo/Factura)
+  get cuentasBancariasFiltradas(): any[] {
+    const comprobante = (this.form.get('comprobante')?.value || '').toString().toUpperCase();
 
-  private getSelectedCodigoSin(): number | null {
-    const match = this.getSelectedForma();
-    if (!match) return null;
-    const code = Number(match?.codigo_sin);
-    return isFinite(code) ? code : null;
-  }
-
-  labelForma(f: any): string {
-    const raw = (f?.descripcion_sin ?? f?.nombre ?? f?.name ?? f?.descripcion ?? f?.label ?? '').toString().trim();
-    if (raw) return raw;
-    const code = Number(f?.codigo_sin);
-    if (code === 1) return 'Efectivo';
-    if (code === 2) return 'Tarjeta';
-    if (code === 3) return 'Cheque';
-    if (code === 4) return 'Deposito';
-    if (code === 5) return 'Transferencia';
-    return (f?.nombre || 'Otro');
-  }
-
-  // Activa/desactiva validadores requeridos para TARJETA o CHEQUE
-  private updateTarjetaValidators(): void {
-    const enableTarjeta = this.isTarjeta;
-    const enableCheque = this.isCheque;
-    const enableDeposito = this.isDeposito;
-    const enableTransfer = this.isTransferencia;
-    const enableQR = this.isQR;
-    const idCuentaCtrl = this.form.get('id_cuentas_bancarias');
-    const first4Ctrl = this.form.get('tarjeta_first4');
-    const last4Ctrl = this.form.get('tarjeta_last4');
-    const fechaDepCtrl = this.form.get('fecha_deposito');
-    const nroDepCtrl = this.form.get('nro_deposito');
-    const bancoOrigenCtrl = this.form.get('banco_origen');
-
-    // id de cuenta bancaria requerido para cheque/deposito/transfer/tarjeta (no QR)
-    if (enableTarjeta || enableCheque || enableDeposito || enableTransfer) {
-      idCuentaCtrl?.setValidators([Validators.required]);
-    } else {
-      idCuentaCtrl?.clearValidators();
+    if (!comprobante || (comprobante !== 'RECIBO' && comprobante !== 'FACTURA')) {
+      return this.cuentasBancarias || [];
     }
 
-    // Validadores específicos de tarjeta
-    if (enableTarjeta) {
-      first4Ctrl?.setValidators([Validators.required, Validators.pattern(/^\d{4}$/)]);
-      last4Ctrl?.setValidators([Validators.required, Validators.pattern(/^\d{4}$/)]);
-    } else {
-      first4Ctrl?.clearValidators();
-      last4Ctrl?.clearValidators();
-    }
+    // I_R = true → Recibo, I_R = false → Factura
+    const esRecibo = comprobante === 'RECIBO';
 
-    // Validadores específicos de cheque/deposito/transfer y también TARJETA (EXCLUYE QR)
-    if (enableCheque || enableDeposito || enableTransfer || enableTarjeta) {
-      fechaDepCtrl?.setValidators([Validators.required]);
-      nroDepCtrl?.setValidators([Validators.required]);
-    } else {
-      fechaDepCtrl?.clearValidators();
-      nroDepCtrl?.clearValidators();
-    }
-
-    // Banco origen requerido para transferencia y tarjeta (EXCLUYE QR)
-    if (enableTransfer || enableTarjeta) {
-      bancoOrigenCtrl?.setValidators([Validators.required]);
-    } else {
-      bancoOrigenCtrl?.clearValidators();
-    }
-
-    // Comportamiento específico para QR: deshabilitar fecha/nro/banco y limpiar, autoseleccionar cuenta
-    if (enableQR) {
-      // Autoseleccionar cuenta si está vacía
-      if (!idCuentaCtrl?.value) {
-        const list = (this.cuentasBancarias || []) as any[];
-        const first = list.find((c: any) => c?.habilitado_QR === true) || list[0];
-        if (first) idCuentaCtrl?.setValue(first.id_cuentas_bancarias, { emitEvent: false });
-      }
-      // Deshabilitar y limpiar campos automáticos del QR
-      fechaDepCtrl?.setValue('', { emitEvent: false });
-      nroDepCtrl?.setValue('', { emitEvent: false });
-      bancoOrigenCtrl?.setValue('', { emitEvent: false });
-      fechaDepCtrl?.disable({ emitEvent: false });
-      nroDepCtrl?.disable({ emitEvent: false });
-      bancoOrigenCtrl?.disable({ emitEvent: false });
-    } else {
-      // Asegurar habilitados cuando no es QR
-      fechaDepCtrl?.enable({ emitEvent: false });
-      nroDepCtrl?.enable({ emitEvent: false });
-      bancoOrigenCtrl?.enable({ emitEvent: false });
-    }
-
-    idCuentaCtrl?.updateValueAndValidity({ emitEvent: false });
-    first4Ctrl?.updateValueAndValidity({ emitEvent: false });
-    last4Ctrl?.updateValueAndValidity({ emitEvent: false });
-    fechaDepCtrl?.updateValueAndValidity({ emitEvent: false });
-    nroDepCtrl?.updateValueAndValidity({ emitEvent: false });
-    bancoOrigenCtrl?.updateValueAndValidity({ emitEvent: false });
+    return (this.cuentasBancarias || []).filter((cuenta: any) => {
+      const i_r = cuenta?.I_R;
+      // Si I_R es true, la cuenta está habilitada para Recibo
+      // Si I_R es false, la cuenta está habilitada para Factura
+      return esRecibo ? i_r === true : i_r === false;
+    });
   }
 
   addAndClose(): void {
@@ -1166,6 +1272,12 @@ export class MensualidadModalComponent implements OnInit, OnChanges {
         monto = Math.max(0, bruto - desc);
       }
       if (!(monto > 0)) monto = Number(this.pu || 0);
+      const numeroCuotaArrastre = next ? Number(next?.numero_cuota || 0) : 0;
+      const mesNombreArrastre = numeroCuotaArrastre ? this.getMesNombreByCuota(numeroCuotaArrastre) : null;
+      const detalleArrastre = mesNombreArrastre
+        ? `Arrastre - Cuota ${numeroCuotaArrastre} (${mesNombreArrastre})`
+        : `Arrastre - Cuota ${numeroCuotaArrastre || ''}`;
+
       pagos.push({
         id_forma_cobro: this.form.get('metodo_pago')?.value || null,
         nro_cobro: this.baseNro || 1,
@@ -1173,6 +1285,9 @@ export class MensualidadModalComponent implements OnInit, OnChanges {
         fecha_cobro: hoy,
         observaciones: this.composeObservaciones(),
         pu_mensualidad: monto,
+        detalle: detalleArrastre,
+        cod_tipo_cobro: 'ARRASTRE',
+        tipo_pago: 'ARRASTRE',
         numero_cuota: next ? (Number(next?.numero_cuota || 0) || null) : null,
         id_cuota: next ? (next?.id_cuota_template ?? null) : null,
         id_asignacion_costo: next ? (next?.id_asignacion_costo ?? null) : null,
@@ -1193,6 +1308,16 @@ export class MensualidadModalComponent implements OnInit, OnChanges {
         nro_factura: this.form.get('comprobante')?.value === 'FACTURA' ? (this.form.get('nro_factura')?.value || null) : null,
         nro_recibo: this.form.get('comprobante')?.value === 'RECIBO' ? (this.form.get('nro_recibo')?.value || null) : null,
       });
+
+      // Agregar mora de arrastre si existe mora pendiente
+      try {
+        const mora = this.getMoraPendienteByAsign(next ? (next?.id_asignacion_costo ?? null) : null);
+        if (mora) {
+          const moraItem = this.buildPagoMoraItem(mora, hoy, compSel, tipo_documento, medio_doc);
+          moraItem.nro_cobro = (this.baseNro || 1) + 1;
+          pagos.push(moraItem);
+        }
+      } catch {}
     } else if (this.tipo === 'mensualidad') {
       const esParcial = !!this.form.get('pago_parcial')?.value;
       if (esParcial) {
@@ -1205,13 +1330,22 @@ export class MensualidadModalComponent implements OnInit, OnChanges {
         const monto = Number(this.form.get('monto_parcial')?.value || 0);
         // Calcular el descuento prorrateado para este pago parcial
         const descuentoProrrateado = this.calcularDescuentoProrrateado(monto);
+        const numeroCuotaParcial = Number(numero_cuota || 0);
+        const mesNombreParcial = numeroCuotaParcial ? this.getMesNombreByCuota(numeroCuotaParcial) : null;
+        const detalleParcial = mesNombreParcial
+          ? `Mensualidad - Cuota ${numeroCuotaParcial} (${mesNombreParcial}) (Parcial)`
+          : `Mensualidad - Cuota ${numeroCuotaParcial || ''} (Parcial)`;
+
         pagos.push({
           id_forma_cobro: this.form.get('metodo_pago')?.value || null,
           nro_cobro: this.baseNro || 1,
-          monto,
+          monto: monto,
           fecha_cobro: hoy,
           observaciones: this.composeObservaciones(),
           pu_mensualidad: Number(this.puDisplay || this.pu || 0),
+          detalle: detalleParcial,
+          cod_tipo_cobro: 'MENSUALIDAD',
+          tipo_pago: 'MENSUALIDAD',
           pago_parcial: true,
           // doc/medio
           tipo_documento,
@@ -1234,6 +1368,16 @@ export class MensualidadModalComponent implements OnInit, OnChanges {
           id_cuota: id_cuota_template,
           id_asignacion_costo
         });
+
+        // Si este parcial completa la cuota, agregar mora pendiente de esa cuota
+        try {
+          const mora = this.getMoraPendienteByAsign(id_asignacion_costo);
+          if (mora && this.shouldCobrarMoraForPago(monto, numero_cuota, id_asignacion_costo)) {
+            const moraItem = this.buildPagoMoraItem(mora, hoy, compSel, tipo_documento, medio_doc);
+            moraItem.nro_cobro = (this.baseNro || 1) + 1;
+            pagos.push(moraItem);
+          }
+        } catch {}
       } else {
         console.log('[MensualidadModal] INICIO bloque pago completo mensualidad');
         const cant = Math.max(0, Number(this.form.get('cantidad')?.value || 0));
@@ -1333,6 +1477,13 @@ export class MensualidadModalComponent implements OnInit, OnChanges {
               }
             }
 
+            // Construir detalle de mensualidad
+            const mesNombre = numero_cuota ? this.getMesNombreByCuota(numero_cuota) : null;
+            const esParcial = esPagoParcialAuto || (montoPagadoPrevio > 0);
+            const detalleMensualidad = mesNombre
+              ? `Mensualidad - Cuota ${numero_cuota} (${mesNombre})${esParcial ? ' (Parcial)' : ''}`
+              : `Mensualidad - Cuota ${numero_cuota || ''}${esParcial ? ' (Parcial)' : ''}`;
+
             pagos.push({
               id_forma_cobro: this.form.get('metodo_pago')?.value || null,
               nro_cobro: nro++,
@@ -1340,6 +1491,9 @@ export class MensualidadModalComponent implements OnInit, OnChanges {
               fecha_cobro: hoy,
               observaciones: this.composeObservaciones(),
               pu_mensualidad: pu_unit,
+              detalle: detalleMensualidad,
+              cod_tipo_cobro: 'MENSUALIDAD',
+              tipo_pago: 'MENSUALIDAD',
               numero_cuota,
               id_cuota: id_cuota_template,
               id_asignacion_costo,
@@ -1357,6 +1511,16 @@ export class MensualidadModalComponent implements OnInit, OnChanges {
               nro_factura: this.form.get('comprobante')?.value === 'FACTURA' ? (this.form.get('nro_factura')?.value || null) : null,
               nro_recibo: this.form.get('comprobante')?.value === 'RECIBO' ? (this.form.get('nro_recibo')?.value || null) : null,
             });
+
+            // Agregar mora por cada cuota si existe mora pendiente
+            try {
+              const mora = this.getMoraPendienteByAsign(id_asignacion_costo);
+              if (mora) {
+                const moraItem = this.buildPagoMoraItem(mora, hoy, compSel, tipo_documento, medio_doc);
+                moraItem.nro_cobro = nro++;
+                pagos.push(moraItem);
+              }
+            } catch {}
           }
         } else {
           // Fallback enriquecido: primer pago = next restante (this.pu), siguientes = puSemestral
@@ -1541,6 +1705,21 @@ export class MensualidadModalComponent implements OnInit, OnChanges {
       descuentosCount: descuentos.length,
       descuentos: descuentos
     });
+
+    console.log('[MensualidadModal] ===== PAYLOAD FINAL ANTES DE EMITIR =====');
+    console.log('[MensualidadModal] Total de pagos:', pagos.length);
+    pagos.forEach((pago, idx) => {
+      console.log(`[MensualidadModal] Pago ${idx + 1}:`, {
+        detalle: pago.detalle,
+        cod_tipo_cobro: pago.cod_tipo_cobro,
+        tipo_pago: pago.tipo_pago,
+        monto: pago.monto,
+        numero_cuota: pago.numero_cuota,
+        id_asignacion_mora: pago.id_asignacion_mora,
+        id_asignacion_costo: pago.id_asignacion_costo
+      });
+    });
+    console.log('[MensualidadModal] ===== FIN PAYLOAD =====');
 
     // Si es TARJETA / CHEQUE / DEPÓSITO / TRANSFERENCIA / QR, enviar además cabecera con la cuenta bancaria
     if (this.isTarjeta || this.isCheque || this.isDeposito || this.isTransferencia || this.isQR) {

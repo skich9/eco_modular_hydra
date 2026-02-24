@@ -204,6 +204,10 @@
                   Descuento prorrateado: {{ descuentoProrrateado | number:'1.2-2' }} Bs
                 </small>
               </div>
+              <div class="col-md-4">
+                <label class="form-label">Mora</label>
+                <input class="form-control" [value]="moraDisplay | number:'1.2-2'" readonly />
+              </div>
             </ng-container>
             <ng-template #noCuotasPendientes>
               <div class="col-12">
