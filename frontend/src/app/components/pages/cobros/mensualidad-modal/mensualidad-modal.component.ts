@@ -40,6 +40,8 @@ export class MensualidadModalComponent implements OnInit, OnChanges {
   form: FormGroup;
   modalAlertMessage = '';
   modalAlertType: 'success' | 'error' | 'warning' = 'warning';
+  showOrdenPagoInfo = false;
+  ordenPagoInfoMessage = '';
 
   // Configuración de descuento automático de semestre completo
   private descuentoSemestreActivar = false;
@@ -86,6 +88,21 @@ export class MensualidadModalComponent implements OnInit, OnChanges {
       const id = Number(idAsignacionCosto || 0);
       if (!id) return null;
       const list: any[] = Array.isArray(this.morasPendientes) ? this.morasPendientes : [];
+
+      if (this.tipo === 'arrastre') {
+        const hit = list.find((m: any) => {
+          const moraIdAsign = Number(m?.id_asignacion_costo || 0);
+          const moraIdVinculada = Number(m?.id_asignacion_vinculada || 0);
+          const estado = (m?.estado || '').toString().toUpperCase();
+
+          if (moraIdAsign === id && estado === 'PENDIENTE') return true;
+          if (moraIdVinculada === id && estado === 'EN_ESPERA') return true;
+
+          return false;
+        });
+        return hit || null;
+      }
+
       const hit = list.find((m: any) => Number(m?.id_asignacion_costo || 0) === id && (m?.estado ? String(m.estado).toUpperCase() === 'PENDIENTE' : true));
       return hit || null;
     } catch { return null; }
@@ -436,6 +453,7 @@ export class MensualidadModalComponent implements OnInit, OnChanges {
     this.form.get('cantidad')?.valueChanges.subscribe(() => {
       this.recalcTotal();
       this.updateDescuentoDisplay();
+      this.verificarOrdenPago();
     });
     this.form.get('monto_manual')?.valueChanges.subscribe(() => this.recalcTotal());
 
@@ -497,6 +515,7 @@ export class MensualidadModalComponent implements OnInit, OnChanges {
         this.form.patchValue({ pago_parcial: false }, { emitEvent: false });
       }
       this.configureByTipo();
+      this.verificarOrdenPago();
       try {
         let d = 0;
         if (this.tipo === 'arrastre') {
@@ -740,7 +759,20 @@ export class MensualidadModalComponent implements OnInit, OnChanges {
   private getStartCuotaFromResumen(): number {
     try {
       // Priorizar override proveniente del padre cuando exista
-      if (this.startCuotaOverride && this.startCuotaOverride > 0) return Number(this.startCuotaOverride);
+      if (this.startCuotaOverride && this.startCuotaOverride > 0) {
+        return Number(this.startCuotaOverride);
+      }
+
+      // Para arrastre, usar directamente la cuota de arrastre.next_cuota
+      if (this.tipo === 'arrastre') {
+        const next = this.resumen?.arrastre?.next_cuota || null;
+        const numeroCuota = Number(next?.numero_cuota || 0);
+        if (numeroCuota > 0) {
+          return numeroCuota;
+        }
+      }
+
+      // Para mensualidad, usar la primera cuota restante
       const list = this.getOrderedCuotasRestantes();
       if (list && list.length > 0) {
         const first = Number(list[0]?.numero || 0);
@@ -753,15 +785,37 @@ export class MensualidadModalComponent implements OnInit, OnChanges {
 
   private getMesNombreByCuota(numeroCuota: number): string | null {
     try {
+      if (this.tipo === 'arrastre') {
+        const next = this.resumen?.arrastre?.next_cuota || null;
+        if (next && next.mes_nombre) {
+          const nextNumero = Number(next?.numero_cuota || 0);
+          if (nextNumero === numeroCuota) {
+            return String(next.mes_nombre);
+          }
+        }
+
+        const asignacionesArrastre = this.resumen?.arrastre?.asignacion_costos?.items || this.resumen?.asignaciones_arrastre || [];
+        const asig = asignacionesArrastre.find((a: any) => Number(a?.numero_cuota || 0) === Number(numeroCuota));
+        if (asig && asig.mes_nombre) {
+          return String(asig.mes_nombre);
+        }
+      }
+
       const map = (this.resumen?.mensualidad_meses || []) as Array<any>;
       const hit = map.find(m => Number(m?.numero_cuota || 0) === Number(numeroCuota));
-      if (hit && hit.mes_nombre) return String(hit.mes_nombre);
+      if (hit && hit.mes_nombre) {
+        return String(hit.mes_nombre);
+      }
       const gestion = (this.resumen?.gestion || '').toString();
       const months = this.getGestionMonths(gestion);
       const idx = Number(numeroCuota) - 1;
-      if (idx >= 0 && idx < months.length) return this.monthName(months[idx]);
+      if (idx >= 0 && idx < months.length) {
+        return this.monthName(months[idx]);
+      }
       return null;
-    } catch { return null; }
+    } catch {
+      return null;
+    }
   }
 
   private getGestionMonths(gestion: string): number[] {
@@ -816,6 +870,83 @@ export class MensualidadModalComponent implements OnInit, OnChanges {
       return out.filter(it => Number(it.numero) >= start);
     }
     return out;
+  }
+
+  private verificarOrdenPago(): void {
+    try {
+      this.showOrdenPagoInfo = false;
+      this.ordenPagoInfoMessage = '';
+
+      if (this.tipo === 'mensualidad') {
+        const cuotasRestantes = this.getOrderedCuotasRestantes();
+        if (cuotasRestantes.length === 0) return;
+
+        const primeraCuotaMensualidadDisponible = cuotasRestantes[0].numero;
+        const cantidadSeleccionada = Math.max(1, Number(this.form?.get('cantidad')?.value || 1));
+        const ultimaCuotaSeleccionada = primeraCuotaMensualidadDisponible + cantidadSeleccionada - 1;
+
+        const asignacionesArrastre = this.resumen?.asignaciones_arrastre || [];
+        const arrastrePendiente = asignacionesArrastre.find((a: any) => {
+          const estadoPago = (a?.estado_pago || '').toString().toUpperCase();
+          const numeroCuotaArrastre = Number(a?.numero_cuota || 0);
+          return estadoPago !== 'COBRADO' && numeroCuotaArrastre < ultimaCuotaSeleccionada;
+        });
+
+        if (arrastrePendiente) {
+          const numeroCuotaArrastre = Number(arrastrePendiente?.numero_cuota || 0);
+          const mesNombre = this.getMesNombreByCuota(numeroCuotaArrastre);
+          this.showOrdenPagoInfo = true;
+          this.ordenPagoInfoMessage = `⚠️ Debe pagar primero todas las cuotas de arrastre pendientes (Cuota ${numeroCuotaArrastre}${mesNombre ? ' - ' + mesNombre : ''}) antes de poder pagar mensualidades posteriores.`;
+          return;
+        }
+
+        const morasPendientes = this.morasPendientes || [];
+        const moraPendienteAnterior = morasPendientes.find((m: any) => {
+          const estado = (m?.estado || '').toString().toUpperCase();
+          const numeroCuotaMora = Number(m?.numero_cuota || 0);
+          return estado === 'PENDIENTE' && numeroCuotaMora < ultimaCuotaSeleccionada;
+        });
+
+        if (moraPendienteAnterior) {
+          const numeroCuotaMora = Number(moraPendienteAnterior?.numero_cuota || 0);
+          const mesNombre = this.getMesNombreByCuota(numeroCuotaMora);
+          this.showOrdenPagoInfo = true;
+          this.ordenPagoInfoMessage = `⚠️ Debe pagar primero la mora pendiente de la Cuota ${numeroCuotaMora}${mesNombre ? ' (' + mesNombre + ')' : ''} antes de poder pagar mensualidades posteriores.`;
+          return;
+        }
+      } else if (this.tipo === 'arrastre') {
+        const next = this.resumen?.arrastre?.next_cuota || null;
+        if (!next) return;
+
+        const numeroCuotaArrastreActual = Number(next?.numero_cuota || 0);
+        const cuotasRestantes = this.getOrderedCuotasRestantes();
+        const mensualidadPendiente = cuotasRestantes.find(c => c.numero < numeroCuotaArrastreActual);
+
+        if (mensualidadPendiente) {
+          const mesNombre = this.getMesNombreByCuota(mensualidadPendiente.numero);
+          this.showOrdenPagoInfo = true;
+          this.ordenPagoInfoMessage = `⚠️ Debe pagar primero la mensualidad de la Cuota ${mensualidadPendiente.numero}${mesNombre ? ' (' + mesNombre + ')' : ''} antes de poder pagar arrastre.`;
+          return;
+        }
+
+        const morasPendientes = this.morasPendientes || [];
+        const moraPendienteAnterior = morasPendientes.find((m: any) => {
+          const estado = (m?.estado || '').toString().toUpperCase();
+          const numeroCuotaMora = Number(m?.numero_cuota || 0);
+          return estado === 'PENDIENTE' && numeroCuotaMora < numeroCuotaArrastreActual;
+        });
+
+        if (moraPendienteAnterior) {
+          const numeroCuotaMora = Number(moraPendienteAnterior?.numero_cuota || 0);
+          const mesNombre = this.getMesNombreByCuota(numeroCuotaMora);
+          this.showOrdenPagoInfo = true;
+          this.ordenPagoInfoMessage = `⚠️ Debe pagar primero la mora pendiente de la Cuota ${numeroCuotaMora}${mesNombre ? ' (' + mesNombre + ')' : ''} antes de poder pagar arrastre.`;
+          return;
+        }
+      }
+    } catch (error) {
+      console.error('[MensualidadModal] Error en verificarOrdenPago:', error);
+    }
   }
 
   // Obtiene el descuento configurado para una cuota específica desde el resumen

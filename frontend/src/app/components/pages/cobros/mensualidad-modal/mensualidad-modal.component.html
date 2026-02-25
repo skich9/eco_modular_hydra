@@ -39,7 +39,14 @@
           {{ modalAlertMessage }}
         </div>
 
-        <form [formGroup]="form" class="row g-3">
+        <div *ngIf="showOrdenPagoInfo" class="alert alert-warning d-flex align-items-start gap-2 mb-0">
+          <i class="bi bi-exclamation-triangle-fill fs-4"></i>
+          <div>
+            <strong>Orden de Pago:</strong> {{ ordenPagoInfoMessage }}
+          </div>
+        </div>
+
+        <form [formGroup]="form" class="row g-3" *ngIf="!showOrdenPagoInfo">
           <!-- Tipo de registro y switches -->
           <div class="col-md-4 ">
             <label class="form-label">Tipo de registro</label>
@@ -68,11 +75,11 @@
               </div>
             </div>
           </div>
-          <ng-container *ngIf="tipo === 'mensualidad'">
+          <ng-container *ngIf="tipo === 'mensualidad' || tipo === 'arrastre'">
             <div class="col-md-4 d-flex align-items-center gap-4">
               <div class="form-check">
                 <input class="form-check-input" type="checkbox" id="pagoParcial_top" formControlName="pago_parcial" />
-                <label class="form-check-label" for="pagoParcial_top">Pago Mensualidad Parcial</label>
+                <label class="form-check-label" for="pagoParcial_top">Pago {{ tipo === 'arrastre' ? 'Arrastre' : 'Mensualidad' }} Parcial</label>
               </div>
             </div>
           </ng-container>
@@ -252,8 +259,8 @@
               <label class="form-check-label" for="pagoParcial_reinc">Pago parcial de Reincorporación</label>
             </div>
           </div>
-          <div class="col-md-4" *ngIf="(tipo === 'mensualidad' || tipo === 'reincorporacion' || tipo === 'mora') && form.get('pago_parcial')?.value">
-            <label class="form-label">{{ tipo === 'reincorporacion' ? 'Saldo a pagar' : (tipo === 'mora' ? 'Monto parcial mora' : 'Monto cobro parcial') }}</label>
+          <div class="col-md-4" *ngIf="(tipo === 'mensualidad' || tipo === 'arrastre' || tipo === 'reincorporacion' || tipo === 'mora') && form.get('pago_parcial')?.value">
+            <label class="form-label">{{ tipo === 'reincorporacion' ? 'Saldo a pagar' : (tipo === 'mora' ? 'Monto parcial mora' : (tipo === 'arrastre' ? 'Monto cobro parcial arrastre' : 'Monto cobro parcial')) }}</label>
             <input type="number" step="1" min="1" class="form-control"
                    [ngClass]="{ 'is-invalid': form.get('monto_parcial')?.hasError('max') && form.get('monto_parcial')?.touched }"
                    formControlName="monto_parcial"
@@ -273,9 +280,12 @@
           </div>
         </form>
       </div>
-      <div class="modal-footer">
+      <div class="modal-footer" *ngIf="!showOrdenPagoInfo">
         <button type="button" class="btn btn-success" [appClickLock]="true" [lockDuration]="3000" (click)="addAndClose()"><i class="bi bi-plus-circle me-1"></i> Adicionar y Salir</button>
         <button type="button" class="btn btn-secondary" [appClickLock]="true" [lockDuration]="1200" data-bs-dismiss="modal">Cerrar</button>
+      </div>
+      <div class="modal-footer justify-content-center" *ngIf="showOrdenPagoInfo">
+        <button type="button" class="btn btn-secondary" data-bs-dismiss="modal">Cerrar</button>
       </div>
     </div>
   </div>

@@ -732,16 +732,22 @@ class CobroController extends Controller
 						->where('cod_inscrip', (int) $arrastreInscripcion->cod_inscrip)
 						->orderBy('numero_cuota')
 						->get();
+
 					$next = null; $pendingCount = 0; $totalCuotas = $asignacionesArrastre->count();
 					foreach ($asignacionesArrastre as $asig) {
-						$estadoPago = strtoupper((string)($asig->estado_pago ?? ''));
-						$pagada = ($estadoPago === 'COBRADO');
-						if (!$pagada) {
+						$monto = (float)($asig->monto ?? 0);
+						$montoPagado = (float)($asig->monto_pagado ?? 0);
+						$descuento = (float)($asig->descuento ?? 0);
+						$montoNeto = max(0, $monto - $descuento);
+						$saldoPendiente = max(0, $montoNeto - $montoPagado);
+
+						if ($saldoPendiente > 0.01) {
 							$pendingCount++;
 							if (!$next) {
 								$next = [
 									'numero_cuota' => (int) $asig->numero_cuota,
-									'monto' => (float) $asig->monto,
+									'monto' => $monto,
+									'monto_neto' => $montoNeto,
 									'id_asignacion_costo' => (int) $asig->id_asignacion_costo,
 									'id_cuota_template' => (int) ($asig->id_cuota_template ?? 0) ?: null,
 									'fecha_vencimiento' => $asig->fecha_vencimiento,
@@ -1271,19 +1277,31 @@ class CobroController extends Controller
 						})->count() : 0,
 					],
 					],
-					'asignaciones_arrastre' => ($asignacionesArrastre && $asignacionesArrastre->count() > 0) ? $asignacionesArrastre->map(function($a) use ($descuentosPorAsignArrastre){
-						return [
-							'numero_cuota' => (int) ($a->numero_cuota ?? 0),
-							'monto' => (float) ($a->monto ?? 0),
-							'descuento' => (float) ($descuentosPorAsignArrastre[(int)($a->id_asignacion_costo ?? 0)] ?? 0),
-							'monto_neto' => max(0, (float) ($a->monto ?? 0) - (float) ($descuentosPorAsignArrastre[(int)($a->id_asignacion_costo ?? 0)] ?? 0)),
-							'monto_pagado' => (float) ($a->monto_pagado ?? 0),
-							'estado_pago' => (string) ($a->estado_pago ?? ''),
-							'id_asignacion_costo' => (int) ($a->id_asignacion_costo ?? 0) ?: null,
-							'id_cuota_template' => isset($a->id_cuota_template) ? ((int)$a->id_cuota_template ?: null) : null,
-							'fecha_vencimiento' => $a->fecha_vencimiento,
-						];
-					})->values() : [],
+					'asignaciones_arrastre' => ($asignacionesArrastre && $asignacionesArrastre->count() > 0) ? $asignacionesArrastre->map(function($a) use ($descuentosPorAsignArrastre, $gestionToUse){
+					$numeroCuota = (int) ($a->numero_cuota ?? 0);
+					$mesNombre = null;
+					try {
+						$sem = (int) explode('/', $gestionToUse)[0];
+						$meses = $sem === 1 ? ['Febrero', 'Marzo', 'Abril', 'Mayo', 'Junio'] : ['Julio', 'Agosto', 'Septiembre', 'Octubre', 'Noviembre'];
+						$idx = $numeroCuota - 1;
+						if ($idx >= 0 && $idx < count($meses)) {
+							$mesNombre = $meses[$idx];
+						}
+					} catch (\Throwable $e) {}
+
+					return [
+						'numero_cuota' => $numeroCuota,
+						'monto' => (float) ($a->monto ?? 0),
+						'descuento' => (float) ($descuentosPorAsignArrastre[(int)($a->id_asignacion_costo ?? 0)] ?? 0),
+						'monto_neto' => max(0, (float) ($a->monto ?? 0) - (float) ($descuentosPorAsignArrastre[(int)($a->id_asignacion_costo ?? 0)] ?? 0)),
+						'monto_pagado' => (float) ($a->monto_pagado ?? 0),
+						'estado_pago' => (string) ($a->estado_pago ?? ''),
+						'id_asignacion_costo' => (int) ($a->id_asignacion_costo ?? 0) ?: null,
+						'id_cuota_template' => isset($a->id_cuota_template) ? ((int)$a->id_cuota_template ?: null) : null,
+						'fecha_vencimiento' => $a->fecha_vencimiento,
+						'mes_nombre' => $mesNombre,
+					];
+				})->values() : [],
 					'arrastre' => $arrastreSummary,
 					'cobros' => [
 						'mensualidad' => [
@@ -3018,6 +3036,12 @@ class CobroController extends Controller
 							try { Log::info('batchStore:asign_update', [ 'idx' => $idx, 'id_asignacion_costo' => (int)$toUpd->id_asignacion_costo, 'add_monto' => $montoAplicar, 'prev_pagado' => $prevPagado, 'new_pagado' => $newPagado, 'total' => (float)(isset($toUpd->monto) ? $toUpd->monto : 0), 'neto' => $neto, 'batch_paid_before' => $batchPaidToThisAsign, 'estado_final' => $upd['estado_pago'] ]); } catch (\Throwable $e) {}
 							$aff = AsignacionCostos::where('id_asignacion_costo', (int)$toUpd->id_asignacion_costo)->update($upd);
 							try { Log::info('batchStore:asign_updated', [ 'idx' => $idx, 'id_asignacion_costo' => (int)$toUpd->id_asignacion_costo, 'affected' => $aff ]); } catch (\Throwable $e) {}
+
+							// LÓGICA DE VINCULACIÓN DE MORA EN TIEMPO REAL
+							// Si se pagó completo, gestionar mora vinculada entre inscripciones NORMAL/ARRASTRE
+							if ($fullNow) {
+								$this->gestionarMoraVinculada($toUpd, $request);
+							}
 						}
 					}
 					else {
@@ -3582,13 +3606,15 @@ class CobroController extends Controller
 			}
 
 			// Obtener moras pendientes con información de la cuota asociada
+			// Incluir tanto PENDIENTE como EN_ESPERA para que el frontend pueda decidir cuáles mostrar
 			$moras = DB::table('asignacion_mora as am')
 				->join('asignacion_costos as ac', 'am.id_asignacion_costo', '=', 'ac.id_asignacion_costo')
 				->whereIn('am.id_asignacion_costo', $asignacionIds)
-				->where('am.estado', 'PENDIENTE')
+				->whereIn('am.estado', ['PENDIENTE', 'EN_ESPERA'])
 				->select(
 					'am.id_asignacion_mora',
 					'am.id_asignacion_costo',
+					'am.id_asignacion_vinculada',
 					'am.fecha_inicio_mora',
 					'am.fecha_fin_mora',
 					'am.monto_base',
@@ -3611,6 +3637,132 @@ class CobroController extends Controller
 				'error' => $e->getMessage()
 			]);
 			return [];
+		}
+	}
+
+	/**
+	 * Gestiona la vinculación de mora entre inscripciones NORMAL/ARRASTRE del mismo estudiante/gestión/cuota.
+	 *
+	 * Flujo:
+	 * 1. Si se paga MENSUALIDAD completa: busca ARRASTRE pendiente de la misma cuota/gestión
+	 *    y vincula la mora (estado EN_ESPERA) para que no se cobre hasta pagar arrastre.
+	 * 2. Si se paga ARRASTRE completa: busca mora vinculada desde MENSUALIDAD y la activa
+	 *    (estado PENDIENTE) para que se cobre inmediatamente.
+	 *
+	 * @param mixed $asignacionPagada AsignacionCostos que se acaba de pagar completo
+	 * @param mixed $request Request con datos del cobro
+	 * @return void
+	 */
+	private function gestionarMoraVinculada($asignacionPagada, $request)
+	{
+		try {
+			$codCeta = (int)($request->cod_ceta ?? 0);
+			$gestion = (string)($request->gestion ?? '');
+			$numeroCuota = (int)($asignacionPagada->numero_cuota ?? 0);
+			$codInscripPagada = (int)($asignacionPagada->cod_inscrip ?? 0);
+			$idAsignPagada = (int)($asignacionPagada->id_asignacion_costo ?? 0);
+
+			if (!$codCeta || !$gestion || !$numeroCuota || !$codInscripPagada || !$idAsignPagada) {
+				return;
+			}
+
+			// Obtener tipo de inscripción pagada
+			$inscripPagada = DB::table('inscripciones')
+				->where('cod_inscrip', $codInscripPagada)
+				->first(['tipo_inscripcion']);
+
+			if (!$inscripPagada) {
+				return;
+			}
+
+			$tipoInscripPagada = strtoupper(trim((string)($inscripPagada->tipo_inscripcion ?? '')));
+
+			// Buscar la otra inscripción del mismo estudiante/gestión (NORMAL ↔ ARRASTRE)
+			$tipoInscripBuscar = ($tipoInscripPagada === 'NORMAL') ? 'ARRASTRE' : 'NORMAL';
+
+			$otraInscrip = DB::table('inscripciones')
+				->where('cod_ceta', $codCeta)
+				->where('gestion', $gestion)
+				->where('tipo_inscripcion', $tipoInscripBuscar)
+				->where('cod_inscrip', '!=', $codInscripPagada)
+				->first(['cod_inscrip']);
+
+			if (!$otraInscrip) {
+				return;
+			}
+
+			$codInscripOtra = (int)($otraInscrip->cod_inscrip ?? 0);
+
+			// Buscar asignación de costo de la otra inscripción para la misma cuota
+			$otraAsignacion = DB::table('asignacion_costos')
+				->where('cod_inscrip', $codInscripOtra)
+				->where('numero_cuota', $numeroCuota)
+				->whereIn('estado_pago', ['PENDIENTE', 'PARCIAL'])
+				->first(['id_asignacion_costo']);
+
+			if (!$otraAsignacion) {
+				return;
+			}
+
+			$idAsignOtra = (int)($otraAsignacion->id_asignacion_costo ?? 0);
+
+			// CASO 1: Se pagó MENSUALIDAD completa, vincular mora a ARRASTRE pendiente
+			if ($tipoInscripPagada === 'NORMAL') {
+				// Buscar moras PENDIENTE o EN_ESPERA de la mensualidad pagada
+				// (EN_ESPERA puede existir si el comando diario detectó inscripciones duplicadas)
+				$morasMensualidad = DB::table('asignacion_mora')
+					->where('id_asignacion_costo', $idAsignPagada)
+					->whereIn('estado', ['PENDIENTE', 'EN_ESPERA'])
+					->whereNull('id_asignacion_vinculada')
+					->get(['id_asignacion_mora', 'estado']);
+
+				foreach ($morasMensualidad as $mora) {
+					DB::table('asignacion_mora')
+						->where('id_asignacion_mora', (int)$mora->id_asignacion_mora)
+						->update([
+							'estado' => 'EN_ESPERA',
+							'id_asignacion_vinculada' => $idAsignOtra,
+							'observaciones' => DB::raw("CONCAT(COALESCE(observaciones, ''), ' | Vinculada a arrastre pendiente')"),
+							'updated_at' => now()
+						]);
+
+					\Log::info('[CobroController] Mora vinculada a arrastre:', [
+						'id_asignacion_mora' => (int)$mora->id_asignacion_mora,
+						'id_asignacion_mensualidad' => $idAsignPagada,
+						'id_asignacion_arrastre' => $idAsignOtra,
+						'estado_original' => $mora->estado
+					]);
+				}
+			}
+
+			// CASO 2: Se pagó ARRASTRE completo, activar mora vinculada desde MENSUALIDAD
+			if ($tipoInscripPagada === 'ARRASTRE') {
+				// Buscar moras EN_ESPERA vinculadas a este arrastre
+				$morasVinculadas = DB::table('asignacion_mora')
+					->where('id_asignacion_vinculada', $idAsignPagada)
+					->where('estado', 'EN_ESPERA')
+					->get(['id_asignacion_mora']);
+
+				foreach ($morasVinculadas as $mora) {
+					DB::table('asignacion_mora')
+						->where('id_asignacion_mora', (int)$mora->id_asignacion_mora)
+						->update([
+							'estado' => 'PENDIENTE',
+							'observaciones' => DB::raw("CONCAT(COALESCE(observaciones, ''), ' | Activada por pago de arrastre')"),
+							'updated_at' => now()
+						]);
+
+					\Log::info('[CobroController] Mora activada por pago de arrastre:', [
+						'id_asignacion_mora' => (int)$mora->id_asignacion_mora,
+						'id_asignacion_arrastre_pagado' => $idAsignPagada
+					]);
+				}
+			}
+		} catch (\Throwable $e) {
+			\Log::warning('[CobroController] Error en gestionarMoraVinculada:', [
+				'error' => $e->getMessage(),
+				'trace' => $e->getTraceAsString()
+			]);
 		}
 	}
 }

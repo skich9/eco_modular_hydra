@@ -496,7 +496,7 @@
       [pu]="modalTipo === 'arrastre' ? mensualidadPU : getMensualidadPuForModal()"
       [baseNro]="getNextMensualidadNro()"
       [defaultMetodoPago]="modalFormasCobro[0]?.id_forma_cobro || selectedFormaCobroId"
-      [startCuotaOverride]="getNextMensualidadStartCuota()"
+      [startCuotaOverride]="modalTipo === 'arrastre' ? null : getNextMensualidadStartCuota()"
       [frontSaldos]="getFrontSaldos()"
       (addPagos)="onAddPagosFromModal($event)"
     ></app-mensualidad-modal>

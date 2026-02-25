@@ -16,6 +16,7 @@ class AsignacionMora extends Model
 
 	protected $fillable = [
 		'id_asignacion_costo',
+		'id_asignacion_vinculada',
 		'id_datos_mora_detalle',
 		'fecha_inicio_mora',
 		'fecha_fin_mora',

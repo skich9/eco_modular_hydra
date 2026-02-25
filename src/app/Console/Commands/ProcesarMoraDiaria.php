@@ -54,7 +54,7 @@ class ProcesarMoraDiaria extends Command
 
 			// 3. Buscar asignaciones de costos pendientes o parciales
 			$this->info("\n3. Buscando cuotas pendientes o parciales...");
-			$asignacionesPendientes = AsignacionCostos::whereIn('estado_pago', ['PENDIENTE', 'PARCIAL'])
+			$asignacionesPendientes = AsignacionCostos::whereIn('estado_pago', ['PENDIENTE', 'PARCIAL', 'pendiente', 'parcial'])
 				->with(['pensum', 'inscripcion'])
 				->get();
 
@@ -64,6 +64,30 @@ class ProcesarMoraDiaria extends Command
 				$this->info("\n✓ No hay cuotas pendientes para procesar.");
 				return 0;
 			}
+
+			// Construir grupos por estudiante + gestión + cuota.
+			// Esto evita duplicar mora cuando existen dos inscripciones activas
+			// (ej. NORMAL + ARRASTRE) para la misma cuota.
+			$asignacionesPorGrupo = [];
+			foreach ($asignacionesPendientes as $asignacionTmp) {
+				$gestionTmp = $this->obtenerGestionInscripcion($asignacionTmp);
+				$grupoKeyTmp = $this->buildGrupoMoraKey($asignacionTmp, $gestionTmp);
+				if (!$grupoKeyTmp) {
+					continue;
+				}
+
+				if (!isset($asignacionesPorGrupo[$grupoKeyTmp])) {
+					$asignacionesPorGrupo[$grupoKeyTmp] = [];
+				}
+
+				$asignacionesPorGrupo[$grupoKeyTmp][] = (int)$asignacionTmp->id_asignacion_costo;
+			}
+
+			foreach ($asignacionesPorGrupo as $key => $ids) {
+				$asignacionesPorGrupo[$key] = array_values(array_unique($ids));
+			}
+
+			$gruposPausados = [];
 
 			// 4. Procesar cada asignación de costo
 			$this->info("\n4. Procesando cada cuota...");
@@ -76,27 +100,52 @@ class ProcesarMoraDiaria extends Command
 					$codPensum = $asignacion->cod_pensum;
 					$numeroCuota = $asignacion->numero_cuota;
 
+					// Log detallado para asignaciones específicas
+					$debugIds = [223, 224, 228, 229];
+					if (in_array($asignacion->id_asignacion_costo, $debugIds)) {
+						Log::info("[DEBUG] Procesando asignación {$asignacion->id_asignacion_costo}");
+					}
+
 					// Obtener semestre y gestión de la inscripción
 					$semestre = $this->obtenerSemestreInscripcion($asignacion);
 					$gestion = $this->obtenerGestionInscripcion($asignacion);
 
-					if (!$semestre || !$gestion) {
+					if (!$gestion) {
 						$progressBar->advance();
 						continue;
 					}
 
+					$grupoKey = $this->buildGrupoMoraKey($asignacion, $gestion);
+					$idsGrupo = ($grupoKey && isset($asignacionesPorGrupo[$grupoKey]))
+						? $asignacionesPorGrupo[$grupoKey]
+						: [];
+
+					$esDuplicado = count($idsGrupo) > 1;
+
 					// Buscar configuración de mora aplicable por gestión, pensum y cuota.
 					// El semestre es opcional para evitar perder coincidencias por normalización.
-					$queryCfg = DatosMoraDetalle::where('cod_pensum', $codPensum)
+					$codPensumNormalizado = $this->normalizarCodPensum($codPensum);
+					$pensumsBusqueda = [$codPensum];
+					if ($codPensumNormalizado !== '' && $codPensumNormalizado !== $codPensum) {
+						$pensumsBusqueda[] = $codPensumNormalizado;
+					}
+
+					$queryCfg = DatosMoraDetalle::whereIn('cod_pensum', array_values(array_unique($pensumsBusqueda)))
 						->where('cuota', $numeroCuota)
 						->where('activo', true)
 						->whereHas('datosMora', function($query) use ($gestion) {
 							$query->where('gestion', $gestion);
 						});
+
 					if (!empty($semestre)) {
 						$queryCfg->where('semestre', $semestre);
 					}
-					$configuracionMora = $queryCfg->with('datosMora')->first();
+
+					$configuracionMora = $queryCfg->with('datosMora')->orderBy('semestre', 'asc')->first();
+
+					if (in_array($asignacion->id_asignacion_costo, $debugIds)) {
+						Log::info("[DEBUG] Configuración encontrada: " . ($configuracionMora ? 'SÍ' : 'NO'));
+					}
 
 					if (!$configuracionMora) {
 						static $noCfg = 0;
@@ -108,10 +157,28 @@ class ProcesarMoraDiaria extends Command
 						continue;
 					}
 
+					// Si es duplicado y ya tiene mora, marcarla como EN_ESPERA
+					if (in_array($asignacion->id_asignacion_costo, $debugIds)) {
+						Log::info("[DEBUG] ¿Es duplicado?: " . ($esDuplicado ? 'SÍ' : 'NO'));
+					}
+					if ($esDuplicado && !isset($gruposPausados[$grupoKey])) {
+						AsignacionMora::whereIn('id_asignacion_costo', $idsGrupo)
+							->where('estado', 'PENDIENTE')
+							->update([
+								'estado' => 'EN_ESPERA',
+								'updated_at' => now(),
+							]);
+						$gruposPausados[$grupoKey] = true;
+					}
+
 					// Verificar si existe prórroga activa para esta cuota
 					$prorrogaActiva = ProrrogaMora::where('id_asignacion_costo', $asignacion->id_asignacion_costo)
 						->activas($hoy)
 						->first();
+
+					if (in_array($asignacion->id_asignacion_costo, $debugIds)) {
+						Log::info("[DEBUG] ¿Prórroga activa?: " . ($prorrogaActiva ? 'SÍ (se salta)' : 'NO'));
+					}
 
 					// Si hay prórroga activa, no procesar mora
 					if ($prorrogaActiva) {
@@ -121,6 +188,9 @@ class ProcesarMoraDiaria extends Command
 
 					// Verificar si la fecha de inicio de mora ya pasó
 					$fechaInicioMora = Carbon::parse($configuracionMora->fecha_inicio);
+					if (in_array($asignacion->id_asignacion_costo, $debugIds)) {
+						Log::info("[DEBUG] Fecha inicio: {$fechaInicioMora->format('Y-m-d')}, Hoy: {$hoy->format('Y-m-d')}, ¿Inicio > Hoy?: " . ($fechaInicioMora->gt($hoy) ? 'SÍ (se salta)' : 'NO'));
+					}
 					if ($fechaInicioMora->gt($hoy)) {
 						$progressBar->advance();
 						continue;
@@ -128,8 +198,13 @@ class ProcesarMoraDiaria extends Command
 
 					// Verificar si ya existe asignación de mora para esta cuota
 					$asignacionMora = AsignacionMora::where('id_asignacion_costo', $asignacion->id_asignacion_costo)
-						->whereIn('estado', ['PENDIENTE'])
+						->whereIn('estado', ['PENDIENTE', 'EN_ESPERA'])
+						->orderBy('id_asignacion_mora', 'desc')
 						->first();
+
+					if (in_array($asignacion->id_asignacion_costo, $debugIds)) {
+						Log::info("[DEBUG] ¿Mora existente?: " . ($asignacionMora ? "SÍ (ID: {$asignacionMora->id_asignacion_mora})" : 'NO (se debe crear)'));
+					}
 
 					// Verificar si hubo prórroga que ya terminó (Caso 2)
 					$prorrogaTerminada = ProrrogaMora::where('id_asignacion_costo', $asignacion->id_asignacion_costo)
@@ -149,7 +224,8 @@ class ProcesarMoraDiaria extends Command
 								// Crear nueva mora post-prórroga si no existe
 								$moraPostProrroga = AsignacionMora::where('id_asignacion_costo', $asignacion->id_asignacion_costo)
 									->where('fecha_inicio_mora', '>=', $fechaInicioPosterior)
-									->where('estado', 'PENDIENTE')
+									->whereIn('estado', ['PENDIENTE', 'EN_ESPERA'])
+									->orderBy('id_asignacion_mora', 'desc')
 									->first();
 
 								if (!$moraPostProrroga) {
@@ -180,6 +256,7 @@ class ProcesarMoraDiaria extends Command
 									$montoMoraPostProrroga = $configuracionMora->monto * $diasPostProrroga;
 
 									$moraPostProrroga->monto_mora = $montoMoraPostProrroga;
+									$moraPostProrroga->estado = 'PENDIENTE';
 									$moraPostProrroga->save();
 
 									$morasActualizadas++;
@@ -192,6 +269,7 @@ class ProcesarMoraDiaria extends Command
 								$montoMoraCalculado = $configuracionMora->monto * $diasTranscurridos;
 
 								$asignacionMora->monto_mora = $montoMoraCalculado;
+								$asignacionMora->estado = 'PENDIENTE';
 								$asignacionMora->save();
 
 								$morasActualizadas++;
@@ -204,6 +282,7 @@ class ProcesarMoraDiaria extends Command
 							$montoMoraCalculado = $configuracionMora->monto * $diasTranscurridos;
 
 							$asignacionMora->monto_mora = $montoMoraCalculado;
+							$asignacionMora->estado = 'PENDIENTE';
 							$asignacionMora->save();
 
 							$morasActualizadas++;
@@ -239,7 +318,13 @@ class ProcesarMoraDiaria extends Command
 							$diasTranscurridos = $fechaInicioMora->diffInDays($fechaCalculo) + 1;
 							$montoMoraCalculado = $configuracionMora->monto * $diasTranscurridos;
 
-							AsignacionMora::create([
+							$estadoInicial = $esDuplicado ? 'EN_ESPERA' : 'PENDIENTE';
+							$observacionBase = 'Mora aplicada automáticamente desde ' . $fechaInicioMora->format('Y-m-d');
+							if ($esDuplicado) {
+								$observacionBase .= ' | EN_ESPERA por inscripción duplicada';
+							}
+
+							$nuevaMora = AsignacionMora::create([
 								'id_asignacion_costo' => $asignacion->id_asignacion_costo,
 								'id_datos_mora_detalle' => $configuracionMora->id_datos_mora_detalle,
 								'fecha_inicio_mora' => $fechaInicioMora,
@@ -247,8 +332,8 @@ class ProcesarMoraDiaria extends Command
 								'monto_base' => $configuracionMora->monto,
 								'monto_mora' => $montoMoraCalculado,
 								'monto_descuento' => 0,
-								'estado' => 'PENDIENTE',
-								'observaciones' => "Mora aplicada automáticamente desde {$fechaInicioMora->format('Y-m-d')}"
+								'estado' => $estadoInicial,
+								'observaciones' => $observacionBase,
 							]);
 
 							$morasCreadas++;
@@ -405,6 +490,54 @@ class ProcesarMoraDiaria extends Command
 		}
 
 		return null;
+	}
+
+	/**
+	 * Construye una clave de grupo para controlar mora única por estudiante/gestión/cuota.
+	 *
+	 * @param mixed $asignacion
+	 * @param string|null $gestion
+	 * @return string|null
+	 */
+	private function buildGrupoMoraKey($asignacion, $gestion = null)
+	{
+		if (!$asignacion->inscripcion) {
+			return null;
+		}
+
+		$codCeta = isset($asignacion->inscripcion->cod_ceta)
+			? (string)$asignacion->inscripcion->cod_ceta
+			: '';
+		$gestionValue = $gestion !== null ? $gestion : $this->obtenerGestionInscripcion($asignacion);
+		$cuota = isset($asignacion->numero_cuota)
+			? (int)$asignacion->numero_cuota
+			: 0;
+
+		if ($codCeta === '' || $gestionValue === null || $gestionValue === '' || $cuota <= 0) {
+			return null;
+		}
+
+		return $codCeta . '|' . (string)$gestionValue . '|' . (string)$cuota;
+	}
+
+	/**
+	 * Normaliza cod_pensum para contemplar casos con prefijos (ej: 79-EEA-19 vs EEA-19).
+	 *
+	 * @param string|null $codPensum
+	 * @return string
+	 */
+	private function normalizarCodPensum($codPensum)
+	{
+		$valor = strtoupper(trim((string)$codPensum));
+		if ($valor === '') {
+			return '';
+		}
+
+		if (preg_match('/^\d+-(.+)$/', $valor, $matches)) {
+			return trim((string)$matches[1]);
+		}
+
+		return $valor;
 	}
 
 	/**
