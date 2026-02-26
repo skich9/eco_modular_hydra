@@ -2994,6 +2994,21 @@ export class CobrosComponent implements OnInit {
     }
     const startCuota = this.getNextMensualidadStartCuota();
     pagos.forEach((p: any, idx: number) => {
+      // Prevenir duplicación de moras: verificar si ya existe una mora con el mismo id_asignacion_mora
+      if (p.id_asignacion_mora) {
+        const idMoraExistente = Number(p.id_asignacion_mora);
+        const yaExiste = this.pagos.controls.some((control: any) => {
+          const idMoraEnTabla = Number(control.get('id_asignacion_mora')?.value || 0);
+          return idMoraEnTabla > 0 && idMoraEnTabla === idMoraExistente;
+        });
+
+        if (yaExiste) {
+          console.warn('[Cobros] Mora duplicada detectada, omitiendo:', p);
+          this.showAlert('Esta mora ya está agregada en la tabla de detalle factura.', 'warning');
+          return; // Saltar este pago
+        }
+      }
+
       const resolveFormaId = (val: any): any => {
         const s = (val === null || val === undefined) ? '' : `${val}`;
         if (!s) return null;

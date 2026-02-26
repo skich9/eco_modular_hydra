@@ -3620,6 +3620,7 @@ class CobroController extends Controller
 					'am.monto_base',
 					'am.monto_mora',
 					'am.monto_descuento',
+					'am.monto_pagado',
 					'am.estado',
 					'am.observaciones',
 					'ac.numero_cuota',

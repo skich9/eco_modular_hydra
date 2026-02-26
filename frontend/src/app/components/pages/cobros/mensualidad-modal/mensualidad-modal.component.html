@@ -39,10 +39,30 @@
           {{ modalAlertMessage }}
         </div>
 
-        <div *ngIf="showOrdenPagoInfo" class="alert alert-warning d-flex align-items-start gap-2 mb-0">
-          <i class="bi bi-exclamation-triangle-fill fs-4"></i>
-          <div>
-            <strong>Orden de Pago:</strong> {{ ordenPagoInfoMessage }}
+        <div *ngIf="showOrdenPagoInfo" class="alert alert-warning mb-0">
+          <div class="d-flex align-items-start gap-2 mb-3">
+            <i class="bi bi-exclamation-triangle-fill fs-4"></i>
+            <div>
+              <strong>Orden de Pago:</strong> {{ ordenPagoInfoMessage }}
+            </div>
+          </div>
+          <div *ngIf="moraPendienteDetectada" [formGroup]="form" class="d-flex flex-column gap-2">
+            <div class="form-check">
+              <input class="form-check-input" type="checkbox" id="pagoMoraParcial" formControlName="pago_parcial">
+              <label class="form-check-label" for="pagoMoraParcial">
+                Pago Parcial de Mora
+              </label>
+            </div>
+            <div *ngIf="form.get('pago_parcial')?.value" class="mb-2">
+              <label class="form-label small mb-1">Monto a pagar</label>
+              <input type="number" class="form-control form-control-sm" formControlName="monto_parcial"
+                     placeholder="Ingrese monto" min="1" [max]="getMoraNetoPublic(moraPendienteDetectada)">
+              <small class="text-muted">Mínimo: 1 - Máximo: {{ getMoraNetoPublic(moraPendienteDetectada) }}</small>
+            </div>
+            <button type="button" class="btn btn-primary btn-sm" (click)="pagarMoraPendiente()">
+              <i class="bi bi-cash-coin me-1"></i>
+              Pagar Mora
+            </button>
           </div>
         </div>
 
