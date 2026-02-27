@@ -290,18 +290,21 @@
             </div>
             <div class="form-text">Mínimo: 1 - Máximo: {{ getParcialMax() | number:'1.0-0' }}</div>
           </div>
-          <div class="col-md-4" *ngIf="tipo === 'mensualidad' || tipo === 'arrastre' || tipo === 'mora'">
+          <div class="col-md-4" *ngIf="(tipo === 'mensualidad' || tipo === 'arrastre') && pendientes > 0 || tipo === 'mora'">
             <label class="form-label">Total Cobrar</label>
             <input class="form-control" formControlName="costo_total" readonly />
           </div>
-          <div class="col-12">
+          <div class="col-12" *ngIf="(tipo === 'mensualidad' || tipo === 'arrastre') && pendientes > 0 || tipo !== 'mensualidad' && tipo !== 'arrastre'">
             <label class="form-label">Observaciones</label>
             <textarea class="form-control" rows="2" formControlName="observaciones"></textarea>
           </div>
         </form>
       </div>
-      <div class="modal-footer" *ngIf="!showOrdenPagoInfo">
+      <div class="modal-footer" *ngIf="!showOrdenPagoInfo && ((tipo === 'mensualidad' || tipo === 'arrastre') && pendientes > 0 || tipo !== 'mensualidad' && tipo !== 'arrastre')">
         <button type="button" class="btn btn-success" [appClickLock]="true" [lockDuration]="3000" (click)="addAndClose()"><i class="bi bi-plus-circle me-1"></i> Adicionar y Salir</button>
+        <button type="button" class="btn btn-secondary" [appClickLock]="true" [lockDuration]="1200" data-bs-dismiss="modal">Cerrar</button>
+      </div>
+      <div class="modal-footer justify-content-center" *ngIf="!showOrdenPagoInfo && (tipo === 'mensualidad' || tipo === 'arrastre') && pendientes === 0">
         <button type="button" class="btn btn-secondary" [appClickLock]="true" [lockDuration]="1200" data-bs-dismiss="modal">Cerrar</button>
       </div>
       <div class="modal-footer justify-content-center" *ngIf="showOrdenPagoInfo">

@@ -1223,13 +1223,36 @@ export class MensualidadModalComponent implements OnInit, OnChanges {
       if (this.tipo === 'mensualidad') {
         const cuotasRestantes = this.getOrderedCuotasRestantes();
 
-        // Si no hay cuotas pendientes, verificar si hay moras pendientes
+        // Si no hay cuotas pendientes, verificar si hay moras pendientes de inscripción NORMAL
         if (cuotasRestantes.length === 0) {
+          console.log('[MensualidadModal] No hay mensualidades pendientes, verificando moras de inscripción NORMAL');
+
           const morasPendientes = this.morasPendientes || [];
+          const asignaciones = this.resumen?.asignaciones || [];
+
+          console.log('[MensualidadModal] morasPendientes:', morasPendientes);
+          console.log('[MensualidadModal] asignaciones:', asignaciones);
+
+          // Buscar solo moras de inscripción NORMAL (id_asignacion_costo apunta a mensualidad normal)
           const moraPendiente = morasPendientes.find((m: any) => {
             const estado = (m?.estado || '').toString().toUpperCase();
-            return estado === 'PENDIENTE';
+            const idAsignCostoMora = Number(m?.id_asignacion_costo || 0);
+
+            if (estado !== 'PENDIENTE') {
+              return false;
+            }
+
+            // Verificar que la mora sea de inscripción NORMAL
+            // La mora de inscripción NORMAL tiene id_asignacion_costo apuntando a una mensualidad normal
+            const esMoraNormal = asignaciones.some((a: any) => {
+              return Number(a?.id_asignacion_costo || 0) === idAsignCostoMora;
+            });
+
+            console.log(`[MensualidadModal] Mora id_asignacion_costo=${idAsignCostoMora}, esMoraNormal=${esMoraNormal}`);
+            return esMoraNormal;
           });
+
+          console.log('[MensualidadModal] moraPendiente de inscripción NORMAL encontrada:', moraPendiente);
 
           if (moraPendiente) {
             const numeroCuotaMora = Number(moraPendiente?.numero_cuota || 0);
