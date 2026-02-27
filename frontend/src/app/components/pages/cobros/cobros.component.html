@@ -498,6 +498,7 @@
       [defaultMetodoPago]="modalFormasCobro[0]?.id_forma_cobro || selectedFormaCobroId"
       [startCuotaOverride]="modalTipo === 'arrastre' ? null : getNextMensualidadStartCuota()"
       [frontSaldos]="getFrontSaldos()"
+      [detalleFactura]="pagos.value"
       (addPagos)="onAddPagosFromModal($event)"
     ></app-mensualidad-modal>
 
