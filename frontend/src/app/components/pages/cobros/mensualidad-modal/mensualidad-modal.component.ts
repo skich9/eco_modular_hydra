@@ -289,16 +289,13 @@ export class MensualidadModalComponent implements OnInit, OnChanges {
         const numeroCuotaArrastre = Number(next?.numero_cuota || 0);
         console.log('[MensualidadModal] numeroCuotaArrastre:', numeroCuotaArrastre);
 
-        // Para arrastre: NO mostrar mora si hay mensualidad pendiente ANTERIOR a esta cuota de arrastre
-        // La mora se cobrará cuando se pague esa mensualidad anterior
-        const cuotasRestantes = this.getOrderedCuotasRestantes();
-        console.log('[MensualidadModal] cuotasRestantes:', cuotasRestantes);
+        // Para arrastre: NO mostrar mora si la mensualidad de esta cuota NO está pagada ni en detalle
+        // La mora solo se muestra cuando la mensualidad está pagada o en el detalle
+        const { mensualidadPagada } = this.esCuotaPagadaOEnDetalle(numeroCuotaArrastre);
+        console.log('[MensualidadModal] mensualidadPagada o en detalle:', mensualidadPagada);
 
-        const hayMensualidadAnterior = cuotasRestantes.some(c => c.numero < numeroCuotaArrastre);
-        console.log('[MensualidadModal] hayMensualidadAnterior al arrastre:', hayMensualidadAnterior);
-
-        if (hayMensualidadAnterior) {
-          console.log('[MensualidadModal] Retornando 0 porque hay mensualidad pendiente anterior al arrastre');
+        if (!mensualidadPagada) {
+          console.log('[MensualidadModal] Retornando 0 porque la mensualidad NO está pagada ni en detalle');
           return 0;
         }
 
@@ -985,15 +982,14 @@ export class MensualidadModalComponent implements OnInit, OnChanges {
       const cant = Math.max(0, Number(this.form.get('cantidad')?.value || 0));
       total = cant * Number(this.pu || 0);
 
-      // Arrastre: sumar mora SOLO si NO hay mensualidad pendiente ANTERIOR a esta cuota de arrastre
-      // Si hay mensualidad anterior pendiente, la mora se cobrará cuando se pague esa mensualidad
+      // Arrastre: sumar mora SOLO si la mensualidad de esta cuota está pagada O en detalle
+      // Si la mensualidad NO está pagada ni en detalle, la mora se cobrará cuando se pague esa mensualidad
       try {
         const next = this.resumen?.arrastre?.next_cuota || null;
         const numeroCuotaArrastre = Number(next?.numero_cuota || 0);
-        const cuotasRestantes = this.getOrderedCuotasRestantes();
-        const hayMensualidadAnterior = cuotasRestantes.some(c => c.numero < numeroCuotaArrastre);
+        const { mensualidadPagada } = this.esCuotaPagadaOEnDetalle(numeroCuotaArrastre);
 
-        if (!hayMensualidadAnterior) {
+        if (mensualidadPagada) {
           const idAsign = next ? (next?.id_asignacion_costo ?? null) : null;
           const mora = this.getMoraPendienteByAsign(idAsign);
           if (mora) total += this.getMoraNetoFromRow(mora);
@@ -1180,6 +1176,44 @@ export class MensualidadModalComponent implements OnInit, OnChanges {
     return out;
   }
 
+  private esCuotaPagadaOEnDetalle(numeroCuota: number): { mensualidadPagada: boolean; arrastrePagado: boolean } {
+    const asignaciones = this.resumen?.asignaciones || [];
+    const asignacionesArrastre = this.resumen?.asignaciones_arrastre || [];
+
+    console.log(`[esCuotaPagadaOEnDetalle] Verificando cuota ${numeroCuota}`);
+    console.log(`[esCuotaPagadaOEnDetalle] detalleFactura:`, this.detalleFactura);
+
+    // Verificar mensualidad (cobrada en BD o en detalle actual)
+    const asignMensualidad = asignaciones.find((a: any) => Number(a?.numero_cuota || 0) === numeroCuota);
+    const mensualidadCobrada = asignMensualidad ? (asignMensualidad?.estado_pago || '').toString().toUpperCase() === 'COBRADO' : false;
+    const mensualidadEnDetalle = (this.detalleFactura || []).some((item: any) => {
+      const tipoPago = (item?.tipo_pago || item?.cod_tipo_cobro || '').toString().toUpperCase();
+      const numCuota = Number(item?.numero_cuota || 0);
+      return tipoPago === 'MENSUALIDAD' && numCuota === numeroCuota;
+    });
+    const mensualidadPagada = mensualidadCobrada || mensualidadEnDetalle;
+
+    console.log(`[esCuotaPagadaOEnDetalle] Mensualidad cuota ${numeroCuota}: cobrada=${mensualidadCobrada}, enDetalle=${mensualidadEnDetalle}, pagada=${mensualidadPagada}`);
+
+    // Verificar arrastre (cobrado en BD o en detalle actual)
+    const asignArrastre = asignacionesArrastre.find((a: any) => Number(a?.numero_cuota || 0) === numeroCuota);
+    let arrastrePagado = true; // Si no hay arrastre, considerarlo como "pagado"
+    if (asignArrastre) {
+      const arrastreCobrado = (asignArrastre?.estado_pago || '').toString().toUpperCase() === 'COBRADO';
+      const arrastreEnDetalle = (this.detalleFactura || []).some((item: any) => {
+        const tipoPago = (item?.tipo_pago || item?.cod_tipo_cobro || '').toString().toUpperCase();
+        const numCuota = Number(item?.numero_cuota || 0);
+        return tipoPago === 'ARRASTRE' && numCuota === numeroCuota;
+      });
+      arrastrePagado = arrastreCobrado || arrastreEnDetalle;
+      console.log(`[esCuotaPagadaOEnDetalle] Arrastre cuota ${numeroCuota}: cobrado=${arrastreCobrado}, enDetalle=${arrastreEnDetalle}, pagado=${arrastrePagado}`);
+    } else {
+      console.log(`[esCuotaPagadaOEnDetalle] Arrastre cuota ${numeroCuota}: NO EXISTE, considerado como pagado=true`);
+    }
+
+    return { mensualidadPagada, arrastrePagado };
+  }
+
   private verificarOrdenPago(): void {
     try {
       this.showOrdenPagoInfo = false;
@@ -1323,18 +1357,8 @@ export class MensualidadModalComponent implements OnInit, OnChanges {
               return false;
             }
 
-            const mensualidadPagada = (asignMensualidad?.estado_pago || '').toString().toUpperCase() === 'COBRADO';
-
-            // Verificar si el arrastre de esta cuota ya fue pagado (si existe)
-            const asignArrastre = asignacionesArrastre.find((a: any) => {
-              return Number(a?.numero_cuota || 0) === numeroCuotaMora;
-            });
-
-            let arrastrePagado = true; // Si no hay arrastre, considerarlo como "pagado"
-            if (asignArrastre) {
-              const estadoArrastre = (asignArrastre?.estado_pago || '').toString().toUpperCase();
-              arrastrePagado = estadoArrastre === 'COBRADO';
-            }
+            // Usar función helper para verificar si cuota está pagada o en detalle
+            const { mensualidadPagada, arrastrePagado } = this.esCuotaPagadaOEnDetalle(numeroCuotaMora);
 
             const cumple = mensualidadPagada && arrastrePagado;
             console.log(`[MensualidadModal] Mora cuota ${numeroCuotaMora}: mensualidadPagada=${mensualidadPagada}, arrastrePagado=${arrastrePagado}, cumple=${cumple}`);
@@ -1383,25 +1407,34 @@ export class MensualidadModalComponent implements OnInit, OnChanges {
         // Mostrar advertencia de mora si hay mora pendiente encontrada
         if (moraPendienteAnterior) {
           const numeroCuotaMora = Number(moraPendienteAnterior?.numero_cuota || 0);
-          const mesNombreCuota = this.getMesNombreByCuota(numeroCuotaMora);
 
-          // Obtener el mes de la mora desde fecha_inicio_mora
-          const fechaInicioMora = moraPendienteAnterior?.fecha_inicio_mora || '';
-          let mesNombreMora = '';
-          if (fechaInicioMora) {
-            const fecha = new Date(fechaInicioMora);
-            const mesNum = fecha.getMonth() + 1;
-            const meses = ['Enero', 'Febrero', 'Marzo', 'Abril', 'Mayo', 'Junio', 'Julio', 'Agosto', 'Septiembre', 'Octubre', 'Noviembre', 'Diciembre'];
-            mesNombreMora = meses[mesNum - 1] || '';
+          console.log('[MensualidadModal] Mora detectada - numeroCuotaMora:', numeroCuotaMora, 'ultimaCuotaSeleccionada:', ultimaCuotaSeleccionada);
+
+          // IMPORTANTE: Solo mostrar advertencia si la mora es de una cuota ANTERIOR
+          // Si la mora es de la MISMA cuota que se está pagando, NO bloquear
+          if (numeroCuotaMora < ultimaCuotaSeleccionada) {
+            const mesNombreCuota = this.getMesNombreByCuota(numeroCuotaMora);
+
+            // Obtener el mes de la mora desde fecha_inicio_mora
+            const fechaInicioMora = moraPendienteAnterior?.fecha_inicio_mora || '';
+            let mesNombreMora = '';
+            if (fechaInicioMora) {
+              const fecha = new Date(fechaInicioMora);
+              const mesNum = fecha.getMonth() + 1;
+              const meses = ['Enero', 'Febrero', 'Marzo', 'Abril', 'Mayo', 'Junio', 'Julio', 'Agosto', 'Septiembre', 'Octubre', 'Noviembre', 'Diciembre'];
+              mesNombreMora = meses[mesNum - 1] || '';
+            }
+
+            console.log('[MensualidadModal] MOSTRANDO ADVERTENCIA DE MORA (cuota anterior)');
+            this.showOrdenPagoInfo = true;
+            this.moraPendienteDetectada = moraPendienteAnterior;
+            const mensajeCuota = mesNombreCuota ? ` (${mesNombreCuota})` : '';
+            const mensajeMora = mesNombreMora ? ` - Mora de ${mesNombreMora}` : '';
+            this.ordenPagoInfoMessage = `⚠️ Debe pagar primero la mora pendiente de la Cuota ${numeroCuotaMora}${mensajeCuota}${mensajeMora} antes de poder pagar mensualidades posteriores.`;
+            return;
+          } else {
+            console.log('[MensualidadModal] NO se muestra advertencia porque la mora es de la MISMA cuota que se está pagando');
           }
-
-          console.log('[MensualidadModal] MOSTRANDO ADVERTENCIA DE MORA');
-          this.showOrdenPagoInfo = true;
-          this.moraPendienteDetectada = moraPendienteAnterior;
-          const mensajeCuota = mesNombreCuota ? ` (${mesNombreCuota})` : '';
-          const mensajeMora = mesNombreMora ? ` - Mora de ${mesNombreMora}` : '';
-          this.ordenPagoInfoMessage = `⚠️ Debe pagar primero la mora pendiente de la Cuota ${numeroCuotaMora}${mensajeCuota}${mensajeMora} antes de poder pagar mensualidades posteriores.`;
-          return;
         } else {
           console.log('[MensualidadModal] NO se muestra advertencia porque no hay mora pendiente');
         }
@@ -1470,18 +1503,8 @@ export class MensualidadModalComponent implements OnInit, OnChanges {
             return false;
           }
 
-          const mensualidadPagada = (asignMensualidad?.estado_pago || '').toString().toUpperCase() === 'COBRADO';
-
-          // Verificar si el arrastre de esta cuota ya fue pagado (si existe)
-          const asignArrastre = asignacionesArrastre.find((a: any) => {
-            return Number(a?.numero_cuota || 0) === numeroCuotaMora;
-          });
-
-          let arrastrePagado = true; // Si no hay arrastre, considerarlo como "pagado"
-          if (asignArrastre) {
-            const estadoArrastre = (asignArrastre?.estado_pago || '').toString().toUpperCase();
-            arrastrePagado = estadoArrastre === 'COBRADO';
-          }
+          // Usar función helper para verificar si cuota está pagada o en detalle
+          const { mensualidadPagada, arrastrePagado } = this.esCuotaPagadaOEnDetalle(numeroCuotaMora);
 
           const cumple = mensualidadPagada && arrastrePagado;
           console.log(`[MensualidadModal] Arrastre - Mora cuota ${numeroCuotaMora}: mensualidadPagada=${mensualidadPagada}, arrastrePagado=${arrastrePagado}, cumple=${cumple}`);
@@ -2066,12 +2089,11 @@ export class MensualidadModalComponent implements OnInit, OnChanges {
         nro_recibo: this.form.get('comprobante')?.value === 'RECIBO' ? (this.form.get('nro_recibo')?.value || null) : null,
       });
 
-      // Agregar mora de arrastre SOLO si NO hay mensualidad pendiente ANTERIOR a esta cuota de arrastre
-      // Si hay mensualidad anterior pendiente, la mora se cobrará cuando se pague esa mensualidad
-      const cuotasRestantes = this.getOrderedCuotasRestantes();
-      const hayMensualidadAnterior = cuotasRestantes.some(c => c.numero < numeroCuotaArrastre);
+      // Agregar mora de arrastre SOLO si la mensualidad de esta cuota está pagada O en detalle
+      // Si la mensualidad NO está pagada ni en detalle, la mora se cobrará cuando se pague esa mensualidad
+      const { mensualidadPagada } = this.esCuotaPagadaOEnDetalle(numeroCuotaArrastre);
 
-      if (!hayMensualidadAnterior) {
+      if (mensualidadPagada) {
         try {
           const mora = this.getMoraPendienteByAsign(next ? (next?.id_asignacion_costo ?? null) : null);
           if (mora) {
