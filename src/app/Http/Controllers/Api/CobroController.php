@@ -2829,9 +2829,9 @@ class CobroController extends Controller
 							$nombreServicio = 'mensualidad_factura';
 						} elseif (strpos($textoDetalle, 'rezagado') !== false || strpos($textoDetalle, '[rezagado]') !== false) {
 							$nombreServicio = 'rezagado';
-						} elseif (strpos($textoDetalle, 'arrastre') !== false) {
+						} elseif (strpos($textoDetalle, 'arrastre') !== false || strpos($textoDetalle, 'nivelacion') !== false || strpos($textoDetalle, 'nivelación') !== false) {
 							$nombreServicio = 'arrastre';
-						} elseif (strpos($textoDetalle, 'multa') !== false) {
+						} elseif (strpos($textoDetalle, 'multa') !== false || strpos($textoDetalle, 'niv') !== false) {
 							$nombreServicio = 'multa';
 						} elseif (strpos($textoDetalle, 'reincorporacion') !== false || strpos($textoDetalle, 'reincorporación') !== false) {
 							$nombreServicio = 'reincorporacion';

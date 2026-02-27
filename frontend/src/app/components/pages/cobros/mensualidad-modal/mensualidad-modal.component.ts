@@ -232,11 +232,15 @@ export class MensualidadModalComponent implements OnInit, OnChanges {
     console.log('[MensualidadModal] numeroCuota:', numeroCuota);
     console.log('[MensualidadModal] mesNombre:', mesNombre);
 
-    const detalle = mesNombre
-      ? `Nivelacion Mensualidad - Cuota ${numeroCuota} (${mesNombre})`
-      : `Nivelacion Mensualidad - Cuota ${numeroCuota || ''}`;
+    const detalleArrastre = mesNombre
+      ? `Nivelación (${mesNombre})`
+      : `Nivelación Cuota ${numeroCuota || ''}`;
 
-    console.log('[MensualidadModal] detalle construido:', detalle);
+    const detalleMora = mesNombre
+      ? `Mens. (${mesNombre}) Niv`
+      : `Mens. Cuota ${numeroCuota || ''} Niv`;
+
+    console.log('[MensualidadModal] detalleMora construido:', detalleMora);
 
     // Para mora, construir observaciones sin el flag [Arrastre]
     const obs = (this.form.get('observaciones')?.value || '').toString().trim();
@@ -248,8 +252,8 @@ export class MensualidadModalComponent implements OnInit, OnChanges {
       fecha_cobro: hoy,
       observaciones: obs,
       pu_mensualidad: Number(mora?.monto_mora || 0),
-      detalle: detalle.trim(),
-      tipo_pago: 'NIVELACION',
+      detalle: detalleMora.trim(),
+      tipo_pago: 'MORA',
       cod_tipo_cobro: 'NIVELACION',
       id_asignacion_mora: Number(mora?.id_asignacion_mora || 0) || null,
       // IMPORTANTE: NO enviar id_asignacion_costo ni id_cuota para items de mora
@@ -2061,8 +2065,8 @@ export class MensualidadModalComponent implements OnInit, OnChanges {
       const numeroCuotaArrastre = next ? Number(next?.numero_cuota || 0) : 0;
       const mesNombreArrastre = numeroCuotaArrastre ? this.getMesNombreByCuota(numeroCuotaArrastre) : null;
       const detalleArrastre = mesNombreArrastre
-        ? `Arrastre - Cuota ${numeroCuotaArrastre} (${mesNombreArrastre})`
-        : `Arrastre - Cuota ${numeroCuotaArrastre || ''}`;
+        ? `Nivelación (${mesNombreArrastre})`
+        : `Nivelación Cuota ${numeroCuotaArrastre || ''}`;
 
       // Si es pago parcial, calcular distribución entre arrastre y mora
       let montoParaArrastre = montoArrastre;
