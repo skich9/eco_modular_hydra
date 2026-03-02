@@ -1396,7 +1396,11 @@ export class CobrosComponent implements OnInit {
     // No es necesario recalcular el form auxiliar del padre
     const modalEl = document.getElementById('mensualidadModal');
     if (modalEl && (window as any).bootstrap?.Modal) {
-      const modal = new (window as any).bootstrap.Modal(modalEl);
+      const modal = new (window as any).bootstrap.Modal(modalEl, {
+        backdrop: true,
+        keyboard: true,
+        focus: true
+      });
       modal.show();
     }
   }
@@ -2375,7 +2379,11 @@ export class CobrosComponent implements OnInit {
   openKardexModal(): void {
     const modalEl = document.getElementById('kardexModal');
     if (modalEl && (window as any).bootstrap?.Modal) {
-      const modal = new (window as any).bootstrap.Modal(modalEl);
+      const modal = new (window as any).bootstrap.Modal(modalEl, {
+        backdrop: true,
+        keyboard: true,
+        focus: true
+      });
       modal.show();
     }
   }
@@ -2557,7 +2565,11 @@ export class CobrosComponent implements OnInit {
       }, { emitEvent: false });
       this.updateModalTipoUI(tipo);
       this.razonSocialEditable = false;
-      const modal = new (window as any).bootstrap.Modal(modalEl);
+      const modal = new (window as any).bootstrap.Modal(modalEl, {
+        backdrop: true,
+        keyboard: true,
+        focus: true
+      });
       modal.show();
     }
   }
@@ -2720,8 +2732,70 @@ export class CobrosComponent implements OnInit {
     setTimeout(() => (this.modalAlertMessage = ''), 4000);
   }
 
+  private cleanupBootstrapModalArtifacts(context: string): void {
+    try {
+      const backdrops = Array.from(document.querySelectorAll('.modal-backdrop'));
+      console.log(`[Cobros] cleanupBootstrapModalArtifacts(${context}) - backdrops:`, backdrops.length);
+      for (const bd of backdrops) {
+        try { bd.remove(); } catch {}
+      }
+
+      // Bootstrap agrega estas propiedades al abrir modales
+      document.body.classList.remove('modal-open');
+      (document.body.style as any).paddingRight = '';
+      (document.body.style as any).overflow = '';
+    } catch (e) {
+      console.warn('[Cobros] cleanupBootstrapModalArtifacts - error:', e);
+    }
+  }
+
+  private logHitTestFromEvent(ev: MouseEvent, context: string): void {
+    try {
+      const x = ev.clientX;
+      const y = ev.clientY;
+      const el = document.elementFromPoint(x, y) as any;
+      if (!el) {
+        console.log(`[Cobros] HitTest(${context}) elementFromPoint: null`);
+        return;
+      }
+      const cs = window.getComputedStyle(el);
+      const inertHost = el.closest ? el.closest('[inert]') : null;
+      console.log(`[Cobros] HitTest(${context})`, {
+        x,
+        y,
+        tag: el.tagName,
+        id: el.id,
+        className: el.className,
+        zIndex: cs.zIndex,
+        pointerEvents: cs.pointerEvents,
+        opacity: cs.opacity,
+        position: cs.position,
+        disabled: typeof el.disabled === 'boolean' ? el.disabled : undefined,
+        readOnly: typeof el.readOnly === 'boolean' ? el.readOnly : undefined,
+        inertAncestor: inertHost ? { tag: inertHost.tagName, id: inertHost.id, className: inertHost.className } : null
+      });
+      setTimeout(() => {
+        try {
+          const ae: any = document.activeElement;
+          if (!ae) return;
+          console.log(`[Cobros] ActiveElement(${context})`, {
+            tag: ae.tagName,
+            id: ae.id,
+            className: ae.className,
+            disabled: typeof ae.disabled === 'boolean' ? ae.disabled : undefined,
+            readOnly: typeof ae.readOnly === 'boolean' ? ae.readOnly : undefined
+          });
+        } catch {}
+      }, 0);
+    } catch (e) {
+      console.warn('[Cobros] logHitTestFromEvent - error:', e);
+    }
+  }
+
   // ================= Mensualidades UI/Logic =================
   openMensualidadModal(): void {
+    console.log('[Cobros] openMensualidadModal - INICIO');
+    this.cleanupBootstrapModalArtifacts('before-openMensualidadModal');
     if (!this.resumen) {
       this.showAlert('Debe consultar primero un estudiante/gestión', 'warning');
       return;
@@ -2744,9 +2818,87 @@ export class CobrosComponent implements OnInit {
     this.recalcMensualidadTotal();
     this.modalTipo = 'mensualidad';
     const modalEl = document.getElementById('mensualidadModal');
+    console.log('[Cobros] modalEl encontrado:', !!modalEl);
     if (modalEl && (window as any).bootstrap?.Modal) {
-      const modal = new (window as any).bootstrap.Modal(modalEl);
+      // Listener en captura para saber qué está recibiendo el click cuando "no deja interactuar"
+      const clickListener = (ev: MouseEvent) => this.logHitTestFromEvent(ev, 'mensualidadModal(capture)');
+      const focusFixListener = (ev: MouseEvent) => {
+        try {
+          const t = ev.target as any;
+          if (!t || !t.tagName) return;
+          const tag = (t.tagName || '').toString().toUpperCase();
+          if (tag !== 'INPUT' && tag !== 'SELECT' && tag !== 'TEXTAREA') return;
+          if (typeof t.disabled === 'boolean' && t.disabled) return;
+          // En algunos equipos/navegadores hay algún handler que hace preventDefault en mousedown
+          // y eso evita que el navegador asigne foco automáticamente. Forzamos foco SINCRÓNICO.
+          try {
+            console.log('[Cobros] focusFixListener -> intentando focus a', { tag, className: t.className, type: t.type, name: t.name });
+          } catch {}
+          try { t.focus({ preventScroll: true }); } catch {}
+          setTimeout(() => {
+            try {
+              const ae: any = document.activeElement;
+              console.log('[Cobros] focusFixListener -> activeElement luego de focus', { tag: ae?.tagName, className: ae?.className });
+            } catch {}
+          }, 0);
+        } catch {}
+      };
+      modalEl.addEventListener('mousedown', clickListener, true);
+      modalEl.addEventListener('mousedown', focusFixListener, true);
+
+      console.log('[Cobros] Creando modal (bootstrap)');
+      const modal = new (window as any).bootstrap.Modal(modalEl, {
+        backdrop: true,
+        keyboard: true,
+        focus: false
+      });
+      console.log('[Cobros] Modal creado, mostrando...');
       modal.show();
+      console.log('[Cobros] Modal.show() ejecutado');
+
+      // Si por algún motivo el modal (o algún contenedor) quedó con 'inert', lo removemos
+      setTimeout(() => {
+        try {
+          const inertNodes = modalEl.querySelectorAll('[inert]');
+          if (inertNodes.length) {
+            console.log('[Cobros] Removiendo inert dentro del modal:', inertNodes.length);
+            inertNodes.forEach((n: any) => {
+              try { n.removeAttribute('inert'); } catch {}
+            });
+          }
+          try { (modalEl as any).removeAttribute('inert'); } catch {}
+        } catch {}
+      }, 0);
+
+      // Al cerrar, limpiar backdrops y remover listener
+      const onHidden = () => {
+        try { modalEl.removeEventListener('mousedown', clickListener, true); } catch {}
+        try { modalEl.removeEventListener('mousedown', focusFixListener, true); } catch {}
+        this.cleanupBootstrapModalArtifacts('hidden-mensualidadModal');
+        try { modalEl.removeEventListener('hidden.bs.modal', onHidden as any); } catch {}
+      };
+      modalEl.addEventListener('hidden.bs.modal', onHidden as any);
+
+      // Log de elementos del DOM después de mostrar el modal
+      setTimeout(() => {
+        const backdrops = document.querySelectorAll('.modal-backdrop');
+        console.log('[Cobros] Backdrops encontrados:', backdrops.length);
+        backdrops.forEach((bd, idx) => {
+          const styles = window.getComputedStyle(bd);
+          console.log(`[Cobros] Backdrop ${idx} - z-index:`, styles.zIndex, 'pointer-events:', styles.pointerEvents);
+        });
+
+        const modalDialog = modalEl.querySelector('.modal-dialog');
+        if (modalDialog) {
+          const dialogStyles = window.getComputedStyle(modalDialog);
+          console.log('[Cobros] Modal-dialog - z-index:', dialogStyles.zIndex, 'pointer-events:', dialogStyles.pointerEvents);
+        }
+        const modalContent = modalEl.querySelector('.modal-content');
+        if (modalContent) {
+          const contentStyles = window.getComputedStyle(modalContent);
+          console.log('[Cobros] Modal-content - z-index:', contentStyles.zIndex, 'pointer-events:', contentStyles.pointerEvents);
+        }
+      }, 500);
     }
   }
 
@@ -2797,7 +2949,11 @@ export class CobrosComponent implements OnInit {
 
     const modalEl = document.getElementById('moraModal');
     if (modalEl && (window as any).bootstrap?.Modal) {
-      const modal = new (window as any).bootstrap.Modal(modalEl);
+      const modal = new (window as any).bootstrap.Modal(modalEl, {
+        backdrop: true,
+        keyboard: true,
+        focus: true
+      });
       modal.show();
     }
   }

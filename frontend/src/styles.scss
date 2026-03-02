@@ -11,13 +11,21 @@ body {
 .modal-backdrop {
 	position: fixed !important;
 	inset: 0 !important; /* top/right/bottom/left: 0 */
-	z-index: 2000 !important;
+	z-index: 1040 !important;
 }
 .modal-backdrop.show {
 	opacity: .5 !important;
 }
 .modal.fade.show {
-	z-index: 2001 !important;
+	z-index: 1055 !important;
+}
+.modal-dialog {
+	z-index: 1056 !important;
+	pointer-events: auto !important;
+}
+
+.modal-content {
+	pointer-events: auto !important;
 }
 /* You can add global styles to this file, and also import other style files */
 @import './assets/css/styles.css';

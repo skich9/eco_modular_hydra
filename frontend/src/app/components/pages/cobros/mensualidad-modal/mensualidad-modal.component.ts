@@ -153,6 +153,79 @@ export class MensualidadModalComponent implements OnInit, OnChanges {
     } catch { return 0; }
   }
 
+  /**
+   * Recalcula la mora basándose en la fecha de depósito para métodos de pago bancarios.
+   * Si el método de pago requiere fecha_deposito (tarjeta, cheque, transferencia, depósito)
+   * y la fecha es anterior a hoy, recalcula la mora solo hasta esa fecha.
+   */
+  private recalcularMoraConFechaDeposito(mora: any): number {
+    try {
+      // Verificar si el método de pago requiere fecha de depósito
+      const requiereFechaDeposito = this.isTarjeta || this.isCheque || this.isTransferencia || this.isDeposito;
+      if (!requiereFechaDeposito) {
+        // Si no es un método bancario, usar el cálculo normal
+        return this.getMoraNetoFromRow(mora);
+      }
+
+      const fechaDepositoStr = this.form.get('fecha_deposito')?.value;
+      if (!fechaDepositoStr) {
+        // Si no hay fecha de depósito ingresada, usar el cálculo normal
+        return this.getMoraNetoFromRow(mora);
+      }
+
+      // Parsear fechas
+      const fechaDeposito = new Date(fechaDepositoStr);
+      const fechaInicioMora = mora?.fecha_inicio_mora ? new Date(mora.fecha_inicio_mora) : null;
+      const hoy = new Date();
+      hoy.setHours(0, 0, 0, 0);
+      fechaDeposito.setHours(0, 0, 0, 0);
+
+      if (!fechaInicioMora) {
+        return this.getMoraNetoFromRow(mora);
+      }
+      fechaInicioMora.setHours(0, 0, 0, 0);
+
+      // Si la fecha de depósito es mayor o igual a hoy, usar el cálculo normal
+      if (fechaDeposito >= hoy) {
+        return this.getMoraNetoFromRow(mora);
+      }
+
+      // Si la fecha de depósito es anterior a la fecha de inicio de mora, mora = 0
+      if (fechaDeposito < fechaInicioMora) {
+        return 0;
+      }
+
+      // Recalcular mora: días desde fecha_inicio_mora hasta fecha_deposito
+      const montoBase = Number(mora?.monto_base || 0);
+      const desc = Number(mora?.monto_descuento || 0);
+      const montoPagado = Number(mora?.monto_pagado || 0);
+
+      // Calcular días transcurridos desde inicio de mora hasta fecha de depósito
+      const diffTime = fechaDeposito.getTime() - fechaInicioMora.getTime();
+      const diffDays = Math.floor(diffTime / (1000 * 60 * 60 * 24)) + 1; // +1 para incluir el día de inicio
+
+      // Calcular mora recalculada
+      const moraRecalculada = montoBase * Math.max(0, diffDays);
+
+      // Restar descuentos y pagos parciales previos
+      const moraFinal = Math.max(0, moraRecalculada - desc - montoPagado);
+
+      console.log('[MensualidadModal] Recálculo de mora con fecha_deposito:');
+      console.log('  - Fecha inicio mora:', fechaInicioMora.toISOString().split('T')[0]);
+      console.log('  - Fecha depósito:', fechaDeposito.toISOString().split('T')[0]);
+      console.log('  - Días transcurridos:', diffDays);
+      console.log('  - Monto base diario:', montoBase);
+      console.log('  - Mora original:', mora?.monto_mora);
+      console.log('  - Mora recalculada:', moraRecalculada);
+      console.log('  - Mora final (después de desc/pagos):', moraFinal);
+
+      return moraFinal;
+    } catch (e) {
+      console.error('[MensualidadModal] Error recalculando mora con fecha_deposito:', e);
+      return this.getMoraNetoFromRow(mora);
+    }
+  }
+
   private tieneArrastrePendiente(): boolean {
     try {
       // Primero verificar si ya hay items de arrastre en el detalle de factura
@@ -208,7 +281,7 @@ export class MensualidadModalComponent implements OnInit, OnChanges {
   }
 
   getMoraNetoPublic(mora: any): number {
-    return this.getMoraNetoFromRow(mora);
+    return this.recalcularMoraConFechaDeposito(mora);
   }
 
   private shouldCobrarMoraForPago(montoPago: number, numeroCuota: number | null, idAsignacionCosto: any): boolean {
@@ -225,7 +298,10 @@ export class MensualidadModalComponent implements OnInit, OnChanges {
     console.log('[MensualidadModal] ===== buildPagoMoraItem INICIO =====');
     console.log('[MensualidadModal] mora recibida:', mora);
 
-    const neto = this.getMoraNetoFromRow(mora);
+    // Usar el monto recalculado con fecha_deposito si aplica
+    const neto = this.recalcularMoraConFechaDeposito(mora);
+    // Obtener el monto recalculado para actualizar en el backend
+    const montoMoraRecalculado = this.recalcularMoraConFechaDeposito(mora);
     const numeroCuota = Number(mora?.numero_cuota || 0);
     const mesNombre = numeroCuota > 0 ? this.getMesNombreByCuota(numeroCuota) : null;
 
@@ -251,7 +327,7 @@ export class MensualidadModalComponent implements OnInit, OnChanges {
       monto: neto,
       fecha_cobro: hoy,
       observaciones: obs,
-      pu_mensualidad: Number(mora?.monto_mora || 0),
+      pu_mensualidad: montoMoraRecalculado,
       detalle: detalleMora.trim(),
       tipo_pago: 'MORA',
       cod_tipo_cobro: 'NIVELACION',
@@ -309,7 +385,7 @@ export class MensualidadModalComponent implements OnInit, OnChanges {
         const mora = this.getMoraPendienteByAsign(idAsign);
         console.log('[MensualidadModal] Mora encontrada:', mora);
 
-        const moraValue = mora ? this.getMoraNetoFromRow(mora) : 0;
+        const moraValue = mora ? this.recalcularMoraConFechaDeposito(mora) : 0;
         console.log('[MensualidadModal] Valor de mora:', moraValue);
 
         return moraValue;
@@ -351,7 +427,7 @@ export class MensualidadModalComponent implements OnInit, OnChanges {
               const estado = (m?.estado || '').toString().toUpperCase();
               return moraIdVinculada === idAsignArrastre && estado === 'PENDIENTE';
             });
-            return moraNormal ? this.getMoraNetoFromRow(moraNormal) : 0;
+            return moraNormal ? this.recalcularMoraConFechaDeposito(moraNormal) : 0;
           }
         }
       }
@@ -363,7 +439,7 @@ export class MensualidadModalComponent implements OnInit, OnChanges {
         const first = list.find(it => Number(it.numero) === Number(start)) || list[0] || null;
         const idAsign = first ? (first.id_asignacion_costo ?? null) : null;
         const mora = this.getMoraPendienteByAsign(idAsign);
-        return mora ? this.getMoraNetoFromRow(mora) : 0;
+        return mora ? this.recalcularMoraConFechaDeposito(mora) : 0;
       }
 
       const cant = Math.max(0, Number(this.form.get('cantidad')?.value || 0));
@@ -371,7 +447,7 @@ export class MensualidadModalComponent implements OnInit, OnChanges {
       let acc = 0;
       for (const it of list) {
         const mora = this.getMoraPendienteByAsign(it?.id_asignacion_costo ?? null);
-        if (mora) acc += this.getMoraNetoFromRow(mora);
+        if (mora) acc += this.recalcularMoraConFechaDeposito(mora);
       }
       return acc;
     } catch { return 0; }
@@ -589,7 +665,7 @@ export class MensualidadModalComponent implements OnInit, OnChanges {
         if (idAsignacionCosto > 0) {
           const mora = this.getMoraPendienteByAsign(idAsignacionCosto);
           if (mora) {
-            const moraNeto = this.getMoraNetoFromRow(mora);
+            const moraNeto = this.recalcularMoraConFechaDeposito(mora);
             deudaReal += moraNeto;
           }
         }
@@ -648,9 +724,17 @@ export class MensualidadModalComponent implements OnInit, OnChanges {
       }
       this.recalcTotal();
     });
-    // Cambios de método de pago para activar validadores de TARJETA
-    this.form.get('metodo_pago')?.valueChanges.subscribe(() => this.updateTarjetaValidators());
+    // Cambios de método de pago para activar validadores de TARJETA y recalcular mora
+    this.form.get('metodo_pago')?.valueChanges.subscribe(() => {
+      this.updateTarjetaValidators();
+      this.recalcTotal();
+    });
     this.updateTarjetaValidators();
+
+    // Recalcular mora cuando cambie la fecha de depósito
+    this.form.get('fecha_deposito')?.valueChanges.subscribe(() => {
+      this.recalcTotal();
+    });
 
     // Alternar validadores/estado para pago parcial
     this.form.get('pago_parcial')?.valueChanges.subscribe((on: boolean) => {
@@ -678,7 +762,7 @@ export class MensualidadModalComponent implements OnInit, OnChanges {
         if (this.moraPendienteDetectada) {
           // Para mora: usar monto_base (monto original) como máximo
           // Esto permite al usuario pagar hasta el monto completo, independientemente de pagos parciales anteriores
-          maxParcial = Math.floor(this.getMoraNetoFromRow(this.moraPendienteDetectada));
+          maxParcial = Math.floor(this.recalcularMoraConFechaDeposito(this.moraPendienteDetectada));
         } else {
           maxParcial = Math.floor(this.getParcialMax() || 0);
         }
@@ -891,7 +975,7 @@ export class MensualidadModalComponent implements OnInit, OnChanges {
                   return moraIdVinculada === idAsignArrastre && estado === 'PENDIENTE';
                 });
                 if (moraNormal && this.shouldCobrarMoraForPago(total, numeroCuotaArrastre, idAsignArrastre)) {
-                  total += this.getMoraNetoFromRow(moraNormal);
+                  total += this.recalcularMoraConFechaDeposito(moraNormal);
                 }
               }
             }
@@ -906,7 +990,7 @@ export class MensualidadModalComponent implements OnInit, OnChanges {
             const id_asignacion_costo = first ? (first.id_asignacion_costo ?? null) : null;
             const mora = this.getMoraPendienteByAsign(id_asignacion_costo);
             if (mora && this.shouldCobrarMoraForPago(total, numero_cuota, id_asignacion_costo)) {
-              total += this.getMoraNetoFromRow(mora);
+              total += this.recalcularMoraConFechaDeposito(mora);
             }
           } catch {}
         }
@@ -957,7 +1041,7 @@ export class MensualidadModalComponent implements OnInit, OnChanges {
                     const estado = (m?.estado || '').toString().toUpperCase();
                     return moraIdVinculada === idAsignArrastre && estado === 'PENDIENTE';
                   });
-                  if (moraNormal) total += this.getMoraNetoFromRow(moraNormal);
+                  if (moraNormal) total += this.recalcularMoraConFechaDeposito(moraNormal);
                 }
               }
             } catch {}
@@ -968,7 +1052,7 @@ export class MensualidadModalComponent implements OnInit, OnChanges {
               let moraAcc = 0;
               for (const it of list) {
                 const mora = this.getMoraPendienteByAsign(it?.id_asignacion_costo ?? null);
-                if (mora) moraAcc += this.getMoraNetoFromRow(mora);
+                if (mora) moraAcc += this.recalcularMoraConFechaDeposito(mora);
               }
               total += moraAcc;
             } catch {}
@@ -996,7 +1080,7 @@ export class MensualidadModalComponent implements OnInit, OnChanges {
         if (mensualidadPagada) {
           const idAsign = next ? (next?.id_asignacion_costo ?? null) : null;
           const mora = this.getMoraPendienteByAsign(idAsign);
-          if (mora) total += this.getMoraNetoFromRow(mora);
+          if (mora) total += this.recalcularMoraConFechaDeposito(mora);
         }
       } catch {}
     } else if (this.tipo === 'reincorporacion') {
@@ -1893,9 +1977,9 @@ export class MensualidadModalComponent implements OnInit, OnChanges {
           c.enable({ emitEvent: false });
         } else {
           c.clearValidators();
-          if (name !== 'metodo_pago' && name !== 'comprobante' && name !== 'computarizada') {
-            c.disable({ emitEvent: false });
-          }
+          // IMPORTANTE: no deshabilitar inputs bancarios/tarjeta. Si quedan con "disabled",
+          // el navegador no asigna foco y el usuario no puede escribir (activeElement queda en BODY).
+          c.enable({ emitEvent: false });
         }
         c.updateValueAndValidity({ emitEvent: false });
       };
@@ -2581,9 +2665,11 @@ export class MensualidadModalComponent implements OnInit, OnChanges {
         cod_tipo_cobro: pago.cod_tipo_cobro,
         tipo_pago: pago.tipo_pago,
         monto: pago.monto,
+        pu_mensualidad: pago.pu_mensualidad,
         numero_cuota: pago.numero_cuota,
         id_asignacion_mora: pago.id_asignacion_mora,
-        id_asignacion_costo: pago.id_asignacion_costo
+        id_asignacion_costo: pago.id_asignacion_costo,
+        fecha_deposito: pago.fecha_deposito
       });
     });
     console.log('[MensualidadModal] ===== FIN PAYLOAD =====');
@@ -2929,7 +3015,7 @@ export class MensualidadModalComponent implements OnInit, OnChanges {
         this.modalAlertType = 'error';
         return;
       }
-      const moraNetoTotal = this.getMoraNetoFromRow(this.moraPendienteDetectada);
+      const moraNetoTotal = this.recalcularMoraConFechaDeposito(this.moraPendienteDetectada);
       if (montoParcial > moraNetoTotal) {
         this.modalAlertMessage = `El monto parcial no puede ser mayor a ${moraNetoTotal} Bs.`;
         this.modalAlertType = 'error';
