@@ -2932,9 +2932,12 @@ class CobroController extends Controller
 							if ($idMora > 0) { $moraQ->where('id_asignacion_mora', $idMora); }
 							elseif ($idAsignMora > 0) { $moraQ->where('id_asignacion_costo', $idAsignMora)->orderByDesc('id_asignacion_mora'); }
 							else { $moraQ = null; }
-							$moraRow = $moraQ ? $moraQ->first(['id_asignacion_mora','monto_mora','monto_descuento','monto_pagado']) : null;
+							$moraRow = $moraQ ? $moraQ->first(['id_asignacion_mora','monto_mora','monto_descuento','monto_pagado','fecha_inicio_mora','fecha_fin_mora','monto_base']) : null;
 							if ($moraRow) {
-								$neto = max(0, (float)($moraRow->monto_mora ?? 0) - (float)($moraRow->monto_descuento ?? 0));
+								$montoMoraCalc = (float)($moraRow->monto_mora ?? 0);
+								$descMora = (float)($moraRow->monto_descuento ?? 0);
+								$montoBaseDia = (float)($moraRow->monto_base ?? 0);
+								$neto = max(0, $montoMoraCalc - $descMora);
 								$montoPago = (float)($item['monto'] ?? 0);
 								$montoPagadoPrevio = (float)($moraRow->monto_pagado ?? 0);
 								$nuevoMontoPagado = $montoPagadoPrevio + $montoPago;
@@ -2944,6 +2947,32 @@ class CobroController extends Controller
 									'monto_pagado' => $nuevoMontoPagado,
 									'updated_at' => now()
 								];
+
+								// Si la fecha_deposito es anterior a hoy, recalcular monto_mora a esa fecha y persistir.
+								// Esto NO es pago parcial; es una corrección del monto de mora devengado hasta la fecha de depósito.
+								try {
+									$fechaDepositoStr = isset($item['fecha_deposito']) ? (string)$item['fecha_deposito'] : '';
+									$fechaDepositoStr = trim($fechaDepositoStr);
+									if ($fechaDepositoStr !== '') {
+										$hoy = \Carbon\Carbon::today();
+										$fechaDeposito = \Carbon\Carbon::parse($fechaDepositoStr)->startOfDay();
+										if ($fechaDeposito->lt($hoy)) {
+											$inicio = !empty($moraRow->fecha_inicio_mora) ? \Carbon\Carbon::parse($moraRow->fecha_inicio_mora)->startOfDay() : null;
+											$fin = !empty($moraRow->fecha_fin_mora) ? \Carbon\Carbon::parse($moraRow->fecha_fin_mora)->startOfDay() : null;
+											if ($inicio && $montoBaseDia > 0) {
+												$fechaCalculo = $fin ? ($fechaDeposito->lt($fin) ? $fechaDeposito : $fin) : $fechaDeposito;
+												if ($fechaCalculo->gte($inicio)) {
+													$dias = $inicio->diffInDays($fechaCalculo) + 1;
+													$montoMoraCalc = (float)$montoBaseDia * (int)$dias;
+													$updateData['monto_mora'] = $montoMoraCalc;
+													$neto = max(0, $montoMoraCalc - $descMora);
+												}
+											}
+										}
+									}
+								} catch (\Throwable $e) {
+									// No bloquear el cobro si el recálculo falla
+								}
 
 								// Si se completó el pago, cambiar estado a PAGADO
 								if ($neto <= 0.0001 || $nuevoMontoPagado >= ($neto - 0.0001)) {
