@@ -27,6 +27,7 @@ use App\Services\Siat\OperationsService;
 use App\Services\Siat\CufGenerator;
 use App\Services\Siat\FacturaPayloadBuilder;
 use App\Services\Qr\QrSocketNotifier;
+use App\Services\MoraRecalculoService;
 use Carbon\Carbon;
 
 class CobroController extends Controller
@@ -3613,53 +3614,8 @@ class CobroController extends Controller
 	private function getMorasPendientes($codCeta, $gestion)
 	{
 		try {
-			// Identificar inscripciones del estudiante en la gestión solicitada
-			$insIds = DB::table('inscripciones')
-				->where('cod_ceta', $codCeta)
-				->where('gestion', $gestion)
-				->pluck('cod_inscrip')
-				->toArray();
-
-			if (empty($insIds)) {
-				return [];
-			}
-
-			// Obtener asignaciones de costo asociadas a esas inscripciones
-			$asignacionIds = DB::table('asignacion_costos')
-				->whereIn('cod_inscrip', $insIds)
-				->pluck('id_asignacion_costo')
-				->toArray();
-
-			if (empty($asignacionIds)) {
-				return [];
-			}
-
-			// Obtener moras pendientes con información de la cuota asociada
-			// Incluir tanto PENDIENTE como EN_ESPERA para que el frontend pueda decidir cuáles mostrar
-			$moras = DB::table('asignacion_mora as am')
-				->join('asignacion_costos as ac', 'am.id_asignacion_costo', '=', 'ac.id_asignacion_costo')
-				->whereIn('am.id_asignacion_costo', $asignacionIds)
-				->whereIn('am.estado', ['PENDIENTE', 'EN_ESPERA'])
-				->select(
-					'am.id_asignacion_mora',
-					'am.id_asignacion_costo',
-					'am.id_asignacion_vinculada',
-					'am.fecha_inicio_mora',
-					'am.fecha_fin_mora',
-					'am.monto_base',
-					'am.monto_mora',
-					'am.monto_descuento',
-					'am.monto_pagado',
-					'am.estado',
-					'am.observaciones',
-					'ac.numero_cuota',
-					'ac.id_cuota_template'
-				)
-				->orderBy('ac.numero_cuota', 'asc')
-				->get()
-				->toArray();
-
-			return $moras;
+			$svc = app(MoraRecalculoService::class);
+			return $svc->syncMorasPorBusqueda((int)$codCeta, (string)$gestion, Carbon::today());
 		} catch (\Throwable $e) {
 			Log::error('Error al obtener moras pendientes:', [
 				'cod_ceta' => $codCeta,
