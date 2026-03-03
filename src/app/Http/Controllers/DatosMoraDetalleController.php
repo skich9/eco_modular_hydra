@@ -57,6 +57,20 @@ class DatosMoraDetalleController extends Controller
 				$input['monto'] = null;
 			}
 
+			// Normalizar tipo_calculo a valores permitidos por BD/validación
+			// Valores esperados: PORCENTAJE, MONTO_FIJO, AMBOS
+			if (array_key_exists('tipo_calculo', $input)) {
+				$tc = strtoupper(trim((string)$input['tipo_calculo']));
+				$map = [
+					'DIARIO' => 'MONTO_FIJO',
+					'MONTO_FIJO' => 'MONTO_FIJO',
+					'FIJO' => 'MONTO_FIJO',
+					'PORCENTAJE' => 'PORCENTAJE',
+					'AMBOS' => 'AMBOS',
+				];
+				$input['tipo_calculo'] = $map[$tc] ?? 'MONTO_FIJO';
+			}
+
 			// Crear o buscar DatosMora por gestión
 			if (isset($input['gestion'])) {
 				$datosMora = DatosMora::firstOrCreate(

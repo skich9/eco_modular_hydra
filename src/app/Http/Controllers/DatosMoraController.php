@@ -244,12 +244,22 @@ class DatosMoraController extends Controller
 			}
 
 			$gestion = trim($request->input('gestion'));
+			$tipoCalculoIn = $request->input('tipo_calculo');
+			$tc = strtoupper(trim((string)$tipoCalculoIn));
+			$map = [
+				'DIARIO' => 'MONTO_FIJO',
+				'MONTO_FIJO' => 'MONTO_FIJO',
+				'FIJO' => 'MONTO_FIJO',
+				'PORCENTAJE' => 'PORCENTAJE',
+				'AMBOS' => 'AMBOS',
+			];
+			$tipoCalculo = $map[$tc] ?? 'MONTO_FIJO';
 
 			// Buscar o crear el registro de datos_mora
 			$datosMora = DatosMora::firstOrCreate(
 				['gestion' => $gestion],
 				[
-					'tipo_calculo' => 'diario',
+					'tipo_calculo' => $tipoCalculo,
 					'monto' => 0,
 					'activo' => true
 				]
