@@ -54,8 +54,8 @@ class MoraRecalculoService
 
 		foreach ($moras as $i => $mora) {
 			try {
-				$idAsignacionMora = (int)($mora->id_asignacion_mora ?? 0);
-				$idAsignacionCosto = (int)($mora->id_asignacion_costo ?? 0);
+				$idAsignacionMora = (int)(isset($mora->id_asignacion_mora) ? $mora->id_asignacion_mora : 0);
+				$idAsignacionCosto = (int)(isset($mora->id_asignacion_costo) ? $mora->id_asignacion_costo : 0);
 				if ($idAsignacionMora <= 0 || $idAsignacionCosto <= 0) {
 					$this->debugLog('recalcular skip: ids invalidos', [
 						'id_asignacion_mora' => $idAsignacionMora,
@@ -79,7 +79,7 @@ class MoraRecalculoService
 					continue;
 				}
 
-				$montoBaseDia = (float)($mora->monto_base ?? 0);
+				$montoBaseDia = (float)(isset($mora->monto_base) ? $mora->monto_base : 0);
 				$fechaInicio = !empty($mora->fecha_inicio_mora) ? Carbon::parse($mora->fecha_inicio_mora)->startOfDay() : null;
 				$fechaFin = !empty($mora->fecha_fin_mora) ? Carbon::parse($mora->fecha_fin_mora)->startOfDay() : null;
 
@@ -87,7 +87,7 @@ class MoraRecalculoService
 					$this->debugLog('recalcular skip: sin fechaInicio o monto_base<=0', [
 						'id_asignacion_mora' => $idAsignacionMora,
 						'id_asignacion_costo' => $idAsignacionCosto,
-						'fecha_inicio_mora' => $mora->fecha_inicio_mora ?? null,
+						'fecha_inicio_mora' => isset($mora->fecha_inicio_mora) ? $mora->fecha_inicio_mora : null,
 						'monto_base' => $montoBaseDia,
 					]);
 					continue;
@@ -116,7 +116,7 @@ class MoraRecalculoService
 
 				$dias = $fechaInicio->diffInDays($fechaCalculo) + 1;
 				$montoCalculado = (float)$montoBaseDia * (int)$dias;
-				$montoActual = (float)($mora->monto_mora ?? 0);
+				$montoActual = (float)(isset($mora->monto_mora) ? $mora->monto_mora : 0);
 
 				if ($montoCalculado > ($montoActual + 0.0001)) {
 					$this->debugLog('recalcular update monto_mora', [
@@ -224,7 +224,8 @@ class MoraRecalculoService
 				'ac.numero_cuota',
 				'i.cod_ceta',
 				'i.gestion',
-				'i.cod_curso'
+				'i.cod_curso',
+				'i.tipo_inscripcion'
 			)
 			->get()
 			->toArray();
@@ -242,7 +243,7 @@ class MoraRecalculoService
 			'count' => count($cuotas),
 		]);
 
-		$idsAsign = array_values(array_unique(array_map(function($r){ return (int)($r->id_asignacion_costo ?? 0); }, $cuotas)));
+		$idsAsign = array_values(array_unique(array_map(function($r){ return (int)(isset($r->id_asignacion_costo) ? $r->id_asignacion_costo : 0); }, $cuotas)));
 		$existentes = DB::table('asignacion_mora')
 			->whereIn('id_asignacion_costo', $idsAsign)
 			->whereIn('estado', ['PENDIENTE', 'EN_ESPERA'])
@@ -253,7 +254,7 @@ class MoraRecalculoService
 
 		$porGrupo = [];
 		foreach ($cuotas as $c) {
-			$cuotaN = (int)($c->numero_cuota ?? 0);
+			$cuotaN = (int)(isset($c->numero_cuota) ? $c->numero_cuota : 0);
 			if ($cuotaN <= 0) {
 				continue;
 			}
@@ -261,7 +262,7 @@ class MoraRecalculoService
 			if (!isset($porGrupo[$k])) {
 				$porGrupo[$k] = [];
 			}
-			$porGrupo[$k][] = (int)($c->id_asignacion_costo ?? 0);
+			$porGrupo[$k][] = (int)(isset($c->id_asignacion_costo) ? $c->id_asignacion_costo : 0);
 		}
 		foreach ($porGrupo as $k => $ids) {
 			$porGrupo[$k] = array_values(array_unique(array_filter($ids)));
@@ -271,7 +272,7 @@ class MoraRecalculoService
 
 		foreach ($cuotas as $c) {
 			try {
-				$idAsign = (int)($c->id_asignacion_costo ?? 0);
+				$idAsign = (int)(isset($c->id_asignacion_costo) ? $c->id_asignacion_costo : 0);
 				if ($idAsign <= 0) {
 					$this->debugLog('crearMorasFaltantes skip: id_asignacion_costo invalido', [
 						'id_asignacion_costo' => $idAsign,
@@ -279,7 +280,7 @@ class MoraRecalculoService
 					continue;
 				}
 
-				$cuotaN = (int)($c->numero_cuota ?? 0);
+				$cuotaN = (int)(isset($c->numero_cuota) ? $c->numero_cuota : 0);
 				if ($cuotaN <= 0) {
 					continue;
 				}
@@ -288,13 +289,18 @@ class MoraRecalculoService
 				$idsGrupo = isset($porGrupo[$grupoKey]) ? $porGrupo[$grupoKey] : [];
 				$esDuplicado = count($idsGrupo) > 1;
 
+				$tipoIns = isset($c->tipo_inscripcion) ? strtoupper(trim((string)$c->tipo_inscripcion)) : '';
+				$esNormal = $tipoIns === 'NORMAL';
 				if ($esDuplicado && !isset($gruposPausados[$grupoKey]) && !empty($idsGrupo)) {
-					DB::table('asignacion_mora')
-						->whereIn('id_asignacion_costo', $idsGrupo)
-						->where('estado', 'PENDIENTE')
+					DB::table('asignacion_mora as am')
+						->join('asignacion_costos as ac', 'am.id_asignacion_costo', '=', 'ac.id_asignacion_costo')
+						->join('inscripciones as i', 'ac.cod_inscrip', '=', 'i.cod_inscrip')
+						->whereIn('am.id_asignacion_costo', $idsGrupo)
+						->where('am.estado', 'PENDIENTE')
+						->where('i.tipo_inscripcion', '!=', 'NORMAL')
 						->update([
-							'estado' => 'EN_ESPERA',
-							'updated_at' => now(),
+							'am.estado' => 'EN_ESPERA',
+							'am.updated_at' => now(),
 						]);
 					$gruposPausados[$grupoKey] = true;
 				}
@@ -320,7 +326,7 @@ class MoraRecalculoService
 					continue;
 				}
 
-				$codPensum = (string)($c->cod_pensum ?? '');
+				$codPensum = (string)(isset($c->cod_pensum) ? $c->cod_pensum : '');
 				$codPensumNorm = $this->normalizarCodPensum($codPensum);
 				$pensumsBusqueda = [$codPensum];
 				if ($codPensumNorm !== '' && $codPensumNorm !== $codPensum) {
@@ -371,13 +377,13 @@ class MoraRecalculoService
 				}
 				$this->debugLog('configuracion encontrada', [
 					'id_asignacion_costo' => $idAsign,
-					'id_datos_mora_detalle' => (int)($configuracion->id_datos_mora_detalle ?? 0),
+					'id_datos_mora_detalle' => (int)(isset($configuracion->id_datos_mora_detalle) ? $configuracion->id_datos_mora_detalle : 0),
 					'cuota' => $cuotaN,
-					'cod_pensum' => $configuracion->cod_pensum ?? null,
-					'semestre' => $configuracion->semestre ?? null,
-					'monto' => $configuracion->monto ?? null,
-					'fecha_inicio' => $configuracion->fecha_inicio ?? null,
-					'fecha_fin' => $configuracion->fecha_fin ?? null,
+					'cod_pensum' => isset($configuracion->cod_pensum) ? $configuracion->cod_pensum : null,
+					'semestre' => isset($configuracion->semestre) ? $configuracion->semestre : null,
+					'monto' => isset($configuracion->monto) ? $configuracion->monto : null,
+					'fecha_inicio' => isset($configuracion->fecha_inicio) ? $configuracion->fecha_inicio : null,
+					'fecha_fin' => isset($configuracion->fecha_fin) ? $configuracion->fecha_fin : null,
 				]);
 
 				$fechaInicioCfg = !empty($configuracion->fecha_inicio) ? Carbon::parse($configuracion->fecha_inicio)->startOfDay() : null;
@@ -385,7 +391,7 @@ class MoraRecalculoService
 				if (!$fechaInicioCfg) {
 					$this->debugLog('crearMorasFaltantes skip: configuracion sin fecha_inicio', [
 						'id_asignacion_costo' => $idAsign,
-						'id_datos_mora_detalle' => (int)($configuracion->id_datos_mora_detalle ?? 0),
+						'id_datos_mora_detalle' => (int)(isset($configuracion->id_datos_mora_detalle) ? $configuracion->id_datos_mora_detalle : 0),
 					]);
 					continue;
 				}
@@ -429,18 +435,18 @@ class MoraRecalculoService
 				}
 
 				$dias = $fechaInicioCfg->diffInDays($fechaCalculo) + 1;
-				$montoBaseDia = (float)($configuracion->monto ?? 0);
+				$montoBaseDia = (float)(isset($configuracion->monto) ? $configuracion->monto : 0);
 				$montoMora = (float)$montoBaseDia * (int)$dias;
 
-				$estadoInicial = $esDuplicado ? 'EN_ESPERA' : 'PENDIENTE';
+				$estadoInicial = ($esDuplicado && !$esNormal) ? 'EN_ESPERA' : 'PENDIENTE';
 				$observ = 'Mora aplicada automáticamente desde ' . $fechaInicioCfg->format('Y-m-d');
-				if ($esDuplicado) {
+				if ($esDuplicado && !$esNormal) {
 					$observ .= ' | EN_ESPERA por inscripción duplicada';
 				}
 
 				DB::table('asignacion_mora')->insert([
 					'id_asignacion_costo' => $idAsign,
-					'id_datos_mora_detalle' => (int)($configuracion->id_datos_mora_detalle ?? 0),
+					'id_datos_mora_detalle' => (int)(isset($configuracion->id_datos_mora_detalle) ? $configuracion->id_datos_mora_detalle : 0),
 					'fecha_inicio_mora' => $fechaInicioCfg->toDateString(),
 					'fecha_fin_mora' => $fechaFinCfg ? $fechaFinCfg->toDateString() : null,
 					'monto_base' => $montoBaseDia,
@@ -454,7 +460,7 @@ class MoraRecalculoService
 
 				$this->debugLog('crearMorasFaltantes insert ok', [
 					'id_asignacion_costo' => $idAsign,
-					'id_datos_mora_detalle' => (int)($configuracion->id_datos_mora_detalle ?? 0),
+					'id_datos_mora_detalle' => (int)(isset($configuracion->id_datos_mora_detalle) ? $configuracion->id_datos_mora_detalle : 0),
 					'fecha_inicio_mora' => $fechaInicioCfg->toDateString(),
 					'fecha_fin_mora' => $fechaFinCfg ? $fechaFinCfg->toDateString() : null,
 					'monto_base' => $montoBaseDia,

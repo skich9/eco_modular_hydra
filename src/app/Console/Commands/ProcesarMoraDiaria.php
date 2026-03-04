@@ -162,11 +162,15 @@ class ProcesarMoraDiaria extends Command
 						Log::info("[DEBUG] ¿Es duplicado?: " . ($esDuplicado ? 'SÍ' : 'NO'));
 					}
 					if ($esDuplicado && !isset($gruposPausados[$grupoKey])) {
-						AsignacionMora::whereIn('id_asignacion_costo', $idsGrupo)
-							->where('estado', 'PENDIENTE')
+						DB::table('asignacion_mora as am')
+							->join('asignacion_costos as ac', 'am.id_asignacion_costo', '=', 'ac.id_asignacion_costo')
+							->join('inscripciones as i', 'ac.cod_inscrip', '=', 'i.cod_inscrip')
+							->whereIn('am.id_asignacion_costo', $idsGrupo)
+							->where('am.estado', 'PENDIENTE')
+							->where('i.tipo_inscripcion', '!=', 'NORMAL')
 							->update([
-								'estado' => 'EN_ESPERA',
-								'updated_at' => now(),
+								'am.estado' => 'EN_ESPERA',
+								'am.updated_at' => now(),
 							]);
 						$gruposPausados[$grupoKey] = true;
 					}
