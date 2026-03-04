@@ -67,6 +67,10 @@
 				</h3>
 				<div class="search-form">
 					<div class="search-input-group" style="flex-direction: column; gap: 0.75rem;">
+						<label class="form-label">Fecha inicio de prórroga</label>
+						<input type="date" class="search-input" [ngModelOptions]="{standalone: true}" [(ngModel)]="fechaInicioProrrogaTmp" />
+					</div>
+					<div class="search-input-group" style="flex-direction: column; gap: 0.75rem; margin-top: 0.5rem;">
 						<label class="form-label">Fecha fin de prórroga</label>
 						<input type="date" class="search-input" [ngModelOptions]="{standalone: true}" [(ngModel)]="fechaFinProrrogaTmp" />
 					</div>

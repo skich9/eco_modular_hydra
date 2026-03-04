@@ -33,6 +33,7 @@ export class ProrrogaMoraComponent implements OnInit {
 	// Selección de UNA cuota (1..5) y motivo
 	selectedCuota: number | null = null;
 	motivo: string = '';
+	fechaInicioProrrogaTmp: string = '';
 	fechaFinProrrogaTmp: string = '';
 
 	constructor(
@@ -196,9 +197,20 @@ export class ProrrogaMoraComponent implements OnInit {
 		}
 
 		const fechaFin = (this.fechaFinProrrogaTmp || '').toString().trim();
+		const fechaInicio = (this.fechaInicioProrrogaTmp || '').toString().trim();
+
+		if (!fechaInicio) {
+			this.displayAlert('Seleccione la fecha inicio de prórroga', 'warning');
+			return;
+		}
 
 		if (!fechaFin) {
 			this.displayAlert('Seleccione la fecha fin de prórroga', 'warning');
+			return;
+		}
+
+		if (new Date(fechaInicio).getTime() > new Date(fechaFin).getTime()) {
+			this.displayAlert('La fecha inicio de prórroga no puede ser mayor a la fecha fin', 'warning');
 			return;
 		}
 
@@ -234,13 +246,10 @@ export class ProrrogaMoraComponent implements OnInit {
 			return;
 		}
 
-		// fecha_inicio_prorroga = hoy, fecha_fin_prorroga = fecha ingresada por usuario
-		const hoy = new Date().toISOString().split('T')[0];
-
 		// Crear array de payloads para todas las asignaciones de la cuota (NORMAL y ARRASTRE)
 		const payloads = cuotasSeleccionadas.map((cuota: any) => ({
 			id_asignacion_costo: cuota.id_asignacion_costo,
-			fecha_inicio_prorroga: hoy,
+			fecha_inicio_prorroga: fechaInicio,
 			fecha_fin_prorroga: fechaFin,
 			id_usuario: this.currentUser.id_usuario,
 			cod_ceta: this.estudianteEncontrado.cod_ceta,
@@ -273,6 +282,7 @@ export class ProrrogaMoraComponent implements OnInit {
 		this.prorrogaForm.patchValue({ fecha_inicio_prorroga: '', fecha_fin_prorroga: '', id_asignacion_costo: '' });
 		this.selectedCuota = null;
 		this.motivo = '';
+		this.fechaInicioProrrogaTmp = '';
 		this.fechaFinProrrogaTmp = '';
 	}
 
