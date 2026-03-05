@@ -157,7 +157,7 @@ class ProcesarMoraDiaria extends Command
 						continue;
 					}
 
-					// Si es duplicado y ya tiene mora, marcarla como EN_ESPERA
+					// Si es duplicado y ya tiene mora, marcarla como PAUSADA_DUPLICIDAD
 					if (in_array($asignacion->id_asignacion_costo, $debugIds)) {
 						Log::info("[DEBUG] ¿Es duplicado?: " . ($esDuplicado ? 'SÍ' : 'NO'));
 					}
@@ -169,7 +169,7 @@ class ProcesarMoraDiaria extends Command
 							->where('am.estado', 'PENDIENTE')
 							->where('i.tipo_inscripcion', '!=', 'NORMAL')
 							->update([
-								'am.estado' => 'EN_ESPERA',
+								'am.estado' => 'PAUSADA_DUPLICIDAD',
 								'am.updated_at' => now(),
 							]);
 						$gruposPausados[$grupoKey] = true;
@@ -202,7 +202,7 @@ class ProcesarMoraDiaria extends Command
 
 					// Verificar si ya existe asignación de mora para esta cuota
 					$asignacionMora = AsignacionMora::where('id_asignacion_costo', $asignacion->id_asignacion_costo)
-						->whereIn('estado', ['PENDIENTE', 'EN_ESPERA'])
+						->whereIn('estado', ['PENDIENTE', 'CONGELADA_PRORROGA', 'PAUSADA_DUPLICIDAD', 'CERRADA_SIN_CUOTA'])
 						->orderBy('id_asignacion_mora', 'desc')
 						->first();
 
@@ -217,6 +217,7 @@ class ProcesarMoraDiaria extends Command
 						->first();
 
 					if ($asignacionMora) {
+						$estadoMora = strtoupper(trim((string)$asignacionMora->estado));
 						// Si hay prórroga terminada, verificar si necesita crear nueva mora post-prórroga
 						if ($prorrogaTerminada) {
 							// Verificar si ya existe mora posterior a la prórroga
@@ -228,7 +229,7 @@ class ProcesarMoraDiaria extends Command
 								// Crear nueva mora post-prórroga si no existe
 								$moraPostProrroga = AsignacionMora::where('id_asignacion_costo', $asignacion->id_asignacion_costo)
 									->where('fecha_inicio_mora', '>=', $fechaInicioPosterior)
-									->whereIn('estado', ['PENDIENTE', 'EN_ESPERA'])
+									->whereIn('estado', ['PENDIENTE', 'CONGELADA_PRORROGA', 'PAUSADA_DUPLICIDAD', 'CERRADA_SIN_CUOTA'])
 									->orderBy('id_asignacion_mora', 'desc')
 									->first();
 
@@ -267,6 +268,10 @@ class ProcesarMoraDiaria extends Command
 								}
 							} else {
 								// Actualizar mora normal (sin prórroga o mora ya posterior)
+								if (in_array($estadoMora, ['CONGELADA_PRORROGA', 'PAUSADA_DUPLICIDAD', 'CERRADA_SIN_CUOTA'])) {
+									$progressBar->advance();
+									continue;
+								}
 								$fechaFinMora = Carbon::parse($asignacionMora->fecha_fin_mora);
 								$fechaCalculo = $hoy->lt($fechaFinMora) ? $hoy : $fechaFinMora;
 								$diasTranscurridos = Carbon::parse($asignacionMora->fecha_inicio_mora)->diffInDays($fechaCalculo) + 1;
@@ -280,6 +285,10 @@ class ProcesarMoraDiaria extends Command
 							}
 						} else {
 							// Actualizar mora existente sin prórroga
+							if (in_array($estadoMora, ['CONGELADA_PRORROGA', 'PAUSADA_DUPLICIDAD', 'CERRADA_SIN_CUOTA'])) {
+								$progressBar->advance();
+								continue;
+							}
 							$fechaFinMora = Carbon::parse($asignacionMora->fecha_fin_mora);
 							$fechaCalculo = $hoy->lt($fechaFinMora) ? $hoy : $fechaFinMora;
 							$diasTranscurridos = Carbon::parse($asignacionMora->fecha_inicio_mora)->diffInDays($fechaCalculo) + 1;
@@ -322,11 +331,8 @@ class ProcesarMoraDiaria extends Command
 							$diasTranscurridos = $fechaInicioMora->diffInDays($fechaCalculo) + 1;
 							$montoMoraCalculado = $configuracionMora->monto * $diasTranscurridos;
 
-							$estadoInicial = $esDuplicado ? 'EN_ESPERA' : 'PENDIENTE';
+							$estadoInicial = 'PENDIENTE';
 							$observacionBase = 'Mora aplicada automáticamente desde ' . $fechaInicioMora->format('Y-m-d');
-							if ($esDuplicado) {
-								$observacionBase .= ' | EN_ESPERA por inscripción duplicada';
-							}
 
 							$nuevaMora = AsignacionMora::create([
 								'id_asignacion_costo' => $asignacion->id_asignacion_costo,

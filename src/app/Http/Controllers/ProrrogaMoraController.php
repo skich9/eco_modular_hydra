@@ -152,6 +152,9 @@ class ProrrogaMoraController extends Controller
 			}
 
 			$input = $request->all();
+			if (!isset($input['activo'])) {
+				$input['activo'] = true;
+			}
 			$idAsignOriginal = isset($input['id_asignacion_costo']) ? (int)$input['id_asignacion_costo'] : 0;
 			$idAsignResuelto = $this->resolverAsignacionCostoNormal($idAsignOriginal, isset($input['cod_ceta']) ? $input['cod_ceta'] : null);
 			if ($idAsignResuelto && $idAsignResuelto !== $idAsignOriginal) {
@@ -163,8 +166,8 @@ class ProrrogaMoraController extends Controller
 					'cod_ceta' => isset($input['cod_ceta']) ? $input['cod_ceta'] : null,
 				]);
 			}
-			$fechaInicioProrroga = Carbon::parse($input['fecha_inicio_prorroga']);
-			$fechaFinProrroga = Carbon::parse($input['fecha_fin_prorroga']);
+			$fechaInicioProrroga = Carbon::parse($input['fecha_inicio_prorroga'])->startOfDay();
+			$fechaFinProrroga = Carbon::parse($input['fecha_fin_prorroga'])->startOfDay();
 			$hoy = Carbon::today();
 
 			// Obtener la asignación de costo
@@ -182,10 +185,12 @@ class ProrrogaMoraController extends Controller
 				], Response::HTTP_NOT_FOUND);
 			}
 
-			// Desactivar prórrogas anteriores para el mismo estudiante y asignación de costo
+			// Desactivar solo prórrogas activas que se solapen con el nuevo rango
 			ProrrogaMora::where('cod_ceta', $input['cod_ceta'])
 				->where('id_asignacion_costo', $input['id_asignacion_costo'])
 				->where('activo', true)
+				->where('fecha_inicio_prorroga', '<=', $fechaFinProrroga)
+				->where('fecha_fin_prorroga', '>=', $fechaInicioProrroga)
 				->update(['activo' => false]);
 			$this->prorrogaLog('info', 'store.desactivar_prorrogas_previas_ok', [
 				'request_id' => $requestId,
@@ -206,9 +211,10 @@ class ProrrogaMoraController extends Controller
 
 			if ($moraActiva) {
 				// Congelar la mora (sin modificar fecha_fin_mora). Se calcula el monto hasta el día anterior al inicio de prórroga.
-				$fechaTopeProrroga = $fechaInicioProrroga->copy()->subDay();
+				$fechaTopeProrroga = $fechaInicioProrroga->copy()->subDay()->startOfDay();
 				$fechaFinConfigurada = !empty($moraActiva->fecha_fin_mora) ? Carbon::parse($moraActiva->fecha_fin_mora)->startOfDay() : null;
 				$fechaTopeCalculo = $fechaFinConfigurada && $fechaFinConfigurada->lt($fechaTopeProrroga) ? $fechaFinConfigurada : $fechaTopeProrroga;
+				$fechaTopeCalculo = $fechaTopeCalculo->copy()->startOfDay();
 
 				// Recalcular monto de mora hasta el día tope de cálculo
 				$fechaInicioMora = !empty($moraActiva->fecha_inicio_mora) ? Carbon::parse($moraActiva->fecha_inicio_mora)->startOfDay() : null;
@@ -217,7 +223,7 @@ class ProrrogaMoraController extends Controller
 					$diasHastaCongela = $fechaInicioMora->diffInDays($fechaTopeCalculo) + 1;
 				}
 				$moraActiva->monto_mora = $moraActiva->monto_base * (int)$diasHastaCongela;
-				$moraActiva->estado = 'EN_ESPERA';
+				$moraActiva->estado = 'CONGELADA_PRORROGA';
 				$moraActiva->observaciones = ($moraActiva->observaciones ? $moraActiva->observaciones : '') .
 					" | Congelada el {$hoy->format('Y-m-d')} por prórroga hasta {$fechaTopeProrroga->format('Y-m-d')}";
 				$moraActiva->save();
@@ -347,6 +353,9 @@ class ProrrogaMoraController extends Controller
 					}
 
 					$input = $validator->validated();
+					if (!isset($input['activo'])) {
+						$input['activo'] = true;
+					}
 					$idAsignOriginal = isset($input['id_asignacion_costo']) ? (int)$input['id_asignacion_costo'] : 0;
 					$idAsignResuelto = $this->resolverAsignacionCostoNormal($idAsignOriginal, isset($input['cod_ceta']) ? $input['cod_ceta'] : null);
 					if ($idAsignResuelto && $idAsignResuelto !== $idAsignOriginal) {
@@ -360,8 +369,8 @@ class ProrrogaMoraController extends Controller
 						]);
 					}
 					$hoy = Carbon::now();
-					$fechaInicioProrroga = Carbon::parse($input['fecha_inicio_prorroga']);
-					$fechaFinProrroga = Carbon::parse($input['fecha_fin_prorroga']);
+					$fechaInicioProrroga = Carbon::parse($input['fecha_inicio_prorroga'])->startOfDay();
+					$fechaFinProrroga = Carbon::parse($input['fecha_fin_prorroga'])->startOfDay();
 
 					// Buscar mora activa para esta asignación de costo
 					$moraActiva = AsignacionMora::where('id_asignacion_costo', $input['id_asignacion_costo'])
@@ -378,6 +387,8 @@ class ProrrogaMoraController extends Controller
 					ProrrogaMora::where('cod_ceta', $input['cod_ceta'])
 						->where('id_asignacion_costo', $input['id_asignacion_costo'])
 						->where('activo', true)
+						->where('fecha_inicio_prorroga', '<=', $fechaFinProrroga)
+						->where('fecha_fin_prorroga', '>=', $fechaInicioProrroga)
 						->update(['activo' => false]);
 
 					// Si hay mora activa, congelarla
@@ -392,7 +403,7 @@ class ProrrogaMoraController extends Controller
 							$diasHastaCongela = $fechaInicioMora->diffInDays($fechaTopeCalculo) + 1;
 						}
 						$moraActiva->monto_mora = $moraActiva->monto_base * (int)$diasHastaCongela;
-						$moraActiva->estado = 'EN_ESPERA';
+						$moraActiva->estado = 'CONGELADA_PRORROGA';
 						$moraActiva->observaciones = ($moraActiva->observaciones ? $moraActiva->observaciones : '') .
 							" | Congelada el {$hoy->format('Y-m-d')} por prórroga hasta {$fechaTopeProrroga->format('Y-m-d')}";
 						$moraActiva->save();
@@ -702,8 +713,7 @@ class ProrrogaMoraController extends Controller
 
 			if ($activoAnterior === true && $prorroga->activo === false) {
 				$actualizados = AsignacionMora::where('id_asignacion_costo', $prorroga->id_asignacion_costo)
-					->where('estado', 'EN_ESPERA')
-					->whereNotNull('fecha_fin_mora')
+					->where('estado', 'CONGELADA_PRORROGA')
 					->update([
 						'estado' => 'PENDIENTE',
 						'updated_at' => now(),

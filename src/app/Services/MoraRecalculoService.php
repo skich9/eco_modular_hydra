@@ -64,6 +64,16 @@ class MoraRecalculoService
 					continue;
 				}
 
+				$estado = isset($mora->estado) ? strtoupper(trim((string)$mora->estado)) : '';
+				if ($estado !== 'PENDIENTE') {
+					$this->debugLog('recalcular skip: estado no recalculable', [
+						'id_asignacion_mora' => $idAsignacionMora,
+						'id_asignacion_costo' => $idAsignacionCosto,
+						'estado' => $estado,
+					]);
+					continue;
+				}
+
 				$prorrogaActiva = DB::table('prorrogas_mora')
 					->where('id_asignacion_costo', $idAsignacionCosto)
 					->where('activo', true)
@@ -167,7 +177,7 @@ class MoraRecalculoService
 		return DB::table('asignacion_mora as am')
 			->join('asignacion_costos as ac', 'am.id_asignacion_costo', '=', 'ac.id_asignacion_costo')
 			->whereIn('am.id_asignacion_costo', $asignacionIds)
-			->whereIn('am.estado', ['PENDIENTE', 'EN_ESPERA'])
+			->whereIn('am.estado', ['PENDIENTE', 'CONGELADA_PRORROGA', 'PAUSADA_DUPLICIDAD', 'CERRADA_SIN_CUOTA'])
 			->select(
 				'am.id_asignacion_mora',
 				'am.id_asignacion_costo',
@@ -246,7 +256,7 @@ class MoraRecalculoService
 		$idsAsign = array_values(array_unique(array_map(function($r){ return (int)(isset($r->id_asignacion_costo) ? $r->id_asignacion_costo : 0); }, $cuotas)));
 		$existentes = DB::table('asignacion_mora')
 			->whereIn('id_asignacion_costo', $idsAsign)
-			->whereIn('estado', ['PENDIENTE', 'EN_ESPERA'])
+			->whereIn('estado', ['PENDIENTE', 'CONGELADA_PRORROGA', 'PAUSADA_DUPLICIDAD', 'CERRADA_SIN_CUOTA', 'EN_ESPERA'])
 			->pluck('id_asignacion_costo')
 			->map(function($v){ return (int)$v; })
 			->toArray();
@@ -299,14 +309,14 @@ class MoraRecalculoService
 						->where('am.estado', 'PENDIENTE')
 						->where('i.tipo_inscripcion', '!=', 'NORMAL')
 						->update([
-							'am.estado' => 'EN_ESPERA',
+							'am.estado' => 'PAUSADA_DUPLICIDAD',
 							'am.updated_at' => now(),
 						]);
 					$gruposPausados[$grupoKey] = true;
 				}
 
 				if (isset($existentesMap[$idAsign])) {
-					$this->debugLog('crearMorasFaltantes skip: ya existe mora pendiente/en_espera', [
+					$this->debugLog('crearMorasFaltantes skip: ya existe mora pendiente/pausada', [
 						'id_asignacion_costo' => $idAsign,
 					]);
 					continue;
@@ -438,10 +448,10 @@ class MoraRecalculoService
 				$montoBaseDia = (float)(isset($configuracion->monto) ? $configuracion->monto : 0);
 				$montoMora = (float)$montoBaseDia * (int)$dias;
 
-				$estadoInicial = ($esDuplicado && !$esNormal) ? 'EN_ESPERA' : 'PENDIENTE';
+				$estadoInicial = ($esDuplicado && !$esNormal) ? 'PAUSADA_DUPLICIDAD' : 'PENDIENTE';
 				$observ = 'Mora aplicada automáticamente desde ' . $fechaInicioCfg->format('Y-m-d');
 				if ($esDuplicado && !$esNormal) {
-					$observ .= ' | EN_ESPERA por inscripción duplicada';
+					$observ .= ' | PAUSADA_DUPLICIDAD por inscripción duplicada';
 				}
 
 				DB::table('asignacion_mora')->insert([
