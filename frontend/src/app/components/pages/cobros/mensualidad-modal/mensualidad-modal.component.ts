@@ -368,6 +368,15 @@ export class MensualidadModalComponent implements OnInit, OnChanges {
     return moraItem;
   }
 
+  // Obtener monto de mora pendiente (usado para cálculos internos)
+  private getMoraPendienteMonto(): number {
+    try {
+      return this.moraDisplay;
+    } catch {
+      return 0;
+    }
+  }
+
   // Mora a mostrar en el modal según la selección actual
   get moraDisplay(): number {
     try {
@@ -1811,6 +1820,17 @@ export class MensualidadModalComponent implements OnInit, OnChanges {
       throw new Error('No hay asignaciones disponibles para calcular descuento prorrateado');
     }
 
+    // Obtener el monto de mora para restarlo del monto parcial
+    const moraMonto = this.getMoraPendienteMonto();
+    // El monto real de mensualidad es el monto parcial menos la mora
+    const montoMensualidad = Math.max(0, montoPagoParcial - moraMonto);
+
+    console.log('[MensualidadModal] Montos para cálculo de descuento:', {
+      montoPagoParcial,
+      moraMonto,
+      montoMensualidad
+    });
+
     let descuentoTotal = 0;
 
     // Calcular descuento prorrateado para cada cuota que se va a pagar
@@ -1846,13 +1866,13 @@ export class MensualidadModalComponent implements OnInit, OnChanges {
         );
       }
 
-      // Fórmula: descuento_pago * (monto_pago_parcial / total_debe_pagar)
-      // Solo calculamos el descuento proporcional al pago actual, sin restar descuento_aplicado
-      const proporcion = montoPagoParcial / totalDebePagar;
+      // Fórmula: descuento_pago * (monto_mensualidad / total_debe_pagar)
+      // Usar montoMensualidad (sin mora) para calcular la proporción
+      const proporcion = montoMensualidad / totalDebePagar;
       const descuentoProrrateado = descuentoPago * proporcion;
 
       console.log('[MensualidadModal] Cálculo de descuento prorrateado:', {
-        montoPagoParcial,
+        montoMensualidad,
         totalDebePagar,
         descuentoPago,
         proporcion,

@@ -17,6 +17,7 @@ class AsignacionMora extends Model
 	protected $fillable = [
 		'id_asignacion_costo',
 		'id_asignacion_vinculada',
+		'id_mora_vinculada',
 		'id_datos_mora_detalle',
 		'fecha_inicio_mora',
 		'fecha_fin_mora',
@@ -49,6 +50,16 @@ class AsignacionMora extends Model
 	public function datosMoraDetalle()
 	{
 		return $this->belongsTo(DatosMoraDetalle::class, 'id_datos_mora_detalle', 'id_datos_mora_detalle');
+	}
+
+	public function moraVinculada()
+	{
+		return $this->belongsTo(self::class, 'id_mora_vinculada', 'id_asignacion_mora');
+	}
+
+	public function morasHijas()
+	{
+		return $this->hasMany(self::class, 'id_mora_vinculada', 'id_asignacion_mora');
 	}
 
 	/**

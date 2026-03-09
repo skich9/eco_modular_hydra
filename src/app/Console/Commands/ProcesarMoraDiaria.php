@@ -18,7 +18,7 @@ class ProcesarMoraDiaria extends Command
 	 *
 	 * @var string
 	 */
-	protected $signature = 'mora:procesar-diaria {--force : Forzar ejecución sin confirmación}';
+	protected $signature = 'mora:procesar-diaria {--force : Forzar ejecución sin confirmación} {--desactivar-prorrogas : Desactivar prórrogas vencidas durante el procesamiento}';
 
 	/**
 	 * The console command description.
@@ -42,10 +42,15 @@ class ProcesarMoraDiaria extends Command
 		$errores = 0;
 
 		try {
-			// 1. Desactivar prórrogas vencidas
-			$this->info("\n1. Desactivando prórrogas vencidas...");
-			$prorrogasDesactivadas = $this->desactivarProrrogasVencidas($hoy);
-			$this->info("   ✓ Prórrogas desactivadas: {$prorrogasDesactivadas}");
+			// 1. Desactivar prórrogas vencidas (opcional)
+			$this->info("\n1. Prórrogas vencidas...");
+			if ($this->shouldDesactivarProrrogasVencidas()) {
+				$this->info("   - Desactivando prórrogas vencidas...");
+				$prorrogasDesactivadas = $this->desactivarProrrogasVencidas($hoy);
+				$this->info("   ✓ Prórrogas desactivadas: {$prorrogasDesactivadas}");
+			} else {
+				$this->info("   - Saltado (configurado para NO desactivar prórrogas vencidas)");
+			}
 
 			// 2. Cerrar moras de cuotas que ya fueron pagadas
 			$this->info("\n2. Cerrando moras de cuotas pagadas...");
@@ -53,12 +58,48 @@ class ProcesarMoraDiaria extends Command
 			$this->info("   ✓ Moras cerradas: {$morasCerradas}");
 
 			// 3. Buscar asignaciones de costos pendientes o parciales
+			// También incluir cuotas con mora CONGELADA_PRORROGA y prórroga terminada
 			$this->info("\n3. Buscando cuotas pendientes o parciales...");
+
+			// Cuotas con estado_pago PENDIENTE/PARCIAL
 			$asignacionesPendientes = AsignacionCostos::whereIn('estado_pago', ['PENDIENTE', 'PARCIAL', 'pendiente', 'parcial'])
 				->with(['pensum', 'inscripcion'])
 				->get();
 
+			// Cuotas con mora CONGELADA_PRORROGA y prórroga terminada (para crear mora post-prórroga)
+			$cuotasConProrrogaTerminada = AsignacionCostos::whereHas('asignacionesMora', function($query) {
+					$query->where('estado', 'CONGELADA_PRORROGA');
+				})
+				->whereExists(function($query) use ($hoy) {
+					$query->select(DB::raw(1))
+						->from('prorrogas_mora')
+						->whereColumn('prorrogas_mora.id_asignacion_costo', 'asignacion_costos.id_asignacion_costo')
+						->where('prorrogas_mora.fecha_fin_prorroga', '<', $hoy);
+				})
+				->with(['pensum', 'inscripcion'])
+				->get();
+
+			// Combinar ambas colecciones y eliminar duplicados
+			$asignacionesPendientes = $asignacionesPendientes->merge($cuotasConProrrogaTerminada)->unique('id_asignacion_costo');
+
 			$this->info("   ✓ Cuotas encontradas: {$asignacionesPendientes->count()}");
+
+			// Log para debug: verificar si id_asignacion_costo=225 y 233 están en la lista
+			$debugIds = [223, 224, 225, 228, 229, 233];
+			$idsEncontrados = $asignacionesPendientes->pluck('id_asignacion_costo')->toArray();
+			$debugIdsEncontrados = array_intersect($debugIds, $idsEncontrados);
+			if (!empty($debugIdsEncontrados)) {
+				Log::info('[MORA_DIARIA][DEBUG] IDs de debug encontrados en asignacionesPendientes', [
+					'ids_debug' => $debugIdsEncontrados,
+					'total_cuotas' => $asignacionesPendientes->count(),
+				]);
+			} else {
+				Log::info('[MORA_DIARIA][DEBUG] NINGÚN ID de debug encontrado en asignacionesPendientes', [
+					'ids_buscados' => $debugIds,
+					'total_cuotas' => $asignacionesPendientes->count(),
+					'primeros_10_ids' => array_slice($idsEncontrados, 0, 10),
+				]);
+			}
 
 			if ($asignacionesPendientes->isEmpty()) {
 				$this->info("\n✓ No hay cuotas pendientes para procesar.");
@@ -101,9 +142,15 @@ class ProcesarMoraDiaria extends Command
 					$numeroCuota = $asignacion->numero_cuota;
 
 					// Log detallado para asignaciones específicas
-					$debugIds = [223, 224, 228, 229];
+					$debugIds = [223, 224, 228, 229, 225];
 					if (in_array($asignacion->id_asignacion_costo, $debugIds)) {
-						Log::info("[DEBUG] Procesando asignación {$asignacion->id_asignacion_costo}");
+						Log::info('[MORA_DIARIA][DEBUG] Procesando asignación', [
+							'id_asignacion_costo' => (int)$asignacion->id_asignacion_costo,
+							'cod_ceta' => (int)(isset($asignacion->cod_ceta) ? $asignacion->cod_ceta : 0),
+							'cod_pensum' => (string)$codPensum,
+							'numero_cuota' => (int)$numeroCuota,
+							'hoy' => $hoy->toDateString(),
+						]);
 					}
 
 					// Obtener semestre y gestión de la inscripción
@@ -111,6 +158,11 @@ class ProcesarMoraDiaria extends Command
 					$gestion = $this->obtenerGestionInscripcion($asignacion);
 
 					if (!$gestion) {
+						if (in_array($asignacion->id_asignacion_costo, $debugIds)) {
+							Log::info('[MORA_DIARIA][DEBUG] skip: sin gestion', [
+								'id_asignacion_costo' => (int)$asignacion->id_asignacion_costo,
+							]);
+						}
 						$progressBar->advance();
 						continue;
 					}
@@ -153,6 +205,15 @@ class ProcesarMoraDiaria extends Command
 						if ($noCfg <= 10) {
 							$this->warn("Sin configuración de mora para id_asignacion={$asignacion->id_asignacion_costo} pensum={$codPensum} cuota={$numeroCuota} semestre={$semestre} gestion={$gestion}");
 						}
+						if (in_array($asignacion->id_asignacion_costo, $debugIds)) {
+							Log::info('[MORA_DIARIA][DEBUG] skip: sin configuracion mora', [
+								'id_asignacion_costo' => (int)$asignacion->id_asignacion_costo,
+								'cod_pensum' => (string)$codPensum,
+								'numero_cuota' => (int)$numeroCuota,
+								'semestre' => (string)$semestre,
+								'gestion' => (string)$gestion,
+							]);
+						}
 						$progressBar->advance();
 						continue;
 					}
@@ -181,11 +242,93 @@ class ProcesarMoraDiaria extends Command
 						->first();
 
 					if (in_array($asignacion->id_asignacion_costo, $debugIds)) {
-						Log::info("[DEBUG] ¿Prórroga activa?: " . ($prorrogaActiva ? 'SÍ (se salta)' : 'NO'));
+						Log::info("[DEBUG] ¿Prórroga activa?: " . ($prorrogaActiva ? 'SÍ' : 'NO'));
 					}
 
-					// Si hay prórroga activa, no procesar mora
+					if (in_array($asignacion->id_asignacion_costo, $debugIds)) {
+						$todasProrrogas = ProrrogaMora::where('id_asignacion_costo', $asignacion->id_asignacion_costo)
+							->orderBy('id_prorroga_mora', 'asc')
+							->get(['id_prorroga_mora', 'fecha_inicio_prorroga', 'fecha_fin_prorroga', 'activo'])
+							->toArray();
+						Log::info('[MORA_DIARIA][DEBUG] TODAS las prorrogas para este id_asignacion_costo', [
+							'id_asignacion_costo' => (int)$asignacion->id_asignacion_costo,
+							'hoy' => $hoy->toDateString(),
+							'prorrogas' => $todasProrrogas,
+						]);
+					}
+
+					// Buscar prórroga terminada más reciente por ID (desactivada o vencida)
+					// Incluir prórrogas con activo=0 O prórrogas con activo=1 pero fecha_fin_prorroga < hoy
+					// Ordenar por id_prorroga_mora DESC para obtener la última prórroga creada
+					$prorrogaTerminada = ProrrogaMora::where('id_asignacion_costo', $asignacion->id_asignacion_costo)
+						->where('fecha_fin_prorroga', '<', $hoy)
+						->where(function($q) use ($hoy) {
+							$q->where('activo', 0)
+							  ->orWhere(function($q2) use ($hoy) {
+								  $q2->where('activo', 1)
+									 ->where('fecha_fin_prorroga', '<', $hoy);
+							  });
+						})
+						->orderBy('id_prorroga_mora', 'desc')
+						->first();
+
+					// Si hay prórroga activa Y hay prórroga terminada, verificar si hay gap para crear mora entre prórrogas
+					if ($prorrogaActiva && $prorrogaTerminada) {
+						$fechaFinAnterior = Carbon::parse($prorrogaTerminada->fecha_fin_prorroga)->startOfDay();
+						$fechaInicioActiva = Carbon::parse($prorrogaActiva->fecha_inicio_prorroga)->startOfDay();
+						$fechaInicioGap = $fechaFinAnterior->copy()->addDay();
+						$fechaFinGap = $fechaInicioActiva->copy()->subDay();
+
+						if ($fechaInicioGap->lte($fechaFinGap)) {
+							// Hay gap entre prórrogas, verificar si ya existe mora en ese rango
+							$moraEnGap = AsignacionMora::where('id_asignacion_costo', $asignacion->id_asignacion_costo)
+								->where('fecha_inicio_mora', '>=', $fechaInicioGap)
+								->where('fecha_inicio_mora', '<=', $fechaFinGap)
+								->whereIn('estado', ['PENDIENTE', 'CONGELADA_PRORROGA', 'PAUSADA_DUPLICIDAD', 'CERRADA_SIN_CUOTA', 'EN_ESPERA'])
+								->first();
+
+							if (!$moraEnGap) {
+								// Crear mora entre prórrogas
+								$fechaFinMoraCfg = Carbon::parse($configuracionMora->fecha_fin);
+								$fechaCalculoGap = $fechaFinGap->lt($fechaFinMoraCfg) ? $fechaFinGap : $fechaFinMoraCfg;
+								$diasGap = $fechaInicioGap->diffInDays($fechaCalculoGap) + 1;
+								$montoMoraGap = $configuracionMora->monto * $diasGap;
+
+								// Buscar mora anterior para vincular
+								$moraAnterior = AsignacionMora::where('id_asignacion_costo', $asignacion->id_asignacion_costo)
+									->where('fecha_inicio_mora', '<', $fechaInicioGap)
+									->orderBy('id_asignacion_mora', 'desc')
+									->first();
+
+								AsignacionMora::create([
+									'id_asignacion_costo' => $asignacion->id_asignacion_costo,
+									'id_mora_vinculada' => $moraAnterior ? $moraAnterior->id_asignacion_mora : null,
+									'id_datos_mora_detalle' => $configuracionMora->id_datos_mora_detalle,
+									'fecha_inicio_mora' => $fechaInicioGap,
+									'fecha_fin_mora' => $configuracionMora->fecha_fin,
+									'monto_base' => $configuracionMora->monto,
+									'monto_mora' => $montoMoraGap,
+									'monto_descuento' => 0,
+									'estado' => 'PENDIENTE',
+									'observaciones' => "Mora entre prórrogas aplicada desde {$fechaInicioGap->format('Y-m-d')} hasta {$fechaFinGap->format('Y-m-d')}"
+								]);
+
+								$morasCreadas++;
+							}
+						}
+					}
+
+					// Si hay prórroga activa (y ya procesamos gaps), skip el resto
 					if ($prorrogaActiva) {
+						if (in_array($asignacion->id_asignacion_costo, $debugIds)) {
+							Log::info('[MORA_DIARIA][DEBUG] skip: prorroga activa (no procesa mora)', [
+								'id_asignacion_costo' => (int)$asignacion->id_asignacion_costo,
+								'id_prorroga_mora' => (int)(isset($prorrogaActiva->id_prorroga_mora) ? $prorrogaActiva->id_prorroga_mora : 0),
+								'fecha_inicio_prorroga' => (string)(isset($prorrogaActiva->fecha_inicio_prorroga) ? $prorrogaActiva->fecha_inicio_prorroga : ''),
+								'fecha_fin_prorroga' => (string)(isset($prorrogaActiva->fecha_fin_prorroga) ? $prorrogaActiva->fecha_fin_prorroga : ''),
+								'hoy' => $hoy->toDateString(),
+							]);
+						}
 						$progressBar->advance();
 						continue;
 					}
@@ -196,13 +339,20 @@ class ProcesarMoraDiaria extends Command
 						Log::info("[DEBUG] Fecha inicio: {$fechaInicioMora->format('Y-m-d')}, Hoy: {$hoy->format('Y-m-d')}, ¿Inicio > Hoy?: " . ($fechaInicioMora->gt($hoy) ? 'SÍ (se salta)' : 'NO'));
 					}
 					if ($fechaInicioMora->gt($hoy)) {
+						if (in_array($asignacion->id_asignacion_costo, $debugIds)) {
+							Log::info('[MORA_DIARIA][DEBUG] skip: fecha_inicio_cfg > hoy', [
+								'id_asignacion_costo' => (int)$asignacion->id_asignacion_costo,
+								'fecha_inicio_cfg' => $fechaInicioMora->toDateString(),
+								'hoy' => $hoy->toDateString(),
+							]);
+						}
 						$progressBar->advance();
 						continue;
 					}
 
 					// Verificar si ya existe asignación de mora para esta cuota
 					$asignacionMora = AsignacionMora::where('id_asignacion_costo', $asignacion->id_asignacion_costo)
-						->whereIn('estado', ['PENDIENTE', 'CONGELADA_PRORROGA', 'PAUSADA_DUPLICIDAD', 'CERRADA_SIN_CUOTA'])
+						->whereIn('estado', ['PENDIENTE', 'CONGELADA_PRORROGA', 'PAUSADA_DUPLICIDAD', 'CERRADA_SIN_CUOTA', 'EN_ESPERA'])
 						->orderBy('id_asignacion_mora', 'desc')
 						->first();
 
@@ -210,38 +360,160 @@ class ProcesarMoraDiaria extends Command
 						Log::info("[DEBUG] ¿Mora existente?: " . ($asignacionMora ? "SÍ (ID: {$asignacionMora->id_asignacion_mora})" : 'NO (se debe crear)'));
 					}
 
-					// Verificar si hubo prórroga que ya terminó (Caso 2)
-					$prorrogaTerminada = ProrrogaMora::where('id_asignacion_costo', $asignacion->id_asignacion_costo)
-						->where('fecha_fin_prorroga', '<', $hoy)
-						->orderBy('fecha_fin_prorroga', 'desc')
-						->first();
+					// prorrogaTerminada ya fue buscada arriba para detectar gaps
+
+					if (in_array($asignacion->id_asignacion_costo, $debugIds)) {
+						$prorrogaTerminadaLog = null;
+						if ($prorrogaTerminada) {
+							$prorrogaTerminadaLog = [
+								'id_prorroga_mora' => (int)(isset($prorrogaTerminada->id_prorroga_mora) ? $prorrogaTerminada->id_prorroga_mora : 0),
+								'fecha_inicio_prorroga' => (string)(isset($prorrogaTerminada->fecha_inicio_prorroga) ? $prorrogaTerminada->fecha_inicio_prorroga : ''),
+								'fecha_fin_prorroga' => (string)(isset($prorrogaTerminada->fecha_fin_prorroga) ? $prorrogaTerminada->fecha_fin_prorroga : ''),
+								'activo' => (int)(isset($prorrogaTerminada->activo) ? $prorrogaTerminada->activo : 0),
+							];
+						}
+						$moraExistenteLog = null;
+						if ($asignacionMora) {
+							$moraExistenteLog = [
+								'id_asignacion_mora' => (int)(isset($asignacionMora->id_asignacion_mora) ? $asignacionMora->id_asignacion_mora : 0),
+								'estado' => (string)(isset($asignacionMora->estado) ? $asignacionMora->estado : ''),
+								'fecha_inicio_mora' => (string)(isset($asignacionMora->fecha_inicio_mora) ? $asignacionMora->fecha_inicio_mora : ''),
+								'fecha_fin_mora' => (string)(isset($asignacionMora->fecha_fin_mora) ? $asignacionMora->fecha_fin_mora : ''),
+							];
+						}
+
+						$prorrogaActivaLog = null;
+						if ($prorrogaActiva) {
+							$prorrogaActivaLog = [
+								'id_prorroga_mora' => (int)(isset($prorrogaActiva->id_prorroga_mora) ? $prorrogaActiva->id_prorroga_mora : 0),
+								'fecha_inicio_prorroga' => (string)(isset($prorrogaActiva->fecha_inicio_prorroga) ? $prorrogaActiva->fecha_inicio_prorroga : ''),
+								'fecha_fin_prorroga' => (string)(isset($prorrogaActiva->fecha_fin_prorroga) ? $prorrogaActiva->fecha_fin_prorroga : ''),
+								'activo' => (int)(isset($prorrogaActiva->activo) ? $prorrogaActiva->activo : 0),
+							];
+						}
+
+						Log::info('[MORA_DIARIA][DEBUG] prorrogaTerminada lookup', [
+							'id_asignacion_costo' => (int)$asignacion->id_asignacion_costo,
+							'hoy' => $hoy->toDateString(),
+							'prorroga_terminada' => $prorrogaTerminadaLog,
+							'prorroga_activa' => $prorrogaActivaLog,
+							'mora_existente' => $moraExistenteLog,
+						]);
+					}
 
 					if ($asignacionMora) {
 						$estadoMora = strtoupper(trim((string)$asignacionMora->estado));
 						// Si hay prórroga terminada, verificar si necesita crear nueva mora post-prórroga
 						if ($prorrogaTerminada) {
 							// Verificar si ya existe mora posterior a la prórroga
-							$fechaFinProrroga = Carbon::parse($prorrogaTerminada->fecha_fin_prorroga);
+							$fechaFinProrroga = Carbon::parse($prorrogaTerminada->fecha_fin_prorroga)->startOfDay();
 							$fechaInicioPosterior = $fechaFinProrroga->copy()->addDay();
 
-							// Verificar si la mora actual es anterior a la prórroga
-							if (Carbon::parse($asignacionMora->fecha_inicio_mora)->lt($fechaFinProrroga)) {
+							// Buscar la mora CONGELADA_PRORROGA que corresponde a esta prórroga terminada
+							// Esta será la mora que se debe vincular a la nueva mora post-prórroga
+							// IMPORTANTE: Buscar la mora CONGELADA más antigua (id más bajo) para vincular correctamente
+							// en casos de múltiples prórrogas sobre la misma mora
+							$moraCongeladaVincular = AsignacionMora::where('id_asignacion_costo', $asignacion->id_asignacion_costo)
+								->where('estado', 'CONGELADA_PRORROGA')
+								->orderBy('id_asignacion_mora', 'asc')  // ASC para obtener la más antigua
+								->first();
+
+							// Si no hay mora congelada, usar la mora actual
+							$moraAVincular = $moraCongeladaVincular ?: $asignacionMora;
+
+							// Verificar si la mora a vincular es anterior o igual a la fecha fin de prórroga
+							if ($moraAVincular && Carbon::parse($moraAVincular->fecha_inicio_mora)->startOfDay()->lte($fechaFinProrroga)) {
+								if (in_array($asignacion->id_asignacion_costo, $debugIds)) {
+									Log::info('[MORA_DIARIA][DEBUG] post-prorroga check: mora anterior a fin_prorroga', [
+										'id_asignacion_costo' => (int)$asignacion->id_asignacion_costo,
+										'id_asignacion_mora_actual' => (int)$asignacionMora->id_asignacion_mora,
+										'id_mora_congelada_vincular' => $moraCongeladaVincular ? (int)$moraCongeladaVincular->id_asignacion_mora : null,
+										'id_mora_a_vincular' => (int)$moraAVincular->id_asignacion_mora,
+										'mora_fecha_inicio' => (string)$moraAVincular->fecha_inicio_mora,
+										'prorroga_fin' => $fechaFinProrroga->toDateString(),
+										'inicio_posterior' => $fechaInicioPosterior->toDateString(),
+									]);
+								}
 								// Crear nueva mora post-prórroga si no existe
 								$moraPostProrroga = AsignacionMora::where('id_asignacion_costo', $asignacion->id_asignacion_costo)
 									->where('fecha_inicio_mora', '>=', $fechaInicioPosterior)
-									->whereIn('estado', ['PENDIENTE', 'CONGELADA_PRORROGA', 'PAUSADA_DUPLICIDAD', 'CERRADA_SIN_CUOTA'])
+									->whereIn('estado', ['PENDIENTE', 'CONGELADA_PRORROGA', 'PAUSADA_DUPLICIDAD', 'CERRADA_SIN_CUOTA', 'EN_ESPERA'])
 									->orderBy('id_asignacion_mora', 'desc')
 									->first();
 
+								if (in_array($asignacion->id_asignacion_costo, $debugIds)) {
+									$existePostSinFiltro = AsignacionMora::where('id_asignacion_costo', $asignacion->id_asignacion_costo)
+										->where('fecha_inicio_mora', '>=', $fechaInicioPosterior)
+										->orderBy('id_asignacion_mora', 'desc')
+										->first();
+									Log::info('[MORA_DIARIA][DEBUG] moraPostProrroga existence (with/without estado filter)', [
+										'id_asignacion_costo' => (int)$asignacion->id_asignacion_costo,
+										'con_filtro' => $moraPostProrroga ? (int)$moraPostProrroga->id_asignacion_mora : null,
+										'sin_filtro' => $existePostSinFiltro ? [
+											'id_asignacion_mora' => (int)$existePostSinFiltro->id_asignacion_mora,
+											'estado' => (string)$existePostSinFiltro->estado,
+											'fecha_inicio_mora' => (string)$existePostSinFiltro->fecha_inicio_mora,
+										] : null,
+									]);
+								}
+
+								if (in_array($asignacion->id_asignacion_costo, $debugIds)) {
+									$moraPostExistenteLog = null;
+									if ($moraPostProrroga) {
+										$moraPostExistenteLog = [
+											'id_asignacion_mora' => (int)(isset($moraPostProrroga->id_asignacion_mora) ? $moraPostProrroga->id_asignacion_mora : 0),
+											'estado' => (string)(isset($moraPostProrroga->estado) ? $moraPostProrroga->estado : ''),
+											'fecha_inicio_mora' => (string)(isset($moraPostProrroga->fecha_inicio_mora) ? $moraPostProrroga->fecha_inicio_mora : ''),
+											'fecha_fin_mora' => (string)(isset($moraPostProrroga->fecha_fin_mora) ? $moraPostProrroga->fecha_fin_mora : ''),
+										];
+									}
+
+									Log::info('[MORA_DIARIA][DEBUG] moraPostProrroga lookup', [
+										'id_asignacion_costo' => (int)$asignacion->id_asignacion_costo,
+										'fecha_fin_prorroga' => $fechaFinProrroga->toDateString(),
+										'fecha_inicio_posterior' => $fechaInicioPosterior->toDateString(),
+										'mora_post_existente' => $moraPostExistenteLog,
+									]);
+								}
+
 								if (!$moraPostProrroga) {
 									// Crear nueva mora desde el día siguiente al fin de prórroga
-									$fechaFinMora = Carbon::parse($configuracionMora->fecha_fin);
-									$fechaCalculo = $hoy->lt($fechaFinMora) ? $hoy : $fechaFinMora;
-									$diasPostProrroga = $fechaInicioPosterior->diffInDays($fechaCalculo) + 1;
+									// Asegurar que fecha_inicio_posterior no sea mayor a hoy
+									if ($fechaInicioPosterior->gt($hoy)) {
+										if (in_array($asignacion->id_asignacion_costo, $debugIds)) {
+											Log::info('[MORA_DIARIA][DEBUG] skip: inicio_posterior > hoy', [
+												'id_asignacion_costo' => (int)$asignacion->id_asignacion_costo,
+												'inicio_posterior' => $fechaInicioPosterior->toDateString(),
+												'hoy' => $hoy->toDateString(),
+											]);
+										}
+										$progressBar->advance();
+										continue;
+									}
+
+									// Calcular días desde fechaInicioPosterior hasta hoy (o fecha_fin_cfg si es menor)
+									$fechaFinMoraCfg = Carbon::parse($configuracionMora->fecha_fin)->startOfDay();
+									$fechaCalculoFin = $hoy->lt($fechaFinMoraCfg) ? $hoy : $fechaFinMoraCfg;
+									$diasPostProrroga = $fechaInicioPosterior->diffInDays($fechaCalculoFin) + 1;
 									$montoMoraPostProrroga = $configuracionMora->monto * $diasPostProrroga;
+
+									if (in_array($asignacion->id_asignacion_costo, $debugIds)) {
+										Log::info('[MORA_DIARIA][DEBUG] creando mora post-prorroga', [
+											'id_asignacion_costo' => (int)$asignacion->id_asignacion_costo,
+											'id_mora_a_vincular' => $moraAVincular ? (int)$moraAVincular->id_asignacion_mora : null,
+											'fecha_inicio_posterior' => $fechaInicioPosterior->toDateString(),
+											'fecha_fin_mora_cfg' => (string)$configuracionMora->fecha_fin,
+											'fecha_calculo_fin' => $fechaCalculoFin->toDateString(),
+											'dias' => (int)$diasPostProrroga,
+											'monto_base' => (float)$configuracionMora->monto,
+											'monto_mora' => (float)$montoMoraPostProrroga,
+										]);
+									}
 
 									AsignacionMora::create([
 										'id_asignacion_costo' => $asignacion->id_asignacion_costo,
+										'id_asignacion_vinculada' => $moraAVincular ? $moraAVincular->id_asignacion_vinculada : null,
+										'id_mora_vinculada' => $moraAVincular ? (int)$moraAVincular->id_asignacion_mora : null,
 										'id_datos_mora_detalle' => $configuracionMora->id_datos_mora_detalle,
 										'fecha_inicio_mora' => $fechaInicioPosterior,
 										'fecha_fin_mora' => $configuracionMora->fecha_fin,
@@ -260,6 +532,19 @@ class ProcesarMoraDiaria extends Command
 									$diasPostProrroga = Carbon::parse($moraPostProrroga->fecha_inicio_mora)->diffInDays($fechaCalculo) + 1;
 									$montoMoraPostProrroga = $configuracionMora->monto * $diasPostProrroga;
 
+									if (in_array($asignacion->id_asignacion_costo, $debugIds)) {
+										Log::info('[MORA_DIARIA][DEBUG] actualizando mora post-prorroga', [
+											'id_asignacion_costo' => (int)$asignacion->id_asignacion_costo,
+											'id_asignacion_mora' => (int)$moraPostProrroga->id_asignacion_mora,
+											'fecha_inicio_mora' => (string)$moraPostProrroga->fecha_inicio_mora,
+											'fecha_fin_mora' => (string)$moraPostProrroga->fecha_fin_mora,
+											'fecha_calculo' => $fechaCalculo->toDateString(),
+											'dias' => (int)$diasPostProrroga,
+											'monto_base' => (float)$configuracionMora->monto,
+											'monto_mora' => (float)$montoMoraPostProrroga,
+										]);
+									}
+
 									$moraPostProrroga->monto_mora = $montoMoraPostProrroga;
 									$moraPostProrroga->estado = 'PENDIENTE';
 									$moraPostProrroga->save();
@@ -267,8 +552,16 @@ class ProcesarMoraDiaria extends Command
 									$morasActualizadas++;
 								}
 							} else {
+								if (in_array($asignacion->id_asignacion_costo, $debugIds)) {
+									Log::info('[MORA_DIARIA][DEBUG] post-prorroga skip: mora no es anterior a fin_prorroga', [
+										'id_asignacion_costo' => (int)$asignacion->id_asignacion_costo,
+										'id_asignacion_mora_actual' => (int)$asignacionMora->id_asignacion_mora,
+										'mora_fecha_inicio' => (string)$asignacionMora->fecha_inicio_mora,
+										'prorroga_fin' => $fechaFinProrroga->toDateString(),
+									]);
+								}
 								// Actualizar mora normal (sin prórroga o mora ya posterior)
-								if (in_array($estadoMora, ['CONGELADA_PRORROGA', 'PAUSADA_DUPLICIDAD', 'CERRADA_SIN_CUOTA'])) {
+								if (in_array($estadoMora, ['CONGELADA_PRORROGA', 'PAUSADA_DUPLICIDAD', 'CERRADA_SIN_CUOTA', 'EN_ESPERA'])) {
 									$progressBar->advance();
 									continue;
 								}
@@ -285,7 +578,7 @@ class ProcesarMoraDiaria extends Command
 							}
 						} else {
 							// Actualizar mora existente sin prórroga
-							if (in_array($estadoMora, ['CONGELADA_PRORROGA', 'PAUSADA_DUPLICIDAD', 'CERRADA_SIN_CUOTA'])) {
+							if (in_array($estadoMora, ['CONGELADA_PRORROGA', 'PAUSADA_DUPLICIDAD', 'CERRADA_SIN_CUOTA', 'EN_ESPERA'])) {
 								$progressBar->advance();
 								continue;
 							}
@@ -311,8 +604,23 @@ class ProcesarMoraDiaria extends Command
 							$diasPostProrroga = $fechaInicioPosterior->diffInDays($fechaCalculo) + 1;
 							$montoMoraPostProrroga = $configuracionMora->monto * $diasPostProrroga;
 
+							$moraAnterior = AsignacionMora::where('id_asignacion_costo', $asignacion->id_asignacion_costo)
+								->where('fecha_inicio_mora', '<', $fechaInicioPosterior)
+								->whereIn('estado', ['PENDIENTE', 'CONGELADA_PRORROGA', 'PAUSADA_DUPLICIDAD', 'CERRADA_SIN_CUOTA', 'EN_ESPERA', 'PAGADO', 'CONDONADO'])
+								->orderBy('id_asignacion_mora', 'desc')
+								->first();
+
+							if (in_array($asignacion->id_asignacion_costo, $debugIds)) {
+								Log::info('[MORA_DIARIA][DEBUG] enlace mora post-prorroga (sin mora existente)', [
+									'id_asignacion_costo' => (int)$asignacion->id_asignacion_costo,
+									'id_mora_anterior' => $moraAnterior ? (int)$moraAnterior->id_asignacion_mora : null,
+									'fecha_inicio_posterior' => $fechaInicioPosterior->toDateString(),
+								]);
+							}
+
 							AsignacionMora::create([
 								'id_asignacion_costo' => $asignacion->id_asignacion_costo,
+								'id_mora_vinculada' => $moraAnterior ? (int)$moraAnterior->id_asignacion_mora : null,
 								'id_datos_mora_detalle' => $configuracionMora->id_datos_mora_detalle,
 								'fecha_inicio_mora' => $fechaInicioPosterior,
 								'fecha_fin_mora' => $configuracionMora->fecha_fin,
@@ -394,21 +702,71 @@ class ProcesarMoraDiaria extends Command
 	{
 		$morasCerradas = 0;
 
-		// Buscar moras pendientes cuyas cuotas ya están pagadas
+		// Buscar moras recalculables/cerrables cuyas cuotas ya están pagadas
+		// IMPORTANTE: Solo cerrar moras en estado PENDIENTE para preservar el histórico de prórrogas
+		// Las moras CONGELADA_PRORROGA deben mantenerse intactas como registro histórico
 		$morasPendientes = AsignacionMora::where('estado', 'PENDIENTE')
-			->whereNull('fecha_fin_mora')
 			->with('asignacionCosto')
 			->get();
 
 		foreach ($morasPendientes as $mora) {
-			if ($mora->asignacionCosto && $mora->asignacionCosto->estado_pago === 'COBRADO') {
-				// Cerrar la mora (NO se modifica fecha_fin_mora, solo el estado)
-				$mora->estado = 'PAGADO';
+			try {
+				if (!$mora->asignacionCosto || (string)$mora->asignacionCosto->estado_pago !== 'COBRADO') {
+					continue;
+				}
+
+				$montoCuota = isset($mora->asignacionCosto->monto) ? (float)$mora->asignacionCosto->monto : null;
+				$montoPagadoCuota = isset($mora->asignacionCosto->monto_pagado) ? (float)$mora->asignacionCosto->monto_pagado : null;
+				$descuentoCuota = isset($mora->asignacionCosto->descuento) ? (float)$mora->asignacionCosto->descuento : null;
+				if ($montoCuota !== null && $montoPagadoCuota !== null) {
+					$netoCuota = $montoCuota;
+					if ($descuentoCuota !== null) {
+						$netoCuota = max(0, $netoCuota - $descuentoCuota);
+					}
+					if ($montoPagadoCuota + 0.0001 < $netoCuota) {
+						continue;
+					}
+				}
+
+				$fechaPagoStr = (string)(isset($mora->asignacionCosto->fecha_pago) ? $mora->asignacionCosto->fecha_pago : '');
+				if ($fechaPagoStr === '') {
+					continue;
+				}
+
+				$fechaPago = Carbon::parse($fechaPagoStr)->startOfDay();
+				$fechaCorte = $fechaPago->copy();
+				$inicio = !empty($mora->fecha_inicio_mora) ? Carbon::parse($mora->fecha_inicio_mora)->startOfDay() : null;
+				$fin = !empty($mora->fecha_fin_mora) ? Carbon::parse($mora->fecha_fin_mora)->startOfDay() : null;
+				$montoBaseDia = (float)(isset($mora->monto_base) ? $mora->monto_base : 0);
+				$desc = (float)(isset($mora->monto_descuento) ? $mora->monto_descuento : 0);
+				$montoPagado = (float)(isset($mora->monto_pagado) ? $mora->monto_pagado : 0);
+
+				if (!$inicio || $montoBaseDia <= 0) {
+					continue;
+				}
+
+				$fechaCalculo = $fechaCorte;
+				if ($fin && $fin->lt($fechaCalculo)) {
+					$fechaCalculo = $fin;
+				}
+				$fechaCalculo = $fechaCalculo->copy()->startOfDay();
+
+				$dias = 0;
+				if ($fechaCalculo->gte($inicio)) {
+					$dias = $inicio->diffInDays($fechaCalculo) + 1;
+				}
+				$montoCalc = (float)$montoBaseDia * (int)$dias;
+				$estadoFinal = 'CERRADA_SIN_CUOTA';
+
+				$mora->monto_mora = $montoCalc;
+				$mora->estado = $estadoFinal;
 				$observacionesActuales = $mora->observaciones ? $mora->observaciones : '';
-				$mora->observaciones = $observacionesActuales . " | Pagada el {$hoy->format('Y-m-d')} por pago completo de cuota.";
+				$mora->observaciones = $observacionesActuales . " | Cierre automático por cuota COBRADO (fecha_pago={$fechaPago->format('Y-m-d')}, corte={$fechaCorte->format('Y-m-d')})";
 				$mora->save();
 
 				$morasCerradas++;
+			} catch (\Throwable $e) {
+				continue;
 			}
 		}
 
@@ -570,5 +928,10 @@ class ProcesarMoraDiaria extends Command
 		}
 
 		return $desactivadas;
+	}
+
+	private function shouldDesactivarProrrogasVencidas()
+	{
+		return (bool)$this->option('desactivar-prorrogas');
 	}
 }

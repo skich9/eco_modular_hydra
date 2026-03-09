@@ -9,7 +9,7 @@ use Illuminate\Support\Facades\Log;
 
 class MoraRecalculoService
 {
-	private function debugEnabled(): bool
+	private function debugEnabled()
 	{
 		try {
 			return filter_var(env('MORA_BUSQUEDA_DEBUG', false), FILTER_VALIDATE_BOOLEAN);
@@ -18,7 +18,7 @@ class MoraRecalculoService
 		}
 	}
 
-	private function debugLog(string $msg, array $ctx = []): void
+	private function debugLog($msg, $ctx = [])
 	{
 		if (!$this->debugEnabled()) {
 			return;
@@ -30,25 +30,97 @@ class MoraRecalculoService
 		}
 	}
 
-	public function syncMorasPorBusqueda(int $codCeta, string $gestion, $hoy = null)
+	/**
+	 * Calcula el monto total acumulado de una mora, sumando recursivamente
+	 * todas las moras vinculadas a través de id_mora_vinculada.
+	 * IMPORTANTE: Resta monto_pagado y monto_descuento de cada mora para obtener el neto pendiente.
+	 * Incluye moras en cualquier estado (PENDIENTE, CONGELADA_PRORROGA, PAUSADA_DUPLICIDAD, etc.)
+	 */
+	private function calcularMoraTotalAcumulado($mora)
+	{
+		try {
+			$idMoraActual = isset($mora->id_asignacion_mora) ? (int)$mora->id_asignacion_mora : 0;
+
+			// Calcular neto de la mora actual: monto_mora - descuento - pagado
+			$montoMoraActual = (float)(isset($mora->monto_mora) ? $mora->monto_mora : 0);
+			$descuentoActual = (float)(isset($mora->monto_descuento) ? $mora->monto_descuento : 0);
+			$pagadoActual = (float)(isset($mora->monto_pagado) ? $mora->monto_pagado : 0);
+			$total = max(0, $montoMoraActual - $descuentoActual - $pagadoActual);
+
+			$this->debugLog('calcularMoraTotalAcumulado - mora actual', [
+				'id_asignacion_mora' => $idMoraActual,
+				'monto_mora' => $montoMoraActual,
+				'descuento' => $descuentoActual,
+				'pagado' => $pagadoActual,
+				'neto_actual' => $total,
+			]);
+
+			$idMoraVinculada = isset($mora->id_mora_vinculada) ? (int)$mora->id_mora_vinculada : null;
+
+			// Recursivamente sumar moras vinculadas (también restando sus descuentos y pagos)
+			$visitados = [];
+			while ($idMoraVinculada && !in_array($idMoraVinculada, $visitados)) {
+				$visitados[] = $idMoraVinculada;
+
+				$moraVinculada = DB::table('asignacion_mora')
+					->where('id_asignacion_mora', $idMoraVinculada)
+					->first(['monto_mora', 'monto_descuento', 'monto_pagado', 'id_mora_vinculada']);
+
+				if ($moraVinculada) {
+					$montoMoraVinc = (float)(isset($moraVinculada->monto_mora) ? $moraVinculada->monto_mora : 0);
+					$descuentoVinc = (float)(isset($moraVinculada->monto_descuento) ? $moraVinculada->monto_descuento : 0);
+					$pagadoVinc = (float)(isset($moraVinculada->monto_pagado) ? $moraVinculada->monto_pagado : 0);
+					$netoVinc = max(0, $montoMoraVinc - $descuentoVinc - $pagadoVinc);
+
+					$this->debugLog('calcularMoraTotalAcumulado - mora vinculada', [
+						'id_mora_actual' => $idMoraActual,
+						'id_mora_vinculada' => $idMoraVinculada,
+						'monto_mora' => $montoMoraVinc,
+						'descuento' => $descuentoVinc,
+						'pagado' => $pagadoVinc,
+						'neto_vinculada' => $netoVinc,
+					]);
+
+					$total += $netoVinc;
+					$idMoraVinculada = isset($moraVinculada->id_mora_vinculada) ? (int)$moraVinculada->id_mora_vinculada : null;
+				} else {
+					break;
+				}
+			}
+
+			$this->debugLog('calcularMoraTotalAcumulado - total final', [
+				'id_asignacion_mora' => $idMoraActual,
+				'total_acumulado' => $total,
+			]);
+
+			return $total;
+		} catch (\Throwable $e) {
+			$montoMora = (float)(isset($mora->monto_mora) ? $mora->monto_mora : 0);
+			$descuento = (float)(isset($mora->monto_descuento) ? $mora->monto_descuento : 0);
+			$pagado = (float)(isset($mora->monto_pagado) ? $mora->monto_pagado : 0);
+			return max(0, $montoMora - $descuento - $pagado);
+		}
+	}
+
+	public function syncMorasPorBusqueda($codCeta, $gestion, $hoy = null)
 	{
 		$hoy = $hoy ? Carbon::parse($hoy)->startOfDay() : Carbon::today();
 		$this->debugLog('sync start', [
-			'cod_ceta' => $codCeta,
-			'gestion' => $gestion,
+			'cod_ceta' => (int)$codCeta,
+			'gestion' => (string)$gestion,
 			'hoy' => $hoy->toDateString(),
 		]);
-		$this->crearMorasFaltantesPorBusqueda($codCeta, $gestion, $hoy);
-		$moras = $this->obtenerMorasPendientesEstudiante($codCeta, $gestion);
+		$this->crearMorasFaltantesPorBusqueda((int)$codCeta, (string)$gestion, $hoy);
+		$moras = $this->obtenerMorasPendientesEstudiante((int)$codCeta, (string)$gestion);
 		$this->debugLog('moras pendientes obtenidas', [
-			'cod_ceta' => $codCeta,
-			'gestion' => $gestion,
+			'cod_ceta' => (int)$codCeta,
+			'gestion' => (string)$gestion,
 			'count' => is_array($moras) ? count($moras) : 0,
 		]);
 		return $this->recalcularMorasPendientesPorBusqueda($moras, $hoy);
 	}
 
-	public function recalcularMorasPendientesPorBusqueda(array $moras, $hoy = null)
+	public function recalcularMorasPendientesPorBusqueda($moras, $hoy = null)
 	{
 		$hoy = $hoy ? Carbon::parse($hoy)->startOfDay() : Carbon::today();
 
@@ -153,11 +225,11 @@ class MoraRecalculoService
 		return $moras;
 	}
 
-	private function obtenerMorasPendientesEstudiante(int $codCeta, string $gestion)
+	private function obtenerMorasPendientesEstudiante($codCeta, $gestion)
 	{
 		$insIds = DB::table('inscripciones')
-			->where('cod_ceta', $codCeta)
-			->where('gestion', $gestion)
+			->where('cod_ceta', (int)$codCeta)
+			->where('gestion', (string)$gestion)
 			->pluck('cod_inscrip')
 			->toArray();
 
@@ -174,14 +246,15 @@ class MoraRecalculoService
 			return [];
 		}
 
-		return DB::table('asignacion_mora as am')
+		$moras = DB::table('asignacion_mora as am')
 			->join('asignacion_costos as ac', 'am.id_asignacion_costo', '=', 'ac.id_asignacion_costo')
 			->whereIn('am.id_asignacion_costo', $asignacionIds)
-			->whereIn('am.estado', ['PENDIENTE', 'CONGELADA_PRORROGA', 'PAUSADA_DUPLICIDAD', 'CERRADA_SIN_CUOTA'])
+			->whereIn('am.estado', ['PENDIENTE', 'CONGELADA_PRORROGA', 'PAUSADA_DUPLICIDAD', 'CERRADA_SIN_CUOTA', 'EN_ESPERA'])
 			->select(
 				'am.id_asignacion_mora',
 				'am.id_asignacion_costo',
 				'am.id_asignacion_vinculada',
+				'am.id_mora_vinculada',
 				'am.fecha_inicio_mora',
 				'am.fecha_fin_mora',
 				'am.monto_base',
@@ -196,13 +269,34 @@ class MoraRecalculoService
 			->orderBy('ac.numero_cuota', 'asc')
 			->get()
 			->toArray();
+
+		// Calcular monto_mora_total acumulado para cada mora (sumando moras vinculadas)
+		$morasConTotal = [];
+		foreach ($moras as $mora) {
+			$moraArray = (array)$mora;
+			$moraArray['monto_mora_total'] = $this->calcularMoraTotalAcumulado($mora);
+			$morasConTotal[] = $moraArray;
+
+			$this->debugLog('mora con total calculado', [
+				'id_asignacion_mora' => isset($mora->id_asignacion_mora) ? (int)$mora->id_asignacion_mora : 0,
+				'monto_mora' => isset($mora->monto_mora) ? (float)$mora->monto_mora : 0,
+				'monto_mora_total' => $moraArray['monto_mora_total'],
+				'id_mora_vinculada' => isset($mora->id_mora_vinculada) ? (int)$mora->id_mora_vinculada : null,
+			]);
+		}
+
+		$this->debugLog('moras retornadas con totales', [
+			'count' => count($morasConTotal),
+		]);
+
+		return $morasConTotal;
 	}
 
-	private function crearMorasFaltantesPorBusqueda(int $codCeta, string $gestion, Carbon $hoy)
+	private function crearMorasFaltantesPorBusqueda($codCeta, $gestion, $hoy)
 	{
 		$this->debugLog('crearMorasFaltantes start', [
-			'cod_ceta' => $codCeta,
-			'gestion' => $gestion,
+			'cod_ceta' => (int)$codCeta,
+			'gestion' => (string)$gestion,
 			'hoy' => $hoy->toDateString(),
 		]);
 		try {
@@ -315,25 +409,92 @@ class MoraRecalculoService
 					$gruposPausados[$grupoKey] = true;
 				}
 
-				if (isset($existentesMap[$idAsign])) {
-					$this->debugLog('crearMorasFaltantes skip: ya existe mora pendiente/pausada', [
-						'id_asignacion_costo' => $idAsign,
-					]);
-					continue;
-				}
-
 				$prorrogaActiva = DB::table('prorrogas_mora')
 					->where('id_asignacion_costo', $idAsign)
 					->where('activo', true)
 					->where('fecha_inicio_prorroga', '<=', $hoy)
 					->where('fecha_fin_prorroga', '>=', $hoy)
-					->exists();
+					->first(['fecha_inicio_prorroga', 'fecha_fin_prorroga']);
+
+				$prorrogaTerminada = DB::table('prorrogas_mora')
+					->where('id_asignacion_costo', $idAsign)
+					->where('fecha_fin_prorroga', '<', $hoy)
+					->orderBy('fecha_fin_prorroga', 'desc')
+					->first(['fecha_fin_prorroga']);
+				$inicioPosterior = null;
+				if ($prorrogaTerminada && !empty($prorrogaTerminada->fecha_fin_prorroga)) {
+					$inicioPosterior = Carbon::parse($prorrogaTerminada->fecha_fin_prorroga)->startOfDay()->addDay();
+				}
+
+				// Si hay prórroga activa Y hay prórroga terminada, verificar si hay gap para crear mora entre prórrogas
+				if ($prorrogaActiva && $prorrogaTerminada) {
+					$fechaFinAnterior = Carbon::parse($prorrogaTerminada->fecha_fin_prorroga)->startOfDay();
+					$fechaInicioActiva = Carbon::parse($prorrogaActiva->fecha_inicio_prorroga)->startOfDay();
+					$fechaInicioGap = $fechaFinAnterior->copy()->addDay();
+					$fechaFinGap = $fechaInicioActiva->copy()->subDay();
+
+					if ($fechaInicioGap->lte($fechaFinGap)) {
+						// Hay gap entre prórrogas, verificar si ya existe mora en ese rango
+						$moraEnGap = DB::table('asignacion_mora')
+							->where('id_asignacion_costo', $idAsign)
+							->where('fecha_inicio_mora', '>=', $fechaInicioGap->toDateString())
+							->where('fecha_inicio_mora', '<=', $fechaFinGap->toDateString())
+							->whereIn('estado', ['PENDIENTE', 'CONGELADA_PRORROGA', 'PAUSADA_DUPLICIDAD', 'CERRADA_SIN_CUOTA', 'EN_ESPERA'])
+							->exists();
+
+						if (!$moraEnGap) {
+							$this->debugLog('crearMorasFaltantes: creando mora entre prorrogas (gap)', [
+								'id_asignacion_costo' => $idAsign,
+								'fecha_inicio_gap' => $fechaInicioGap->toDateString(),
+								'fecha_fin_gap' => $fechaFinGap->toDateString(),
+							]);
+							// Continuar con la lógica normal de creación (no skip)
+						} else {
+							$this->debugLog('crearMorasFaltantes skip: ya existe mora en gap entre prorrogas', [
+								'id_asignacion_costo' => $idAsign,
+								'fecha_inicio_gap' => $fechaInicioGap->toDateString(),
+							]);
+							continue;
+						}
+					} else {
+						// No hay gap (prórrogas consecutivas), skip
+						$this->debugLog('crearMorasFaltantes skip: prorroga activa sin gap', [
+							'id_asignacion_costo' => $idAsign,
+							'hoy' => $hoy->toDateString(),
+						]);
+						continue;
+					}
+				}
+
+				// Si hay prórroga activa sin prórroga terminada, skip
 				if ($prorrogaActiva) {
 					$this->debugLog('crearMorasFaltantes skip: prorroga activa', [
 						'id_asignacion_costo' => $idAsign,
 						'hoy' => $hoy->toDateString(),
 					]);
 					continue;
+				}
+
+				if (isset($existentesMap[$idAsign]) && !$inicioPosterior) {
+					$this->debugLog('crearMorasFaltantes skip: ya existe mora pendiente/pausada', [
+						'id_asignacion_costo' => $idAsign,
+					]);
+					continue;
+				}
+
+				if (isset($existentesMap[$idAsign]) && $inicioPosterior) {
+					$yaTieneMoraPost = DB::table('asignacion_mora')
+						->where('id_asignacion_costo', $idAsign)
+						->where('fecha_inicio_mora', '>=', $inicioPosterior->toDateString())
+						->whereIn('estado', ['PENDIENTE', 'CONGELADA_PRORROGA', 'PAUSADA_DUPLICIDAD', 'CERRADA_SIN_CUOTA', 'EN_ESPERA', 'PAGADO', 'CONDONADO'])
+						->exists();
+					if ($yaTieneMoraPost) {
+						$this->debugLog('crearMorasFaltantes skip: ya existe mora post-prorroga', [
+							'id_asignacion_costo' => $idAsign,
+							'inicio_posterior' => $inicioPosterior->toDateString(),
+						]);
+						continue;
+					}
 				}
 
 				$codPensum = (string)(isset($c->cod_pensum) ? $c->cod_pensum : '');
@@ -414,16 +575,8 @@ class MoraRecalculoService
 					continue;
 				}
 
-				$prorrogaTerminada = DB::table('prorrogas_mora')
-					->where('id_asignacion_costo', $idAsign)
-					->where('fecha_fin_prorroga', '<', $hoy)
-					->orderBy('fecha_fin_prorroga', 'desc')
-					->first(['fecha_fin_prorroga']);
-				if ($prorrogaTerminada && !empty($prorrogaTerminada->fecha_fin_prorroga)) {
-					$inicioPosterior = Carbon::parse($prorrogaTerminada->fecha_fin_prorroga)->startOfDay()->addDay();
-					if ($inicioPosterior->gt($fechaInicioCfg)) {
-						$fechaInicioCfg = $inicioPosterior;
-					}
+				if ($inicioPosterior && $inicioPosterior->gt($fechaInicioCfg)) {
+					$fechaInicioCfg = $inicioPosterior;
 				}
 				if ($fechaInicioCfg->gt($hoy)) {
 					$this->debugLog('crearMorasFaltantes skip: inicio posterior a hoy (post-prorroga)', [
@@ -454,8 +607,21 @@ class MoraRecalculoService
 					$observ .= ' | PAUSADA_DUPLICIDAD por inscripción duplicada';
 				}
 
+				$idMoraVinculada = null;
+				if ($inicioPosterior) {
+					$moraAnterior = DB::table('asignacion_mora')
+						->where('id_asignacion_costo', $idAsign)
+						->where('fecha_inicio_mora', '<', $fechaInicioCfg->toDateString())
+						->orderBy('id_asignacion_mora', 'desc')
+						->first(['id_asignacion_mora']);
+					if ($moraAnterior && isset($moraAnterior->id_asignacion_mora)) {
+						$idMoraVinculada = (int)$moraAnterior->id_asignacion_mora;
+					}
+				}
+
 				DB::table('asignacion_mora')->insert([
 					'id_asignacion_costo' => $idAsign,
+					'id_mora_vinculada' => $idMoraVinculada,
 					'id_datos_mora_detalle' => (int)(isset($configuracion->id_datos_mora_detalle) ? $configuracion->id_datos_mora_detalle : 0),
 					'fecha_inicio_mora' => $fechaInicioCfg->toDateString(),
 					'fecha_fin_mora' => $fechaFinCfg ? $fechaFinCfg->toDateString() : null,
@@ -470,6 +636,7 @@ class MoraRecalculoService
 
 				$this->debugLog('crearMorasFaltantes insert ok', [
 					'id_asignacion_costo' => $idAsign,
+					'id_mora_vinculada' => $idMoraVinculada,
 					'id_datos_mora_detalle' => (int)(isset($configuracion->id_datos_mora_detalle) ? $configuracion->id_datos_mora_detalle : 0),
 					'fecha_inicio_mora' => $fechaInicioCfg->toDateString(),
 					'fecha_fin_mora' => $fechaFinCfg ? $fechaFinCfg->toDateString() : null,

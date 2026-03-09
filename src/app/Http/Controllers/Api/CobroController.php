@@ -1736,7 +1736,7 @@ class CobroController extends Controller
 					if (!empty($idsAsignMes) && Schema::hasTable('asignacion_mora')) {
 						$morasPend = DB::table('asignacion_mora')
 							->whereIn('id_asignacion_costo', $idsAsignMes)
-							->whereIn('estado', ['PENDIENTE', 'CERRADA_SIN_CUOTA'])
+							->whereIn('estado', ['PENDIENTE', 'CONGELADA_PRORROGA', 'PAUSADA_DUPLICIDAD', 'CERRADA_SIN_CUOTA', 'EN_ESPERA'])
 							->get(['id_asignacion_mora','id_asignacion_costo','estado','monto_mora','monto_descuento']);
 						try {
 							Log::info('batchStore: validacion mora requerida (mes completado)', [
@@ -1754,11 +1754,16 @@ class CobroController extends Controller
 								})->toArray() : null,
 							]);
 						} catch (\Throwable $e) {}
+						$netoPorAsign = [];
 						foreach ($morasPend as $mp) {
-							$idAsignMora = (int) ($mp->id_asignacion_costo ?? 0);
-							$netoMora = max(0, (float)($mp->monto_mora ?? 0) - (float)($mp->monto_descuento ?? 0));
-							$pagadoEnLote = (float) ($batchMoraByAsign[$idAsignMora] ?? 0);
-							if ($netoMora > 0.0001 && $pagadoEnLote < ($netoMora - 0.0001)) {
+							$idAsignMora = (int) (isset($mp->id_asignacion_costo) ? $mp->id_asignacion_costo : 0);
+							if ($idAsignMora <= 0) continue;
+							$netoMora = max(0, (float)(isset($mp->monto_mora) ? $mp->monto_mora : 0) - (float)(isset($mp->monto_descuento) ? $mp->monto_descuento : 0));
+							$netoPorAsign[$idAsignMora] = (isset($netoPorAsign[$idAsignMora]) ? $netoPorAsign[$idAsignMora] : 0) + (float)$netoMora;
+						}
+						foreach ($netoPorAsign as $idAsignMora => $netoTotal) {
+							$pagadoEnLote = (float) (isset($batchMoraByAsign[$idAsignMora]) ? $batchMoraByAsign[$idAsignMora] : 0);
+							if ((float)$netoTotal > 0.0001 && $pagadoEnLote < ((float)$netoTotal - 0.0001)) {
 								return response()->json([
 									'success' => false,
 									'message' => 'Para completar la mensualidad/arrastre del mes, debe pagar también la mora correspondiente.',
@@ -1767,7 +1772,8 @@ class CobroController extends Controller
 						}
 					}
 				}
-			} catch (\Throwable $e) {
+			}
+ catch (\Throwable $e) {
 				// Si falla la validación de negocio, no bloquear por defecto; pero registrar para depurar
 				try { Log::warning('batchStore: validacion mora/arrastre fallo', ['error' => $e->getMessage()]); } catch (\Throwable $e2) {}
 			}
@@ -2960,70 +2966,153 @@ class CobroController extends Controller
 							$idMora = isset($item['id_asignacion_mora']) ? (int)$item['id_asignacion_mora'] : 0;
 							$idAsignMora = isset($item['id_asignacion_costo']) ? (int)$item['id_asignacion_costo'] : 0;
 							$estadosMoraPagables = ['PENDIENTE', 'CONGELADA_PRORROGA', 'PAUSADA_DUPLICIDAD', 'CERRADA_SIN_CUOTA', 'EN_ESPERA'];
-							$moraQ = DB::table('asignacion_mora')->whereIn('estado', $estadosMoraPagables);
-							if ($idMora > 0) { $moraQ->where('id_asignacion_mora', $idMora); }
-							elseif ($idAsignMora > 0) { $moraQ->where('id_asignacion_costo', $idAsignMora)->orderByDesc('id_asignacion_mora'); }
-							else { $moraQ = null; }
-							$moraRow = $moraQ ? $moraQ->first(['id_asignacion_mora','estado','monto_mora','monto_descuento','monto_pagado','fecha_inicio_mora','fecha_fin_mora','monto_base']) : null;
-							if ($moraRow) {
-								$montoMoraCalc = (float)($moraRow->monto_mora ?? 0);
-								$descMora = (float)($moraRow->monto_descuento ?? 0);
-								$montoBaseDia = (float)($moraRow->monto_base ?? 0);
-								$neto = max(0, $montoMoraCalc - $descMora);
-								$montoPago = (float)($item['monto'] ?? 0);
-								$montoPagadoPrevio = (float)($moraRow->monto_pagado ?? 0);
-								$nuevoMontoPagado = $montoPagadoPrevio + $montoPago;
+							$montoPagoTotal = (float)(isset($item['monto']) ? $item['monto'] : 0);
+							if ($montoPagoTotal <= 0) {
+								throw new \Exception('Pago de mora inválido (monto<=0)');
+							}
 
-								// Actualizar monto_pagado siempre
-								$updateData = [
-									'monto_pagado' => $nuevoMontoPagado,
-									'updated_at' => now()
-								];
+							// Si viene id_asignacion_mora específico, buscar todas las moras vinculadas
+							// para distribuir el pago entre ellas (congelada + pendiente)
+							$morasRows = collect();
+							if ($idMora > 0) {
+								// Obtener la mora target
+								$moraTarget = DB::table('asignacion_mora')
+									->where('id_asignacion_mora', $idMora)
+									->first(['id_asignacion_mora', 'id_asignacion_vinculada', 'id_mora_vinculada']);
 
-								// Si la fecha_deposito es anterior a hoy, recalcular monto_mora a esa fecha y persistir.
-								// Esto NO es pago parcial; es una corrección del monto de mora devengado hasta la fecha de depósito.
-								try {
-									$fechaDepositoStr = isset($item['fecha_deposito']) ? (string)$item['fecha_deposito'] : '';
-									$fechaDepositoStr = trim($fechaDepositoStr);
-									if ($fechaDepositoStr !== '') {
-										$hoy = \Carbon\Carbon::today();
-										$fechaDeposito = \Carbon\Carbon::parse($fechaDepositoStr)->startOfDay();
-										if ($fechaDeposito->lt($hoy)) {
-											$inicio = !empty($moraRow->fecha_inicio_mora) ? \Carbon\Carbon::parse($moraRow->fecha_inicio_mora)->startOfDay() : null;
-											$fin = !empty($moraRow->fecha_fin_mora) ? \Carbon\Carbon::parse($moraRow->fecha_fin_mora)->startOfDay() : null;
-											if ($inicio && $montoBaseDia > 0) {
-												$fechaCalculo = $fin ? ($fechaDeposito->lt($fin) ? $fechaDeposito : $fin) : $fechaDeposito;
-												if ($fechaCalculo->gte($inicio)) {
-													$dias = $inicio->diffInDays($fechaCalculo) + 1;
-													$montoMoraCalc = (float)$montoBaseDia * (int)$dias;
-													$updateData['monto_mora'] = $montoMoraCalc;
-													$neto = max(0, $montoMoraCalc - $descMora);
+								if ($moraTarget) {
+									// Buscar todas las moras del mismo grupo de vinculación
+									// Pueden estar vinculadas por id_asignacion_vinculada o id_mora_vinculada
+									$idsVinculadas = [$idMora];
+
+									// Si tiene id_mora_vinculada, incluir esa mora
+									if (!empty($moraTarget->id_mora_vinculada)) {
+										$idsVinculadas[] = (int)$moraTarget->id_mora_vinculada;
+									}
+
+									// Buscar otras moras que apunten a esta como vinculada
+									$morasRelacionadas = DB::table('asignacion_mora')
+										->where(function($q) use ($idMora) {
+											$q->where('id_mora_vinculada', $idMora)
+											  ->orWhere('id_asignacion_vinculada', $idMora);
+										})
+										->whereIn('estado', $estadosMoraPagables)
+										->pluck('id_asignacion_mora');
+
+									foreach ($morasRelacionadas as $idRel) {
+										if (!in_array($idRel, $idsVinculadas)) {
+											$idsVinculadas[] = (int)$idRel;
+										}
+									}
+
+									// Obtener todas las moras vinculadas ordenadas por ID ascendente (más antigua primero)
+									$morasRows = DB::table('asignacion_mora')
+										->whereIn('id_asignacion_mora', $idsVinculadas)
+										->whereIn('estado', $estadosMoraPagables)
+										->orderBy('id_asignacion_mora', 'asc')
+										->get(['id_asignacion_mora','estado','monto_mora','monto_descuento','monto_pagado','fecha_inicio_mora','fecha_fin_mora','monto_base']);
+								}
+							} elseif ($idAsignMora > 0) {
+								// Si no viene id_asignacion_mora, pagar en orden cronológico (la más antigua primero)
+								$morasRows = DB::table('asignacion_mora')
+									->where('id_asignacion_costo', $idAsignMora)
+									->whereIn('estado', $estadosMoraPagables)
+									->orderBy('fecha_inicio_mora', 'asc')
+									->orderBy('id_asignacion_mora', 'asc')
+									->get(['id_asignacion_mora','estado','monto_mora','monto_descuento','monto_pagado','fecha_inicio_mora','fecha_fin_mora','monto_base']);
+							}
+							if ($morasRows && method_exists($morasRows, 'count') && $morasRows->count() > 0) {
+								\Log::info('[CobroController] Distribuyendo pago entre moras vinculadas:', [
+									'id_mora_solicitada' => $idMora,
+									'monto_pago_total' => $montoPagoTotal,
+									'count_moras_vinculadas' => $morasRows->count(),
+									'ids_moras' => $morasRows->pluck('id_asignacion_mora')->toArray(),
+								]);
+
+								$montoRestantePago = $montoPagoTotal;
+								foreach ($morasRows as $moraRow) {
+									if ($montoRestantePago <= 0.0001) break;
+
+									$montoMoraCalc = (float)(isset($moraRow->monto_mora) ? $moraRow->monto_mora : 0);
+									$descMora = (float)(isset($moraRow->monto_descuento) ? $moraRow->monto_descuento : 0);
+									$montoBaseDia = (float)(isset($moraRow->monto_base) ? $moraRow->monto_base : 0);
+									$montoPagadoPrevio = (float)(isset($moraRow->monto_pagado) ? $moraRow->monto_pagado : 0);
+									$neto = max(0, $montoMoraCalc - $descMora);
+									$pendiente = max(0, $neto - $montoPagadoPrevio);
+
+									\Log::info('[CobroController] Procesando mora en loop:', [
+										'id_asignacion_mora' => $moraRow->id_asignacion_mora,
+										'estado' => $moraRow->estado,
+										'monto_mora' => $montoMoraCalc,
+										'descuento' => $descMora,
+										'neto' => $neto,
+										'pagado_previo' => $montoPagadoPrevio,
+										'pendiente' => $pendiente,
+										'monto_restante_pago' => $montoRestantePago,
+									]);
+
+									if ($pendiente <= 0.0001) {
+										\Log::info('[CobroController] Mora sin pendiente, saltando');
+										continue;
+									}
+
+									$updateData = [ 'updated_at' => now() ];
+
+									// Corrección de devengado hasta fecha_deposito (si viene y es anterior a hoy)
+									try {
+										$fechaDepositoStr = isset($item['fecha_deposito']) ? (string)$item['fecha_deposito'] : '';
+										$fechaDepositoStr = trim($fechaDepositoStr);
+										if ($fechaDepositoStr !== '') {
+											$hoyCalc = \Carbon\Carbon::today();
+											$fechaDeposito = \Carbon\Carbon::parse($fechaDepositoStr)->startOfDay();
+											if ($fechaDeposito->lt($hoyCalc)) {
+												$inicio = !empty($moraRow->fecha_inicio_mora) ? \Carbon\Carbon::parse($moraRow->fecha_inicio_mora)->startOfDay() : null;
+												$fin = !empty($moraRow->fecha_fin_mora) ? \Carbon\Carbon::parse($moraRow->fecha_fin_mora)->startOfDay() : null;
+												if ($inicio && $montoBaseDia > 0) {
+													$fechaCalculo = $fin ? ($fechaDeposito->lt($fin) ? $fechaDeposito : $fin) : $fechaDeposito;
+													if ($fechaCalculo->gte($inicio)) {
+														$dias = $inicio->diffInDays($fechaCalculo) + 1;
+														$montoMoraCalc = (float)$montoBaseDia * (int)$dias;
+														$updateData['monto_mora'] = $montoMoraCalc;
+														$neto = max(0, $montoMoraCalc - $descMora);
+														$pendiente = max(0, $neto - $montoPagadoPrevio);
+													}
 												}
 											}
 										}
+									} catch (\Throwable $e) {}
+
+									$montoAplicar = $montoRestantePago > $pendiente ? $pendiente : $montoRestantePago;
+									$nuevoMontoPagado = $montoPagadoPrevio + $montoAplicar;
+									$updateData['monto_pagado'] = $nuevoMontoPagado;
+									if ($neto <= 0.0001 || $nuevoMontoPagado >= ($neto - 0.0001)) {
+										$updateData['estado'] = 'PAGADO';
 									}
-								} catch (\Throwable $e) {
-									// No bloquear el cobro si el recálculo falla
+
+									DB::table('asignacion_mora')
+										->where('id_asignacion_mora', (int)$moraRow->id_asignacion_mora)
+										->update($updateData);
+
+									\Log::info('[CobroController] Mora actualizada:', [
+										'id_asignacion_mora' => $moraRow->id_asignacion_mora,
+										'monto_aplicado' => $montoAplicar,
+										'nuevo_monto_pagado' => $nuevoMontoPagado,
+										'neto' => $neto,
+										'nuevo_estado' => isset($updateData['estado']) ? $updateData['estado'] : 'sin_cambio',
+									]);
+
+									$montoRestantePago = $montoRestantePago - $montoAplicar;
 								}
 
-								// Si se completó el pago, cambiar estado a PAGADO
-								if ($neto <= 0.0001 || $nuevoMontoPagado >= ($neto - 0.0001)) {
-									$updateData['estado'] = 'PAGADO';
-								}
-
-								DB::table('asignacion_mora')
-									->where('id_asignacion_mora', (int)$moraRow->id_asignacion_mora)
-									->update($updateData);
-
-								\Log::info('[CobroController] Mora actualizada:', [
-									'id_asignacion_mora' => (int)$moraRow->id_asignacion_mora,
-									'monto_pago' => $montoPago,
-									'monto_pagado_previo' => $montoPagadoPrevio,
-									'nuevo_monto_pagado' => $nuevoMontoPagado,
-									'neto_mora' => $neto,
-									'estado_anterior' => (string)($moraRow->estado ?? ''),
-									'estado' => $updateData['estado'] ?? (string)($moraRow->estado ?? '')
-								]);
+								try {
+									\Log::info('[CobroController] Mora actualizada (multi):', [
+										'id_asignacion_costo' => $idAsignMora,
+										'id_asignacion_mora_target' => $idMora,
+										'monto_pago_total' => $montoPagoTotal,
+										'monto_pago_restante' => isset($montoRestantePago) ? $montoRestantePago : null,
+										'count_moras' => $morasRows->count(),
+									]);
+								} catch (\Throwable $e) {}
 							}
 						} catch (\Throwable $e) {
 							Log::warning('batchStore: no se pudo actualizar mora', ['err' => $e->getMessage()]);
@@ -3808,15 +3897,22 @@ class CobroController extends Controller
 			$fechaPago = Carbon::parse($fechaPagoStr)->startOfDay();
 			$fechaCorte = $fechaPago->copy()->subDay();
 
-			$mora = DB::table('asignacion_mora')
-				->where('id_asignacion_costo', $idAsignPagada)
-				->whereIn('estado', ['PENDIENTE', 'CONGELADA_PRORROGA', 'PAUSADA_DUPLICIDAD', 'EN_ESPERA'])
+			// Buscar moras de la asignación pagada Y moras vinculadas a esta asignación
+			// Ejemplo: si se paga arrastre (230), buscar moras de 230 Y moras con id_asignacion_vinculada=230
+			// IMPORTANTE: Solo cerrar moras en estado PENDIENTE para preservar el histórico de prórrogas
+			// Las moras CONGELADA_PRORROGA deben mantenerse intactas como registro histórico
+			$morasACerrar = DB::table('asignacion_mora')
+				->where(function($q) use ($idAsignPagada) {
+					$q->where('id_asignacion_costo', $idAsignPagada)
+					  ->orWhere('id_asignacion_vinculada', $idAsignPagada);
+				})
+				->where('estado', 'PENDIENTE')
 				->orderByDesc('id_asignacion_mora')
-				->first(['id_asignacion_mora','estado','monto_base','monto_mora','monto_descuento','monto_pagado','fecha_inicio_mora','fecha_fin_mora']);
+				->get(['id_asignacion_mora','estado','monto_base','monto_mora','monto_descuento','monto_pagado','fecha_inicio_mora','fecha_fin_mora']);
 
-			if (!$mora) {
+			if ($morasACerrar->isEmpty()) {
 				try {
-					Log::info('[CobroController] cerrarMoraPorCuotaCobrada: sin mora para cuota', [
+					Log::info('[CobroController] cerrarMoraPorCuotaCobrada: sin moras para cerrar', [
 						'idx' => $idx,
 						'id_asignacion_costo' => $idAsignPagada,
 						'fecha_pago' => $fechaPago->toDateString(),
@@ -3825,61 +3921,64 @@ class CobroController extends Controller
 				return;
 			}
 
-			$montoBaseDia = (float)($mora->monto_base ?? 0);
-			$montoPagado = (float)($mora->monto_pagado ?? 0);
-			$desc = (float)($mora->monto_descuento ?? 0);
-			$inicio = !empty($mora->fecha_inicio_mora) ? Carbon::parse($mora->fecha_inicio_mora)->startOfDay() : null;
-			$fin = !empty($mora->fecha_fin_mora) ? Carbon::parse($mora->fecha_fin_mora)->startOfDay() : null;
-			$fechaCalculo = $fechaCorte;
-			if ($fin && $fin->lt($fechaCalculo)) {
-				$fechaCalculo = $fin;
+			// Procesar cada mora encontrada
+			foreach ($morasACerrar as $mora) {
+				$montoBaseDia = (float)($mora->monto_base ?? 0);
+				$montoPagado = (float)($mora->monto_pagado ?? 0);
+				$desc = (float)($mora->monto_descuento ?? 0);
+				$inicio = !empty($mora->fecha_inicio_mora) ? Carbon::parse($mora->fecha_inicio_mora)->startOfDay() : null;
+				$fin = !empty($mora->fecha_fin_mora) ? Carbon::parse($mora->fecha_fin_mora)->startOfDay() : null;
+				$fechaCalculo = $fechaCorte;
+				if ($fin && $fin->lt($fechaCalculo)) {
+					$fechaCalculo = $fin;
+				}
+
+				$dias = 0;
+				if ($inicio && $montoBaseDia > 0 && $fechaCalculo->gte($inicio)) {
+					$dias = $inicio->diffInDays($fechaCalculo) + 1;
+				}
+				$montoCalc = (float)$montoBaseDia * (int)$dias;
+				$neto = max(0, $montoCalc - $desc);
+				$estadoFinal = ($neto <= 0.0001 || $montoPagado >= ($neto - 0.0001)) ? 'PAGADO' : 'CERRADA_SIN_CUOTA';
+
+				try {
+					Log::info('[CobroController] cerrarMoraPorCuotaCobrada: recalculo', [
+						'idx' => $idx,
+						'id_asignacion_costo' => $idAsignPagada,
+						'id_asignacion_mora' => (int)$mora->id_asignacion_mora,
+						'estado_anterior' => (string)($mora->estado ?? ''),
+						'fecha_pago' => $fechaPago->toDateString(),
+						'fecha_corte' => $fechaCorte->toDateString(),
+						'fecha_calculo' => $fechaCalculo->toDateString(),
+						'inicio' => $inicio ? $inicio->toDateString() : null,
+						'fin' => $fin ? $fin->toDateString() : null,
+						'dias' => $dias,
+						'monto_base' => $montoBaseDia,
+						'monto_calc' => $montoCalc,
+						'descuento' => $desc,
+						'neto' => $neto,
+						'monto_pagado' => $montoPagado,
+						'estado_final' => $estadoFinal,
+					]);
+				} catch (\Throwable $e) {}
+
+				$aff = DB::table('asignacion_mora')
+					->where('id_asignacion_mora', (int)$mora->id_asignacion_mora)
+					->update([
+						'monto_mora' => $montoCalc,
+						'estado' => $estadoFinal,
+						'updated_at' => now(),
+					]);
+
+				try {
+					Log::info('[CobroController] cerrarMoraPorCuotaCobrada: mora_actualizada', [
+						'idx' => $idx,
+						'id_asignacion_mora' => (int)$mora->id_asignacion_mora,
+						'affected' => $aff,
+						'estado_final' => $estadoFinal,
+					]);
+				} catch (\Throwable $e) {}
 			}
-
-			$dias = 0;
-			if ($inicio && $montoBaseDia > 0 && $fechaCalculo->gte($inicio)) {
-				$dias = $inicio->diffInDays($fechaCalculo) + 1;
-			}
-			$montoCalc = (float)$montoBaseDia * (int)$dias;
-			$neto = max(0, $montoCalc - $desc);
-			$estadoFinal = ($neto <= 0.0001 || $montoPagado >= ($neto - 0.0001)) ? 'PAGADO' : 'CERRADA_SIN_CUOTA';
-
-			try {
-				Log::info('[CobroController] cerrarMoraPorCuotaCobrada: recalculo', [
-					'idx' => $idx,
-					'id_asignacion_costo' => $idAsignPagada,
-					'id_asignacion_mora' => (int)$mora->id_asignacion_mora,
-					'estado_anterior' => (string)($mora->estado ?? ''),
-					'fecha_pago' => $fechaPago->toDateString(),
-					'fecha_corte' => $fechaCorte->toDateString(),
-					'fecha_calculo' => $fechaCalculo->toDateString(),
-					'inicio' => $inicio ? $inicio->toDateString() : null,
-					'fin' => $fin ? $fin->toDateString() : null,
-					'dias' => $dias,
-					'monto_base' => $montoBaseDia,
-					'monto_calc' => $montoCalc,
-					'descuento' => $desc,
-					'neto' => $neto,
-					'monto_pagado' => $montoPagado,
-					'estado_final' => $estadoFinal,
-				]);
-			} catch (\Throwable $e) {}
-
-			$aff = DB::table('asignacion_mora')
-				->where('id_asignacion_mora', (int)$mora->id_asignacion_mora)
-				->update([
-					'monto_mora' => $montoCalc,
-					'estado' => $estadoFinal,
-					'updated_at' => now(),
-				]);
-
-			try {
-				Log::info('[CobroController] cerrarMoraPorCuotaCobrada: mora_actualizada', [
-					'idx' => $idx,
-					'id_asignacion_mora' => (int)$mora->id_asignacion_mora,
-					'affected' => $aff,
-					'estado_final' => $estadoFinal,
-				]);
-			} catch (\Throwable $e) {}
 		} catch (\Throwable $e) {
 			try {
 				Log::warning('[CobroController] cerrarMoraPorCuotaCobrada: exception', [

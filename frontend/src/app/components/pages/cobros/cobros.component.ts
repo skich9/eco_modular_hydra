@@ -2096,7 +2096,6 @@ export class CobrosComponent implements OnInit {
 
           // Cargar moras pendientes desde asignacion_mora
           this.morasPendientes = Array.isArray(this.resumen?.moras_pendientes) ? this.resumen.moras_pendientes : [];
-          console.log('[COBROS] Moras pendientes:', this.morasPendientes);
 
           // Procesar pensums disponibles del estudiante
           this.pensumsDisponibles = Array.isArray(this.resumen?.pensums_disponibles) ? this.resumen.pensums_disponibles : [];
@@ -2959,12 +2958,52 @@ export class CobrosComponent implements OnInit {
   }
 
   getTotalMorasPendientes(): number {
-    if (!this.morasPendientes || this.morasPendientes.length === 0) return 0;
-    return this.morasPendientes.reduce((total, mora) => {
+    if (!this.morasPendientes || this.morasPendientes.length === 0) {
+      console.log('[MORA_TOTAL] No hay moras pendientes');
+      return 0;
+    }
+
+    console.log('[MORA_TOTAL] Calculando total de moras:', {
+      count: this.morasPendientes.length,
+      moras: this.morasPendientes.map(m => ({
+        id: m?.id_asignacion_mora,
+        monto_mora: m?.monto_mora,
+        monto_mora_total: m?.monto_mora_total,
+        monto_descuento: m?.monto_descuento,
+        id_mora_vinculada: m?.id_mora_vinculada
+      }))
+    });
+
+    const total = this.morasPendientes.reduce((total, mora) => {
+      const estado = (mora?.estado || '').toString().toUpperCase();
+      // Solo incluir moras cobrables: PENDIENTE y CONGELADA_PRORROGA (históricas)
+      if (estado !== 'PENDIENTE' && estado !== 'CONGELADA_PRORROGA') {
+        return total;
+      }
+
+      // Usar monto_mora individual de cada mora para evitar duplicación
       const monto = Number(mora?.monto_mora || 0);
       const descuento = Number(mora?.monto_descuento || 0);
-      return total + Math.max(0, monto - descuento);
+      const montoPagado = Number(mora?.monto_pagado || 0);
+      const neto = Math.max(0, monto - descuento - montoPagado);
+
+      console.log('[MORA_TOTAL] Procesando mora:', {
+        id: mora?.id_asignacion_mora,
+        estado: estado,
+        monto_mora: mora?.monto_mora,
+        monto_mora_total: mora?.monto_mora_total,
+        monto_pagado: montoPagado,
+        usando: monto,
+        descuento: descuento,
+        neto: neto,
+        total_acumulado: total + neto
+      });
+
+      return total + neto;
     }, 0);
+
+    console.log('[MORA_TOTAL] Total final:', total);
+    return total;
   }
 
   private recalcMensualidadTotal(): void {

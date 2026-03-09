@@ -80,10 +80,18 @@ export class MoraModalComponent implements OnInit, OnChanges {
 
 	get totalMorasPendientes(): number {
 		if (!this.morasPendientes || this.morasPendientes.length === 0) return 0;
+		// Incluir moras PENDIENTE y CONGELADA_PRORROGA (históricas que deben cobrarse)
 		return this.morasPendientes.reduce((total, mora) => {
+			const estado = (mora?.estado || '').toString().toUpperCase();
+			// Solo incluir moras cobrables: PENDIENTE y CONGELADA_PRORROGA
+			if (estado !== 'PENDIENTE' && estado !== 'CONGELADA_PRORROGA') {
+				return total;
+			}
+			// Usar monto_mora individual de cada mora para evitar duplicación
 			const monto = Number(mora?.monto_mora || 0);
 			const descuento = Number(mora?.monto_descuento || 0);
-			return total + Math.max(0, monto - descuento);
+			const montoPagado = Number(mora?.monto_pagado || 0);
+			return total + Math.max(0, monto - descuento - montoPagado);
 		}, 0);
 	}
 
@@ -173,12 +181,19 @@ export class MoraModalComponent implements OnInit, OnChanges {
 			total = Number(this.form.get('monto_parcial')?.value || 0);
 		} else {
 			const cant = Math.max(0, Number(this.form.get('cantidad')?.value || 0));
-			// Sumar monto_mora de las primeras 'cant' moras
-			for (let i = 0; i < cant && i < this.morasPendientes.length; i++) {
-				const mora = this.morasPendientes[i];
+			// Filtrar solo moras cobrables (PENDIENTE y CONGELADA_PRORROGA)
+			const morasCobrables = this.morasPendientes.filter((m: any) => {
+				const estado = (m?.estado || '').toString().toUpperCase();
+				return estado === 'PENDIENTE' || estado === 'CONGELADA_PRORROGA';
+			});
+			// Sumar monto_mora de las primeras 'cant' moras cobrables
+			for (let i = 0; i < cant && i < morasCobrables.length; i++) {
+				const mora = morasCobrables[i];
+				// Usar monto_mora individual de cada mora
 				const montoMora = Number(mora?.monto_mora || 0);
 				const montoDesc = Number(mora?.monto_descuento || 0);
-				total += Math.max(0, montoMora - montoDesc);
+				const montoPagado = Number(mora?.monto_pagado || 0);
+				total += Math.max(0, montoMora - montoDesc - montoPagado);
 			}
 		}
 
@@ -259,40 +274,79 @@ export class MoraModalComponent implements OnInit, OnChanges {
 		const firstMoraAsignId = firstMora ? Number(firstMora?.id_asignacion_costo || 0) : 0;
 
 		if (isParcial && montoParcial > 0) {
-			pagos.push({
-				id_forma_cobro: this.form.get('metodo_pago')?.value || null,
-				nro_cobro: this.baseNro || 1,
-				monto: montoParcial,
-				fecha_cobro: hoy,
-				observaciones: this.form.get('observaciones')?.value || '',
-				pu_mensualidad: this.puPorMora,
-				detalle: 'Pago Parcial de Mora',
-				tipo_pago: 'MORA',
-				cod_tipo_cobro: 'MORA',
-				id_asignacion_mora: firstMoraId || null,
-				id_asignacion_costo: firstMoraAsignId || null,
-				tipo_documento,
-				medio_doc,
-				comprobante: compSel,
-				computarizada: this.form.get('computarizada')?.value,
-				id_cuentas_bancarias: this.form.get('id_cuentas_bancarias')?.value || null,
-				banco_origen: this.form.get('banco_origen')?.value || null,
-				fecha_deposito: this.form.get('fecha_deposito')?.value || null,
-				nro_deposito: this.form.get('nro_deposito')?.value || null,
-				tarjeta_first4: this.form.get('tarjeta_first4')?.value || null,
-				tarjeta_last4: this.form.get('tarjeta_last4')?.value || null,
-				descuento: descuento
+			// Distribuir pago parcial desde la mora más antigua a la más nueva
+			let montoRestante = montoParcial;
+			let pagoIndex = 0;
+
+			// Filtrar solo moras cobrables (PENDIENTE y CONGELADA_PRORROGA)
+			const morasCobrables = this.morasPendientes.filter((m: any) => {
+				const estado = (m?.estado || '').toString().toUpperCase();
+				return estado === 'PENDIENTE' || estado === 'CONGELADA_PRORROGA';
 			});
+
+			for (let i = 0; i < morasCobrables.length && montoRestante > 0; i++) {
+				const mora = morasCobrables[i];
+				const montoMora = Number(mora?.monto_mora || 0);
+				const montoDesc = Number(mora?.monto_descuento || 0);
+				const montoPagado = Number(mora?.monto_pagado || 0);
+				const montoNeto = Math.max(0, montoMora - montoDesc - montoPagado);
+
+				if (montoNeto <= 0) continue;
+
+				// Calcular cuánto pagar de esta mora
+				const montoPagar = Math.min(montoRestante, montoNeto);
+				const numeroCuota = Number(mora?.numero_cuota || 0);
+				const mesNombre = this.getMesNombreByCuota(numeroCuota);
+				const detalle = mesNombre
+					? `Pago Parcial de Mora - ${mesNombre}`
+					: `Pago Parcial de Mora ${i + 1}`;
+
+				pagos.push({
+					id_forma_cobro: this.form.get('metodo_pago')?.value || null,
+					nro_cobro: (this.baseNro || 1) + pagoIndex,
+					monto: montoPagar,
+					fecha_cobro: hoy,
+					observaciones: this.form.get('observaciones')?.value || '',
+					pu_mensualidad: Number(mora?.monto_base || 0),
+					detalle,
+					tipo_pago: 'MORA',
+					cod_tipo_cobro: 'MORA',
+					id_asignacion_mora: Number(mora?.id_asignacion_mora || 0) || null,
+					id_asignacion_costo: Number(mora?.id_asignacion_costo || 0) || null,
+					tipo_documento,
+					medio_doc,
+					comprobante: compSel,
+					computarizada: this.form.get('computarizada')?.value,
+					id_cuentas_bancarias: this.form.get('id_cuentas_bancarias')?.value || null,
+					banco_origen: this.form.get('banco_origen')?.value || null,
+					fecha_deposito: this.form.get('fecha_deposito')?.value || null,
+					nro_deposito: this.form.get('nro_deposito')?.value || null,
+					tarjeta_first4: this.form.get('tarjeta_first4')?.value || null,
+					tarjeta_last4: this.form.get('tarjeta_last4')?.value || null,
+					descuento: i === 0 ? descuento : 0
+				});
+
+				montoRestante -= montoPagar;
+				pagoIndex++;
+			}
 		} else {
-			for (let i = 0; i < cant; i++) {
-				const mora = this.morasPendientes[i];
+			// Filtrar solo moras cobrables (PENDIENTE y CONGELADA_PRORROGA)
+			const morasCobrables = this.morasPendientes.filter((m: any) => {
+				const estado = (m?.estado || '').toString().toUpperCase();
+				return estado === 'PENDIENTE' || estado === 'CONGELADA_PRORROGA';
+			});
+
+			for (let i = 0; i < cant && i < morasCobrables.length; i++) {
+				const mora = morasCobrables[i];
 				const numeroCuota = Number(mora?.numero_cuota || 0);
 				const mesNombre = this.getMesNombreByCuota(numeroCuota);
 				const detalle = mesNombre ? `Pago de Mora - ${mesNombre}` : `Pago de Mora ${i + 1}`;
 
+				// Usar monto_mora individual de cada mora
 				const montoMora = Number(mora?.monto_mora || 0);
 				const montoDesc = Number(mora?.monto_descuento || 0);
-				const montoNeto = Math.max(0, montoMora - montoDesc);
+				const montoPagado = Number(mora?.monto_pagado || 0);
+				const montoNeto = Math.max(0, montoMora - montoDesc - montoPagado);
 
 				pagos.push({
 					id_forma_cobro: this.form.get('metodo_pago')?.value || null,
