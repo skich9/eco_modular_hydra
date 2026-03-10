@@ -16,21 +16,32 @@ return new class extends Migration {
 			}
 		});
 
-		$sm = Schema::getConnection()->getDoctrineSchemaManager();
-		$indexes = $sm->listTableIndexes('cobro');
-
-		Schema::table('cobro', function (Blueprint $table) use ($indexes) {
-			if (!isset($indexes['idx_cobro_fecha_cobro'])) {
+		// Agregar índices solo si no existen
+		Schema::table('cobro', function (Blueprint $table) {
+			// Laravel 11 no soporta verificación de índices existentes de forma nativa
+			// Usamos try-catch para evitar errores si el índice ya existe
+			try {
 				$table->index('fecha_cobro', 'idx_cobro_fecha_cobro');
+			} catch (\Exception $e) {
+				// Índice ya existe, continuar
 			}
-			if (!isset($indexes['idx_cobro_cod_ceta'])) {
+
+			try {
 				$table->index('cod_ceta', 'idx_cobro_cod_ceta');
+			} catch (\Exception $e) {
+				// Índice ya existe, continuar
 			}
-			if (!isset($indexes['idx_cobro_nro_factura'])) {
+
+			try {
 				$table->index('nro_factura', 'idx_cobro_nro_factura');
+			} catch (\Exception $e) {
+				// Índice ya existe, continuar
 			}
-			if (!isset($indexes['idx_cobro_nro_recibo'])) {
+
+			try {
 				$table->index('nro_recibo', 'idx_cobro_nro_recibo');
+			} catch (\Exception $e) {
+				// Índice ya existe, continuar
 			}
 		});
 	}
@@ -38,13 +49,37 @@ return new class extends Migration {
 	public function down(): void
 	{
 		Schema::table('cobro', function (Blueprint $table) {
-			$table->dropIndex('idx_cobro_fecha_cobro');
-			$table->dropIndex('idx_cobro_cod_ceta');
-			$table->dropIndex('idx_cobro_nro_factura');
-			$table->dropIndex('idx_cobro_nro_recibo');
+			// Eliminar índices si existen
+			try {
+				$table->dropIndex('idx_cobro_fecha_cobro');
+			} catch (\Exception $e) {
+				// Índice no existe, continuar
+			}
 
-			$table->dropColumn('tipo_documento');
-			$table->dropColumn('medio_doc');
+			try {
+				$table->dropIndex('idx_cobro_cod_ceta');
+			} catch (\Exception $e) {
+				// Índice no existe, continuar
+			}
+
+			try {
+				$table->dropIndex('idx_cobro_nro_factura');
+			} catch (\Exception $e) {
+				// Índice no existe, continuar
+			}
+
+			try {
+				$table->dropIndex('idx_cobro_nro_recibo');
+			} catch (\Exception $e) {
+				// Índice no existe, continuar
+			}
+
+			if (Schema::hasColumn('cobro', 'tipo_documento')) {
+				$table->dropColumn('tipo_documento');
+			}
+			if (Schema::hasColumn('cobro', 'medio_doc')) {
+				$table->dropColumn('medio_doc');
+			}
 		});
 	}
 };
