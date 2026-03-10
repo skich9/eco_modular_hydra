@@ -3,6 +3,7 @@
 use Illuminate\Database\Migrations\Migration;
 use Illuminate\Database\Schema\Blueprint;
 use Illuminate\Support\Facades\Schema;
+use Illuminate\Support\Facades\DB;
 
 return new class extends Migration {
 	public function up(): void
@@ -16,64 +17,37 @@ return new class extends Migration {
 			}
 		});
 
-		// Agregar índices solo si no existen
-		Schema::table('cobro', function (Blueprint $table) {
-			// Laravel 11 no soporta verificación de índices existentes de forma nativa
-			// Usamos try-catch para evitar errores si el índice ya existe
-			try {
-				$table->index('fecha_cobro', 'idx_cobro_fecha_cobro');
-			} catch (\Exception $e) {
-				// Índice ya existe, continuar
-			}
+		// Verificar y agregar índices solo si no existen
+		$this->addIndexIfNotExists('cobro', 'fecha_cobro', 'idx_cobro_fecha_cobro');
+		$this->addIndexIfNotExists('cobro', 'cod_ceta', 'idx_cobro_cod_ceta');
+		$this->addIndexIfNotExists('cobro', 'nro_factura', 'idx_cobro_nro_factura');
+		$this->addIndexIfNotExists('cobro', 'nro_recibo', 'idx_cobro_nro_recibo');
+	}
 
-			try {
-				$table->index('cod_ceta', 'idx_cobro_cod_ceta');
-			} catch (\Exception $e) {
-				// Índice ya existe, continuar
-			}
+	private function addIndexIfNotExists(string $table, string $column, string $indexName): void
+	{
+		$exists = DB::select(
+			"SELECT COUNT(*) as count FROM information_schema.statistics
+			 WHERE table_schema = DATABASE()
+			 AND table_name = ?
+			 AND index_name = ?",
+			[$table, $indexName]
+		);
 
-			try {
-				$table->index('nro_factura', 'idx_cobro_nro_factura');
-			} catch (\Exception $e) {
-				// Índice ya existe, continuar
-			}
-
-			try {
-				$table->index('nro_recibo', 'idx_cobro_nro_recibo');
-			} catch (\Exception $e) {
-				// Índice ya existe, continuar
-			}
-		});
+		if ($exists[0]->count == 0) {
+			DB::statement("ALTER TABLE `{$table}` ADD INDEX `{$indexName}` (`{$column}`)");
+		}
 	}
 
 	public function down(): void
 	{
+		// Eliminar índices si existen
+		$this->dropIndexIfExists('cobro', 'idx_cobro_fecha_cobro');
+		$this->dropIndexIfExists('cobro', 'idx_cobro_cod_ceta');
+		$this->dropIndexIfExists('cobro', 'idx_cobro_nro_factura');
+		$this->dropIndexIfExists('cobro', 'idx_cobro_nro_recibo');
+
 		Schema::table('cobro', function (Blueprint $table) {
-			// Eliminar índices si existen
-			try {
-				$table->dropIndex('idx_cobro_fecha_cobro');
-			} catch (\Exception $e) {
-				// Índice no existe, continuar
-			}
-
-			try {
-				$table->dropIndex('idx_cobro_cod_ceta');
-			} catch (\Exception $e) {
-				// Índice no existe, continuar
-			}
-
-			try {
-				$table->dropIndex('idx_cobro_nro_factura');
-			} catch (\Exception $e) {
-				// Índice no existe, continuar
-			}
-
-			try {
-				$table->dropIndex('idx_cobro_nro_recibo');
-			} catch (\Exception $e) {
-				// Índice no existe, continuar
-			}
-
 			if (Schema::hasColumn('cobro', 'tipo_documento')) {
 				$table->dropColumn('tipo_documento');
 			}
@@ -81,5 +55,20 @@ return new class extends Migration {
 				$table->dropColumn('medio_doc');
 			}
 		});
+	}
+
+	private function dropIndexIfExists(string $table, string $indexName): void
+	{
+		$exists = DB::select(
+			"SELECT COUNT(*) as count FROM information_schema.statistics
+			 WHERE table_schema = DATABASE()
+			 AND table_name = ?
+			 AND index_name = ?",
+			[$table, $indexName]
+		);
+
+		if ($exists[0]->count > 0) {
+			DB::statement("ALTER TABLE `{$table}` DROP INDEX `{$indexName}`");
+		}
 	}
 };
