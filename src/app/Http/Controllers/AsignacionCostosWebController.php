@@ -17,12 +17,12 @@ class AsignacionCostosWebController extends Controller
 	 */
 	public function index()
 	{
-		$pensums = Pensum::where('estado', true)->get();
+		$pensums = Pensum::where('activo', true)->get();
 		$parametrosEconomicos = ParametrosEconomicos::where('estado', true)->get();
-		
+
 		// Obtener la gestión actual (esto podría venir de una tabla de configuración)
 		$gestionActual = date('Y');
-		
+
 		return view('configuracion.asignacion_economica.index', compact('pensums', 'parametrosEconomicos', 'gestionActual'));
 	}
 
@@ -32,23 +32,23 @@ class AsignacionCostosWebController extends Controller
 	public function showAsignacion($codPensum, $gestion)
 	{
 		$pensum = Pensum::where('cod_pensum', $codPensum)->first();
-		
+
 		if (!$pensum) {
 			return redirect()->route('asignacion_economica.index')
 				->with('error', 'El pensum especificado no existe');
 		}
-		
+
 		$costosSemestrales = CostoSemestral::where('cod_pensum', $codPensum)
 			->where('gestion', $gestion)
 			->get();
-			
+
 		$idsCostosSemestrales = $costosSemestrales->pluck('id_costo_semestral')->toArray();
-		
+
 		$asignaciones = AsignacionCostos::whereIn('id_costo_semestral', $idsCostosSemestrales)
 			->where('cod_pensum', $codPensum)
 			->with(['inscripcion', 'costoSemestral'])
 			->get();
-			
+
 		return view('configuracion.asignacion_economica.asignacion', compact('pensum', 'gestion', 'costosSemestrales', 'asignaciones'));
 	}
 
@@ -77,7 +77,7 @@ class AsignacionCostosWebController extends Controller
 			->where('gestion', $request->gestion)
 			->where('semestre', $request->semestre)
 			->first();
-			
+
 		if ($costoExistente) {
 			return response()->json([
 				'success' => false,
@@ -119,7 +119,7 @@ class AsignacionCostosWebController extends Controller
 		$costoSemestral = CostoSemestral::where('id_costo_semestral', $request->id_costo_semestral)
 			->where('cod_pensum', $request->cod_pensum)
 			->first();
-			
+
 		if (!$costoSemestral) {
 			return response()->json([
 				'success' => false,
@@ -145,7 +145,7 @@ class AsignacionCostosWebController extends Controller
 			->where('cod_inscrip', $codInscrip)
 			->where('id_asignacion_costo', $idAsignacion)
 			->first();
-		
+
 		if (!$asignacion) {
 			return response()->json([
 				'success' => false,
@@ -172,7 +172,7 @@ class AsignacionCostosWebController extends Controller
 			$costoSemestral = CostoSemestral::where('id_costo_semestral', $request->id_costo_semestral)
 				->where('cod_pensum', $asignacion->cod_pensum)
 				->first();
-				
+
 			if (!$costoSemestral) {
 				return response()->json([
 					'success' => false,
@@ -199,7 +199,7 @@ class AsignacionCostosWebController extends Controller
 			->where('cod_inscrip', $codInscrip)
 			->where('id_asignacion_costo', $idAsignacion)
 			->first();
-		
+
 		if (!$asignacion) {
 			return response()->json([
 				'success' => false,
@@ -222,7 +222,7 @@ class AsignacionCostosWebController extends Controller
 			'message' => 'Asignación de costo eliminada exitosamente'
 		]);
 	}
-	
+
 	/**
 	 * Actualiza el estado de una asignación de costo.
 	 */
@@ -232,24 +232,24 @@ class AsignacionCostosWebController extends Controller
 			->where('cod_inscrip', $codInscrip)
 			->where('id_asignacion_costo', $idAsignacion)
 			->first();
-		
+
 		if (!$asignacion) {
 			return response()->json([
 				'success' => false,
 				'message' => 'Asignación de costo no encontrada'
 			], 404);
 		}
-		
+
 		$asignacion->estado = !$asignacion->estado;
 		$asignacion->save();
-		
+
 		return response()->json([
 			'success' => true,
 			'message' => 'Estado de la asignación de costo actualizado exitosamente',
 			'data' => $asignacion
 		]);
 	}
-	
+
 	/**
 	 * Obtiene los datos de una asignación de costo para mostrar en un modal.
 	 */
@@ -260,14 +260,14 @@ class AsignacionCostosWebController extends Controller
 			->where('id_asignacion_costo', $idAsignacion)
 			->with(['pensum', 'inscripcion', 'costoSemestral'])
 			->first();
-		
+
 		if (!$asignacion) {
 			return response()->json([
 				'success' => false,
 				'message' => 'Asignación de costo no encontrada'
 			], 404);
 		}
-		
+
 		return response()->json([
 			'success' => true,
 			'data' => $asignacion
