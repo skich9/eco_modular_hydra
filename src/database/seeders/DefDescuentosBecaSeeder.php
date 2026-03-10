@@ -328,10 +328,7 @@ class DefDescuentosBecaSeeder extends Seeder
         ];
 
 		foreach ($becas as $beca) {
-			DB::table('def_descuentos_beca')->insert(array_merge($beca, [
-				'created_at' => now(),
-				'updated_at' => now(),
-			]));
+			DB::table('def_descuentos_beca')->insert($beca);
 		}
 	}
 }
