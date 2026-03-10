@@ -328,6 +328,9 @@ class DefDescuentosBecaSeeder extends Seeder
         ];
 
 		foreach ($becas as $beca) {
+			if (!isset($beca['porcentaje']) || $beca['porcentaje'] === null) {
+				$beca['porcentaje'] = 0;
+			}
 			DB::table('def_descuentos_beca')->insert($beca);
 		}
 	}
