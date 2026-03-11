@@ -12,7 +12,7 @@ class ContingenciaService
 {
 	/**
 	 * Obtiene lista de facturas en contingencia pendientes de regularizar
-	 * 
+	 *
 	 * @param int|null $sucursal
 	 * @param string|null $puntoVenta
 	 * @return array
@@ -20,9 +20,8 @@ class ContingenciaService
 	public function listarContingencias($sucursal = null, $puntoVenta = null)
 	{
 		$query = DB::table('factura')
-			->where('codigo_tipo_emision', 2) // Contingencia
-			->whereIn('estado', ['CONTINGENCIA', 'PENDIENTE'])
-			->orderBy('fecha_emision', 'asc');
+			->whereIn('estado', ['CONTINGENCIA', 'PENDIENTE', 'RECHAZADA'])
+			->orderBy('fecha_emision', 'desc');
 
 		if ($sucursal !== null) {
 			$query->where('codigo_sucursal', $sucursal);
@@ -33,21 +32,27 @@ class ContingenciaService
 
 		$facturas = $query->get();
 
+        Log::info('ContingenciaService.listarContingencias  xxxxxx:', [
+            'sucursal' => $sucursal,
+            'puntoVenta' => $puntoVenta,
+            'facturas' => count($facturas)
+        ]);
+
 		// Calcular tiempo restante para cada factura
 		$resultado = [];
 		foreach ($facturas as $factura) {
 			$esManual = ($factura->tipo === 'M');
 			$limiteHoras = $esManual ? 72 : 48;
-			
+
 			$fechaEmision = strtotime($factura->fecha_emision);
 			$ahora = time();
 			$horasTranscurridas = ($ahora - $fechaEmision) / 3600;
 			$horasRestantes = $limiteHoras - $horasTranscurridas;
-			
+
 			$resultado[] = [
 				'nro_factura' => $factura->nro_factura,
 				'anio' => $factura->anio,
-				'tipo' => $factura->tipo,
+				'tipo' => $factura->tipo,           /// Hace referencia al computarizado o manual
 				'fecha_emision' => $factura->fecha_emision,
 				'monto_total' => $factura->monto_total,
 				'cliente' => isset($factura->cliente) ? $factura->cliente : null,
@@ -61,7 +66,7 @@ class ContingenciaService
 				'horas_restantes' => round($horasRestantes, 2),
 				'fuera_de_plazo' => $horasRestantes <= 0,
 				'es_manual' => $esManual,
-				'limite_horas' => $limiteHoras
+				'limite_horas' => $limiteHoras              /// este es un dato calculado
 			];
 		}
 
@@ -70,7 +75,7 @@ class ContingenciaService
 
 	/**
 	 * Agrupa facturas por CUFD y evento para envío en paquetes
-	 * 
+	 *
 	 * @param array $facturas Array de nro_factura/anio
 	 * @return array
 	 */
@@ -110,7 +115,7 @@ class ContingenciaService
 
 	/**
 	 * Regulariza un paquete de facturas en contingencia
-	 * 
+	 *
 	 * @param array $paquete
 	 * @return array
 	 */
@@ -119,22 +124,22 @@ class ContingenciaService
 		try {
 			// 1. Generar XML del paquete
 			$xml = $this->generarXmlPaquete($paquete['facturas']);
-			
+
 			// 2. Comprimir y codificar
 			$xmlComprimido = gzencode($xml);
 			$archivo = base64_encode($xmlComprimido);
-			
+
 			// 3. Calcular hash
 			$hashArchivo = hash('sha256', $xmlComprimido);
-			
+
 			// 4. Obtener CUIS vigente
 			$cuis = $this->obtenerCuisVigente();
-			
+
 			// 5. Obtener punto de venta y sucursal de la primera factura
 			$primeraFactura = $paquete['facturas'][0];
 			$puntoVenta = isset($primeraFactura->codigo_punto_venta) ? $primeraFactura->codigo_punto_venta : 0;
 			$sucursal = isset($primeraFactura->codigo_sucursal) ? $primeraFactura->codigo_sucursal : null;
-			
+
 			// 5.1. Registrar evento significativo si es necesario
 			$codigoRecepcionEvento = null;
 			if ($paquete['codigo_evento'] && $paquete['codigo_evento'] > 0) {
@@ -144,7 +149,7 @@ class ContingenciaService
 					->where('codigo_sucursal', $sucursal)
 					->orderBy('id_evento', 'desc')
 					->first();
-				
+
 				if ($eventoExistente) {
 					// Usar el evento existente
 					$codigoRecepcionEvento = $eventoExistente->codigo_recepcion;
@@ -154,15 +159,15 @@ class ContingenciaService
 				} else {
 					// Registrar nuevo evento en el SIN
 					$registroEventoService = new RegistroEventoService();
-					
+
 					// Obtener CUFD vigente ANTES de registrar el evento (según documentación SIN)
 					// "Obtener un nuevo CUFD antes de registrar el evento significativo y enviar los paquetes"
 					$cufdVigente = $this->obtenerCufdVigente();
-					
+
 					// Obtener fechas de inicio y fin del evento (basadas en las facturas)
 					// Las fechas deben corresponder al período real de la contingencia
 					$fechas = $this->obtenerFechasEvento($paquete['facturas']);
-					
+
 					try {
 						$respuestaEvento = $registroEventoService->registrarEvento(
 							$cuis,
@@ -175,10 +180,10 @@ class ContingenciaService
 							$puntoVenta,
 							$sucursal
 						);
-						
+
 						if (isset($respuestaEvento['RespuestaListaEventos']['codigoRecepcionEventoSignificativo'])) {
 							$codigoRecepcionEvento = $respuestaEvento['RespuestaListaEventos']['codigoRecepcionEventoSignificativo'];
-							
+
 							// Guardar en la base de datos
 							DB::table('sin_evento_significativo')->insert([
 								'codigo_recepcion' => $codigoRecepcionEvento,
@@ -188,7 +193,7 @@ class ContingenciaService
 								'codigo_sucursal' => $sucursal,
 								'codigo_punto_venta' => $puntoVenta
 							]);
-							
+
 							Log::info('ContingenciaService.eventoRegistrado', [
 								'codigo_recepcion' => $codigoRecepcionEvento
 							]);
@@ -201,16 +206,16 @@ class ContingenciaService
 					}
 				}
 			}
-			
+
 			// 6. Enviar paquete al SIN
 			$recepcionService = new RecepcionPaqueteService();
 			$codigoDocumentoSector = (int) config('sin.cod_doc_sector', 11);
 			$tipoFacturaDocumento = (int) config('sin.tipo_factura', 1);
-			
+
 			// Usar la fecha actual en zona horaria de Bolivia (UTC-4)
 			// El SIN valida que la fecha esté dentro de 300 segundos (5 minutos) de su hora
 			$fechaEnvio = now()->timezone('America/La_Paz')->format('Y-m-d\TH:i:s.v');
-			
+
 			$respuesta = $recepcionService->enviarPaquete(
 				$cuis,
 				$paquete['cufd'],
@@ -233,13 +238,13 @@ class ContingenciaService
 			}
 
 			$resp = $respuesta['RespuestaServicioFacturacion'];
-			
+
 			// Preparar lista de números de factura para logging
 			$numerosFacturas = array_map(function($f) {
 				return $f->anio . '_' . $f->nro_factura;
 			}, $paquete['facturas']);
 			$stringFacturas = implode(', ', $numerosFacturas);
-			
+
 			// Verificar si fue rechazada
 			if (isset($resp['codigoDescripcion']) && $resp['codigoDescripcion'] === 'RECHAZADA') {
 				// Registrar en sin_recepcion_paquete_factura
@@ -252,22 +257,22 @@ class ContingenciaService
 					'mensajes_list' => isset($resp['mensajesList']) ? json_encode($resp['mensajesList']) : null,
 					'fecha_registro' => now()
 				]);
-				
+
 				$mensaje = isset($resp['mensajesList']['descripcion']) ? $resp['mensajesList']['descripcion'] : 'Error desconocido';
 				throw new \RuntimeException('Paquete RECHAZADO: ' . $mensaje);
 			}
-			
+
 			if (isset($resp['transaccion']) && $resp['transaccion'] === false) {
 				$mensaje = isset($resp['mensajesList']['descripcion']) ? $resp['mensajesList']['descripcion'] : 'Error desconocido';
 				throw new \RuntimeException($mensaje);
 			}
 
 			$codigoRecepcion = isset($resp['codigoRecepcion']) ? $resp['codigoRecepcion'] : null;
-			
+
 			if (!$codigoRecepcion) {
 				throw new \RuntimeException('No se recibió código de recepción');
 			}
-			
+
 			// Registrar recepción exitosa en sin_recepcion_paquete_factura
 			DB::table('sin_recepcion_paquete_factura')->insert([
 				'descripcion' => isset($resp['codigoDescripcion']) ? $resp['codigoDescripcion'] : 'PENDIENTE',
@@ -292,7 +297,7 @@ class ContingenciaService
 
 			// 8. Validar paquete
 			sleep(2); // Esperar 2 segundos antes de validar
-			
+
 			$validacionService = new ValidacionPaqueteService();
 			$validacion = $validacionService->validarPaquete(
 				$cuis,
@@ -352,7 +357,7 @@ class ContingenciaService
 
 	/**
 	 * Genera XML del paquete de facturas
-	 * 
+	 *
 	 * @param array $facturas
 	 * @return string
 	 */
@@ -362,7 +367,7 @@ class ContingenciaService
 		// Por ahora retornamos un XML básico
 		$xml = '<?xml version="1.0" encoding="UTF-8"?>';
 		$xml .= '<paqueteFacturas>';
-		
+
 		foreach ($facturas as $factura) {
 			// Aquí iría la estructura completa de cada factura
 			$xml .= '<factura>';
@@ -372,16 +377,16 @@ class ContingenciaService
 			// ... más campos según especificación
 			$xml .= '</factura>';
 		}
-		
+
 		$xml .= '</paqueteFacturas>';
-		
+
 		return $xml;
 	}
 
 	/**
 	 * Procesa la validación del paquete y actualiza estados
 	 * Maneja respuestas: VALIDADA, PENDIENTE, RECHAZADA, OBSERVADA
-	 * 
+	 *
 	 * @param array $validacion
 	 * @param array $facturas
 	 */
@@ -410,7 +415,7 @@ class ContingenciaService
 						'aceptado_impuestos' => true,
 						'mensaje_sin' => 'Factura validada correctamente'
 					]);
-				
+
 				// Actualizar regulacion_factura
 				DB::table('regulacion_factura')
 					->where('nro_factura', $factura->nro_factura)
@@ -448,7 +453,7 @@ class ContingenciaService
 						'estado' => 'Rechazado',
 						'mensaje_sin' => $mensajeError
 					]);
-				
+
 				// Actualizar regulacion_factura
 				DB::table('regulacion_factura')
 					->where('nro_factura', $factura->nro_factura)
@@ -464,7 +469,7 @@ class ContingenciaService
 		// Caso 4: OBSERVADA - Algunas facturas tienen errores, otras fueron aceptadas
 		if ($codigoDescripcion === 'OBSERVADA') {
 			$mensajesList = isset($resp['mensajesList']) ? $resp['mensajesList'] : [];
-			
+
 			// Si es un solo mensaje, convertir a array
 			if (isset($mensajesList['descripcion'])) {
 				$mensajesList = [$mensajesList];
@@ -476,12 +481,12 @@ class ContingenciaService
 				$numeroArchivo = isset($mensaje['numeroArchivo']) ? (int)$mensaje['numeroArchivo'] : null;
 				$codigo = isset($mensaje['codigo']) ? $mensaje['codigo'] : null;
 				$esAdvertencia = isset($mensaje['advertencia']) && $mensaje['advertencia'] === 'true';
-				
+
 				// Ignorar código 1000 (factura ya registrada) y advertencias
 				if ($codigo === '1000' || $esAdvertencia) {
 					continue;
 				}
-				
+
 				if ($numeroArchivo !== null) {
 					if (!isset($erroresPorArchivo[$numeroArchivo])) {
 						$erroresPorArchivo[$numeroArchivo] = [];
@@ -495,7 +500,7 @@ class ContingenciaService
 				if (isset($erroresPorArchivo[$index])) {
 					// Factura con errores
 					$erroresTexto = json_encode($erroresPorArchivo[$index]);
-					
+
 					DB::table('factura')
 						->where('nro_factura', $factura->nro_factura)
 						->where('anio', $factura->anio)
@@ -503,7 +508,7 @@ class ContingenciaService
 							'estado' => 'Rechazado',
 							'mensaje_sin' => $erroresTexto
 						]);
-					
+
 					// Actualizar regulacion_factura
 					DB::table('regulacion_factura')
 						->where('nro_factura', $factura->nro_factura)
@@ -522,7 +527,7 @@ class ContingenciaService
 							'aceptado_impuestos' => true,
 							'mensaje_sin' => 'Factura validada correctamente'
 						]);
-					
+
 					// Actualizar regulacion_factura
 					DB::table('regulacion_factura')
 						->where('nro_factura', $factura->nro_factura)
@@ -539,7 +544,7 @@ class ContingenciaService
 		// Fallback: usar codigosRespuestas si existe (formato antiguo)
 		if (isset($resp['codigosRespuestas'])) {
 			$respuestas = $resp['codigosRespuestas'];
-			
+
 			// Si es una sola factura, convertir a array
 			if (!isset($respuestas[0])) {
 				$respuestas = [$respuestas];
@@ -578,7 +583,7 @@ class ContingenciaService
 
 	/**
 	 * Obtiene CUIS vigente
-	 * 
+	 *
 	 * @return string
 	 */
 	private function obtenerCuisVigente()
@@ -593,11 +598,11 @@ class ContingenciaService
 			$cuis = DB::table('sin_cuis')
 				->orderBy('fecha_vigencia', 'desc')
 				->first();
-			
+
 			if (!$cuis) {
 				throw new \RuntimeException('No hay CUIS disponible');
 			}
-			
+
 			Log::warning('ContingenciaService.cuisNoVigente', [
 				'codigo_cuis' => $cuis->codigo_cuis,
 				'fecha_vigencia' => $cuis->fecha_vigencia
@@ -606,10 +611,10 @@ class ContingenciaService
 
 		return $cuis->codigo_cuis;
 	}
-	
+
 	/**
 	 * Obtiene CUFD vigente o el más reciente
-	 * 
+	 *
 	 * @return string
 	 */
 	private function obtenerCufdVigente()
@@ -624,11 +629,11 @@ class ContingenciaService
 			$cufd = DB::table('sin_cufd')
 				->orderBy('fecha_vigencia', 'desc')
 				->first();
-			
+
 			if (!$cufd) {
 				throw new \RuntimeException('No hay CUFD disponible. Debe sincronizar CUFD antes de regularizar.');
 			}
-			
+
 			Log::warning('ContingenciaService.cufdNoVigente', [
 				'codigo_cufd' => $cufd->codigo_cufd,
 				'fecha_vigencia' => $cufd->fecha_vigencia
@@ -640,10 +645,10 @@ class ContingenciaService
 
 	/**
 	 * Obtiene las fechas de inicio y fin del evento basándose en las facturas
-	 * 
+	 *
 	 * Según documentación del SIN: Las fechas deben corresponder al período real de la contingencia
 	 * (cuando se emitieron las facturas), NO al momento del envío.
-	 * 
+	 *
 	 * @param array $facturas
 	 * @return array ['inicio' => string, 'fin' => string]
 	 */
@@ -654,11 +659,11 @@ class ContingenciaService
 
 		foreach ($facturas as $factura) {
 			$fechaEmision = strtotime($factura->fecha_emision);
-			
+
 			if ($fechaMinima === null || $fechaEmision < $fechaMinima) {
 				$fechaMinima = $fechaEmision;
 			}
-			
+
 			if ($fechaMaxima === null || $fechaEmision > $fechaMaxima) {
 				$fechaMaxima = $fechaEmision;
 			}
@@ -668,7 +673,7 @@ class ContingenciaService
 		// Esto representa el período real de la contingencia
 		$fechaMinimaCarbon = \Carbon\Carbon::createFromTimestamp($fechaMinima)->timezone('America/La_Paz');
 		$fechaMaximaCarbon = \Carbon\Carbon::createFromTimestamp($fechaMaxima)->timezone('America/La_Paz');
-		
+
 		$inicio = $fechaMinimaCarbon->format('Y-m-d\TH:i:s.v');
 		$fin = $fechaMaximaCarbon->format('Y-m-d\TH:i:s.v');
 
@@ -686,7 +691,7 @@ class ContingenciaService
 
 	/**
 	 * Registra un intento de regularización en la tabla regulacion_factura
-	 * 
+	 *
 	 * @param array $facturas
 	 * @param string $cafc
 	 * @param int|null $codigoEvento
@@ -708,7 +713,7 @@ class ContingenciaService
 		$cuis = null;
 		$puntoVenta = null;
 		$sucursal = null;
-		
+
 		try {
 			$cuiRow = DB::table('sin_cuis')
 				->where('fecha_vigencia', '>', now())

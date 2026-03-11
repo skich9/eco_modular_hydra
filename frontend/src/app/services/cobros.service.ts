@@ -4,6 +4,7 @@ import { HttpClient, HttpParams } from '@angular/common/http';
 import { Observable } from 'rxjs';
 import { map } from 'rxjs/operators';
 import { environment } from '../../environments/environment';
+import { Console } from 'node:console';
 
 interface CobroResumenResponse {
 	success: boolean;
@@ -242,6 +243,7 @@ export class CobrosService {
 	getContingencias(params: { sucursal?: number|string; punto_venta?: number|string } = {}): Observable<any> {
 		let httpParams = new HttpParams();
 		Object.entries(params).forEach(([k,v]) => { if (v !== undefined && v !== null && String(v) !== '') httpParams = httpParams.set(k, String(v)); });
+    console.log("la ruta para recupera las contingencias es:",this.apiUrl,"contingencias");
 		return this.http.get<any>(`${this.apiUrl}/contingencias`, { params: httpParams }).pipe(
 			map((res: any) => ({ success: !!res?.success, data: res?.facturas || [], total: res?.total ?? (res?.facturas ? res.facturas.length : 0) }))
 		);
@@ -254,6 +256,7 @@ export class CobrosService {
 	}
 
 	regularizarContingencias(facturas: Array<{ nro_factura: number|string; anio: number|string }>): Observable<any> {
+    console.log("Se debe realizar las contingencia por favor verificar que se estan enviando las facturas correctas para regularizar:", facturas);
 		const payload = { facturas: facturas || [] };
 		return this.http.post<any>(`${this.apiUrl}/contingencias/regularizar`, payload).pipe(
 			map((res: any) => ({ success: !!res?.success, data: res || res?.data }))

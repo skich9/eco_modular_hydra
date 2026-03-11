@@ -1,6 +1,8 @@
-import { Injectable } from '@angular/core';
+import { Injectable, Inject, PLATFORM_ID } from '@angular/core';
+import { isPlatformBrowser } from '@angular/common';
 import { HttpClient } from '@angular/common/http';
 import { Observable } from 'rxjs';
+import { environment } from '../../environments/environment';
 
 export interface TipoPuntoVenta {
 	codigo_clasificador: number;
@@ -81,9 +83,20 @@ export interface CuisData {
 	providedIn: 'root'
 })
 export class PuntoVentaService {
-	private apiUrl = 'http://localhost:8069/api';
+	private apiUrl: string;
 
-	constructor(private http: HttpClient) {}
+	constructor(private http: HttpClient, @Inject(PLATFORM_ID) private platformId: Object) {
+		if (isPlatformBrowser(this.platformId)) {
+			const protocol = typeof window !== 'undefined' && window.location ? (window.location.protocol || 'http:') : 'http:';
+			const host = typeof window !== 'undefined' && window.location ? (window.location.hostname || 'localhost') : 'localhost';
+			const port = environment.apiPort || '8069';
+			this.apiUrl = `${protocol}//${host}:${port}/api`;
+			console.log('[PuntoVentaService] apiUrl:', this.apiUrl);
+		} else {
+			this.apiUrl = environment.apiUrl;
+      console.log('esta ingresando al else');
+		}
+	}
 
 	getTiposPuntoVenta(): Observable<ApiResponse<TipoPuntoVenta[]>> {
 		return this.http.get<ApiResponse<TipoPuntoVenta[]>>(`${this.apiUrl}/sin/tipos-punto-venta`);
@@ -131,12 +144,9 @@ export class PuntoVentaService {
 		return this.http.put<ApiResponse<any>>(`${this.apiUrl}/sin/puntos-venta/asignacion/${id}`, data);
 	}
 
-	syncPuntosVenta(codigoAmbiente: number, codigoSucursal: number, idUsuario: number, codigoPuntoVenta: number = 0): Observable<ApiResponse<any>> {
+	syncPuntosVenta(idUsuario: number): Observable<ApiResponse<any>> {
 		return this.http.post<ApiResponse<any>>(`${this.apiUrl}/sin/sync/puntos-venta`, {
-			codigo_ambiente: codigoAmbiente,
-			codigo_sucursal: codigoSucursal,
-			id_usuario: idUsuario,
-			codigo_punto_venta: codigoPuntoVenta
+			id_usuario: idUsuario
 		});
 	}
 

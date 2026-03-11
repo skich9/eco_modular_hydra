@@ -13,6 +13,13 @@ class SoapClientFactory
 	{
 		$url = rtrim(config('sin.url'), '/');
 		$wsdl = $url . '/' . ltrim($service, '/') . '?wsdl';
+
+        Log::info('SoapClientFactory.build: building SOAP clientxxx', [
+            'wsdl' => $wsdl,
+            'sinurl' => config('sin.url'),
+            'service' => $service
+        ]);
+
 		$apiKey = (string) config('sin.api_key');
 		// Normaliza API key quitando comillas o espacios provenientes del .env
 		$apiKey = trim($apiKey, "\"' \t\n\r\0\x0B");

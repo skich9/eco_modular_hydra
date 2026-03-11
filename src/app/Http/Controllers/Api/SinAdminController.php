@@ -137,24 +137,34 @@ class SinAdminController extends Controller
 	public function syncPuntosVenta(Request $request, PuntoVentaRepository $pvRepo, CuisRepository $cuisRepo)
 	{
 		try {
-			$codigoAmbiente = (int) $request->input('codigo_ambiente', (int) config('sin.ambiente'));
-			$codigoSucursal = (int) $request->input('codigo_sucursal', (int) config('sin.sucursal'));
+			// $codigoAmbiente = (int) $request->input('codigo_ambiente', (int) config('sin.ambiente'));
+			// $codigoSucursal = (int) $request->input('codigo_sucursal', (int) config('sin.sucursal'));
 			$idUsuario = (int) $request->input('id_usuario', 1);
-			$puntoVenta = (int) $request->input('codigo_punto_venta', 0);
+            $sucursales = [0,1];    // cambiar esta por una consulta a la base de datos para obtener las sucursales registradas en el sistema, actualmente se tiene registrado 2 sucursales (0 y 1)
+			// $puntoVenta = (int) $request->input('codigo_punto_venta', 0);
 
-			Log::info('SIN syncPuntosVenta: start', [
-				'ambiente' => $codigoAmbiente,
-				'sucursal' => $codigoSucursal,
-				'usuario' => $idUsuario,
-				'pv' => $puntoVenta
+			Log::info('SIN syncPuntosVenta: el usuario que hace sincronizacion de puntos de venta es', [
+				'usuario' => $idUsuario
 			]);
 
-			// Obtener CUIS vigente para la consulta
-			$cuisData = $cuisRepo->getVigenteOrCreate2($codigoAmbiente, $codigoSucursal, $puntoVenta);
-			$cuis = $cuisData['codigo_cuis'];
+            /// se requiere identificar cuantas sucursales se tiene registrado en sistema.
+            $codigoAmbiente = (int) config('sin.ambiente');
 
-			// Sincronizar puntos de venta
-			$resultado = $pvRepo->sincronizarDesdeSiat($codigoAmbiente, $codigoSucursal, $cuis, $idUsuario);
+            for ($i=0; $i < count($sucursales); $i++) {
+                $codigoSucursal = $sucursales[$i];
+                # code...
+                // Obtener CUIS vigente para la consulta
+			    $cuisData = $cuisRepo->getVigenteOrCreate2($codigoAmbiente, $codigoSucursal, 0);
+			    $cuis = $cuisData['codigo_cuis'];
+
+                // Sincronizar puntos de venta
+			    $resultado = $pvRepo->sincronizarDesdeSiat($codigoAmbiente, $codigoSucursal, $cuis, $idUsuario);
+            }
+
+            Log::info('SIN syncPuntosVenta: success  los resultados que recupera son', [
+                'resultados' => $resultado,
+            ]);
+
 
 			return response()->json($resultado);
 		} catch (\Throwable $e) {

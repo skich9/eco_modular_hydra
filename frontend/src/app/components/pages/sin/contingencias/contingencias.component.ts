@@ -1,7 +1,8 @@
-import { Component, OnInit } from '@angular/core';
+import { Component, OnInit, ChangeDetectorRef  } from '@angular/core';
 import { CommonModule } from '@angular/common';
 import { FormsModule } from '@angular/forms';
 import { CobrosService } from '../../../../services/cobros.service';
+import { PuntoVentaService, PuntoVenta } from '../../../../services/punto-venta.service';
 
 interface ContingenciaRow {
 	anio: number;
@@ -11,6 +12,7 @@ interface ContingenciaRow {
 	cliente?: string;
 	codigo_cufd?: string;
 	cafc?: string;
+  codigo_sucursal?: string | number;
 	codigo_punto_venta?: string | number;
 	codigo_evento?: number | null;
 	descripcion_evento?: string | null;
@@ -30,6 +32,7 @@ interface ContingenciaRow {
 export class ContingenciasComponent implements OnInit {
 	loading = false;
 	loadingStats = false;
+	loadingPuntosVenta = false;
 	regularizando = false;
 	error = '';
 	mensaje = '';
@@ -40,13 +43,57 @@ export class ContingenciasComponent implements OnInit {
 	selected: { [key: string]: boolean } = {};
 	selectAll = false;
 
-	sucursal: string | number | null = null;
-	puntoVenta: string | number | null = null;
+	sucursal: number | null = null;
+	puntoVenta: number | null = null;
+	filtroEstado: string = '';
 
-	constructor(private cobros: CobrosService) {}
+	puntosVenta: PuntoVenta[] = [];
+
+	get sucursales(): number[] {
+		const unique = new Set(this.puntosVenta.map(pv => pv.sucursal));
+		return Array.from(unique).sort((a, b) => a - b);
+	}
+
+	get puntosFiltrados(): PuntoVenta[] {
+		if (this.sucursal === null) return this.puntosVenta;
+		return this.puntosVenta.filter(pv => pv.sucursal === this.sucursal);
+	}
+
+  // changeDetectorRef:ChangeDetectorRef;
+
+	constructor(private cobros: CobrosService, private pvService: PuntoVentaService) {
+    // this.changeDetectorRef = changeDetectorRef;
+  }
 
 	ngOnInit(): void {
+		this.loadPuntosVenta();
 		this.load();
+	}
+
+	private loadPuntosVenta(): void {
+		this.loadingPuntosVenta = true;
+		this.pvService.getPuntosVenta().subscribe({
+			next: (res) => {
+        console.log('Puntos de Venta obtenidos   xxxxxx:', res?.data);
+        this.puntosVenta = res?.data || [];
+      },
+			error: () => {
+        /* no bloquear la pantalla si falla */
+        console.log('Error al cargar puntos de venta, se intentará nuevamente en la próxima carga.');
+      },
+			complete: () => { this.loadingPuntosVenta = false; }
+		});
+	}
+
+	onSucursalChange(): void {
+		this.puntoVenta = null;
+	}
+
+	get facturasFiltradas(): ContingenciaRow[] {
+		if (!this.filtroEstado) return this.facturas;
+    // devolver todas las factura cuyo tiempo o plazo para regularizar ya se haya vencido, es decir, aquellas que tengan fuera_de_plazo = true
+		if (this.filtroEstado === 'FUERA_DE_PLAZO') return this.facturas.filter(f => f.fuera_de_plazo);
+		return this.facturas.filter(f => (f.estado || '').toUpperCase() === this.filtroEstado);
 	}
 
 	keyOf(f: ContingenciaRow): string { return `${f.nro_factura}-${f.anio}`; }
@@ -77,8 +124,17 @@ export class ContingenciasComponent implements OnInit {
 	}
 
 	toggleAll(): void {
-		this.selectAll = !this.selectAll;
-		(this.facturas || []).forEach(f => { this.selected[this.keyOf(f)] = this.selectAll; });
+    let condator = 0;
+    const arrReferencia = this.facturas || [];
+		arrReferencia.forEach(f => {
+      if(!f.fuera_de_plazo) {
+        this.selected[this.keyOf(f)] = this.selectAll;
+        condator++;
+      }
+    });
+    if(condator !== arrReferencia.length) {
+      this.mensaje = "No se seleccionan las contingencias que están fuera de plazo, " + condator + " de " + arrReferencia.length + " seleccionadas.";
+    }
 	}
 
 	isAnySelected(): boolean { return Object.values(this.selected).some(v => !!v); }
@@ -88,6 +144,7 @@ export class ContingenciasComponent implements OnInit {
 
 	regularizarSeleccionadas(): void {
 		if (!this.isAnySelected()) return;
+
 		const list = (this.facturas || [])
 			.filter(f => !!this.selected[this.keyOf(f)])
 			.map(f => ({ nro_factura: f.nro_factura, anio: f.anio }));
@@ -113,4 +170,8 @@ export class ContingenciasComponent implements OnInit {
 		const s = String(val || '');
 		return s.length > len ? s.substring(0, len) + '…' : s;
 	}
+
+  onModelChange(event: any): void {
+    console.log('se cambio el estado del input:', event);
+  }
 }
