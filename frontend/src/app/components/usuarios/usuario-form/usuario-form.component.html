@@ -14,10 +14,10 @@
     <div class="form-row">
       <div class="form-group">
         <label for="nickname">Usuario</label>
-        <input 
-          type="text" 
-          id="nickname" 
-          formControlName="nickname" 
+        <input
+          type="text"
+          id="nickname"
+          formControlName="nickname"
           class="form-control"
           [class.is-invalid]="(submitted || f['nickname'].touched) && f['nickname'].errors"
         >
@@ -29,10 +29,10 @@
 
       <div class="form-group">
         <label for="ci">CI *</label>
-        <input 
-          type="text" 
-          id="ci" 
-          formControlName="ci" 
+        <input
+          type="text"
+          id="ci"
+          formControlName="ci"
           class="form-control"
           [class.is-invalid]="(submitted || f['ci'].touched) && f['ci'].errors"
         >
@@ -46,10 +46,10 @@
     <div class="form-row">
       <div class="form-group">
         <label for="nombre">Nombre *</label>
-        <input 
-          type="text" 
-          id="nombre" 
-          formControlName="nombre" 
+        <input
+          type="text"
+          id="nombre"
+          formControlName="nombre"
           class="form-control"
           [class.is-invalid]="(submitted || f['nombre'].touched) && f['nombre'].errors"
         >
@@ -61,10 +61,10 @@
 
       <div class="form-group">
         <label for="ap_paterno">Apellido Paterno *</label>
-        <input 
-          type="text" 
-          id="ap_paterno" 
-          formControlName="ap_paterno" 
+        <input
+          type="text"
+          id="ap_paterno"
+          formControlName="ap_paterno"
           class="form-control"
           [class.is-invalid]="(submitted || f['ap_paterno'].touched) && f['ap_paterno'].errors"
         >
@@ -78,31 +78,28 @@
     <div class="form-row">
       <div class="form-group">
         <label for="ap_materno">Apellido Materno</label>
-        <input 
-          type="text" 
-          id="ap_materno" 
-          formControlName="ap_materno" 
+        <input
+          type="text"
+          id="ap_materno"
+          formControlName="ap_materno"
           class="form-control"
         >
       </div>
 
       <div class="form-group">
-        <label for="id_rol">Rol *</label>
-        <select 
-          id="id_rol" 
-          formControlName="id_rol" 
-          class="form-control"
-          [class.is-invalid]="(submitted || f['id_rol'].touched) && f['id_rol'].errors"
+        <label>Funciones del Usuario</label>
+        <button
+          type="button"
+          class="btn-funciones"
+          (click)="openFuncionesModal()"
         >
-          <option [ngValue]="null" disabled>Seleccione un rol</option>
-          <option *ngFor="let rol of roles" [ngValue]="rol.id_rol">
-            {{ rol.nombre }}
-          </option>
-        </select>
-        <div class="invalid-feedback" *ngIf="(submitted || f['id_rol'].touched) && f['id_rol'].errors">
-          <span *ngIf="f['id_rol'].errors['required']">Rol es requerido</span>
-          <span *ngIf="f['id_rol'].errors['server']">{{ f['id_rol'].errors['server'] }}</span>
-        </div>
+          <i class="fas fa-tasks"></i>
+          Asignar Funciones
+          <span class="badge-count" *ngIf="funcionesCount > 0">{{ funcionesCount }}</span>
+        </button>
+        <small class="form-text text-muted">
+          Funciones seleccionadas: {{ funcionesCount }}
+        </small>
       </div>
     </div>
 
@@ -111,16 +108,16 @@
       <div class="form-group">
         <label for="contrasenia">Contraseña *</label>
         <div class="password-input-wrapper">
-          <input 
-            [type]="showPassword ? 'text' : 'password'" 
-            id="contrasenia" 
-            formControlName="contrasenia" 
+          <input
+            [type]="showPassword ? 'text' : 'password'"
+            id="contrasenia"
+            formControlName="contrasenia"
             class="form-control"
             [class.is-invalid]="(submitted || f['contrasenia'].touched) && f['contrasenia'].errors"
           >
-          <button 
-            type="button" 
-            class="password-toggle-btn" 
+          <button
+            type="button"
+            class="password-toggle-btn"
             (click)="togglePasswordVisibility()"
           >
             <i class="fas" [ngClass]="showPassword ? 'fa-eye-slash' : 'fa-eye'"></i>
@@ -136,16 +133,16 @@
       <div class="form-group">
         <label for="contraseniaConfirm">Confirmar Contraseña *</label>
         <div class="password-input-wrapper">
-          <input 
-            [type]="showConfirmPassword ? 'text' : 'password'" 
-            id="contraseniaConfirm" 
-            formControlName="contraseniaConfirm" 
+          <input
+            [type]="showConfirmPassword ? 'text' : 'password'"
+            id="contraseniaConfirm"
+            formControlName="contraseniaConfirm"
             class="form-control"
             [class.is-invalid]="(submitted || f['contraseniaConfirm'].touched) && (f['contraseniaConfirm'].errors || usuarioForm.errors?.['matching'])"
           >
-          <button 
-            type="button" 
-            class="password-toggle-btn" 
+          <button
+            type="button"
+            class="password-toggle-btn"
             (click)="toggleConfirmPasswordVisibility()"
           >
             <i class="fas" [ngClass]="showConfirmPassword ? 'fa-eye-slash' : 'fa-eye'"></i>
@@ -174,16 +171,16 @@
       <div class="form-group">
         <label for="contrasenia">Nueva Contraseña *</label>
         <div class="password-input-wrapper">
-          <input 
-            [type]="showPassword ? 'text' : 'password'" 
-            id="contrasenia" 
-            formControlName="contrasenia" 
+          <input
+            [type]="showPassword ? 'text' : 'password'"
+            id="contrasenia"
+            formControlName="contrasenia"
             class="form-control"
             [class.is-invalid]="(submitted || f['contrasenia'].touched) && f['contrasenia'].errors"
           >
-          <button 
-            type="button" 
-            class="password-toggle-btn" 
+          <button
+            type="button"
+            class="password-toggle-btn"
             (click)="togglePasswordVisibility()"
           >
             <i class="fas" [ngClass]="showPassword ? 'fa-eye-slash' : 'fa-eye'"></i>
@@ -199,16 +196,16 @@
       <div class="form-group">
         <label for="contraseniaConfirm">Confirmar Nueva Contraseña *</label>
         <div class="password-input-wrapper">
-          <input 
-            [type]="showConfirmPassword ? 'text' : 'password'" 
-            id="contraseniaConfirm" 
-            formControlName="contraseniaConfirm" 
+          <input
+            [type]="showConfirmPassword ? 'text' : 'password'"
+            id="contraseniaConfirm"
+            formControlName="contraseniaConfirm"
             class="form-control"
             [class.is-invalid]="(submitted || f['contraseniaConfirm'].touched) && (f['contraseniaConfirm'].errors || usuarioForm.errors?.['matching'])"
           >
-          <button 
-            type="button" 
-            class="password-toggle-btn" 
+          <button
+            type="button"
+            class="password-toggle-btn"
             (click)="toggleConfirmPasswordVisibility()"
           >
             <i class="fas" [ngClass]="showConfirmPassword ? 'fa-eye-slash' : 'fa-eye'"></i>
@@ -226,10 +223,10 @@
       <div class="form-group">
         <label for="estado">Estado</label>
         <div class="toggle-switch">
-          <input 
-            type="checkbox" 
-            id="estado" 
-            formControlName="estado" 
+          <input
+            type="checkbox"
+            id="estado"
+            formControlName="estado"
             class="toggle-input"
           >
           <label for="estado" class="toggle-label">
@@ -255,4 +252,130 @@
       </button>
     </div>
   </form>
+</div>
+
+<!-- Modal de Asignación de Funciones -->
+<div class="modal-overlay" *ngIf="showFuncionesModal" (click)="closeFuncionesModal()">
+  <div class="modal-content funciones-modal" (click)="$event.stopPropagation()">
+    <div class="modal-header">
+      <h3>Asignar Funciones al Usuario</h3>
+      <button type="button" class="btn-close" (click)="closeFuncionesModal()">
+        <i class="fas fa-times"></i>
+      </button>
+    </div>
+
+    <div class="modal-body">
+      <!-- Selector de Rol -->
+      <div class="rol-selector-container">
+        <label for="rolSelector" class="rol-selector-label">
+          <i class="fas fa-user-tag"></i>
+          Copiar funciones desde un rol:
+        </label>
+        <div class="rol-selector-wrapper">
+          <select
+            id="rolSelector"
+            [(ngModel)]="selectedRolId"
+            [ngModelOptions]="{standalone: true}"
+            (change)="onRolChange()"
+            class="rol-select"
+            [disabled]="loadingRolFunciones"
+          >
+            <option [ngValue]="null">Seleccione un rol...</option>
+            <option *ngFor="let rol of roles" [ngValue]="rol.id_rol">
+              {{ rol.nombre }}
+            </option>
+          </select>
+          <span *ngIf="loadingRolFunciones" class="loading-spinner">
+            <i class="fas fa-spinner fa-spin"></i>
+          </span>
+        </div>
+        <small class="rol-help-text">
+          Las funciones del rol seleccionado se agregarán a las funciones actuales
+        </small>
+      </div>
+
+      <!-- Búsqueda -->
+      <div class="search-box">
+        <input
+          type="text"
+          [(ngModel)]="funcionesSearchTerm"
+          [ngModelOptions]="{standalone: true}"
+          (input)="filterFunciones()"
+          placeholder="Buscar funciones..."
+          class="search-input"
+        >
+      </div>
+
+      <!-- Contador de funciones seleccionadas -->
+      <div class="selected-count">
+        <strong>Funciones seleccionadas:</strong> {{ selectedFunciones.length }}
+      </div>
+
+      <!-- Tabs por módulo -->
+      <div class="tabs-container">
+        <button
+          type="button"
+          *ngFor="let modulo of modulos"
+          class="tab-button"
+          [class.active]="selectedModulo === modulo"
+          [class.has-selected]="moduloHasFuncionesSeleccionadas(modulo)"
+          (click)="selectedModulo = modulo; filterFunciones()">
+          {{ modulo }}
+        </button>
+      </div>
+
+      <!-- Loading -->
+      <div *ngIf="loadingFunciones" class="loading-container">
+        <div class="spinner-border text-primary" role="status">
+          <span class="visually-hidden">Cargando...</span>
+        </div>
+      </div>
+
+      <!-- Lista de funciones -->
+      <div *ngIf="!loadingFunciones" class="funciones-list">
+        <!-- Checkbox seleccionar todas -->
+        <div class="select-all-container">
+          <label class="checkbox-container">
+            <input
+              type="checkbox"
+              [checked]="allFuncionesSelected()"
+              (change)="toggleAllFunciones($event)"
+            >
+            <span class="checkmark"></span>
+            <span class="label-text">Seleccionar todas</span>
+          </label>
+        </div>
+
+        <!-- Items de funciones -->
+        <div class="funciones-items">
+          <div *ngFor="let funcion of filteredFuncionesDisponibles" class="funcion-item">
+            <label class="checkbox-container">
+              <input
+                type="checkbox"
+                [checked]="isFuncionSelected(funcion.id_funcion)"
+                (change)="toggleFuncion(funcion.id_funcion)"
+              >
+              <span class="checkmark"></span>
+              <div class="funcion-details">
+                <div class="funcion-header">
+                  <span class="funcion-codigo">{{ funcion.codigo }}</span>
+                </div>
+                <div class="funcion-nombre">{{ funcion.nombre }}</div>
+                <div class="funcion-descripcion" *ngIf="funcion.descripcion">{{ funcion.descripcion }}</div>
+              </div>
+            </label>
+          </div>
+          <div *ngIf="filteredFuncionesDisponibles.length === 0" class="no-funciones">
+            No se encontraron funciones
+          </div>
+        </div>
+      </div>
+    </div>
+
+    <div class="modal-footer">
+      <button type="button" class="btn-secondary" (click)="closeFuncionesModal()">
+        Cerrar
+      </button>
+    </div>
+  </div>
 </div>

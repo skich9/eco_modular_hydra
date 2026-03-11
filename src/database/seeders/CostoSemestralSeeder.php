@@ -20,6 +20,8 @@ class CostoSemestralSeeder extends Seeder
                 'gestion' => '1/1999',
                 'semestre' => (string)$semestre,
                 'monto_semestre' => 1000 + ($semestre * 50),
+                'costo_fijo' => 0,
+                'valor_credito' => 0,
                 'id_usuario' => 1,
             ]);
         }
@@ -31,6 +33,8 @@ class CostoSemestralSeeder extends Seeder
                 'gestion' => '1/1999',
                 'semestre' => (string)$semestre,
                 'monto_semestre' => 900 + ($semestre * 40),
+                'costo_fijo' => 0,
+                'valor_credito' => 0,
                 'id_usuario' => 1,
             ]);
         }

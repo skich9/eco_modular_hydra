@@ -50,6 +50,19 @@ return [
 
     /*
     |--------------------------------------------------------------------------
+    | Token Refresh Minutes
+    |--------------------------------------------------------------------------
+    |
+    | This value controls the number of minutes to extend the token expiration
+    | when the user performs an action (e.g., clicks a button, makes a request).
+    | This helps prevent automatic logout during active work sessions.
+    |
+    */
+
+    'refresh_minutes' => env('SANCTUM_REFRESH_MINUTES', 10),
+
+    /*
+    |--------------------------------------------------------------------------
     | Token Prefix
     |--------------------------------------------------------------------------
     |

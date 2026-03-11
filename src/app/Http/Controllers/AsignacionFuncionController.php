@@ -54,8 +54,7 @@ class AsignacionFuncionController extends Controller
                 'id_usuario' => 'required|exists:usuarios,id_usuario',
                 'id_funcion' => 'required|exists:funciones,id_funcion',
                 'fecha_ini' => 'required|date',
-                'fecha_fin' => 'nullable|date|after:fecha_ini',
-                'usuario_asig' => 'required|string|max:255'
+                'fecha_fin' => 'nullable|date|after:fecha_ini'
             ]);
 
             // Verificar si ya existe una asignación activa
@@ -77,7 +76,6 @@ class AsignacionFuncionController extends Controller
                 'id_funcion' => $validated['id_funcion'],
                 'fecha_ini' => $validated['fecha_ini'],
                 'fecha_fin' => $validated['fecha_fin'],
-                'usuario_asig' => $validated['usuario_asig'],
                 'created_at' => now(),
                 'updated_at' => now()
             ]);
@@ -161,7 +159,7 @@ class AsignacionFuncionController extends Controller
     {
         try {
             $asignacion = DB::table('asignacion_funcion')->where('id', $id)->first();
-            
+
             if (!$asignacion) {
                 return response()->json([
                     'success' => false,
@@ -171,8 +169,7 @@ class AsignacionFuncionController extends Controller
 
             $validated = $request->validate([
                 'fecha_ini' => 'sometimes|date',
-                'fecha_fin' => 'nullable|date|after:fecha_ini',
-                'usuario_asig' => 'sometimes|string|max:255'
+                'fecha_fin' => 'nullable|date|after:fecha_ini'
             ]);
 
             DB::table('asignacion_funcion')
@@ -217,7 +214,7 @@ class AsignacionFuncionController extends Controller
     {
         try {
             $asignacion = DB::table('asignacion_funcion')->where('id', $id)->first();
-            
+
             if (!$asignacion) {
                 return response()->json([
                     'success' => false,
@@ -246,7 +243,7 @@ class AsignacionFuncionController extends Controller
     {
         try {
             $asignacion = DB::table('asignacion_funcion')->where('id', $id)->first();
-            
+
             if (!$asignacion) {
                 return response()->json([
                     'success' => false,

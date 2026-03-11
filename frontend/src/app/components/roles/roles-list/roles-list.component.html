@@ -1,0 +1,193 @@
+<div class="roles-container">
+	<div class="roles-header">
+		<h1 class="roles-title">Gestión de Roles</h1>
+		<div class="roles-actions">
+			<div class="search-container">
+				<input
+					type="text"
+					[(ngModel)]="searchTerm"
+					(input)="onSearch()"
+					placeholder="Buscar rol..."
+					class="search-input"
+				>
+				<button class="search-button" (click)="onSearch()">
+					<i class="fas fa-search"></i>
+				</button>
+			</div>
+			<button class="btn-primary" [routerLink]="['/roles/nuevo']">
+				<i class="fas fa-plus"></i> Nuevo Rol
+			</button>
+		</div>
+	</div>
+
+	<!-- Tabla de Roles -->
+	<div class="table-responsive">
+		<table class="roles-table">
+			<thead>
+				<tr>
+					<th>ID</th>
+					<th>Nombre</th>
+					<th>Descripción</th>
+					<th>Estado</th>
+					<th>Acciones</th>
+				</tr>
+			</thead>
+			<tbody>
+				<tr *ngFor="let rol of roles">
+					<td>{{ rol.id_rol }}</td>
+					<td>{{ rol.nombre }}</td>
+					<td>{{ rol.descripcion || 'Sin descripción' }}</td>
+					<td>
+						<span class="badge" [ngClass]="rol.estado ? 'badge-active' : 'badge-inactive'">
+							{{ rol.estado ? 'Activo' : 'Inactivo' }}
+						</span>
+					</td>
+					<td class="actions-column">
+						<button class="btn-icon btn-functions" (click)="openFuncionesModal(rol)" title="Gestionar Funciones">
+							<i class="fas fa-tasks"></i>
+						</button>
+						<button class="btn-icon btn-edit" [routerLink]="['/roles/editar', rol.id_rol]" title="Editar">
+							<i class="fas fa-edit"></i>
+						</button>
+						<button class="btn-icon btn-toggle" (click)="toggleRolStatus(rol)" title="Cambiar estado">
+							<i class="fas" [ngClass]="rol.estado ? 'fa-toggle-on' : 'fa-toggle-off'"></i>
+						</button>
+						<button class="btn-icon btn-delete" (click)="confirmDelete(rol)" title="Eliminar">
+							<i class="fas fa-trash"></i>
+						</button>
+					</td>
+				</tr>
+				<tr *ngIf="roles.length === 0">
+					<td colspan="5" class="no-data">
+						<div *ngIf="isLoading">Cargando roles...</div>
+						<div *ngIf="!isLoading">No se encontraron roles</div>
+					</td>
+				</tr>
+			</tbody>
+		</table>
+	</div>
+
+	<!-- Modal de Gestión de Funciones -->
+	<div class="modal" *ngIf="showFuncionesModal">
+		<div class="modal-content modal-large">
+			<div class="modal-header">
+				<h2 class="modal-title">
+					<i class="fas fa-list me-2"></i>
+					Gestionar Funciones - {{ selectedRol?.nombre }}
+				</h2>
+				<button class="modal-close" (click)="closeFuncionesModal()">×</button>
+			</div>
+			<div class="modal-body">
+				<!-- Búsqueda de funciones -->
+				<div class="search-box">
+					<input
+						type="text"
+						[(ngModel)]="funcionesSearchTerm"
+						(input)="filterFunciones()"
+						placeholder="Buscar funciones..."
+						class="search-input"
+					>
+				</div>
+
+				<!-- Tabs por módulo -->
+				<div class="tabs-container">
+					<button
+						*ngFor="let modulo of modulos"
+						class="tab-button"
+						[class.active]="selectedModulo === modulo"
+						[class.has-selected]="moduloHasFuncionesSeleccionadas(modulo)"
+						(click)="selectedModulo = modulo; filterFunciones()">
+						{{ modulo }}
+					</button>
+				</div>
+
+				<!-- Loading -->
+				<div *ngIf="loadingFunciones" class="loading-container">
+					<div class="spinner-border text-primary" role="status">
+						<span class="visually-hidden">Cargando...</span>
+					</div>
+				</div>
+
+				<!-- Lista de funciones disponibles -->
+				<div *ngIf="!loadingFunciones" class="funciones-list">
+					<!-- Checkbox seleccionar todas -->
+					<div class="select-all-container">
+						<label class="checkbox-container">
+							<input
+								type="checkbox"
+								[checked]="allFuncionesSelected()"
+								(change)="toggleAllFunciones($event)"
+							>
+							<span class="checkmark"></span>
+							<span class="label-text">Seleccionar todas</span>
+						</label>
+					</div>
+
+					<!-- Items de funciones -->
+					<div class="funciones-items">
+						<div *ngFor="let funcion of filteredFuncionesDisponibles" class="funcion-item">
+							<label class="checkbox-container">
+								<input
+									type="checkbox"
+									[checked]="isFuncionSelected(funcion.id_funcion)"
+									(change)="toggleFuncion(funcion.id_funcion)"
+								>
+								<span class="checkmark"></span>
+								<div class="funcion-details">
+									<div class="funcion-header">
+										<span class="funcion-codigo">{{ funcion.codigo }}</span>
+									</div>
+									<div class="funcion-nombre">{{ funcion.nombre }}</div>
+									<div class="funcion-descripcion" *ngIf="funcion.descripcion">{{ funcion.descripcion }}</div>
+								</div>
+							</label>
+						</div>
+						<div *ngIf="filteredFuncionesDisponibles.length === 0" class="no-funciones">
+							No se encontraron funciones
+						</div>
+					</div>
+				</div>
+				<div class="selected-count mt-3">
+					<strong>Funciones seleccionadas:</strong> {{ selectedFunciones.length }}
+				</div>
+			</div>
+			<div class="modal-footer">
+				<button class="btn btn-secondary" (click)="closeFuncionesModal()" [disabled]="savingFunciones">
+					Cancelar
+				</button>
+				<button class="btn btn-primary" (click)="saveFunciones()" [disabled]="savingFunciones">
+					<span *ngIf="!savingFunciones">Guardar</span>
+					<span *ngIf="savingFunciones">
+						<span class="spinner-border spinner-border-sm me-2"></span>
+						Guardando...
+					</span>
+				</button>
+			</div>
+		</div>
+	</div>
+
+	<!-- Modal de Confirmación para Eliminar -->
+	<div class="modal" *ngIf="showDeleteModal">
+		<div class="modal-content">
+			<div class="modal-header">
+				<h2 class="modal-title">Confirmar Eliminación</h2>
+				<button class="modal-close" (click)="cancelDelete()">×</button>
+			</div>
+			<div class="modal-body">
+				<p>¿Está seguro que desea eliminar el rol "{{ rolToDelete?.nombre }}"?</p>
+				<p class="modal-warning">Esta acción no se puede deshacer.</p>
+				<p class="modal-warning">Nota: Eliminar un rol puede afectar a los usuarios que tienen este rol asignado.</p>
+			</div>
+			<div class="modal-footer">
+				<button class="btn-secondary" (click)="cancelDelete()">Cancelar</button>
+				<button class="btn-danger" (click)="deleteRol()">Eliminar</button>
+			</div>
+		</div>
+	</div>
+
+	<!-- Alert -->
+	<div *ngIf="alertMessage" class="alert" [ngClass]="'alert-' + alertType">
+		{{ alertMessage }}
+		<button class="alert-close" (click)="alertMessage = ''">×</button>
+	</div>
+</div>

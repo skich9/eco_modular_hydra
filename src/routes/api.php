@@ -117,6 +117,7 @@ Route::post('/login', [\App\Http\Controllers\Api\AuthController::class, 'login']
 Route::middleware('auth:sanctum')->group(function () {
 	Route::post('/logout', [\App\Http\Controllers\Api\AuthController::class, 'logout']);
 	Route::post('/verify', [\App\Http\Controllers\Api\AuthController::class, 'verify']);
+	Route::post('/refresh-token', [\App\Http\Controllers\Api\AuthController::class, 'refreshToken']);
 	Route::post('/change-password', [\App\Http\Controllers\Api\AuthController::class, 'changePassword']);
 });
 
@@ -277,6 +278,28 @@ Route::patch('def-descuentos-beca/{id}/toggle-status', [DefDescuentoBecaControll
 Route::apiResource('parametros-generales', ParametroGeneralController::class);
 Route::patch('parametros-generales/{id}/toggle-status', [ParametroGeneralController::class, 'toggleStatus']);
 
+// Configuración de Moras
+Route::post('datos-mora/find-or-create', [\App\Http\Controllers\DatosMoraController::class, 'findOrCreate']);
+Route::apiResource('datos-mora', \App\Http\Controllers\DatosMoraController::class);
+Route::patch('datos-mora/{id}/toggle-status', [\App\Http\Controllers\DatosMoraController::class, 'toggleStatus']);
+
+// Configuración de Moras - Detalles
+Route::apiResource('datos-mora-detalle', \App\Http\Controllers\DatosMoraDetalleController::class);
+Route::patch('datos-mora-detalle/{id}/toggle-status', [\App\Http\Controllers\DatosMoraDetalleController::class, 'toggleStatus']);
+
+// Prórrogas de Mora
+Route::post('prorrogas-mora/batch', [\App\Http\Controllers\ProrrogaMoraController::class, 'storeBatch']);
+Route::get('prorrogas-mora/activas', [\App\Http\Controllers\ProrrogaMoraController::class, 'activas']);
+Route::get('prorrogas-mora/estudiante/{codCeta}', [\App\Http\Controllers\ProrrogaMoraController::class, 'porEstudiante']);
+Route::patch('prorrogas-mora/{id}/toggle-status', [\App\Http\Controllers\ProrrogaMoraController::class, 'toggleStatus']);
+Route::apiResource('prorrogas-mora', \App\Http\Controllers\ProrrogaMoraController::class);
+
+// Descuentos de Mora
+Route::post('descuentos-mora/batch', [\App\Http\Controllers\DescuentoMoraController::class, 'storeBatch']);
+Route::get('descuentos-mora/estudiante/{codCeta}', [\App\Http\Controllers\DescuentoMoraController::class, 'porEstudiante']);
+Route::patch('descuentos-mora/{id}/toggle-status', [\App\Http\Controllers\DescuentoMoraController::class, 'toggleStatus']);
+Route::apiResource('descuentos-mora', \App\Http\Controllers\DescuentoMoraController::class)->only(['index']);
+
 // Carreras
 Route::get('carreras', [ApiCarreraController::class, 'index']);
 Route::get('carreras/{codigo}/pensums', [ApiCarreraController::class, 'pensums']);
@@ -347,6 +370,13 @@ Route::get('sga/eco_hydra/Recuperacion/elegibilidad', function (Request $request
             if ($resp->ok()) {
                 return response()->json($resp->json(), 200);
             }
+            // Si el SGA devuelve error, usar fallback
+            Log::warning('SGA Recuperacion/elegibilidad error', [
+                'status' => $resp->status(),
+                'url' => $url,
+                'cod_ceta' => $request->query('cod_ceta'),
+                'cod_pensum' => $codPensum
+            ]);
             return response()->json([
                 'success' => true,
                 'data' => [
@@ -392,7 +422,18 @@ Route::get('sga/eco_hydra/Recuperacion/autorizaciones', function (Request $reque
             if ($resp->ok()) {
                 return response()->json($resp->json(), 200);
             }
-            return response()->json($resp->json(), $resp->status());
+            // Si el SGA devuelve 403 (sin permisos) o cualquier otro error, usar fallback
+            Log::warning('SGA Recuperacion/autorizaciones error', [
+                'status' => $resp->status(),
+                'url' => $url,
+                'cod_ceta' => $request->query('cod_ceta'),
+                'cod_pensum' => $codPensum
+            ]);
+            return response()->json([
+                'success' => true,
+                'data' => [],
+                'message' => 'SGA_BASE_URL no configurado o SGA no disponible. Respuesta local por defecto.'
+            ], 200);
         }
     } catch (\Throwable $e) {
         // fallthrough al fallback
@@ -408,6 +449,30 @@ Route::get('sga/eco_hydra/Recuperacion/autorizaciones', function (Request $reque
 Route::get('roles/active', [RolController::class, 'rolesActivos']);
 Route::apiResource('roles', RolController::class);
 Route::patch('roles/{id}/toggle-status', [RolController::class, 'cambiarEstado']);
+Route::get('roles/{id}/funciones', [RolController::class, 'getFunciones']);
+Route::post('roles/{id}/funciones', [RolController::class, 'assignFunciones']);
+Route::delete('roles/{id}/funciones/{funcionId}', [RolController::class, 'removeFuncion']);
+
+// ===================== Funciones =====================
+Route::middleware('auth:sanctum')->group(function () {
+	Route::get('funciones', [\App\Http\Controllers\Api\FuncionController::class, 'index']);
+	Route::get('funciones/by-module', [\App\Http\Controllers\Api\FuncionController::class, 'byModule']);
+	Route::get('funciones/{id}', [\App\Http\Controllers\Api\FuncionController::class, 'show']);
+	Route::post('funciones', [\App\Http\Controllers\Api\FuncionController::class, 'store']);
+	Route::put('funciones/{id}', [\App\Http\Controllers\Api\FuncionController::class, 'update']);
+	Route::delete('funciones/{id}', [\App\Http\Controllers\Api\FuncionController::class, 'destroy']);
+});
+
+// ===================== Usuario Funciones =====================
+Route::middleware('auth:sanctum')->group(function () {
+	Route::get('usuarios/{usuarioId}/funciones', [\App\Http\Controllers\Api\UsuarioFuncionController::class, 'index']);
+	Route::get('usuarios/{usuarioId}/funciones/by-module', [\App\Http\Controllers\Api\UsuarioFuncionController::class, 'byModule']);
+	Route::post('usuarios/{usuarioId}/funciones', [\App\Http\Controllers\Api\UsuarioFuncionController::class, 'store']);
+	Route::put('usuarios/{usuarioId}/funciones/{funcionId}', [\App\Http\Controllers\Api\UsuarioFuncionController::class, 'update']);
+	Route::delete('usuarios/{usuarioId}/funciones/{funcionId}', [\App\Http\Controllers\Api\UsuarioFuncionController::class, 'destroy']);
+	Route::post('usuarios/{usuarioId}/funciones/copy-from-role', [\App\Http\Controllers\Api\UsuarioFuncionController::class, 'copyFromRole']);
+	Route::post('usuarios/{usuarioId}/funciones/check-permission', [\App\Http\Controllers\Api\UsuarioFuncionController::class, 'checkPermission']);
+});
 
 // ===================== Razón Social =====================
 Route::get('razon-social/search', [RazonSocialController::class, 'search']);

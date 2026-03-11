@@ -490,13 +490,15 @@
       [resumen]="resumen"
       [formasCobro]="modalFormasCobro"
       [cuentasBancarias]="cuentasBancarias"
+      [morasPendientes]="morasPendientes"
       [tipo]="modalTipo"
       [pendientes]="mensualidadesPendientes"
       [pu]="modalTipo === 'arrastre' ? mensualidadPU : getMensualidadPuForModal()"
       [baseNro]="getNextMensualidadNro()"
       [defaultMetodoPago]="modalFormasCobro[0]?.id_forma_cobro || selectedFormaCobroId"
-      [startCuotaOverride]="getNextMensualidadStartCuota()"
+      [startCuotaOverride]="modalTipo === 'arrastre' ? null : getNextMensualidadStartCuota()"
       [frontSaldos]="getFrontSaldos()"
+      [detalleFactura]="pagos.value"
       (addPagos)="onAddPagosFromModal($event)"
     ></app-mensualidad-modal>
 

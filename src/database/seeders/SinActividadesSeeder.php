@@ -9,28 +9,29 @@ class SinActividadesSeeder extends Seeder
 {
 	public function run()
 	{
-		DB::table('sin_actividades')->insert([
+		$actividades = [
 			[
 				'codigo_caeb' => '853000',
 				'descripcion' => 'ENSEÑANZA SUPERIOR',
 				'tipo_actividad' => 'P',
-				'created_at' => now(),
-				'updated_at' => now(),
 			],
 			[
 				'codigo_caeb' => '8530400',
 				'descripcion' => 'Docencia en Educación Técnica y No Universitaria',
 				'tipo_actividad' => 'P',
-				'created_at' => now(),
-				'updated_at' => now(),
 			],
 			[
 				'codigo_caeb' => '854000',
 				'descripcion' => 'ENSEÑANZA DE ADULTOS Y OTROS TIPOS DE ENSEÑANZA',
 				'tipo_actividad' => 'S',
-				'created_at' => now(),
-				'updated_at' => now(),
 			],
-		]);
+		];
+
+		foreach ($actividades as $actividad) {
+			DB::table('sin_actividades')->updateOrInsert(
+				['codigo_caeb' => $actividad['codigo_caeb']],
+				$actividad
+			);
+		}
 	}
 }

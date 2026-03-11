@@ -51,4 +51,19 @@ export class RolService {
 	getActiveRoles(): Observable<{ success: boolean; data: Rol[] }> {
 		return this.getActive();
 	}
+
+	// Obtener funciones asignadas a un rol
+	getRolFunciones(id: number): Observable<{ success: boolean; data: any[] }> {
+		return this.http.get<{ success: boolean; data: any[] }>(`${this.apiUrl}/${id}/funciones`);
+	}
+
+	// Asignar funciones a un rol
+	assignFunciones(id: number, funciones: number[]): Observable<{ success: boolean; data: any[]; message: string }> {
+		return this.http.post<{ success: boolean; data: any[]; message: string }>(`${this.apiUrl}/${id}/funciones`, { funciones });
+	}
+
+	// Eliminar una función de un rol
+	removeFuncion(id: number, funcionId: number): Observable<{ success: boolean; message: string }> {
+		return this.http.delete<{ success: boolean; message: string }>(`${this.apiUrl}/${id}/funciones/${funcionId}`);
+	}
 }

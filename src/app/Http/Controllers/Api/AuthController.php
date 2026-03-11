@@ -4,6 +4,7 @@ namespace App\Http\Controllers\Api;
 
 use App\Http\Controllers\Controller;
 use App\Models\Usuario;
+use App\Services\PermissionService;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\Hash;
 use Illuminate\Support\Facades\Validator;
@@ -64,13 +65,17 @@ class AuthController extends Controller
 				], 403);
 			}
 
-			// Generar token Sanctum con expiración de 8 horas
-			$expiresAt = now()->addHours(8);
+			// Generar token Sanctum con expiración configurable desde .env (SANCTUM_EXPIRATION en minutos)
+			$expirationMinutes = (int) config('sanctum.expiration', 480);
+			$expiresAt = now()->addMinutes($expirationMinutes);
 			$token = $usuario->createToken(
 				'auth_token',
 				['*'],
 				$expiresAt
 			)->plainTextToken;
+
+			$permissionService = new PermissionService();
+			$funciones = $permissionService->getUserFunctions($usuario->id_usuario);
 
 			return response()->json([
 				'success' => true,
@@ -92,7 +97,8 @@ class AuthController extends Controller
 						'nombre' => $usuario->rol->nombre,
 						'descripcion' => $usuario->rol->descripcion,
 						'estado' => $usuario->rol->estado
-					]
+					],
+					'funciones' => $funciones
 				]
 			]);
 
@@ -133,6 +139,9 @@ class AuthController extends Controller
 
 		$usuario->load('rol');
 
+		$permissionService = new PermissionService();
+		$funciones = $permissionService->getUserFunctions($usuario->id_usuario);
+
 		return response()->json([
 			'success' => true,
 			'usuario' => [
@@ -150,8 +159,51 @@ class AuthController extends Controller
 					'nombre' => $usuario->rol->nombre,
 					'descripcion' => $usuario->rol->descripcion,
 					'estado' => $usuario->rol->estado
-				]
+				],
+				'funciones' => $funciones
 			]
+		]);
+	}
+
+	/**
+	 * Refresh token - Extender la expiración del token actual
+	 */
+	public function refreshToken(Request $request)
+	{
+		$usuario = $request->user();
+
+		if (!$usuario || !$usuario->estado) {
+			return response()->json([
+				'success' => false,
+				'message' => 'Token inválido o usuario inactivo'
+			], 401);
+		}
+
+		// Obtener el token actual
+		$currentToken = $request->user()->currentAccessToken();
+
+		if (!$currentToken) {
+			return response()->json([
+				'success' => false,
+				'message' => 'No se pudo obtener el token actual'
+			], 401);
+		}
+
+		// Obtener minutos de refresh desde configuración
+		$refreshMinutes = (int) config('sanctum.refresh_minutes', 10);
+
+		// Calcular nueva fecha de expiración: SIEMPRE desde ahora + refresh_minutes
+		// Esto asegura que cada actividad extienda el token por el tiempo configurado
+		$newExpiresAt = now()->addMinutes($refreshMinutes);
+
+		// Actualizar la fecha de expiración del token
+		$currentToken->expires_at = $newExpiresAt;
+		$currentToken->save();
+
+		return response()->json([
+			'success' => true,
+			'message' => 'Token actualizado correctamente',
+			'expires_at' => $newExpiresAt->toIso8601String()
 		]);
 	}
 

@@ -1,0 +1,174 @@
+<div class="prorroga-mora-container">
+	<div class="page-header">
+		<h1 class="page-title">
+			<i class="fas fa-percent"></i>
+			Gestión de Descuentos de Mora
+		</h1>
+	</div>
+
+	<div *ngIf="showAlert" class="alert" [ngClass]="'alert-' + alertType">
+		<i class="fas" [ngClass]="{
+			'fa-check-circle': alertType === 'success',
+			'fa-exclamation-circle': alertType === 'warning',
+			'fa-times-circle': alertType === 'error'
+		}"></i>
+		{{ alertMessage }}
+	</div>
+
+	<div class="search-section">
+		<div style="display: grid; grid-template-columns: 1fr 1fr; gap: 1.25rem; align-items: start;">
+			<div class="search-card">
+				<h3 class="search-title">
+					<i class="fas fa-search"></i>
+					Datos del estudiante
+				</h3>
+				<div class="search-form">
+					<div class="search-input-group" style="flex-direction: column; gap: 0.5rem;">
+						<label class="form-label">Código CETA</label>
+						<div style="display: flex; gap: 0.5rem;">
+							<input type="text" class="search-input" [(ngModel)]="searchCodCeta" placeholder="Ingrese código CETA" (keyup.enter)="buscarPorCodCeta()" />
+							<button class="btn btn-primary" (click)="buscarPorCodCeta()" [disabled]="loading">
+								<i class="fas fa-search"></i>
+							</button>
+							<button class="btn btn-secondary" (click)="cancelar()" *ngIf="estudianteEncontrado">
+								<i class="fas fa-times"></i>
+							</button>
+						</div>
+					</div>
+
+					<div class="search-input-group" style="flex-direction: column; gap: 0.5rem; margin-top: 1rem;">
+						<label class="form-label">Pensum</label>
+						<input type="text" class="search-input" [value]="pensumNombre" disabled />
+					</div>
+
+					<div class="search-input-group" style="flex-direction: column; gap: 0.5rem; margin-top: 1rem;">
+						<label class="form-label">Estudiante</label>
+						<input type="text" class="search-input" [value]="studentDisplayName" disabled />
+					</div>
+
+					<div class="search-input-group" style="flex-direction: column; gap: 0.5rem; margin-top: 1rem;">
+						<label class="form-label">Grupos</label>
+						<div *ngIf="(grupos && grupos.length) > 0; else noGrupos">
+							<span *ngFor="let g of grupos" class="badge badge-success" style="margin-right: 0.5rem;">{{ g }}</span>
+						</div>
+						<ng-template #noGrupos>
+							<span class="info-value">Sin grupos</span>
+						</ng-template>
+					</div>
+				</div>
+			</div>
+
+			<div class="search-card">
+				<h3 class="search-title">
+					<i class="fas fa-percent"></i>
+					Descuento Mora
+				</h3>
+
+				<div class="search-form">
+					<div class="search-input-group" style="flex-direction: column; gap: 0.5rem;">
+						<label class="form-label">Cuotas</label>
+						<div style="display: grid; grid-template-columns: repeat(2, minmax(160px, 1fr)); gap: 0.75rem;">
+							<div *ngFor="let row of descuentosMora" class="search-card" style="padding: 0.75rem; box-shadow: none; border: 1px solid #eee;">
+								<div style="display:flex; justify-content: space-between; gap: 0.5rem; align-items: center;">
+									<div style="font-weight: 600;">Cuota {{ row.numero_cuota || '-' }}</div>
+									<div style="font-size: 0.9rem; color:#6c757d;">Mora: {{ row.monto_mora | number:'1.2-2' }}</div>
+								</div>
+								<div style="margin-top: 0.5rem;">
+									<input type="number" class="search-input" [(ngModel)]="row.monto_descuento" [ngModelOptions]="{standalone: true}" placeholder="Ingrese descuento (Bs)" />
+									<div style="font-size: 0.85rem; color:#6c757d;">Descuento actual: {{ row.monto_descuento_actual | number:'1.2-2' }}</div>
+								</div>
+							</div>
+						</div>
+					</div>
+
+					<div class="search-input-group" style="flex-direction: column; gap: 0.5rem; margin-top: 0.75rem;">
+						<label class="form-label">Motivo del descuento</label>
+						<textarea class="search-input" rows="4" [(ngModel)]="motivo" [ngModelOptions]="{standalone: true}" placeholder="Ingrese el motivo del descuento..."></textarea>
+					</div>
+
+					<div class="search-input-group" style="gap: 0.5rem; margin-top: 1rem;">
+						<button class="btn btn-primary" (click)="registrarDescuento()" [disabled]="loading">
+							<i class="fas fa-save"></i>
+							Registrar descuento
+						</button>
+						<button class="btn btn-secondary" (click)="limpiarFormulario()">
+							<i class="fas fa-eraser"></i>
+							Limpiar
+						</button>
+						<button class="btn" (click)="cancelar()">
+							<i class="fas fa-times"></i>
+							Cancelar
+						</button>
+					</div>
+				</div>
+			</div>
+		</div>
+	</div>
+
+	<div class="table-section">
+		<div class="table-header" style="display:flex; align-items:center; justify-content: space-between; gap: 1rem;">
+			<h3 class="table-title">
+				<i class="fas fa-list"></i>
+				Descuentos Registrados
+			</h3>
+			<div style="min-width: 280px;">
+				<input type="text" class="search-input" [(ngModel)]="buscadorTabla" placeholder="Buscar..." />
+			</div>
+		</div>
+		<div class="table-responsive">
+			<table class="table">
+				<thead>
+					<tr>
+						<th>Gestión</th>
+						<th>Código Estudiante</th>
+						<th>Estudiante</th>
+						<th>Pensum</th>
+						<th>Cuota</th>
+						<th>Monto Descuento</th>
+						<th>Estado</th>
+						<th>Motivo</th>
+						<th>Fecha</th>
+						<th>Acciones</th>
+					</tr>
+				</thead>
+				<tbody>
+					<tr *ngFor="let d of descuentosTablaFiltrados">
+						<td>{{ d.asignacion_mora?.asignacion_costo?.inscripcion?.gestion || 'N/A' }}</td>
+						<td>{{ d.asignacion_mora?.asignacion_costo?.inscripcion?.cod_ceta || 'N/A' }}</td>
+						<td>
+							{{ d.asignacion_mora?.asignacion_costo?.inscripcion?.estudiante?.nombre_completo || (
+								d.asignacion_mora?.asignacion_costo?.inscripcion?.estudiante?.ap_paterno + ' ' +
+								d.asignacion_mora?.asignacion_costo?.inscripcion?.estudiante?.ap_materno + ' ' +
+								d.asignacion_mora?.asignacion_costo?.inscripcion?.estudiante?.nombres
+							) }}
+						</td>
+						<td>{{ d.asignacion_mora?.asignacion_costo?.pensum?.nombre || d.asignacion_mora?.asignacion_costo?.cod_pensum || 'N/A' }}</td>
+						<td>{{ d.asignacion_mora?.asignacion_costo?.numero_cuota || 'N/A' }}</td>
+						<td>{{ d.monto_descuento | number:'1.2-2' }}</td>
+						<td>
+							<span class="badge" [ngClass]="d.activo ? 'badge-success' : 'badge-danger'">
+								{{ d.activo ? 'Activo' : 'Anulado' }}
+							</span>
+						</td>
+						<td>{{ d.observaciones || 'N/A' }}</td>
+						<td>{{ d.created_at | date:'dd/MM/yyyy' }}</td>
+						<td>
+							<button
+								class="btn btn-sm"
+								[ngClass]="d.activo ? 'btn-danger' : 'btn-success'"
+								(click)="toggleDescuento(d)"
+								[disabled]="loading"
+							>
+								<i class="fas" [ngClass]="d.activo ? 'fa-ban' : 'fa-check'"></i>
+								{{ d.activo ? 'Anular' : 'Activar' }}
+							</button>
+						</td>
+					</tr>
+					<tr *ngIf="descuentosTablaFiltrados.length === 0">
+						<td colspan="10" class="text-center">No hay descuentos registrados</td>
+					</tr>
+				</tbody>
+			</table>
+		</div>
+	</div>
+</div>

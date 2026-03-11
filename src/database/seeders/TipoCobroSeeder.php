@@ -11,13 +11,25 @@ class TipoCobroSeeder extends Seeder
     /**
      * Run the database seeds.
      */
-    public function run(): void
+    public function run()
     {
         $tiposCobro = [
             [
                 'cod_tipo_cobro' => 'MENSUALIDAD',
                 'nombre_tipo_cobro' => 'Mensualidad',
                 'descripcion' => 'Pago mensual regular de la matrícula',
+                'activo' => true,
+            ],
+            [
+                'cod_tipo_cobro' => 'MORA',
+                'nombre_tipo_cobro' => 'Mora',
+                'descripcion' => 'Recargo por mora asociado a una cuota',
+                'activo' => true,
+            ],
+            [
+                'cod_tipo_cobro' => 'NIVELACION',
+                'nombre_tipo_cobro' => 'Nivelación',
+                'descripcion' => 'Pago de nivelación por mora de mensualidad',
                 'activo' => true,
             ],
             [

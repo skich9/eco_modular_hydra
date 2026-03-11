@@ -13,6 +13,7 @@ import { ItemsModalComponent } from './items-modal/items-modal.component';
 import { KardexModalComponent } from './kardex-modal/kardex-modal.component';
 import { BusquedaEstudianteModalComponent } from './busqueda-estudiante-modal/busqueda-estudiante-modal.component';
 import { DescuentoFormModalComponent } from './descuento-form-modal/descuento-form-modal.component';
+import { MoraModalComponent } from './mora-modal/mora-modal.component';
 import { QrPanelComponent } from './qr-panel/qr-panel.component';
 import { ClickLockDirective } from '../../../directives/click-lock.directive';
 import { environment } from '../../../../environments/environment';
@@ -24,7 +25,7 @@ import { forkJoin } from 'rxjs';
 @Component({
   selector: 'app-cobros-page',
   standalone: true,
-  imports: [CommonModule, ReactiveFormsModule, FormsModule, MensualidadModalComponent, ItemsModalComponent, RezagadoModalComponent, RecuperacionModalComponent, ReincorporacionModalComponent, BusquedaEstudianteModalComponent, DescuentoFormModalComponent, KardexModalComponent, QrPanelComponent, ClickLockDirective],
+  imports: [CommonModule, ReactiveFormsModule, FormsModule, MensualidadModalComponent, ItemsModalComponent, RezagadoModalComponent, RecuperacionModalComponent, ReincorporacionModalComponent, BusquedaEstudianteModalComponent, DescuentoFormModalComponent, MoraModalComponent, KardexModalComponent, QrPanelComponent, ClickLockDirective],
   templateUrl: './cobros.component.html',
   styleUrls: ['./cobros.component.scss']
 })
@@ -54,7 +55,7 @@ export class CobrosComponent implements OnInit {
   mensualidadesPendientes = 0;
   mensualidadPU = 0;
   // Tipo de modal activo
-  modalTipo: 'mensualidad' | 'rezagado' | 'recuperacion' | 'arrastre' | 'reincorporacion' = 'mensualidad';
+  modalTipo: 'mensualidad' | 'rezagado' | 'recuperacion' | 'arrastre' | 'reincorporacion' | 'mora' = 'mensualidad';
 
   // Datos
   resumen: any = null;
@@ -78,6 +79,8 @@ export class CobrosComponent implements OnInit {
   rezagadoCosto: number | null = null;
   // Costo de Reincorporación (desde costo_semestral)
   reincorporacionCosto: number | null = null;
+  // Moras pendientes del estudiante
+  morasPendientes: any[] = [];
 
   // Estado QR recibido desde el panel QR
   private qrPanelStatus: 'pendiente' | 'procesando' | 'completado' | 'expirado' | 'cancelado' | null = null;
@@ -1393,7 +1396,11 @@ export class CobrosComponent implements OnInit {
     // No es necesario recalcular el form auxiliar del padre
     const modalEl = document.getElementById('mensualidadModal');
     if (modalEl && (window as any).bootstrap?.Modal) {
-      const modal = new (window as any).bootstrap.Modal(modalEl);
+      const modal = new (window as any).bootstrap.Modal(modalEl, {
+        backdrop: true,
+        keyboard: true,
+        focus: true
+      });
       modal.show();
     }
   }
@@ -2087,6 +2094,9 @@ export class CobrosComponent implements OnInit {
             console.log('[RESUMEN] gestion/pensum', this.resumen?.gestion, this.resumen?.inscripcion?.cod_pensum);
           } catch {}
 
+          // Cargar moras pendientes desde asignacion_mora
+          this.morasPendientes = Array.isArray(this.resumen?.moras_pendientes) ? this.resumen.moras_pendientes : [];
+
           // Procesar pensums disponibles del estudiante
           this.pensumsDisponibles = Array.isArray(this.resumen?.pensums_disponibles) ? this.resumen.pensums_disponibles : [];
           this.multiplePensums = this.pensumsDisponibles.length > 1;
@@ -2368,7 +2378,11 @@ export class CobrosComponent implements OnInit {
   openKardexModal(): void {
     const modalEl = document.getElementById('kardexModal');
     if (modalEl && (window as any).bootstrap?.Modal) {
-      const modal = new (window as any).bootstrap.Modal(modalEl);
+      const modal = new (window as any).bootstrap.Modal(modalEl, {
+        backdrop: true,
+        keyboard: true,
+        focus: true
+      });
       modal.show();
     }
   }
@@ -2550,7 +2564,11 @@ export class CobrosComponent implements OnInit {
       }, { emitEvent: false });
       this.updateModalTipoUI(tipo);
       this.razonSocialEditable = false;
-      const modal = new (window as any).bootstrap.Modal(modalEl);
+      const modal = new (window as any).bootstrap.Modal(modalEl, {
+        backdrop: true,
+        keyboard: true,
+        focus: true
+      });
       modal.show();
     }
   }
@@ -2713,8 +2731,70 @@ export class CobrosComponent implements OnInit {
     setTimeout(() => (this.modalAlertMessage = ''), 4000);
   }
 
+  private cleanupBootstrapModalArtifacts(context: string): void {
+    try {
+      const backdrops = Array.from(document.querySelectorAll('.modal-backdrop'));
+      console.log(`[Cobros] cleanupBootstrapModalArtifacts(${context}) - backdrops:`, backdrops.length);
+      for (const bd of backdrops) {
+        try { bd.remove(); } catch {}
+      }
+
+      // Bootstrap agrega estas propiedades al abrir modales
+      document.body.classList.remove('modal-open');
+      (document.body.style as any).paddingRight = '';
+      (document.body.style as any).overflow = '';
+    } catch (e) {
+      console.warn('[Cobros] cleanupBootstrapModalArtifacts - error:', e);
+    }
+  }
+
+  private logHitTestFromEvent(ev: MouseEvent, context: string): void {
+    try {
+      const x = ev.clientX;
+      const y = ev.clientY;
+      const el = document.elementFromPoint(x, y) as any;
+      if (!el) {
+        console.log(`[Cobros] HitTest(${context}) elementFromPoint: null`);
+        return;
+      }
+      const cs = window.getComputedStyle(el);
+      const inertHost = el.closest ? el.closest('[inert]') : null;
+      console.log(`[Cobros] HitTest(${context})`, {
+        x,
+        y,
+        tag: el.tagName,
+        id: el.id,
+        className: el.className,
+        zIndex: cs.zIndex,
+        pointerEvents: cs.pointerEvents,
+        opacity: cs.opacity,
+        position: cs.position,
+        disabled: typeof el.disabled === 'boolean' ? el.disabled : undefined,
+        readOnly: typeof el.readOnly === 'boolean' ? el.readOnly : undefined,
+        inertAncestor: inertHost ? { tag: inertHost.tagName, id: inertHost.id, className: inertHost.className } : null
+      });
+      setTimeout(() => {
+        try {
+          const ae: any = document.activeElement;
+          if (!ae) return;
+          console.log(`[Cobros] ActiveElement(${context})`, {
+            tag: ae.tagName,
+            id: ae.id,
+            className: ae.className,
+            disabled: typeof ae.disabled === 'boolean' ? ae.disabled : undefined,
+            readOnly: typeof ae.readOnly === 'boolean' ? ae.readOnly : undefined
+          });
+        } catch {}
+      }, 0);
+    } catch (e) {
+      console.warn('[Cobros] logHitTestFromEvent - error:', e);
+    }
+  }
+
   // ================= Mensualidades UI/Logic =================
   openMensualidadModal(): void {
+    console.log('[Cobros] openMensualidadModal - INICIO');
+    this.cleanupBootstrapModalArtifacts('before-openMensualidadModal');
     if (!this.resumen) {
       this.showAlert('Debe consultar primero un estudiante/gestión', 'warning');
       return;
@@ -2737,9 +2817,87 @@ export class CobrosComponent implements OnInit {
     this.recalcMensualidadTotal();
     this.modalTipo = 'mensualidad';
     const modalEl = document.getElementById('mensualidadModal');
+    console.log('[Cobros] modalEl encontrado:', !!modalEl);
     if (modalEl && (window as any).bootstrap?.Modal) {
-      const modal = new (window as any).bootstrap.Modal(modalEl);
+      // Listener en captura para saber qué está recibiendo el click cuando "no deja interactuar"
+      const clickListener = (ev: MouseEvent) => this.logHitTestFromEvent(ev, 'mensualidadModal(capture)');
+      const focusFixListener = (ev: MouseEvent) => {
+        try {
+          const t = ev.target as any;
+          if (!t || !t.tagName) return;
+          const tag = (t.tagName || '').toString().toUpperCase();
+          if (tag !== 'INPUT' && tag !== 'SELECT' && tag !== 'TEXTAREA') return;
+          if (typeof t.disabled === 'boolean' && t.disabled) return;
+          // En algunos equipos/navegadores hay algún handler que hace preventDefault en mousedown
+          // y eso evita que el navegador asigne foco automáticamente. Forzamos foco SINCRÓNICO.
+          try {
+            console.log('[Cobros] focusFixListener -> intentando focus a', { tag, className: t.className, type: t.type, name: t.name });
+          } catch {}
+          try { t.focus({ preventScroll: true }); } catch {}
+          setTimeout(() => {
+            try {
+              const ae: any = document.activeElement;
+              console.log('[Cobros] focusFixListener -> activeElement luego de focus', { tag: ae?.tagName, className: ae?.className });
+            } catch {}
+          }, 0);
+        } catch {}
+      };
+      modalEl.addEventListener('mousedown', clickListener, true);
+      modalEl.addEventListener('mousedown', focusFixListener, true);
+
+      console.log('[Cobros] Creando modal (bootstrap)');
+      const modal = new (window as any).bootstrap.Modal(modalEl, {
+        backdrop: true,
+        keyboard: true,
+        focus: false
+      });
+      console.log('[Cobros] Modal creado, mostrando...');
       modal.show();
+      console.log('[Cobros] Modal.show() ejecutado');
+
+      // Si por algún motivo el modal (o algún contenedor) quedó con 'inert', lo removemos
+      setTimeout(() => {
+        try {
+          const inertNodes = modalEl.querySelectorAll('[inert]');
+          if (inertNodes.length) {
+            console.log('[Cobros] Removiendo inert dentro del modal:', inertNodes.length);
+            inertNodes.forEach((n: any) => {
+              try { n.removeAttribute('inert'); } catch {}
+            });
+          }
+          try { (modalEl as any).removeAttribute('inert'); } catch {}
+        } catch {}
+      }, 0);
+
+      // Al cerrar, limpiar backdrops y remover listener
+      const onHidden = () => {
+        try { modalEl.removeEventListener('mousedown', clickListener, true); } catch {}
+        try { modalEl.removeEventListener('mousedown', focusFixListener, true); } catch {}
+        this.cleanupBootstrapModalArtifacts('hidden-mensualidadModal');
+        try { modalEl.removeEventListener('hidden.bs.modal', onHidden as any); } catch {}
+      };
+      modalEl.addEventListener('hidden.bs.modal', onHidden as any);
+
+      // Log de elementos del DOM después de mostrar el modal
+      setTimeout(() => {
+        const backdrops = document.querySelectorAll('.modal-backdrop');
+        console.log('[Cobros] Backdrops encontrados:', backdrops.length);
+        backdrops.forEach((bd, idx) => {
+          const styles = window.getComputedStyle(bd);
+          console.log(`[Cobros] Backdrop ${idx} - z-index:`, styles.zIndex, 'pointer-events:', styles.pointerEvents);
+        });
+
+        const modalDialog = modalEl.querySelector('.modal-dialog');
+        if (modalDialog) {
+          const dialogStyles = window.getComputedStyle(modalDialog);
+          console.log('[Cobros] Modal-dialog - z-index:', dialogStyles.zIndex, 'pointer-events:', dialogStyles.pointerEvents);
+        }
+        const modalContent = modalEl.querySelector('.modal-content');
+        if (modalContent) {
+          const contentStyles = window.getComputedStyle(modalContent);
+          console.log('[Cobros] Modal-content - z-index:', contentStyles.zIndex, 'pointer-events:', contentStyles.pointerEvents);
+        }
+      }, 500);
     }
   }
 
@@ -2774,6 +2932,78 @@ export class CobrosComponent implements OnInit {
         modal.show();
       }
     } catch {}
+  }
+
+  openMoraModal(): void {
+    if (!this.resumen) {
+      this.showAlert('Debe consultar primero un estudiante/gestión', 'warning');
+      return;
+    }
+    if (!this.morasPendientes || this.morasPendientes.length === 0) {
+      this.showAlert('No hay moras pendientes para este estudiante', 'warning');
+      return;
+    }
+    if (!this.ensureMetodoPagoPermitido(['EFECTIVO','TARJETA','CHEQUE','DEPOSITO','TRANSFERENCIA','QR','OTRO'])) return;
+    this.computeModalFormasFromSelection();
+
+    const modalEl = document.getElementById('moraModal');
+    if (modalEl && (window as any).bootstrap?.Modal) {
+      const modal = new (window as any).bootstrap.Modal(modalEl, {
+        backdrop: true,
+        keyboard: true,
+        focus: true
+      });
+      modal.show();
+    }
+  }
+
+  getTotalMorasPendientes(): number {
+    if (!this.morasPendientes || this.morasPendientes.length === 0) {
+      console.log('[MORA_TOTAL] No hay moras pendientes');
+      return 0;
+    }
+
+    console.log('[MORA_TOTAL] Calculando total de moras:', {
+      count: this.morasPendientes.length,
+      moras: this.morasPendientes.map(m => ({
+        id: m?.id_asignacion_mora,
+        monto_mora: m?.monto_mora,
+        monto_mora_total: m?.monto_mora_total,
+        monto_descuento: m?.monto_descuento,
+        id_mora_vinculada: m?.id_mora_vinculada
+      }))
+    });
+
+    const total = this.morasPendientes.reduce((total, mora) => {
+      const estado = (mora?.estado || '').toString().toUpperCase();
+      // Solo incluir moras cobrables: PENDIENTE y CONGELADA_PRORROGA (históricas)
+      if (estado !== 'PENDIENTE' && estado !== 'CONGELADA_PRORROGA') {
+        return total;
+      }
+
+      // Usar monto_mora individual de cada mora para evitar duplicación
+      const monto = Number(mora?.monto_mora || 0);
+      const descuento = Number(mora?.monto_descuento || 0);
+      const montoPagado = Number(mora?.monto_pagado || 0);
+      const neto = Math.max(0, monto - descuento - montoPagado);
+
+      console.log('[MORA_TOTAL] Procesando mora:', {
+        id: mora?.id_asignacion_mora,
+        estado: estado,
+        monto_mora: mora?.monto_mora,
+        monto_mora_total: mora?.monto_mora_total,
+        monto_pagado: montoPagado,
+        usando: monto,
+        descuento: descuento,
+        neto: neto,
+        total_acumulado: total + neto
+      });
+
+      return total + neto;
+    }, 0);
+
+    console.log('[MORA_TOTAL] Total final:', total);
+    return total;
   }
 
   private recalcMensualidadTotal(): void {
@@ -2959,6 +3189,21 @@ export class CobrosComponent implements OnInit {
     }
     const startCuota = this.getNextMensualidadStartCuota();
     pagos.forEach((p: any, idx: number) => {
+      // Prevenir duplicación de moras: verificar si ya existe una mora con el mismo id_asignacion_mora
+      if (p.id_asignacion_mora) {
+        const idMoraExistente = Number(p.id_asignacion_mora);
+        const yaExiste = this.pagos.controls.some((control: any) => {
+          const idMoraEnTabla = Number(control.get('id_asignacion_mora')?.value || 0);
+          return idMoraEnTabla > 0 && idMoraEnTabla === idMoraExistente;
+        });
+
+        if (yaExiste) {
+          console.warn('[Cobros] Mora duplicada detectada, omitiendo:', p);
+          this.showAlert('Esta mora ya está agregada en la tabla de detalle factura.', 'warning');
+          return; // Saltar este pago
+        }
+      }
+
       const resolveFormaId = (val: any): any => {
         const s = (val === null || val === undefined) ? '' : `${val}`;
         if (!s) return null;
@@ -2992,16 +3237,24 @@ export class CobrosComponent implements OnInit {
         numeroCuota = fromPayload;
       }
       const esParcial = !!p.pago_parcial;
-      const mesLabel = this.getMesNombreByCuotaFromResumen(numeroCuota);
-      const mesSuffix = mesLabel ? ` (${mesLabel})` : '';
-      const baseDetalle = isMensualidad
-        ? `Mensualidad - Cuota ${numeroCuota}${mesSuffix}`
-        : (isArrastre
-            ? `Mensualidad (Arrastre) - Cuota ${numeroCuota ?? ''}${mesSuffix}`.trim()
-            : (isReincorporacion
-                ? 'Reincorporación'
-                : (p.detalle || '')));
-      const detalle = esParcial ? `${baseDetalle} (Parcial)` : baseDetalle;
+
+      // IMPORTANTE: Si el payload trae un detalle explícito (ej: items de NIVELACION), usarlo directamente
+      let detalle: string;
+      if (p.detalle && p.detalle.trim() !== '') {
+        detalle = p.detalle;
+      } else {
+        // Solo construir detalle automático si NO viene del payload
+        const mesLabel = this.getMesNombreByCuotaFromResumen(numeroCuota);
+        const mesSuffix = mesLabel ? ` (${mesLabel})` : '';
+        const baseDetalle = isMensualidad
+          ? `Mensualidad - Cuota ${numeroCuota}${mesSuffix}`
+          : (isArrastre
+              ? `Mensualidad (Arrastre) - Cuota ${numeroCuota ?? ''}${mesSuffix}`.trim()
+              : (isReincorporacion
+                  ? 'Reincorporación'
+                  : ''));
+        detalle = esParcial ? `${baseDetalle} (Parcial)` : baseDetalle;
+      }
 
       // Para mensualidad/arrastre: calcular desde PU y descuento
       // Para otros (Reincorporación, Rezagado, etc.): usar monto directo del payload
@@ -3049,6 +3302,10 @@ export class CobrosComponent implements OnInit {
         medio_doc: [medioDoc],
         pu_mensualidad: [pu],
         order: [p.order ?? 0],
+        // IMPORTANTE: Campos para identificar tipo de cobro y mora
+        cod_tipo_cobro: [p.cod_tipo_cobro ?? null],
+        tipo_pago: [p.tipo_pago ?? null],
+        id_asignacion_mora: [p.id_asignacion_mora ?? null],
         // Datos bancarios/tarjeta para nota_bancaria
         id_cuentas_bancarias: [p.id_cuentas_bancarias ?? null],
         banco_origen: [p.banco_origen ?? null],
@@ -3304,7 +3561,26 @@ export class CobrosComponent implements OnInit {
       const observacionesFinal = this.formatObservacionesByPaymentMethod(it);
       console.log('Observaciones finales a enviar al backend:', observacionesFinal);
 
-      return { ...it, tipo_documento: tipo || 'R', medio_doc: medio || 'C', observaciones: observacionesFinal };
+      // IMPORTANTE: Preservar campos críticos del modal (cod_tipo_cobro, tipo_pago, id_asignacion_mora)
+      const result: any = {
+        ...it,
+        tipo_documento: tipo || 'R',
+        medio_doc: medio || 'C',
+        observaciones: observacionesFinal
+      };
+
+      // Preservar explícitamente estos campos si existen en el item original
+      if (it.cod_tipo_cobro !== undefined && it.cod_tipo_cobro !== null) {
+        result.cod_tipo_cobro = it.cod_tipo_cobro;
+      }
+      if (it.tipo_pago !== undefined && it.tipo_pago !== null) {
+        result.tipo_pago = it.tipo_pago;
+      }
+      if (it.id_asignacion_mora !== undefined && it.id_asignacion_mora !== null) {
+        result.id_asignacion_mora = it.id_asignacion_mora;
+      }
+
+      return result;
     });
 
     console.log('HOIla 10 - Payload final con observaciones formateadas:', {
