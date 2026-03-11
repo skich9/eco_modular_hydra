@@ -1,5 +1,34 @@
 <div class="container py-3">
-	<h2 class="mb-3">Cobros</h2>
+	<div class="d-flex justify-content-between align-items-center mb-3">
+		<h2 class="mb-0">Cobros</h2>
+		<div *ngIf="esUsuarioApoyo && sucursalSeleccionada !== null" class="d-flex align-items-center gap-2">
+			<span class="badge bg-info text-dark fs-6">Sucursal {{ sucursalSeleccionada }}</span>
+			<button type="button" class="btn btn-sm btn-outline-secondary" (click)="cambiarSucursal()">Cambiar sucursal</button>
+		</div>
+	</div>
+
+	<!-- Modal selector de sucursal (usuarios apoyoCobranzas) -->
+	<div *ngIf="showSucursalSelector" class="modal d-block" tabindex="-1" style="background:rgba(0,0,0,0.5)">
+		<div class="modal-dialog modal-dialog-centered">
+			<div class="modal-content">
+				<div class="modal-header">
+					<h5 class="modal-title">¿En qué sucursal estás trabajando ahora?</h5>
+				</div>
+				<div class="modal-body">
+					<p class="text-muted">Selecciona la sucursal donde realizarás los cobros.</p>
+					<div class="d-grid gap-2">
+						<button *ngFor="let s of sucursalesDisponibles"
+							type="button"
+							class="btn btn-outline-primary btn-lg"
+							(click)="confirmarSucursal(s.codigo_sucursal)">
+							Sucursal {{ s.codigo_sucursal }}
+							<small class="d-block text-muted">{{ s.nombre_punto_venta }}</small>
+						</button>
+					</div>
+				</div>
+			</div>
+		</div>
+	</div>
 
 	<!-- Alertas -->
 	<div *ngIf="alertMessage" class="alert" [ngClass]="{

@@ -226,10 +226,10 @@
       <div class="form-group">
         <label for="estado">Estado</label>
         <div class="toggle-switch">
-          <input 
-            type="checkbox" 
-            id="estado" 
-            formControlName="estado" 
+          <input
+            type="checkbox"
+            id="estado"
+            formControlName="estado"
             class="toggle-input"
           >
           <label for="estado" class="toggle-label">
@@ -238,6 +238,24 @@
           </label>
           <span class="toggle-status">
             {{ usuarioForm.get('estado')?.value ? 'Activo' : 'Inactivo' }}
+          </span>
+        </div>
+      </div>
+      <div class="form-group">
+        <label for="apoyoCobranzas">Apoyo en cobranzas</label>
+        <div class="toggle-switch">
+          <input
+            type="checkbox"
+            id="apoyoCobranzas"
+            formControlName="apoyoCobranzas"
+            class="toggle-input"
+          >
+          <label for="apoyoCobranzas" class="toggle-label">
+            <span class="toggle-inner"></span>
+            <span class="toggle-switch-indicator"></span>
+          </label>
+          <span class="toggle-status">
+            {{ usuarioForm.get('apoyoCobranzas')?.value ? 'Sí (puede cambiar de sucursal)' : 'No' }}
           </span>
         </div>
       </div>

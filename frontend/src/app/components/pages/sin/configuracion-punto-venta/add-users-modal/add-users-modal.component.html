@@ -106,8 +106,23 @@
 							</small>
 						</div>
 
-						<!-- Fecha y Hora de Vencimiento -->
+						<!-- Asignación permanente -->
 						<div class="mb-3">
+							<div class="form-check form-switch">
+								<input
+									class="form-check-input"
+									type="checkbox"
+									id="permanenteCheck"
+									formControlName="permanente">
+								<label class="form-check-label" for="permanenteCheck">
+									Asignación permanente (sin vencimiento)
+								</label>
+							</div>
+							<small class="text-muted">Activa esta opción cuando se quiere asignar el punto de venta de forma permanente (Indefinida)</small>
+						</div>
+
+						<!-- Fecha y Hora de Vencimiento -->
+						<div class="mb-3" *ngIf="!form.get('permanente')?.value">
 							<label class="form-label">
 								<i class="fas fa-calendar-alt me-1"></i>
 								Fecha y Hora de Vencimiento <span class="text-danger">*</span>
@@ -135,7 +150,6 @@
 									id="activoSwitch"
 									formControlName="activo">
 								<label class="form-check-label" for="activoSwitch">
-									<i class="fas fa-toggle-on me-1"></i>
 									Asignación Activa
 								</label>
 							</div>

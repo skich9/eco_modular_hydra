@@ -44,6 +44,7 @@ export class UsuarioFormComponent implements OnInit {
 			ci: ['', Validators.required],
 			id_rol: [null, Validators.required],
 			estado: [true],
+			apoyoCobranzas: [false],
 			contrasenia: ['', [Validators.required, Validators.minLength(6)]],
 			contraseniaConfirm: ['', [Validators.required]],
 			resetPassword: [false]
@@ -54,7 +55,7 @@ export class UsuarioFormComponent implements OnInit {
 
 	ngOnInit(): void {
 		this.loadRoles();
-		
+
 		// Verificar si estamos en modo edición (por ruta o por @Input)
 		const idFromRoute = this.route.snapshot.paramMap.get('id');
 		const resolvedId = this.usuarioIdInput ?? (idFromRoute ? +idFromRoute : null);
@@ -62,7 +63,7 @@ export class UsuarioFormComponent implements OnInit {
 			this.isEditMode = true;
 			this.usuarioId = resolvedId;
 			this.loadUsuario(this.usuarioId);
-			
+
 			// No requerir contraseña en modo edición
 			this.usuarioForm.get('contrasenia')?.clearValidators();
 			this.usuarioForm.get('contraseniaConfirm')?.clearValidators();
@@ -117,7 +118,8 @@ export class UsuarioFormComponent implements OnInit {
 						ap_materno: usuario.ap_materno,
 						ci: usuario.ci,
 						id_rol: usuario.id_rol,
-						estado: usuario.estado
+						estado: usuario.estado,
+            apoyoCobranzas: usuario.apoyoCobranzas || false
 					});
 				}
 			},
@@ -128,18 +130,18 @@ export class UsuarioFormComponent implements OnInit {
 		});
 	}
 
-	get f() { 
-		return this.usuarioForm.controls; 
+	get f() {
+		return this.usuarioForm.controls;
 	}
 
 	passwordMatchValidator(formGroup: FormGroup) {
 		const password = formGroup.get('contrasenia')?.value;
 		const passwordConfirmation = formGroup.get('contraseniaConfirm')?.value;
-		
+
 		if (password === passwordConfirmation) {
 			return null;
 		}
-		
+
 		return { matching: true };
 	}
 
