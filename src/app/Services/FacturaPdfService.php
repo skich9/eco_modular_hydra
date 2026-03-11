@@ -430,6 +430,13 @@ class FacturaPdfService
 				}
 			}
 
+			// Normalizar meses: quitar paréntesis solo si el contenido es un mes (ej: "(Mayo)" -> " Mayo")
+			$descripcionRaw = preg_replace('/\((Enero|Febrero|Marzo|Abril|Mayo|Junio|Julio|Agosto|Septiembre|Octubre|Noviembre|Diciembre)\)/i', ' $1', $descripcionRaw);
+			// Evitar duplicación del mes (ej: "Mens. Mayo Mayo" -> "Mens. Mayo")
+			$descripcionRaw = preg_replace('/\b(Enero|Febrero|Marzo|Abril|Mayo|Junio|Julio|Agosto|Septiembre|Octubre|Noviembre|Diciembre)\b\s+\1\b/i', '$1', $descripcionRaw);
+			// Normalizar espacios
+			$descripcionRaw = trim(preg_replace('/\s{2,}/', ' ', (string)$descripcionRaw));
+
 			$descripcion = htmlspecialchars($descripcionRaw);
 
 		// Dividir solo la descripción (sin el código) si es muy larga
