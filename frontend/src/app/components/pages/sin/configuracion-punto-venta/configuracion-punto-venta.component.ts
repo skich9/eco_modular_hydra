@@ -30,8 +30,10 @@ interface PuntoVentaRow {
 })
 export class ConfiguracionPuntoVentaComponent implements OnInit {
 	searchTerm: string = '';
+	filtroSucursal: number | null = null;
 	puntosVenta: PuntoVentaRow[] = [];
 	isLoading: boolean = false;
+	isSyncing: boolean = false;
 	showSuccessAlert: boolean = false;
 	showErrorAlert: boolean = false;
 	alertMessage: string = '';
@@ -105,12 +107,25 @@ export class ConfiguracionPuntoVentaComponent implements OnInit {
 		});
 	}
 
+	get sucursalesUnicas(): (number | string)[] {
+		const unique = new Set(
+			this.puntosVenta
+				.map(pv => pv.sucursal)
+				.filter(s => s !== null && s !== undefined)
+		);
+		return Array.from(unique).sort((a, b) => Number(a) - Number(b));
+	}
+
 	get filteredPuntosVenta(): PuntoVentaRow[] {
 		const term = (this.searchTerm || '').toString().trim().toLowerCase();
 		let filtered = this.puntosVenta;
 
+		if (this.filtroSucursal !== null) {
+			filtered = filtered.filter(pv => Number(pv.sucursal) === this.filtroSucursal);
+		}
+
 		if (term) {
-			filtered = this.puntosVenta.filter(pv => {
+			filtered = filtered.filter(pv => {
 				const codigo = String(pv.codigo_punto_venta || '').toLowerCase();
 				const nombre = (pv.nombre || '').toLowerCase();
 				const desc = (pv.descripcion || '').toLowerCase();
@@ -171,6 +186,30 @@ export class ConfiguracionPuntoVentaComponent implements OnInit {
 			pages.push(i);
 		}
 		return pages;
+	}
+
+  /****/
+  /****/
+  /****/
+	sincronizarConSin(): void {
+		this.isSyncing = true;
+		this.puntoVentaService.syncPuntosVenta(1).subscribe({
+			next: (res: any) => {
+				if (res?.success) {
+					const sincronizados = res?.sincronizados ?? 0;
+					const nuevos = res?.nuevos ?? 0;
+					const actualizados = res?.actualizados ?? 0;
+					this.showSuccess(`Sincronización exitosa: ${sincronizados} procesados (${nuevos} nuevos, ${actualizados} actualizados)`);
+					this.loadPuntosVenta();
+				} else {
+					this.showError(res?.message || 'Error al sincronizar con el SIN');
+				}
+			},
+			error: (err: any) => {
+				this.showError(err?.error?.message || 'Error al sincronizar con el SIN');
+			},
+			complete: () => { this.isSyncing = false; }
+		});
 	}
 
 	addPuntoVenta(): void {

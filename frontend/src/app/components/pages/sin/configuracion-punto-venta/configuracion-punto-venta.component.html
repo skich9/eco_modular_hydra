@@ -16,20 +16,37 @@
 	<h2 class="mb-3">SIN - Configuracion de Puntos de Venta</h2>
 
 	<div class="d-flex flex-wrap justify-content-between align-items-end mb-3 gap-2">
-		<button type="button" class="btn btn-primary" (click)="addPuntoVenta()">
-			<i class="fas fa-plus me-1"></i>
-			Anadir punto de venta
-		</button>
+		<div class="d-flex gap-2">
+			<button type="button" class="btn btn-primary" (click)="addPuntoVenta()">
+				<i class="fas fa-plus me-1"></i>
+				Anadir punto de venta
+			</button>
+			<button type="button" class="btn btn-outline-secondary" (click)="sincronizarConSin()" [disabled]="isSyncing">
+				<i class="fas me-1" [ngClass]="isSyncing ? 'fa-spinner fa-spin' : 'fa-sync-alt'"></i>
+				{{ isSyncing ? 'Sincronizando...' : 'Sincronizar con SIN' }}
+			</button>
+		</div>
 
-		<div class="search-wrapper">
-			<label class="form-label mb-1 small">Buscar</label>
-			<input
-				type="text"
-				class="form-control"
-				[(ngModel)]="searchTerm"
-				(ngModelChange)="onSearchChange()"
-				placeholder="Buscar por codigo, nombre o sucursal..."
-			/>
+		<div class="d-flex gap-2 align-items-end">
+			<div>
+				<label class="form-label mb-1 small">Sucursal</label>
+				<select class="form-select" [(ngModel)]="filtroSucursal" (ngModelChange)="onSearchChange()">
+					<option [ngValue]="null">Todas</option>
+					@for (s of sucursalesUnicas; track s) {
+						<option [ngValue]="+s">Sucursal {{ s }}</option>
+					}
+				</select>
+			</div>
+			<div>
+				<label class="form-label mb-1 small">Buscar</label>
+				<input
+					type="text"
+					class="form-control"
+					[(ngModel)]="searchTerm"
+					(ngModelChange)="onSearchChange()"
+					placeholder="Buscar por codigo, nombre..."
+				/>
+			</div>
 		</div>
 	</div>
 

@@ -1437,74 +1437,80 @@ class CobroController extends Controller
 		try {
 			$results = [];
 			// Guardia anti-duplicados SOLO para intentos manuales con marcador QR (no bloquear callback QR)
-			try {
-				$itemsInput = $request->input('items');
-				if (!is_array($itemsInput) || count($itemsInput) === 0) { $itemsInput = $request->input('pagos', []); }
-				$hasQrMarker = false;
-				foreach ((array)$itemsInput as $it) {
-					$obs = isset($it['observaciones']) ? (string)$it['observaciones'] : '';
-					if (stripos($obs, '[QR') !== false) { $hasQrMarker = true; break; }
-				}
-				$qrContext = (bool)$request->boolean('qr_context', false);
-				$manualWithQrMarker = (!$qrContext) && $hasQrMarker;
-				if ($manualWithQrMarker) {
-					$totalMonto = 0.0;
-					foreach ($itemsInput as $it) { $totalMonto += (float)(isset($it['monto']) ? $it['monto'] : 0); }
-					$codCetaGuard = (int) $request->input('cod_ceta');
-					if ($codCetaGuard > 0 && $totalMonto > 0) {
-						$recentTrx = DB::table('qr_transacciones')
-							->where('cod_ceta', $codCetaGuard)
-							->where('estado', 'completado')
-							->whereBetween('updated_at', [now()->subMinutes(10), now()->addMinutes(1)])
-							->orderByDesc('updated_at')
-							->first();
-						if ($recentTrx && abs(((float)$recentTrx->monto_total) - $totalMonto) < 0.001) {
-							$existsSimilar = DB::table('cobro')
-								->where('cod_ceta', $codCetaGuard)
-								->whereDate('fecha_cobro', date('Y-m-d'))
-								->whereBetween('created_at', [now()->subMinutes(10), now()->addMinutes(1)])
-								->whereRaw('ABS(monto - ?) < 0.001', [$totalMonto])
-								->exists();
-							if ($existsSimilar) {
-								return response()->json([
-									'success' => false,
-									'message' => 'Cobro ya registrado recientemente por pago QR',
-								], 409);
-							}
-							// Hay transacción QR completada reciente con el mismo monto pero aún no hay cobro: permitir continuar
-							\Log::info('batchStore: allowing manual save after QR completion (no existing cobro)', [
-								'cod_ceta' => $codCetaGuard,
-								'monto' => $totalMonto,
-								'id_qr_transaccion' => isset($recentTrx->id_qr_transaccion) ? $recentTrx->id_qr_transaccion : null,
-							]);
-						}
-					}
-				}
-			} catch (\Throwable $e) { /* guardia best-effort */ }
-			$items = $request->input('items');
-			if (!is_array($items) || count($items) === 0) {
-				$items = $request->input('pagos', []); // compatibilidad
-			}
+            $itemsInput = $request->input('items');
+            if (!is_array($itemsInput) || count($itemsInput) === 0) {
+                $itemsInput = $request->input('pagos', []);
+            }
+            // $hasQrMarker determina como heurística si el intento es manual con marcador QR, buscando la cadena '[QR' en las observaciones de los items/pagos
+            $hasQrMarker = false;
+            foreach ((array)$itemsInput as $it) {
+                $obs = isset($it['observaciones']) ? (string)$it['observaciones'] : '';
+                if (stripos($obs, '[QR') !== false) {
+                    $hasQrMarker = true;
+                    break;
+                }
+            }
+            // Si el marcador QR no está presente, pero el cliente indica que es contexto QR, aplicar la lógica anti-duplicados.
+            // Esto permite que los intentos manuales con marcador QR puedan pasar sin bloqueo, mientras que los intentos sin marcador QR
+            // pero que se indican como contexto QR serán verificados contra transacciones QR recientes.
+            $qrContext = (bool)$request->boolean('qr_context', false);
+            $manualWithQrMarker = (!$qrContext) && $hasQrMarker;
+            if ($manualWithQrMarker) {
+                $totalMonto = 0.0;
+                foreach ($itemsInput as $it) {
+                    $totalMonto += (float)(isset($it['monto']) ? $it['monto'] : 0);
+                }
+                $codCetaGuard = (int) $request->input('cod_ceta');
+                if ($codCetaGuard > 0 && $totalMonto > 0) {
+                    $recentTrx = DB::table('qr_transacciones')
+                        ->where('cod_ceta', $codCetaGuard)
+                        ->where('estado', 'completado')
+                        ->whereBetween('updated_at', [now()->subMinutes(10), now()->addMinutes(1)])
+                        ->orderByDesc('updated_at')
+                        ->first();
+                    if ($recentTrx && abs(((float)$recentTrx->monto_total) - $totalMonto) < 0.001) {
+                        $existsSimilar = DB::table('cobro')
+                            ->where('cod_ceta', $codCetaGuard)
+                            ->whereDate('fecha_cobro', date('Y-m-d'))
+                            ->whereBetween('created_at', [now()->subMinutes(10), now()->addMinutes(1)])
+                            ->whereRaw('ABS(monto - ?) < 0.001', [$totalMonto])
+                            ->exists();
+                        if ($existsSimilar) {
+                            return response()->json([
+                                'success' => false,
+                                'message' => 'Cobro ya registrado recientemente por pago QR',
+                            ], 409);
+                        }
+                        // Hay transacción QR completada reciente con el mismo monto pero aún no hay cobro: permitir continuar
+                        \Log::info('batchStore: allowing manual save after QR completion (no existing cobro)', [
+                            'cod_ceta' => $codCetaGuard,
+                            'monto' => $totalMonto,
+                            'id_qr_transaccion' => isset($recentTrx->id_qr_transaccion) ? $recentTrx->id_qr_transaccion : null,
+                        ]);
+                    }
+                }
+            }
+            $items = $itemsInput;
+
 			Log::info('batchStore: start', [ 'count' => count($items) ]);
 			// Procesar descuentos enviados desde el frontend
 			$descuentosFromFrontend = $request->input('descuentos', []);
 			Log::info('batchStore: start', [ 'count' => count($items), 'descuentos_count' => count($descuentosFromFrontend) ]);
 			// Validación: no mezclar FACTURA (F) y RECIBO (R) en el mismo lote
-			try {
-				$hasF = false; $hasR = false;
-				foreach ((array)$items as $it) {
-					$raw = isset($it['tipo_documento']) ? strtoupper(trim((string)$it['tipo_documento'])) : '';
-					if ($raw === 'F') { $hasF = true; }
-					if ($raw === 'R') { $hasR = true; }
-					if ($hasF && $hasR) { break; }
-				}
-				if ($hasF && $hasR) {
-					return response()->json([
-						'success' => false,
-						'message' => 'No se puede mezclar FACTURA y RECIBO en el mismo registro. Use un único tipo de documento en el lote.',
-					], 422);
-				}
-			} catch (\Throwable $e) { /* no bloquear si la inspección falla */ }
+
+            $hasF = false; $hasR = false;
+            foreach ((array)$items as $it) {
+                $raw = isset($it['tipo_documento']) ? strtoupper(trim((string)$it['tipo_documento'])) : '';
+                if ($raw === 'F') { $hasF = true; }
+                if ($raw === 'R') { $hasR = true; }
+                if ($hasF && $hasR) { break; }
+            }
+            if ($hasF && $hasR) {
+                return response()->json([
+                    'success' => false,
+                    'message' => 'No se puede mezclar FACTURA y RECIBO en el mismo registro. Use un único tipo de documento en el lote.',
+                ], 422);
+            }
 
 			// Validación: detectar si múltiples items usan el mismo id_asignacion_costo
 			try {
@@ -1545,6 +1551,14 @@ class CobroController extends Controller
                 // $sucursal = (int) ($request->input('codigo_sucursal', config('sin.sucursal')));
                 $sucursal = $respSucursal->codigo_sucursal;
 
+                log::info('batchStore: determined sucursal', [
+                    'cod_ceta' => $codCetaCtx,
+                    'cod_pensum' => $codPensumCtx,
+                    'gestion' => $gestionCtx,
+                    'sucursal' => $sucursal,
+                    'respSucursal' => $respSucursal->codigo_sucursal,
+                ]);
+
                 $respPuntoVenta = DB::table('sin_punto_venta_usuario')
                     ->where('id_usuario', $request->id_usuario)
                     ->where('codigo_sucursal', $sucursal)
@@ -1558,6 +1572,20 @@ class CobroController extends Controller
 					->orderByDesc('created_at')
 					->first();
 
+
+                Log::info('batchStore: punto de venta query result', [
+                    'id_usuario' => $request->id_usuario,
+                    'codigo_sucursal' => $sucursal,
+                    'codigo_ambiente' => $codigoAmbiente,
+                    'respPuntoVenta' => $respPuntoVenta ? [
+                        'codigo_punto_venta' => $respPuntoVenta->codigo_punto_venta,
+                        'vencimiento_asig' => $respPuntoVenta->vencimiento_asig,
+                    ] : null,
+                ]);
+
+                // IMPORTANTE
+                // como no recupera el punto de venta lanza la excepcion se debe corregir el error
+                // IMPORTANTE
                 if(!$respPuntoVenta) {
                     // Construir mensaje amigable usando nickname del usuario y nombre de sucursal configurable
 					$nick = DB::table('usuarios')
@@ -1749,6 +1777,8 @@ class CobroController extends Controller
 				if ($hasFacturaGroup) {
 					// Preparar CUFD, correlativo y CUF una sola vez
                     $cufd = $cufdRepo->getVigenteOrCreate2($codigoAmbiente,$sucursal,$pv);
+                    Log::info("el cufd que se recupera es:".print_r($cufd,true));
+
 					// $cufd = $cufdRepo->getVigenteOrCreate($pv);
 					$anioFacturaGroup = (int) date('Y');
 					$nroFacturaGroup = method_exists($facturaService, 'nextFacturaAtomic')
@@ -1756,6 +1786,9 @@ class CobroController extends Controller
 						: $facturaService->nextFactura($anioFacturaGroup, $sucursal, (string)$pv);
 					// Usar misma hora para CUF y XML
 					$tEmision = \Carbon\Carbon::now('America/La_Paz');
+                    /// Devuelve el tiempo como un CurrentTimeMillis con 3 decimales de precision en milisegundos
+                    $timeInMilliseconds = $tEmision->getPreciseTimestamp(3);
+                    Log::info("El tiempo en milisegundos que se recupera es :".$timeInMilliseconds);
 					$fechaEmisionIsoGroup = $tEmision->format('Y-m-d\\TH:i:s.000');
 					$cufData = $cufGen->generate((int) config('sin.nit'), $fechaEmisionIsoGroup, $sucursal, (int) config('sin.modalidad'), 1, (int) config('sin.tipo_factura'), (int) config('sin.cod_doc_sector'), (int) $nroFacturaGroup, (int) $pv);
 					$cufGroup = ((string)(isset($cufData['cuf']) ? $cufData['cuf'] : '')) . (string)(isset($cufd['codigo_control']) ? $cufd['codigo_control'] : '');
@@ -1779,15 +1812,13 @@ class CobroController extends Controller
 						'cuf' => $cufGroup,
 						'periodo_facturado' => $gestionCtx,
 					]);
-                    try {
-                        \Log::warning('batchStore: factura C creada (local, grupo)', [
-                            'anio' => $anioFacturaGroup,
-                            'nro_factura' => (int)$nroFacturaGroup,
-                            'monto_total' => (float)$factMontoTotal
-                        ]);
-                    } catch (\Throwable $e) {
 
-                    }
+                    Log::info('batchStore: factura C creada (local, grupo)', [
+                        'anio' => $anioFacturaGroup,
+                        'nro_factura' => (int)$nroFacturaGroup,
+                        'monto_total' => (float)$factMontoTotal
+                    ]);
+
 					// Inicializar contenedor para emisión post-commit
 					$emitGroupMeta = [
 						'anio' => (int)$anioFacturaGroup,
@@ -1829,18 +1860,18 @@ class CobroController extends Controller
 							Log::warning('batchStore: error obteniendo asignacion por id', ['idx' => $idx, 'error' => $e->getMessage()]);
 						}
 					} elseif ((isset($item['numero_cuota']) || isset($item['nro_cuota'])) && $primaryInscripcion) {
-					// Para items QR: buscar asignación por numero_cuota o nro_cuota
-					$numeroCuota = (int)($item['numero_cuota'] ?? $item['nro_cuota'] ?? 0);
-					try {
-						$asignSnap = DB::table('asignacion_costos')
-							->where('cod_pensum', $codPensumCtx)
-							->where('cod_inscrip', $primaryInscripcion->cod_inscrip)
-							->where('numero_cuota', $numeroCuota)
-							->first();
-					} catch (\Throwable $e) {
-						Log::warning('batchStore: error obteniendo asignacion por numero_cuota', ['idx' => $idx, 'numero_cuota' => $numeroCuota, 'error' => $e->getMessage()]);
-					}
-				}
+                        // Para items QR: buscar asignación por numero_cuota o nro_cuota
+                        $numeroCuota = (int)($item['numero_cuota'] ?? $item['nro_cuota'] ?? 0);
+                        try {
+                            $asignSnap = DB::table('asignacion_costos')
+                                ->where('cod_pensum', $codPensumCtx)
+                                ->where('cod_inscrip', $primaryInscripcion->cod_inscrip)
+                                ->where('numero_cuota', $numeroCuota)
+                                ->first();
+                        } catch (\Throwable $e) {
+                            Log::warning('batchStore: error obteniendo asignacion por numero_cuota', ['idx' => $idx, 'numero_cuota' => $numeroCuota, 'error' => $e->getMessage()]);
+                        }
+                    }
 
 					// Calcular descuentos prorrateados si encontramos la asignación
 					if ($asignSnap) {
@@ -1901,9 +1932,7 @@ class CobroController extends Controller
 					}
 				}
 
-				try {
-					Log::info('batchStore: descuentos pre-calculados', ['descuentos' => $descuentosCalculados]);
-				} catch (\Throwable $e) {}
+				Log::info('batchStore: descuentos pre-calculados', ['descuentos' => $descuentosCalculados]);
 
 				// Control para agrupar Recibos computarizados en un único nro_recibo por transacción
 				$nroReciboBatch = null; $anioReciboBatch = null;
@@ -1932,13 +1961,14 @@ class CobroController extends Controller
 					Log::info('batchStore:item', [ 'idx' => $idx, 'tipo' => $tipoDoc, 'medio' => $medioDoc ]);
 					$codigoRecepcionLocal = null; $cufLocal = null; $estadoFacturaLocal = null; $mensajeLocal = null;
 
+                    // Hace referencia a la forma de cobro
 					$formaIdItem = (string)(isset($item['id_forma_cobro']) ? $item['id_forma_cobro'] : $request->id_forma_cobro);
-					try {
-						$formaRowItem = DB::table('formas_cobro')->where('id_forma_cobro', $formaIdItem)->first();
-						$formaNombre = strtoupper(trim((string)(isset($formaRowItem->nombre) ? $formaRowItem->nombre : (isset($formaRowItem->descripcion) ? $formaRowItem->descripcion : (isset($formaRowItem->label) ? $formaRowItem->label : '')))));
-						$formaNombre = iconv('UTF-8','ASCII//TRANSLIT',$formaNombre);
-						$formaCode = strtoupper(trim((string)(isset($formaRowItem->id_forma_cobro) ? $formaRowItem->id_forma_cobro : '')));
-					} catch (\Throwable $e) {}
+
+                    $formaRowItem = DB::table('formas_cobro')->where('id_forma_cobro', $formaIdItem)->first();
+                    $formaNombre = strtoupper(trim((string)(isset($formaRowItem->nombre) ? $formaRowItem->nombre : (isset($formaRowItem->descripcion) ? $formaRowItem->descripcion : (isset($formaRowItem->label) ? $formaRowItem->label : '')))));
+                    $formaNombre = iconv('UTF-8','ASCII//TRANSLIT',$formaNombre);
+                    $formaCode = strtoupper(trim((string)(isset($formaRowItem->id_forma_cobro) ? $formaRowItem->id_forma_cobro : '')));
+
 					try { Log::info('batchStore:forma', [ 'idx' => $idx, 'id_forma_cobro' => $formaIdItem, 'nombre' => isset($formaNombre) ? $formaNombre : null, 'code' => isset($formaCode) ? $formaCode : null ]); } catch (\Throwable $e) {}
 
 					// Permitir inserción desde submit manual para QR/TRANSFERENCIA; el callback ya no inserta
@@ -2021,10 +2051,19 @@ class CobroController extends Controller
 								$tEmision = Carbon::now('America/La_Paz');
 								$fechaEmision = $tEmision->format('Y-m-d H:i:s.u');
 								$fechaEmisionIso = $tEmision->format('Y-m-d\\TH:i:s.000');
-								$cufData = $cufGen->generate((int) config('sin.nit'), $fechaEmisionIso, $sucursal, (int) config('sin.modalidad'), 1, (int) config('sin.tipo_factura'), (int) config('sin.cod_doc_sector'), (int) $nroFactura, (int) $pv);
+								$cufData = $cufGen->generate((int) config('sin.nit'), $fechaEmisionIso, $sucursal, (int) config('sin.modalidad'), 1
+                                    , (int) config('sin.tipo_factura'), (int) config('sin.cod_doc_sector'), (int) $nroFactura, (int) $pv);
 								$cuf = ((string)(isset($cufData['cuf']) ? $cufData['cuf'] : '')) . (string)(isset($cufd['codigo_control']) ? $cufd['codigo_control'] : '');
 								$cufLocal = $cuf;
-								Log::debug('batchStore:cuf_debug', [ 'componentes' => isset($cufData['componentes']) ? $cufData['componentes'] : [], 'decimal' => isset($cufData['decimal']) ? $cufData['decimal'] : null, 'dv' => isset($cufData['dv']) ? $cufData['dv'] : null, 'cuf_hex' => isset($cufData['cuf']) ? $cufData['cuf'] : null, 'cuf_final' => $cuf, 'codigo_control' => isset($cufd['codigo_control']) ? $cufd['codigo_control'] : null, 'fecha_emision_iso' => $fechaEmisionIso ]);
+								Log::debug('batchStore:cuf_debug', [
+                                    'componentes' => isset($cufData['componentes']) ? $cufData['componentes'] : []
+                                    , 'decimal' => isset($cufData['decimal']) ? $cufData['decimal'] : null
+                                    , 'dv' => isset($cufData['dv']) ? $cufData['dv'] : null
+                                    , 'cuf_hex' => isset($cufData['cuf']) ? $cufData['cuf'] : null
+                                    , 'cuf_final' => $cuf
+                                    , 'codigo_control' => isset($cufd['codigo_control']) ? $cufd['codigo_control'] : null
+                                    , 'fecha_emision_iso' => $fechaEmisionIso
+                                ]);
 								$cliIn2 = (array) ($request->input('cliente', []));
                                 $cliName2 = (string)(isset($cliIn2['razon']) ? $cliIn2['razon'] : (isset($cliIn2['razon_social']) ? $cliIn2['razon_social'] : ''));
 								$cliNumero2 = (string)(isset($cliIn2['numero']) ? $cliIn2['numero'] : '');
@@ -2217,7 +2256,9 @@ class CobroController extends Controller
 							// 	// Hay agrupación y la emisión se realizará una sola vez al final
 							// 	try { Log::info('batchStore: recepcionFactura diferida (grupo)'); } catch (\Throwable $e) {}
 							// }
-						} else { // medio_doc !== 'C' => Manual con CAFC
+						} else {
+                            // se ejecuta la logica para cobro de con factura manaual
+                            // medio_doc !== 'C' => Manual con CAFC
 							if (!is_numeric($nroFactura)) {
 								$nroFactura = isset($item['nro_factura']) ? $item['nro_factura'] : null;
 							}
@@ -2941,6 +2982,7 @@ class CobroController extends Controller
                                     , 'hashArchivo' => isset($payload['hashArchivo']) ? $payload['hashArchivo'] : null
                                 ]
                             ]);
+                            //// verificar si aqui se debe guarda la contingencia
 							$resp = $ops->recepcionFactura($payload);
 							$root = isset($resp['RespuestaServicioFacturacion']) ? $resp['RespuestaServicioFacturacion'] : (isset($resp['RespuestaRecepcionFactura']) ? $resp['RespuestaRecepcionFactura'] : (is_array($resp) ? reset($resp) : null));
 							$codRecep = is_array($root) ? (isset($root['codigoRecepcion']) ? $root['codigoRecepcion'] : null) : null;
@@ -2952,59 +2994,73 @@ class CobroController extends Controller
                             /***********************************************/
                             /*************** INI MODIFICACION **************/
                             /***********************************************/
+                            Log::info('La respuesta que se recupera es:'.print_r($resp,true));
+                            Log::info('El codigo de estado que se maneja:'.$codigoEstado."    anio:".$anioFacturaGroup."   nroFActura".$nroFacturaGroup."   sucursal:".$sucursal."   punto Venta:".$pv);
+
+                            /// registro factura validada
+                            if($codigoEstado == 908){
+                                $mensajeGroup = ""; // NO SE DEBE MOSTRAR NINGUN MENSAJE
+                                //SI EL CODIGO ES 908 QUIERE DECIR QUE EL REGISTRO DE LA FACTURA FUE EXITOSO
+                                DB::table('factura')
+                                    ->where('anio', $anioFacturaGroup)
+                                    ->where('nro_factura', $nroFacturaGroup)
+                                    ->where('codigo_sucursal', $sucursal)
+                                    ->where('codigo_punto_venta', (string)$pv)
+                                    ->update([
+                                        'estado' => 'VALIDADA',
+                                        'codigo_recepcion' => $codRecep
+                                    ]);
+                            }
 
                             if($codigoEstado == 901){
                                 $mensajeGroup = "Factura en estado PENDIENTE. Por favor verifique vuelva a verificar el estado, contacte con el administrador.";
                                 // Actualizar estado a PENDIENTE en DB
                                 DB::table('factura')
-                                    ->where('anio', $nroFacturaGroup)
+                                    ->where('anio', $anioFacturaGroup)
                                     ->where('nro_factura', $nroFacturaGroup)
                                     ->where('codigo_sucursal', $sucursal)
-                                    ->where('codigo_punto_venta', (string) $sucursal)
+                                    ->where('codigo_punto_venta', (string) $pv)
                                     ->update([
-                                        'estado' => $codigoEstado,
+                                        'estado' => 'PENDIENTE',
                                         'codigo_recepcion' => $codRecep
                                     ]);
                             }
-
-                            $ListaMensajes = [];
-                            if(is_array($mensajes)) {
-
-                            }
-                            if(is_array($mensajes)){
-                                if(isset($mensajes['descripcion'])){
-                                    $ListaMensajes[] = (string)$mensajes['descripcion'];
-                                } else {
-                                    foreach($mensajes as $m){
-                                        if(is_array($m) && isset($m['descripcion'])){
-                                            $ListaMensajes[] = (string)$m['descripcion'];
+                            /// SE DEBE CREAR ALGUNA MECANISMO QUE MANEJAR EL REISGRRO facturas rechazadas
+                            if($codigoEstado == 902){
+                                $mensajeGroup = "Factura rechazada por impuestos. por favor contacte con el administrador";
+                                // Actualizar estado a PENDIENTE en DB
+                                DB::table('factura')
+                                    ->where('anio', $anioFacturaGroup)
+                                    ->where('nro_factura', $nroFacturaGroup)
+                                    ->where('codigo_sucursal', $sucursal)
+                                    ->where('codigo_punto_venta', (string)$pv)
+                                    ->update([
+                                        'estado' => 'RECHAZADA',
+                                        'mensaje_sin' => print_r($resp["RespuestaServicioFacturacion"],true)
+                                    ]);
+                                $ListaMensajes = [];
+                                if($mensajes != null && is_array($mensajes)) {
+                                    if(isset($mensajes['descripcion'])){
+                                        $ListaMensajes[] = (string)$mensajes['descripcion'];
+                                    } else {
+                                        foreach($mensajes as $m){
+                                            if(is_array($m) && isset($m['descripcion'])){
+                                                $ListaMensajes[] = (string)$m['descripcion'];
+                                            }
                                         }
                                     }
                                 }
                             }
-
-
-                            /***********************************************/
-                            /*************** FIN MODIFICACION **************/
-                            /***********************************************/
-
-
-							try {
-								if ($mensajes) {
-									if (isset($mensajes['descripcion'])) {
-                                        $mensajeGroup = (string)$mensajes['descripcion'];
-                                    } elseif (is_array($mensajes) && isset($mensajes[0]['descripcion'])) {
-                                        $mensajeGroup = (string)$mensajes[0]['descripcion'];
-                                    }
-								}
-							} catch (\Throwable $e) {}
 							if ($codRecep) {
 								\DB::table('factura')
 									->where('anio', (int)$anioFacturaGroup)
 									->where('nro_factura', (int)$nroFacturaGroup)
 									->where('codigo_sucursal', (int)$sucursal)
 									->where('codigo_punto_venta', (string)$pv)
-									->update(['codigo_recepcion' => $codRecep, 'estado' => 'ACEPTADA']);
+									->update([
+                                        'codigo_recepcion' => $codRecep,
+                                        'estado' => 'ACEPTADA'
+                                    ]);
 								Log::warning('batchStore: recepcionFactura ok (grupo)', [ 'codigo_recepcion' => $codRecep ]);
 								foreach ($results as &$r) {
 									if (is_array($r) && strtoupper((string)(isset($r['tipo_documento']) ? $r['tipo_documento'] : '')) === 'F') {
@@ -3046,6 +3102,7 @@ class CobroController extends Controller
 				}
 
 				// Al finalizar la creación de todos los ítems, sincronizar números de doc a qr_transacciones reciente
+                /// LA SIGUIENTE MODIFICACION SE REALIZA AQUI
 				try {
 					// Calcular monto total del lote y cod_ceta locales
 					$totalMonto = 0.0; foreach ($items as $it) { $totalMonto += (float)(isset($it['monto']) ? $it['monto'] : 0); }

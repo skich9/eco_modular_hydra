@@ -18,12 +18,14 @@ class ContingenciaController extends Controller
 
 	/**
 	 * Lista facturas en contingencia pendientes de regularizar
-	 * 
+	 *
 	 * GET /api/contingencias
 	 */
 	public function lista(Request $request)
 	{
+        /// AQUI SE DEBE HACER LA MODFICACION
 		try {
+            Log::info('ContingenciaController.lista se esta ejecutando la funcion que recupera las contingencias query parmas:'. print_r($request->query,true));
 			$sucursal = $request->query('sucursal');
 			$puntoVenta = $request->query('punto_venta');
 
@@ -48,7 +50,7 @@ class ContingenciaController extends Controller
 
 	/**
 	 * Regulariza un grupo de facturas en contingencia
-	 * 
+	 *
 	 * POST /api/contingencias/regularizar
 	 * Body: { "facturas": [{"nro_factura": 123, "anio": 2025}, ...] }
 	 */
@@ -118,7 +120,7 @@ class ContingenciaController extends Controller
 
 	/**
 	 * Obtiene estadísticas de contingencias
-	 * 
+	 *
 	 * GET /api/contingencias/estadisticas
 	 */
 	public function estadisticas()

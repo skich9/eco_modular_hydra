@@ -12,6 +12,10 @@ class OperationsService
 	 */
 	public function consultaPuntoVenta(int $codigoAmbiente, int $codigoSucursal, string $cuis): array
 	{
+
+        Log::info('OperationsService.consultaPuntoVenta: consulta punto de venta xxxxxx', [
+            'config' => config('sin.operations_service')
+        ]);
 		$client = SoapClientFactory::build(config('sin.operations_service'));
 
 		$payload = [
@@ -180,7 +184,7 @@ class OperationsService
             $arg->{$wrap} = (object) $payload;
             Log::info('OperationsService.recepcionFactura: trying wrapper', [ 'service' => $svc, 'wrapper' => $wrap ]);
             $result = $client->__soapCall('recepcionFactura', [ $arg ]);
-            ////
+
             Log::debug('OperationsService.recepcionFactura: la respuesta de impuestos es:', [ 'result' => $result ]);
             $arr = json_decode(json_encode($result), true);
             // Detectar código 995 (servicio no disponible) === IMPORTANTE SI SALE ESTE ERROR ES PORQUE IMPUESTO CORTA EL SERVICIO
@@ -202,7 +206,6 @@ class OperationsService
                 }
             }
             if ($cod995) {
-                Log::warning('OperationsService.recepcionFactura: service returned 995');
                 throw new ServiceNotAvailableException('Servicio de facturacion no disponible (995)');
             }
 
@@ -213,30 +216,17 @@ class OperationsService
                 Log::warning('OperationsService.recepcionFactura: NO existe código de estado en la respuesta de impuestos, contacte con el administrador', [ 'response' => $arr ]);
                 throw new UnsupportedCodigoEstadoException('Error en la recepcion de factura impuestos no devuelve un codigo de estado, codigoEstado: null');
             }
-
-            // if($codigoEstado != 901 && $codigoEstado != 908 && $codigoEstado != 902){
-            //     Log::warning('OperationsService.recepcionFactura: impuestos devuelve un codigo de estado no soportado', [ 'codigoEstado' => $codigoEstado ]);
-            //     throw new UnsupportedCodigoEstadoException('Error en la recepcion de factura impuestos devuelve un codigo de excepcion no soportado, codigoEstado: '.$codigoEstado);
-            // }
-
-            // if ($codigoEstado == 902) {
-            //     // se debe procesar como rechazado y no se genera la factura debe llegar hasta el front o la api
-            //     // se debe actualizar la factura con el la respuesta de impuestos
-            //     $arr["errorCutomMessage"] = json_encode($mensajes);
-            //     return $arr;
-            // }
-
             /// si todo esta bien se retorna el arreglo
             return $arr;
-                // } catch (SoapFault $we) {
-                // 	$lastWrapperError = $we;
-                // 	Log::warning('OperationsService.recepcionFactura: wrapper fault', [ 'service' => $svc, 'wrapper' => $wrap, 'error' => $we->getMessage() ]);
-                // 	continue;
-                // }
-            // }
-		} catch (SoapFault $e) {
+		} catch (ServiceNotAvailableException $e) {
+            Log::warning('OperationsService.recepcionFactura: service returned 995 servicio no disponible para la modalidad o sector');
+            throw $e;
+        } catch (UnsupportedCodigoEstadoException $e) {
+            Log::warning('OperationsService.recepcionFactura: Impuestos no devuelve un codigo de estado verificar');
+            throw $e;
+        } catch (SoapFault $e) {
             Log::error('OperationService: problemas al consumir el servicio web de impuestos:', [ 'error' => SgaHelper::getStackTrackeException($e) , 'msg' => $e->getMessage ]);
-            throw new SoapFaultException("Hubo problemas al consumir el servicio de impuestos: ".$e->getMessage());
+            throw $e;
 		} catch (Exception $e) {
             Log::error('OperationService: excepcion no controlado en la recepcion de factura ', [ 'error' => SgaHelper::getStackTrackeException($e) , 'msg' => $e->getMessage ]);
 			throw $e;

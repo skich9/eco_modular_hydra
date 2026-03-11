@@ -4,11 +4,31 @@
 	<div class="row g-3 align-items-end mb-3">
 		<div class="col-auto">
 			<label class="form-label">Sucursal</label>
-			<input class="form-control" [(ngModel)]="sucursal" placeholder="0" />
+			<select class="form-select" [(ngModel)]="sucursal" (ngModelChange)="onSucursalChange()" [disabled]="loadingPuntosVenta">
+				<option [ngValue]="null">Todas</option>
+				@for (s of sucursales; track s) {
+					<option [ngValue]="s">Sucursal {{ s }}</option>
+				}
+			</select>
 		</div>
 		<div class="col-auto">
 			<label class="form-label">Punto de Venta</label>
-			<input class="form-control" [(ngModel)]="puntoVenta" placeholder="0" />
+			<select class="form-select" [(ngModel)]="puntoVenta" [disabled]="loadingPuntosVenta">
+				<option [ngValue]="null">Todos</option>
+				@for (pv of puntosFiltrados; track pv.codigo_punto_venta) {
+					<option [ngValue]="pv.codigo_punto_venta">{{ pv.nombre }} ({{ pv.codigo_punto_venta }})</option>
+				}
+			</select>
+		</div>
+		<div class="col-auto">
+			<label class="form-label">Estado</label>
+			<select class="form-select" [(ngModel)]="filtroEstado">
+				<option value="">Todos</option>
+				<option value="CONTINGENCIA">Contingencia</option>
+				<option value="ACEPTADA">Aceptada</option>
+				<option value="RECHAZADA">Rechazada</option>
+				<option value="FUERA_DE_PLAZO">Fuera de plazo</option>
+			</select>
 		</div>
 		<div class="col-auto">
 			<button class="btn btn-outline-primary" (click)="refresh()" [disabled]="loading">
@@ -20,7 +40,7 @@
 
 	<div class="row mb-3">
 		<div class="col">
-			<div class="alert alert-info py-2" *ngIf="loadingStats">Cargando estadísticas...</div>
+			<div class="alert alert-info py-2" *ngIf="loadingStats">Cargando contingencias...</div>
 			<div class="d-flex flex-wrap gap-3" *ngIf="!loadingStats">
 				<div class="badge bg-secondary p-2">Total: {{ stats.total || 0 }}</div>
 				<div class="badge bg-danger p-2">Fuera de plazo: {{ stats.fuera_de_plazo || 0 }}</div>
@@ -40,34 +60,30 @@
 					<th style="width: 40px;">
 						<input type="checkbox" class="form-check-input" [(ngModel)]="selectAll" (change)="toggleAll()" />
 					</th>
-					<th># / Año</th>
+          <th>Sucursal / PV</th>
+          <th>Factura</th>
 					<th>Fecha Emisión</th>
-					<th>Cliente / Razón Social</th>
-					<th>Punto Venta</th>
-					<th>Manual</th>
-					<th>CUFD</th>
-					<th>Evento</th>
-					<th>Estado</th>
+          <th>Estado</th>
 					<th>Tiempo</th>
+          <th>Cliente / Razón Social</th>
+          <th>Manual</th>
+					<th>CUFD</th>
+
 				</tr>
 			</thead>
 			<tbody>
-				<tr *ngFor="let f of facturas">
+				<tr *ngFor="let f of facturasFiltradas">
 					<td>
-						<input type="checkbox" class="form-check-input" [(ngModel)]="selected[keyOf(f)]" />
+            <input type="checkbox" class="form-check-input" [(ngModel)]="selected[keyOf(f)]" (change)="onModelChange($event)"  [disabled]="f.fuera_de_plazo || false"/>
+					</td>
+          <td>
+						<strong>Suc: {{ f.codigo_sucursal }}</strong> / pv: {{ f.codigo_punto_venta }}
 					</td>
 					<td>
-						<strong>{{ f.nro_factura }}</strong> / {{ f.anio }}
+						<strong>{{ f.nro_factura }}</strong> <!--  / {{ f.anio }} -->
 					</td>
 					<td>{{ f.fecha_emision | date: 'yyyy-MM-dd HH:mm' }}</td>
-					<td>{{ f.cliente || '—' }}</td>
-					<td>{{ f.codigo_punto_venta || '0' }}</td>
-					<td>
-						<span class="badge" [ngClass]="{ 'bg-success': isManual(f), 'bg-secondary': !isManual(f) }">{{ isManual(f) ? 'Sí' : 'No' }}</span>
-					</td>
-					<td><code class="small">{{ f.codigo_cufd }}</code></td>
-					<td>{{ f.codigo_evento || '—' }}</td>
-					<td>
+          <td>
 						<span class="badge" [ngClass]="{
 							'bg-secondary': (f.estado || '').toUpperCase() === 'CONTINGENCIA',
 							'bg-success': (f.estado || '').toUpperCase() === 'ACEPTADA',
@@ -76,9 +92,15 @@
 							{{ f.estado || '—' }}
 						</span>
 					</td>
-					<td>
+          <td>
 						<span [class.text-danger]="f.fuera_de_plazo">{{ f.horas_restantes || 0 }}h</span>
 					</td>
+					<td>{{ f.cliente || '—' }}</td>
+					<td>
+						<span class="badge" [ngClass]="{ 'bg-success': isManual(f), 'bg-secondary': !isManual(f) }">{{ isManual(f) ? 'Sí' : 'No' }}</span>
+					</td>
+					<td><code class="small">{{ f.codigo_cufd }}</code></td>
+					<!-- <td>{{ f.codigo_evento || '—' }}</td> -->
 				</tr>
 			</tbody>
 		</table>

@@ -19,65 +19,64 @@ class FacturaPayloadBuilder
             throw new UnsupportedModeSINException('Solo modalidad XML (1) para sector educativo (11)');
             // $archivo = $this->buildJsonCompraVenta($args, $docSector);
             // $archivoBytes = json_encode($archivo, JSON_UNESCAPED_UNICODE | JSON_UNESCAPED_SLASHES);
+            /// si se lanza excepcion no se ejecuta el resto del codigo no hacer falta un else
+        }
+        $xmlCrudo = $this->buildXmlSectorEducativo($args, $docSector);
+
+        // Firmar XML
+        $nombreFactura = '';
+        if (!empty($args['cuf'])) {
+            $nombreFactura = (string) $args['cuf'];
+        } elseif (!empty($args['numero_factura'])) {
+            $nombreFactura = (string) $args['numero_factura'];
         } else {
-            // XML para modalidad 1 o sector educativo (11)
-            $xmlCrudo = $this->buildXmlSectorEducativo($args, $docSector);
-
-            // Firmar XML
-            $nombreFactura = '';
-            if (!empty($args['cuf'])) {
-                $nombreFactura = (string) $args['cuf'];
-            } elseif (!empty($args['numero_factura'])) {
-                $nombreFactura = (string) $args['numero_factura'];
-            } else {
-                $nombreFactura = 'fact_' . uniqid();
+            $nombreFactura = 'fact_' . uniqid();
+        }
+        $archivoBytes = $xmlCrudo;
+        try {
+            $firma = new FirmaDigital();
+            $rutas = $firma->firmarFactura($nombreFactura, $xmlCrudo);
+            if (!empty($rutas['firmado']) && is_file($rutas['firmado'])) {
+                $firmadoContent = @file_get_contents($rutas['firmado']);
+                if ($firmadoContent !== false && $firmadoContent !== '') {
+                    $archivoBytes = $firmadoContent;
+                    $xmlPath = $rutas['firmado'];
+                }
             }
-            $archivoBytes = $xmlCrudo;
-            try {
-                $firma = new FirmaDigital();
-                $rutas = $firma->firmarFactura($nombreFactura, $xmlCrudo);
-                if (!empty($rutas['firmado']) && is_file($rutas['firmado'])) {
-                    $firmadoContent = @file_get_contents($rutas['firmado']);
-                    if ($firmadoContent !== false && $firmadoContent !== '') {
-                        $archivoBytes = $firmadoContent;
-                        $xmlPath = $rutas['firmado'];
-                    }
-                }
-                if ($xmlPath === null) {
-                    $xmlPath = $this->saveXmlDebugCopy($archivoBytes, $args, $docSector);
-                }
-                // Guardar copias indexadas del XML para acceso fácil (CUF y anio_nro)
-                if ($xmlPath) {
-                    $this->storeXmlIndexCopies($xmlPath, $args);
-                }
-                Log::debug('FacturaPayloadBuilder.firmaXml', [
-                    'nombreFactura' => $nombreFactura,
-                    'xmlPath' => $xmlPath,
-                    'len' => strlen($archivoBytes),
-                ]);
-
-                // Validar XML firmado contra el XSD antes de comprimir/enviar
-                if ($xmlPath && is_file($xmlPath)) {
-                    $xsdPath = base_path('xsd/facturaElectronicaSectorEducativo.xsd');
-                    $validator = new XmlXsdValidator();
-                    if (!$validator->validar($xmlPath, $xsdPath)) {
-                        $err = $validator->mostrarError();
-                        Log::error('FacturaPayloadBuilder.xsdValidationFailed', [
-                            'xml' => $xmlPath,
-                            'xsd' => $xsdPath,
-                            'errors' => $err,
-                        ]);
-                        throw new \RuntimeException('No pasa la validacion del XSD: ' . $err);
-                    }
-                }
-            } catch (\Throwable $e) {
-                // Si algo falla (firma o validación XSD), usar XML crudo como debug y abortar flujo
+            if ($xmlPath === null) {
                 $xmlPath = $this->saveXmlDebugCopy($archivoBytes, $args, $docSector);
-                Log::warning('FacturaPayloadBuilder.firmaXml.error', [
-                    'error' => $e->getMessage(),
-                ]);
-                throw $e;
             }
+            // Guardar copias indexadas del XML para acceso fácil (CUF y anio_nro)
+            if ($xmlPath) {
+                $this->storeXmlIndexCopies($xmlPath, $args);
+            }
+            Log::debug('FacturaPayloadBuilder.firmaXml', [
+                'nombreFactura' => $nombreFactura,
+                'xmlPath' => $xmlPath,
+                'len' => strlen($archivoBytes),
+            ]);
+
+            // Validar XML firmado contra el XSD antes de comprimir/enviar
+            if ($xmlPath && is_file($xmlPath)) {
+                $xsdPath = base_path('xsd/facturaElectronicaSectorEducativo.xsd');
+                $validator = new XmlXsdValidator();
+                if (!$validator->validar($xmlPath, $xsdPath)) {
+                    $err = $validator->mostrarError();
+                    Log::error('FacturaPayloadBuilder.xsdValidationFailed', [
+                        'xml' => $xmlPath,
+                        'xsd' => $xsdPath,
+                        'errors' => $err,
+                    ]);
+                    throw new \RuntimeException('No pasa la validacion del XSD: ' . $err);
+                }
+            }
+        } catch (\Throwable $e) {
+            // Si algo falla (firma o validación XSD), usar XML crudo como debug y abortar flujo
+            $xmlPath = $this->saveXmlDebugCopy($archivoBytes, $args, $docSector);
+            Log::warning('FacturaPayloadBuilder.firmaXml.error', [
+                'error' => $e->getMessage(),
+            ]);
+            throw $e;
         }
 
         // Log de inspección del payload sin comprimir (solo primeros caracteres para no saturar logs)
@@ -475,46 +474,49 @@ class FacturaPayloadBuilder
             }
         }
         $numeroTarjetaXml = null;
-        if ((int)$codigoMetodoPago === 2) {
-            $nt = $args['numero_tarjeta'] ?? null;
-            Log::debug('FacturaPayloadBuilder.buildXmlSectorEducativo.numeroTarjetaInput', [
-                'input' => $nt,
-            ]);
-            if (is_string($nt) || is_numeric($nt)) {
-                $ntSan = preg_replace('/\D/', '', (string)$nt);
-                if ($ntSan !== '') {
-                    $numeroTarjetaXml = $ntSan;
-                    /// colocar un log aqui
-                    Log::debug('FacturaPayloadBuilder.buildXmlSectorEducativo.numeroTarjetaSanitized', [
-                        'sanitized' => $numeroTarjetaXml,
-                    ]);
-                }
-            }
-            if ($numeroTarjetaXml === null) {
-                $nf = isset($args['numero_factura']) ? (string)$args['numero_factura'] : '';
-                Log::debug('FacturaPayloadBuilder.buildXmlSectorEducativo.numeroTarjetaFallbackFactura', [
-                    'numero_factura' => $nf,
-                ]);
-                if ($nf !== '') {
-                    try {
-                        $nb = DB::table('nota_bancaria')
-                            ->where('nro_factura', (string)$nf)
-                            ->orderBy('anio_deposito', 'desc')
-                            ->orderBy('correlativo', 'desc')
-                            ->first();
-                        if ($nb && !empty($nb->nro_tarjeta)) {
-                            $ntSan = preg_replace('/\D/', '', (string)$nb->nro_tarjeta);
-                            Log::debug('FacturaPayloadBuilder.buildXmlSectorEducativo.numeroTarjetaFallbackSanitized', [
-                                'sanitized' => $ntSan,
-                            ]);
-                            if ($ntSan !== '') {
-                                $numeroTarjetaXml = $ntSan;
-                            }
-                        }
-                    } catch (\Throwable $e) {}
-                }
-            }
-        }
+        // if ((int)$codigoMetodoPago === 2) {
+        //     $nt = $args['numero_tarjeta'] ?? null;
+        //     Log::debug('FacturaPayloadBuilder.buildXmlSectorEducativo.numeroTarjetaInput', [
+        //         'input' => $nt,
+        //     ]);
+        //     if (is_string($nt) || is_numeric($nt)) {
+        //         $ntSan = preg_replace('/\D/', '', (string)$nt);
+        //         Log::info('entrando al if de referencia el valor de ntScan es:', $ntSan);
+        //         if ($ntSan !== '') {
+        //             $numeroTarjetaXml = $ntSan;
+        //             Log::info('se esta actualizando el valor de $numeroTarjetaXml:'.$ntSan);
+        //             /// colocar un log aqui
+        //             Log::debug('FacturaPayloadBuilder.buildXmlSectorEducativo.numeroTarjetaSanitized', [
+        //                 'sanitized' => $numeroTarjetaXml,
+        //             ]);
+        //         }
+        //     }
+        //     Log::info('el valor de numero de tarjeta xml es:'.$numeroTarjetaXml);
+        //     if ($numeroTarjetaXml === null) {
+        //         $nf = isset($args['numero_factura']) ? (string)$args['numero_factura'] : '';
+        //         Log::debug('FacturaPayloadBuilder.buildXmlSectorEducativo.numeroTarjetaFallbackFactura', [
+        //             'numero_factura' => $nf,
+        //         ]);
+        //         if ($nf !== '') {
+        //             try {
+        //                 $nb = DB::table('nota_bancaria')
+        //                     ->where('nro_factura', (string)$nf)
+        //                     ->orderBy('anio_deposito', 'desc')
+        //                     ->orderBy('correlativo', 'desc')
+        //                     ->first();
+        //                 if ($nb && !empty($nb->nro_tarjeta)) {
+        //                     $ntSan = preg_replace('/\D/', '', (string)$nb->nro_tarjeta);
+        //                     Log::debug('FacturaPayloadBuilder.buildXmlSectorEducativo.numeroTarjetaFallbackSanitized', [
+        //                         'sanitized' => $ntSan,
+        //                     ]);
+        //                     if ($ntSan !== '') {
+        //                         $numeroTarjetaXml = $ntSan;
+        //                     }
+        //                 }
+        //             } catch (\Throwable $e) {}
+        //         }
+        //     }
+        // }
         $actividad = DB::table('sin_actividades')->value('codigo_caeb') ?: '00000';
         $leyenda = DB::table('sin_list_leyenda_factura')
             ->where('codigo_actividad', $actividad)
