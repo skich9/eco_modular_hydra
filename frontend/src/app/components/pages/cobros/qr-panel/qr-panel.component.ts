@@ -156,6 +156,11 @@ export class QrPanelComponent implements OnDestroy {
 				const nro_cuota = g.get('numero_cuota')?.value ?? g.get('nro_cuota')?.value ?? null;
 				const turno = (g.get('turno')?.value || '').toString() || null;
 				const monto_saldo = g.get('monto_saldo')?.value ?? null;
+				const codTipoCobro = (g.get('cod_tipo_cobro')?.value || '').toString() || null;
+				const tipoPago = (g.get('tipo_pago')?.value || '').toString() || null;
+				const idAsignacionMora = g.get('id_asignacion_mora')?.value ?? null;
+				const idAsignacionCosto = g.get('id_asignacion_costo')?.value ?? null;
+				const idCuota = g.get('id_cuota')?.value ?? null;
 				items.push({
 					monto: subtotal,
 					order: (++order),
@@ -165,7 +170,12 @@ export class QrPanelComponent implements OnDestroy {
 					id_forma_cobro: idf,
 					nro_cuota,
 					turno,
-					monto_saldo
+					monto_saldo,
+					cod_tipo_cobro: codTipoCobro,
+					tipo_pago: tipoPago,
+					id_asignacion_mora: idAsignacionMora,
+					id_asignacion_costo: idAsignacionCosto,
+					id_cuota: idCuota
 				});
 			}
 			if (items.length === 0) { this.errorMsg = 'No hay items en el lote para guardar.'; return; }
@@ -457,6 +467,11 @@ export class QrPanelComponent implements OnDestroy {
 			const numero_cuota = g.get('numero_cuota')?.value ?? null;
 			const turno = (g.get('turno')?.value || '').toString() || null;
 			const monto_saldo = g.get('monto_saldo')?.value ?? null;
+			const codTipoCobro = (g.get('cod_tipo_cobro')?.value || '').toString() || null;
+			const tipoPago = (g.get('tipo_pago')?.value || '').toString() || null;
+			const idAsignacionMora = g.get('id_asignacion_mora')?.value ?? null;
+			const idAsignacionCosto = g.get('id_asignacion_costo')?.value ?? null;
+			const idCuota = g.get('id_cuota')?.value ?? null;
 			items.push({
 				monto: subtotal,
 				fecha_cobro: hoy,
@@ -471,7 +486,12 @@ export class QrPanelComponent implements OnDestroy {
 				id_forma_cobro: idf,
 				numero_cuota,
 				turno,
-				monto_saldo
+				monto_saldo,
+				cod_tipo_cobro: codTipoCobro,
+				tipo_pago: tipoPago,
+				id_asignacion_mora: idAsignacionMora,
+				id_asignacion_costo: idAsignacionCosto,
+				id_cuota: idCuota
 			});
 		}
 		if (!items.length) {

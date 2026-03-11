@@ -174,7 +174,7 @@ export class MensualidadModalComponent implements OnInit, OnChanges {
   private recalcularMoraConFechaDeposito(mora: any): number {
     try {
       // Verificar si el método de pago requiere fecha de depósito
-      const requiereFechaDeposito = this.isTarjeta || this.isCheque || this.isTransferencia || this.isDeposito;
+      const requiereFechaDeposito = this.isTarjeta || this.isCheque || this.isTransferenciaBancaria || this.isDeposito;
       if (!requiereFechaDeposito) {
         // Si no es un método bancario, usar el cálculo normal
         return this.getMoraNetoFromRow(mora);
@@ -1978,6 +1978,10 @@ export class MensualidadModalComponent implements OnInit, OnChanges {
     } catch { return false; }
   }
 
+	get isTransferenciaBancaria(): boolean {
+		return this.isTransferencia && !this.isQR;
+	}
+
   get isOtro(): boolean {
     try {
       const f = this.getSelectedForma();
@@ -1997,7 +2001,7 @@ export class MensualidadModalComponent implements OnInit, OnChanges {
   }
 
   get showBancarioBlock(): boolean {
-    return this.isCheque || this.isDeposito || this.isTransferencia;
+		return this.isCheque || this.isDeposito || this.isTransferenciaBancaria;
   }
 
   private updateTarjetaValidators(): void {
@@ -2033,7 +2037,7 @@ export class MensualidadModalComponent implements OnInit, OnChanges {
         setReq('tarjeta_last4', true, [Validators.pattern(/^\d{4}$/)]);
         return;
       }
-      if (this.isTransferencia) {
+      if (this.isTransferenciaBancaria) {
         setReq('id_cuentas_bancarias', true);
         setReq('fecha_deposito', true);
         setReq('nro_deposito', true);
@@ -2047,7 +2051,8 @@ export class MensualidadModalComponent implements OnInit, OnChanges {
         return;
       }
       if (this.isQR) {
-        setReq('id_cuentas_bancarias', true);
+			// QR no requiere cuenta destino ni datos bancarios (se gestiona en el flujo QR)
+			setReq('id_cuentas_bancarias', false);
         return;
       }
     } catch {
@@ -2707,8 +2712,9 @@ export class MensualidadModalComponent implements OnInit, OnChanges {
     });
     console.log('[MensualidadModal] ===== FIN PAYLOAD =====');
 
-    // Si es TARJETA / CHEQUE / DEPÓSITO / TRANSFERENCIA / QR, enviar además cabecera con la cuenta bancaria
-    if (this.isTarjeta || this.isCheque || this.isDeposito || this.isTransferencia || this.isQR) {
+    // Si es TARJETA / CHEQUE / DEPÓSITO / TRANSFERENCIA, enviar además cabecera con la cuenta bancaria
+    // QR no requiere cabecera bancaria (se gestiona en el flujo QR)
+    if (this.isTarjeta || this.isCheque || this.isDeposito || this.isTransferenciaBancaria) {
       const header = { id_cuentas_bancarias: this.form.get('id_cuentas_bancarias')?.value };
       const payload: any = { pagos, cabecera: header };
       if (descuentos.length > 0) {
@@ -2731,7 +2737,7 @@ export class MensualidadModalComponent implements OnInit, OnChanges {
       const instance = bs.Modal.getInstance(modalEl) || new bs.Modal(modalEl);
       instance.hide();
     }
-    if (this.isTarjeta || this.isCheque || this.isDeposito || this.isTransferencia) {
+    if (this.isTarjeta || this.isCheque || this.isDeposito || this.isTransferenciaBancaria) {
       this.resetTarjetaFields();
     }
     this.modalAlertMessage = '';
@@ -2780,7 +2786,7 @@ export class MensualidadModalComponent implements OnInit, OnChanges {
     }
     if (this.isTarjeta) {
       ['id_cuentas_bancarias','fecha_deposito','nro_deposito','banco_origen','tarjeta_first4','tarjeta_last4'].forEach(addIfMissing);
-    } else if (this.isTransferencia) {
+    } else if (this.isTransferenciaBancaria) {
       ['id_cuentas_bancarias','fecha_deposito','nro_deposito','banco_origen'].forEach(addIfMissing);
     } else if (this.isCheque || this.isDeposito) {
       ['id_cuentas_bancarias','fecha_deposito','nro_deposito'].forEach(addIfMissing);
@@ -2847,7 +2853,7 @@ export class MensualidadModalComponent implements OnInit, OnChanges {
       }
       return true;
     }
-    if (this.isCheque || this.isDeposito || this.isTransferencia) {
+    if (this.isCheque || this.isDeposito || this.isTransferenciaBancaria) {
       const idCuenta = this.form.get('id_cuentas_bancarias');
       const fecha = this.form.get('fecha_deposito');
       const nro = this.form.get('nro_deposito');

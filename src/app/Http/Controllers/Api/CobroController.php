@@ -1464,6 +1464,13 @@ class CobroController extends Controller
 
 		$validator = Validator::make($request->all(), $rules);
 		if ($validator->fails()) {
+			try {
+				Log::warning('batchStore: validation failed', [
+					'errors' => $validator->errors()->toArray(),
+					'request_keys' => array_keys($request->all()),
+					'items_count' => count($request->input('items', [])),
+				]);
+			} catch (\Throwable $e) {}
 			return response()->json([
 				'success' => false,
 				'message' => 'Error de validación',

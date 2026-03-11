@@ -21,18 +21,18 @@ class QrController extends Controller
             $cta = DB::table('cuentas_bancarias')->where('id_cuentas_bancarias', $idCuenta)->first();
             if (!$cta) return;
             $set = function($key, $val) { if ($val !== null && $val !== '') { config([$key => $val]); } };
-            $set('qr.url_auth', $cta->qr_url_auth ?? null);
-            $set('qr.api_key', $cta->qr_api_key ?? null);
-            $set('qr.username', $cta->qr_username ?? null);
-            $set('qr.password', $cta->qr_password ?? null);
-            $set('qr.url_transfer', $cta->qr_url_transfer ?? null);
-            $set('qr.api_key_servicio', $cta->qr_api_key_servicio ?? null);
+            $set('qr.url_auth', isset($cta->qr_url_auth) ? $cta->qr_url_auth : null);
+            $set('qr.api_key', isset($cta->qr_api_key) ? $cta->qr_api_key : null);
+            $set('qr.username', isset($cta->qr_username) ? $cta->qr_username : null);
+            $set('qr.password', isset($cta->qr_password) ? $cta->qr_password : null);
+            $set('qr.url_transfer', isset($cta->qr_url_transfer) ? $cta->qr_url_transfer : null);
+            $set('qr.api_key_servicio', isset($cta->qr_api_key_servicio) ? $cta->qr_api_key_servicio : null);
             if (isset($cta->qr_http_verify_ssl)) { config(['qr.http_verify_ssl' => (bool)$cta->qr_http_verify_ssl]); }
             if (isset($cta->qr_http_timeout) && is_numeric($cta->qr_http_timeout)) { config(['qr.http_timeout' => (int)$cta->qr_http_timeout]); }
             if (isset($cta->qr_http_connect_timeout) && is_numeric($cta->qr_http_connect_timeout)) { config(['qr.http_connect_timeout' => (int)$cta->qr_http_connect_timeout]); }
             Log::info('QR overrides applied (by account)', [
                 'id_cuentas_bancarias' => $idCuenta,
-                'has_overrides' => !!(($cta->qr_url_auth ?? null) || ($cta->qr_api_key ?? null) || ($cta->qr_url_transfer ?? null) || ($cta->qr_api_key_servicio ?? null))
+                'has_overrides' => !!((isset($cta->qr_url_auth) ? $cta->qr_url_auth : null) || (isset($cta->qr_api_key) ? $cta->qr_api_key : null) || (isset($cta->qr_url_transfer) ? $cta->qr_url_transfer : null) || (isset($cta->qr_api_key_servicio) ? $cta->qr_api_key_servicio : null))
             ]);
         } catch (\Throwable $e) {
             Log::warning('applyAccountOverrides error', ['err' => $e->getMessage(), 'id_cuentas_bancarias' => $idCuenta]);
@@ -58,9 +58,14 @@ class QrController extends Controller
             'items.*.turno' => 'nullable|string',
             'items.*.monto_saldo' => 'nullable|integer',
             'items.*.id_forma_cobro' => 'nullable',
+            'items.*.cod_tipo_cobro' => 'nullable|string|max:50',
+            'items.*.tipo_pago' => 'nullable|string|max:50',
+            'items.*.id_asignacion_mora' => 'nullable|integer',
+            'items.*.id_asignacion_costo' => 'nullable|integer',
+            'items.*.id_cuota' => 'nullable|integer',
         ]);
 
-        $alias = (string)($validated['alias'] ?? '');
+        $alias = (string)(isset($validated['alias']) ? $validated['alias'] : '');
         $trx = null;
         if ($alias !== '') {
             $trx = DB::table('qr_transacciones')->where('alias', $alias)->first();
@@ -80,31 +85,49 @@ class QrController extends Controller
                 // Reemplazar snapshot
                 DB::table('qr_conceptos_detalle')->where('id_qr_transaccion', $trx->id_qr_transaccion)->delete();
                 $total = 0.0;
-                $items = $validated['items'] ?? [];
+                $items = isset($validated['items']) ? $validated['items'] : [];
                 foreach ($items as $idx => $it) {
-                    $monto = (float)($it['monto'] ?? 0);
+                    $monto = (float)(isset($it['monto']) ? $it['monto'] : 0);
                     $pu = isset($it['pu_mensualidad']) ? (float)$it['pu_mensualidad'] : $monto;
                     $desc = isset($it['descuento']) ? (float)$it['descuento'] : 0;
-                    $concepto = (string)($it['detalle'] ?? 'COBRO QR');
+                    $concepto = (string)(isset($it['detalle']) ? $it['detalle'] : 'COBRO QR');
                     if (mb_strlen($concepto) > 255) { $concepto = mb_substr($concepto, 0, 255); }
-                    $obsVal = $it['observaciones'] ?? null;
+                    $obsVal = isset($it['observaciones']) ? $it['observaciones'] : null;
                     if (is_string($obsVal) && mb_strlen($obsVal) > 2000) { $obsVal = mb_substr($obsVal, 0, 2000); }
-                    DB::table('qr_conceptos_detalle')->insert([
+
+                    // Determinar tipo_concepto: si es mora, marcar como 'mora'
+                    $tipoConcepto = (string)(isset($it['tipo_concepto']) ? $it['tipo_concepto'] : 'general');
+                    if (isset($it['cod_tipo_cobro']) && $it['cod_tipo_cobro'] === 'MORA') {
+                        $tipoConcepto = 'mora';
+                    }
+
+                    $insertData = [
                         'id_qr_transaccion' => $trx->id_qr_transaccion,
-                        'tipo_concepto' => (string)($it['tipo_concepto'] ?? 'general'),
-                        'nro_cobro' => $it['nro_cobro'] ?? null,
+                        'tipo_concepto' => $tipoConcepto,
+                        'nro_cobro' => isset($it['nro_cobro']) ? $it['nro_cobro'] : null,
                         'concepto' => $concepto,
                         'observaciones' => $obsVal,
                         'precio_unitario' => $pu,
                         'descuento' => $desc,
                         'subtotal' => $monto,
-                        'orden' => (int)($it['order'] ?? ($idx+1)),
+                        'orden' => (int)(isset($it['order']) ? $it['order'] : ($idx+1)),
                         'nro_cuota' => isset($it['nro_cuota']) ? (int)$it['nro_cuota'] : null,
-                        'turno' => $it['turno'] ?? null,
+                        'turno' => isset($it['turno']) ? $it['turno'] : null,
                         'monto_saldo' => isset($it['monto_saldo']) ? (int)$it['monto_saldo'] : null,
                         'created_at' => now(),
                         'updated_at' => now(),
-                    ]);
+                    ];
+
+                    // Agregar campos adicionales solo si las columnas existen en BD
+                    if (\Schema::hasColumn('qr_conceptos_detalle', 'cod_tipo_cobro')) {
+                        $insertData['cod_tipo_cobro'] = isset($it['cod_tipo_cobro']) ? (string)$it['cod_tipo_cobro'] : null;
+                        $insertData['tipo_pago'] = isset($it['tipo_pago']) ? (string)$it['tipo_pago'] : null;
+                        $insertData['id_asignacion_mora'] = isset($it['id_asignacion_mora']) ? (int)$it['id_asignacion_mora'] : null;
+                        $insertData['id_asignacion_costo'] = isset($it['id_asignacion_costo']) ? (int)$it['id_asignacion_costo'] : null;
+                        $insertData['id_cuota'] = isset($it['id_cuota']) ? (int)$it['id_cuota'] : null;
+                    }
+
+                    DB::table('qr_conceptos_detalle')->insert($insertData);
                     $total += $monto;
                 }
                 $update = [
@@ -128,8 +151,11 @@ class QrController extends Controller
     private function classifyTipoConcepto($it)
     {
         try {
-            $src = strtoupper(trim((string)($it['detalle'] ?? $it['concepto'] ?? $it['observaciones'] ?? '')));
-            if ($src === '') return 'general';
+            $detalle = strtoupper(trim((string)(isset($it['detalle']) ? $it['detalle'] : (isset($it['concepto']) ? $it['concepto'] : ''))));
+            $obs = strtoupper(trim((string)(isset($it['observaciones']) ? $it['observaciones'] : '')));
+            $src = $detalle . ' ' . $obs;
+            if ($src === ' ') return 'general';
+            if (strpos($src, 'MORA') !== false) return 'mora';
             if (strpos($src, 'MENSUALIDAD') !== false) return 'mensualidad';
             if (strpos($src, 'REZAGADO') !== false) return 'rezagado';
             if (strpos($src, 'RECUPERACION') !== false) return 'recuperacion';
@@ -160,19 +186,19 @@ class QrController extends Controller
 
         try {
             $itemsLog = [];
-            foreach (($validated['items'] ?? []) as $idx => $it) {
+            foreach ((isset($validated['items']) ? $validated['items'] : []) as $idx => $it) {
                 $itemsLog[] = [
                     'idx' => $idx,
-                    'monto' => $it['monto'] ?? null,
-                    'pu_mensualidad' => $it['pu_mensualidad'] ?? null,
-                    'descuento' => $it['descuento'] ?? null,
-                    'concepto' => $it['concepto'] ?? $it['detalle'] ?? null,
+                    'monto' => isset($it['monto']) ? $it['monto'] : null,
+                    'pu_mensualidad' => isset($it['pu_mensualidad']) ? $it['pu_mensualidad'] : null,
+                    'descuento' => isset($it['descuento']) ? $it['descuento'] : null,
+                    'concepto' => isset($it['concepto']) ? $it['concepto'] : (isset($it['detalle']) ? $it['detalle'] : null),
                 ];
             }
             Log::info('QR initiate: datos recibidos del frontend', [
                 'cod_ceta' => $validated['cod_ceta'],
                 'amount' => $validated['amount'],
-                'items_count' => count($validated['items'] ?? []),
+                'items_count' => count(isset($validated['items']) ? $validated['items'] : []),
                 'items' => $itemsLog
             ]);
         } catch (\Throwable $e) {}
@@ -187,27 +213,27 @@ class QrController extends Controller
             }
             // Respetar habilitado_QR explícito para evitar confusiones en reportes
             $habilitadoQr = false;
-            try { $habilitadoQr = !!($cta->habilitado_QR ?? false); } catch (\Throwable $e) { $habilitadoQr = false; }
+            try { $habilitadoQr = !!(isset($cta->habilitado_QR) ? $cta->habilitado_QR : false); } catch (\Throwable $e) { $habilitadoQr = false; }
             if (!$habilitadoQr) {
                 return response()->json(['success' => false, 'message' => 'La cuenta seleccionada no está habilitada para QR'], 422);
             }
             // Aplicar overrides si existen (mantiene compatibilidad con config global)
-            $set = function(string $key, $val): void { if ($val !== null && $val !== '') { config([$key => $val]); } };
-            $set('qr.url_auth', $cta->qr_url_auth ?? null);
-            $set('qr.api_key', $cta->qr_api_key ?? null);
-            $set('qr.username', $cta->qr_username ?? null);
-            $set('qr.password', $cta->qr_password ?? null);
-            $set('qr.url_transfer', $cta->qr_url_transfer ?? null);
-            $set('qr.api_key_servicio', $cta->qr_api_key_servicio ?? null);
+            $set = function($key, $val) { if ($val !== null && $val !== '') { config([$key => $val]); } };
+            $set('qr.url_auth', isset($cta->qr_url_auth) ? $cta->qr_url_auth : null);
+            $set('qr.api_key', isset($cta->qr_api_key) ? $cta->qr_api_key : null);
+            $set('qr.username', isset($cta->qr_username) ? $cta->qr_username : null);
+            $set('qr.password', isset($cta->qr_password) ? $cta->qr_password : null);
+            $set('qr.url_transfer', isset($cta->qr_url_transfer) ? $cta->qr_url_transfer : null);
+            $set('qr.api_key_servicio', isset($cta->qr_api_key_servicio) ? $cta->qr_api_key_servicio : null);
             if (isset($cta->qr_http_verify_ssl)) { config(['qr.http_verify_ssl' => (bool)$cta->qr_http_verify_ssl]); }
             if (isset($cta->qr_http_timeout) && is_numeric($cta->qr_http_timeout)) { config(['qr.http_timeout' => (int)$cta->qr_http_timeout]); }
             if (isset($cta->qr_http_connect_timeout) && is_numeric($cta->qr_http_connect_timeout)) { config(['qr.http_connect_timeout' => (int)$cta->qr_http_connect_timeout]); }
             \Illuminate\Support\Facades\Log::info('QR initiate: applied account overrides if present', [
                 'id_cuentas_bancarias' => (int)$validated['id_cuentas_bancarias'],
-                'has_overrides' => !!(($cta->qr_url_auth ?? null) || ($cta->qr_api_key ?? null) || ($cta->qr_url_transfer ?? null) || ($cta->qr_api_key_servicio ?? null)),
+                'has_overrides' => !!((isset($cta->qr_url_auth) ? $cta->qr_url_auth : null) || (isset($cta->qr_api_key) ? $cta->qr_api_key : null) || (isset($cta->qr_url_transfer) ? $cta->qr_url_transfer : null) || (isset($cta->qr_api_key_servicio) ? $cta->qr_api_key_servicio : null)),
                 'habilitado_QR' => $habilitadoQr,
-                'doc_pref' => $cta->doc_tipo_preferido ?? null,
-                'I_R' => $cta->I_R ?? null,
+                'doc_pref' => isset($cta->doc_tipo_preferido) ? $cta->doc_tipo_preferido : null,
+                'I_R' => isset($cta->I_R) ? $cta->I_R : null,
             ]);
         } catch (\Throwable $e) {
             \Illuminate\Support\Facades\Log::warning('QR initiate: error loading account overrides', ['err' => $e->getMessage()]);
@@ -225,7 +251,7 @@ class QrController extends Controller
             ['QR_TRANSACCION']
         );
         $rowDoc = DB::selectOne('SELECT LAST_INSERT_ID() AS id');
-        $idQr = (int)($rowDoc->id ?? 0);
+        $idQr = (int)(isset($rowDoc->id) ? $rowDoc->id : 0);
 
         // Expiración diaria a las 23:59:59 del día actual
         $fechaExpiracion = date('Y-m-d 23:59:59');
@@ -234,14 +260,14 @@ class QrController extends Controller
         // Crear transacción base (estado generado)
         $docMarker = '';
         try {
-            $itms = $validated['items'] ?? [];
+            $itms = isset($validated['items']) ? $validated['items'] : [];
             foreach ($itms as $itX) {
-                $td = strtoupper((string)($itX['tipo_documento'] ?? ''));
+                $td = strtoupper((string)(isset($itX['tipo_documento']) ? $itX['tipo_documento'] : ''));
                 if ($td === 'F') { $docMarker = ' [DOC:F]'; break; }
             }
         } catch (\Throwable $e) {}
         // Extraer datos del cliente
-        $clienteData = $validated['cliente'] ?? [];
+        $clienteData = isset($validated['cliente']) ? $validated['cliente'] : [];
         $tipoIdentidad = isset($clienteData['tipo_identidad']) ? (int)$clienteData['tipo_identidad'] : null;
         $numeroDocumento = isset($clienteData['numero']) ? (string)$clienteData['numero'] : null;
         $razonSocial = isset($clienteData['razon_social']) ? (string)$clienteData['razon_social'] : null;
@@ -273,20 +299,20 @@ class QrController extends Controller
         ]);
 
         // Persistir detalle (si se envía)
-        $items = $validated['items'] ?? [];
+        $items = isset($validated['items']) ? $validated['items'] : [];
         foreach ($items as $idx => $it) {
-            $monto = (float)($it['monto'] ?? 0);
+            $monto = (float)(isset($it['monto']) ? $it['monto'] : 0);
             $pu = isset($it['pu_mensualidad']) ? (float)$it['pu_mensualidad'] : $monto;
             $desc = isset($it['descuento']) ? (float)$it['descuento'] : 0;
-            $concepto = (string)($it['concepto'] ?? $it['detalle'] ?? ($validated['detalle'] . ' #' . ($idx+1)));
+            $concepto = (string)(isset($it['concepto']) ? $it['concepto'] : (isset($it['detalle']) ? $it['detalle'] : ($validated['detalle'] . ' #' . ($idx+1))));
             if (mb_strlen($concepto) > 255) { $concepto = mb_substr($concepto, 0, 255); }
-            $nroCuota = $it['nro_cuota'] ?? $it['numero_cuota'] ?? null;
-            $turno = $it['turno'] ?? null;
-            $montoSaldo = $it['monto_saldo'] ?? null;
-            $obsVal = $it['observaciones'] ?? null;
+            $nroCuota = isset($it['nro_cuota']) ? $it['nro_cuota'] : (isset($it['numero_cuota']) ? $it['numero_cuota'] : null);
+            $turno = isset($it['turno']) ? $it['turno'] : null;
+            $montoSaldo = isset($it['monto_saldo']) ? $it['monto_saldo'] : null;
+            $obsVal = isset($it['observaciones']) ? $it['observaciones'] : null;
             if (is_string($obsVal) && mb_strlen($obsVal) > 2000) { $obsVal = mb_substr($obsVal, 0, 2000); }
-            $tipoDoc = (string)($it['tipo_documento'] ?? '');
-            $medioDoc = (string)($it['medio_doc'] ?? '');
+            $tipoDoc = (string)(isset($it['tipo_documento']) ? $it['tipo_documento'] : '');
+            $medioDoc = (string)(isset($it['medio_doc']) ? $it['medio_doc'] : '');
             try {
                 Log::info('QR initiate: guardando item en qr_conceptos_detalle', [
                     'idx' => $idx,
@@ -295,16 +321,22 @@ class QrController extends Controller
                     'concepto' => $concepto
                 ]);
             } catch (\Throwable $e) {}
-            DB::table('qr_conceptos_detalle')->insert([
+            // Determinar tipo_concepto: si es mora, marcar como 'mora'
+            $tipoConcepto = (string)(isset($it['tipo_concepto']) ? $it['tipo_concepto'] : $this->classifyTipoConcepto((array)$it));
+            if (isset($it['cod_tipo_cobro']) && $it['cod_tipo_cobro'] === 'MORA') {
+                $tipoConcepto = 'mora';
+            }
+
+            $insertData = [
                 'id_qr_transaccion' => $idQr,
-                'tipo_concepto' => (string)($it['tipo_concepto'] ?? $this->classifyTipoConcepto((array)$it)),
-                'nro_cobro' => $it['nro_cobro'] ?? null,
+                'tipo_concepto' => $tipoConcepto,
+                'nro_cobro' => isset($it['nro_cobro']) ? $it['nro_cobro'] : null,
                 'concepto' => $concepto,
                 'observaciones' => $obsVal,
                 'precio_unitario' => $pu,
                 'descuento' => $desc,
                 'subtotal' => $monto,
-                'orden' => (int)($it['order'] ?? ($idx+1)),
+                'orden' => (int)(isset($it['order']) ? $it['order'] : ($idx+1)),
                 'nro_cuota' => $nroCuota !== null ? (int)$nroCuota : null,
                 'turno' => $turno !== null ? (string)$turno : null,
                 'monto_saldo' => $montoSaldo !== null ? (int)$montoSaldo : null,
@@ -312,7 +344,18 @@ class QrController extends Controller
                 'medio_doc' => $medioDoc !== '' ? $medioDoc : null,
                 'created_at' => now(),
                 'updated_at' => now(),
-            ]);
+            ];
+
+            // Agregar campos adicionales solo si las columnas existen en BD
+            if (\Schema::hasColumn('qr_conceptos_detalle', 'cod_tipo_cobro')) {
+                $insertData['cod_tipo_cobro'] = isset($it['cod_tipo_cobro']) ? (string)$it['cod_tipo_cobro'] : null;
+                $insertData['tipo_pago'] = isset($it['tipo_pago']) ? (string)$it['tipo_pago'] : null;
+                $insertData['id_asignacion_mora'] = isset($it['id_asignacion_mora']) ? (int)$it['id_asignacion_mora'] : null;
+                $insertData['id_asignacion_costo'] = isset($it['id_asignacion_costo']) ? (int)$it['id_asignacion_costo'] : null;
+                $insertData['id_cuota'] = isset($it['id_cuota']) ? (int)$it['id_cuota'] : null;
+            }
+
+            DB::table('qr_conceptos_detalle')->insert($insertData);
         }
 
         // Log de estado inicial
@@ -398,16 +441,16 @@ class QrController extends Controller
             if (!empty($resp['data']['mensaje'])) { $errMsg = (string)$resp['data']['mensaje']; }
             return response()->json(['success' => false, 'message' => $errMsg, 'meta' => $resp], 502);
         }
-        $data = $resp['data'] ?? [];
-        $codigo = $data['codigo'] ?? null;
+        $data = isset($resp['data']) ? $resp['data'] : [];
+        $codigo = isset($data['codigo']) ? $data['codigo'] : null;
         if (!in_array($codigo, ['0000', 'OK'], true)) {
             Log::warning('QR provider returned non-success code', ['codigo' => $codigo, 'data' => $data]);
             // Marcar transacción como error
             try { DB::table('qr_transacciones')->where('id_qr_transaccion', $idQr)->update(['estado' => 'error', 'updated_at' => now()]); } catch (\Throwable $e) {}
-            $provMsg = (string)($data['mensaje'] ?? 'No se pudo generar el QR. Intente más tarde.');
+            $provMsg = (string)(isset($data['mensaje']) ? $data['mensaje'] : 'No se pudo generar el QR. Intente más tarde.');
             return response()->json(['success' => false, 'message' => $provMsg, 'meta' => $data], 502);
         }
-        $qrBase64 = $data['objeto']['imagenQr'] ?? null;
+        $qrBase64 = (isset($data['objeto']) && isset($data['objeto']['imagenQr'])) ? $data['objeto']['imagenQr'] : null;
         if (is_string($qrBase64) && str_starts_with($qrBase64, 'data:image')) {
             $pos = strpos($qrBase64, ',');
             if ($pos !== false) {
@@ -415,11 +458,11 @@ class QrController extends Controller
                 Log::info('QR imagen sanitized from data URL');
             }
         }
-        $provTransId = $data['objeto']['idTransaccion'] ?? null;
-        $provQrId = $data['objeto']['idQr'] ?? null;
-        $fechaVencResp = $data['objeto']['fechaVencimiento'] ?? null;
-        $qrUrl = $data['objeto']['url'] ?? null; // si existiera
-        $nroAut = $data['objeto']['numeroAutorizacion'] ?? null;
+        $provTransId = (isset($data['objeto']) && isset($data['objeto']['idTransaccion'])) ? $data['objeto']['idTransaccion'] : null;
+        $provQrId = (isset($data['objeto']) && isset($data['objeto']['idQr'])) ? $data['objeto']['idQr'] : null;
+        $fechaVencResp = (isset($data['objeto']) && isset($data['objeto']['fechaVencimiento'])) ? $data['objeto']['fechaVencimiento'] : null;
+        $qrUrl = (isset($data['objeto']) && isset($data['objeto']['url'])) ? $data['objeto']['url'] : null; // si existiera
+        $nroAut = (isset($data['objeto']) && isset($data['objeto']['numeroAutorizacion'])) ? $data['objeto']['numeroAutorizacion'] : null;
         Log::info('QR createPayment() response summary', [
             'codigo' => $codigo,
             'has_imagen' => $qrBase64 ? true : false,
@@ -495,8 +538,8 @@ class QrController extends Controller
             }
             $raw = base64_decode(substr($auth, 6) ?: '', true) ?: '';
             $pair = explode(':', $raw, 2);
-            $u = $pair[0] ?? '';
-            $p = $pair[1] ?? '';
+            $u = isset($pair[0]) ? $pair[0] : '';
+            $p = isset($pair[1]) ? $pair[1] : '';
             if (!hash_equals($cbUser, $u) || !hash_equals($cbPass, $p)) {
                 return response()->json(['codigo' => '9999', 'mensaje' => 'Unauthorized'], 401);
             }
@@ -505,7 +548,7 @@ class QrController extends Controller
         $alias = trim((string)$request->input('alias'));
         if ($alias === '') {
             try {
-                $aliasRoute = (string)($request->route('alias') ?? '');
+                $aliasRoute = (string)(($request->route('alias') !== null ? $request->route('alias') : ''));
                 if ($aliasRoute !== '') { $alias = trim($aliasRoute); }
             } catch (\Throwable $e) { /* noop */ }
         }
@@ -578,7 +621,7 @@ class QrController extends Controller
         $extId = (string)$request->input('idTransaccion', '');
         $extIdQr = (string)$request->input('idQr', '');
         // Aplicar overrides por cuenta de la transacción (si existen)
-        try { $this->applyAccountOverrides((int)($trx->id_cuenta_bancaria ?? 0)); } catch (\Throwable $e) {}
+        try { $this->applyAccountOverrides((int)(isset($trx->id_cuenta_bancaria) ? $trx->id_cuenta_bancaria : 0)); } catch (\Throwable $e) {}
         $formaCobro = (string)config('qr.forma_cobro_id', '');
         if ($formaCobro === '') {
             try {
@@ -620,7 +663,7 @@ class QrController extends Controller
             'CANCELADO' => 'cancelado',
             'EXPIRADO' => 'expirado',
         ];
-        $estadoNuevo = $map[$statusExt] ?? 'completado';
+        $estadoNuevo = isset($map[$statusExt]) ? $map[$statusExt] : 'completado';
 
         // Guardar traza de callback en respuestas_banco (lo que venga del proveedor)
         DB::table('qr_respuestas_banco')->insert([
@@ -633,7 +676,7 @@ class QrController extends Controller
             'monto' => $request->has('monto') ? (float)$request->input('monto') : null,
             'id_qr' => (string)$request->input('idQr', ''),
             'moneda' => (string)$request->input('moneda', ''),
-            'fecha_proceso' => (string)($request->input('fechaProceso', '') ?: date('Y-m-d H:i:s', strtotime((string)($trx->fecha_generacion ?? date('Y-m-d H:i:s'))))),
+            'fecha_proceso' => (string)($request->input('fechaProceso', '') ?: date('Y-m-d H:i:s', strtotime((string)(isset($trx->fecha_generacion) ? $trx->fecha_generacion : date('Y-m-d H:i:s'))))),
             'cuentaCliente' => (string)$request->input('cuentaCliente', ''),
             'nombreCliente' => (string)$request->input('nombreCliente', ''),
             'documentoCliente' => (string)$request->input('documentoCliente', ''),
@@ -682,7 +725,7 @@ class QrController extends Controller
         if ($estadoNuevo === 'completado') {
             try {
                 // Si ya fue procesado, no duplicar
-                $alreadyProcessed = (bool)($trx->processed ?? false);
+                $alreadyProcessed = (bool)(isset($trx->processed) ? $trx->processed : false);
                 if (!$alreadyProcessed) {
                     // Construir payload para batchStore desde snapshot de qr_conceptos_detalle
                     $itemsSnap = DB::table('qr_conceptos_detalle')
@@ -692,43 +735,84 @@ class QrController extends Controller
                     $today = date('Y-m-d');
                     $items = [];
                     foreach ($itemsSnap as $row) {
-                        $obsMk = (string)($row->observaciones ?? '');
+                        $obsMk = (string)(isset($row->observaciones) ? $row->observaciones : '');
                         if (stripos($obsMk, '[QR') === false) {
                             $obsMk = ($obsMk !== '' ? ($obsMk . ' | ') : '') . '[QR] alias:' . $alias;
                         }
-                        $tipoDocRecuperado = (string)($row->tipo_documento ?? '');
-                        $medioDocRecuperado = (string)($row->medio_doc ?? '');
-                        $puRead = (float)($row->precio_unitario ?? ($row->subtotal ?? 0));
-                        $descRead = (float)($row->descuento ?? 0);
-                        $subRead = (float)($row->subtotal ?? 0);
+                        $tipoDocRecuperado = (string)(isset($row->tipo_documento) ? $row->tipo_documento : '');
+                        $medioDocRecuperado = (string)(isset($row->medio_doc) ? $row->medio_doc : '');
+                        $puRead = (float)(isset($row->precio_unitario) ? $row->precio_unitario : (isset($row->subtotal) ? $row->subtotal : 0));
+                        $descRead = (float)(isset($row->descuento) ? $row->descuento : 0);
+                        $subRead = (float)(isset($row->subtotal) ? $row->subtotal : 0);
                         try {
                             Log::info('QR callback: recuperando item de qr_conceptos_detalle', [
                                 'tipo_documento' => $tipoDocRecuperado,
                                 'medio_doc' => $medioDocRecuperado,
-                                'concepto' => (string)($row->concepto ?? ''),
+                                'concepto' => (string)(isset($row->concepto) ? $row->concepto : ''),
                                 'precio_unitario' => $puRead,
                                 'descuento' => $descRead,
                                 'subtotal' => $subRead
                             ]);
                         } catch (\Throwable $e) {}
-                        $items[] = [
+
+                        // Reconstruir item para batchStore
+                        $nroCobroRecuperado = isset($row->nro_cobro) ? (int)$row->nro_cobro : null;
+                        $item = [
                             'monto' => $subRead,
                             'fecha_cobro' => $today,
-                            'order' => (int)($row->orden ?? 1),
+                            'order' => (int)(isset($row->orden) ? $row->orden : 1),
                             'observaciones' => $obsMk,
-                            'nro_cobro' => null,
+                            'nro_cobro' => $nroCobroRecuperado,
                             'pu_mensualidad' => $puRead,
                             'descuento' => $descRead,
-                            'detalle' => (string)($row->concepto ?? ($trx->detalle_glosa ?? 'COBRO QR')),
+                            'detalle' => (string)(isset($row->concepto) ? $row->concepto : (isset($trx->detalle_glosa) ? $trx->detalle_glosa : 'COBRO QR')),
                             'id_forma_cobro' => (string)$formaCobro,
-                            'id_asignacion_costo' => null,
-                            'id_cuota' => null,
                             'nro_cuota' => isset($row->nro_cuota) ? (int)$row->nro_cuota : null,
-                            'turno' => $row->turno ?? null,
+                            'turno' => isset($row->turno) ? $row->turno : null,
                             'monto_saldo' => isset($row->monto_saldo) ? (int)$row->monto_saldo : null,
-                            'tipo_documento' => (string)($row->tipo_documento ?? ''),
-                            'medio_doc' => (string)($row->medio_doc ?? ''),
+                            'tipo_documento' => (string)(isset($row->tipo_documento) ? $row->tipo_documento : ''),
+                            'medio_doc' => (string)(isset($row->medio_doc) ? $row->medio_doc : ''),
                         ];
+
+                        // Si las columnas adicionales existen, usarlas; sino derivar de tipo_concepto
+                        if (\Schema::hasColumn('qr_conceptos_detalle', 'cod_tipo_cobro')) {
+                            $item['cod_tipo_cobro'] = isset($row->cod_tipo_cobro) ? (string)$row->cod_tipo_cobro : null;
+                            $item['tipo_pago'] = isset($row->tipo_pago) ? (string)$row->tipo_pago : null;
+                            $item['id_asignacion_mora'] = isset($row->id_asignacion_mora) ? (int)$row->id_asignacion_mora : null;
+                            $item['id_asignacion_costo'] = isset($row->id_asignacion_costo) ? (int)$row->id_asignacion_costo : null;
+                            $item['id_cuota'] = isset($row->id_cuota) ? (int)$row->id_cuota : null;
+                        } else {
+                            // Derivar cod_tipo_cobro y tipo_pago de tipo_concepto y nro_cobro
+                            $tipoConcepto = isset($row->tipo_concepto) ? (string)$row->tipo_concepto : 'general';
+
+                            // Determinar cod_tipo_cobro
+                            if ($tipoConcepto === 'mora') {
+                                $item['cod_tipo_cobro'] = 'NIVELACION';
+                            } elseif ($tipoConcepto === 'arrastre') {
+                                $item['cod_tipo_cobro'] = 'ARRASTRE';
+                            } elseif ($tipoConcepto === 'mensualidad') {
+                                $item['cod_tipo_cobro'] = 'MENSUALIDAD';
+                            } elseif ($tipoConcepto === 'rezagado') {
+                                $item['cod_tipo_cobro'] = 'REZAGADOS';
+                            } elseif ($tipoConcepto === 'recuperacion') {
+                                $item['cod_tipo_cobro'] = 'PRUEBA_RECUPERACION';
+                            } else {
+                                $item['cod_tipo_cobro'] = null;
+                            }
+
+                            // Determinar tipo_pago: si tiene nro_cobro es NORMAL, sino es ARRASTRE
+                            if ($nroCobroRecuperado !== null && $nroCobroRecuperado > 0) {
+                                $item['tipo_pago'] = 'NORMAL';
+                            } else {
+                                $item['tipo_pago'] = 'ARRASTRE';
+                            }
+
+                            $item['id_asignacion_mora'] = null;
+                            $item['id_asignacion_costo'] = null;
+                            $item['id_cuota'] = null;
+                        }
+
+                        $items[] = $item;
                     }
                     // Si no hay snapshot (caso borde), crear un item por monto total
                     if (count($items) === 0) {
@@ -739,7 +823,7 @@ class QrController extends Controller
                             'observaciones' => '[QR] alias:' . $alias,
                             'nro_cobro' => null,
                             'pu_mensualidad' => (float)$trx->monto_total,
-                            'detalle' => (string)($trx->detalle_glosa ?? 'COBRO QR'),
+                            'detalle' => (string)(isset($trx->detalle_glosa) ? $trx->detalle_glosa : 'COBRO QR'),
                             'id_forma_cobro' => (string)$formaCobro,
                         ];
                     }
@@ -755,8 +839,8 @@ class QrController extends Controller
                     // 1. Datos del cliente desde qr_transacciones (Razón Social y Nro Documento del formulario)
                     try {
                         $tipoId = isset($trx->tipo_identidad_cliente) ? (int)$trx->tipo_identidad_cliente : 1;
-                        $numeroDoc = trim((string)($trx->documento_cliente ?? ''));
-                        $razonSoc = trim((string)($trx->nombre_cliente ?? ''));
+                        $numeroDoc = trim((string)(isset($trx->documento_cliente) ? $trx->documento_cliente : ''));
+                        $razonSoc = trim((string)(isset($trx->nombre_cliente) ? $trx->nombre_cliente : ''));
 
                         $clienteData['tipo_identidad'] = $tipoId;
                         if ($numeroDoc !== '') {
@@ -775,13 +859,13 @@ class QrController extends Controller
                             $estudiante = DB::table('estudiantes')->where('cod_ceta', (int)$trx->cod_ceta)->first();
                             if ($estudiante) {
                                 if (empty($clienteData['numero'])) {
-                                    $ci = trim((string)($estudiante->ci ?? ''));
+                                    $ci = trim((string)(isset($estudiante->ci) ? $estudiante->ci : ''));
                                     $clienteData['numero'] = ($ci !== '' && $ci !== '0') ? $ci : (string)$trx->cod_ceta;
                                 }
                                 if (empty($clienteData['razon_social'])) {
-                                    $nombres = trim((string)($estudiante->nombres ?? ''));
-                                    $apPaterno = trim((string)($estudiante->ap_paterno ?? ''));
-                                    $apMaterno = trim((string)($estudiante->ap_materno ?? ''));
+                                    $nombres = trim((string)(isset($estudiante->nombres) ? $estudiante->nombres : ''));
+                                    $apPaterno = trim((string)(isset($estudiante->ap_paterno) ? $estudiante->ap_paterno : ''));
+                                    $apMaterno = trim((string)(isset($estudiante->ap_materno) ? $estudiante->ap_materno : ''));
                                     $clienteData['razon_social'] = trim("$nombres $apPaterno $apMaterno");
                                 }
                             }
@@ -794,7 +878,7 @@ class QrController extends Controller
                         'cod_ceta' => (int)$trx->cod_ceta,
                         'cod_pensum' => (string)$trx->cod_pensum,
                         'tipo_inscripcion' => (string)$trx->tipo_inscripcion,
-                        'gestion' => (string)($trx->gestion ?? ''),
+                        'gestion' => (string)(isset($trx->gestion) ? $trx->gestion : ''),
                         'id_usuario' => (int)$trx->id_usuario,
                         'id_cuentas_bancarias' => (string)$trx->id_cuenta_bancaria,
                         'id_forma_cobro' => (string)$formaCobro,
@@ -808,6 +892,7 @@ class QrController extends Controller
                         Log::info('QR callback: invoking batchStore', [
                             'alias' => $alias,
                             'items' => count($items),
+                            'items_detail' => $items,
                             'cod_ceta' => (int)$trx->cod_ceta,
                             'forma_cobro' => $formaCobro,
                             'emitir_online' => true,
@@ -818,13 +903,13 @@ class QrController extends Controller
                     $ctrl = app(\App\Http\Controllers\Api\CobroController::class);
                     $response = app()->call([$ctrl, 'batchStore'], ['request' => $fakeReq]);
                     $respJson = method_exists($response, 'getContent') ? json_decode($response->getContent(), true) : null;
-                    $ok = is_array($respJson) ? (bool)($respJson['success'] ?? false) : false;
+                    $ok = is_array($respJson) ? (bool)(isset($respJson['success']) ? $respJson['success'] : false) : false;
                     try { Log::info('QR callback: batchStore result', ['ok' => $ok, 'resp' => is_array($respJson) ? array_intersect_key($respJson, ['success'=>true,'message'=>true]) : null]); } catch (\Throwable $e) {}
 
                     DB::table('qr_transacciones')->where('id_qr_transaccion', $trx->id_qr_transaccion)->update([
                         'processed' => $ok ? 1 : 0,
                         'processed_at' => $ok ? now() : null,
-                        'saved_by_user' => (bool)($trx->saved_by_user ?? false),
+                        'saved_by_user' => (bool)(isset($trx->saved_by_user) ? $trx->saved_by_user : false),
                         'process_error' => $ok ? null : (is_array($respJson) ? json_encode($respJson) : 'batchStore failed'),
                         'updated_at' => now(),
                     ]);
@@ -844,20 +929,20 @@ class QrController extends Controller
 
                     try {
                         $docTipo = null; $anioDoc = null; $nroDoc = null; $payloadDoc = [];
-                        if (is_array($respJson ?? null)) {
-                            $itemsResp = $respJson['data']['items'] ?? [];
+                        if (is_array(isset($respJson) ? $respJson : null)) {
+                            $itemsResp = isset($respJson['data']['items']) ? $respJson['data']['items'] : [];
                             if (is_array($itemsResp)) {
                                 foreach ($itemsResp as $it) {
                                     $tipo = isset($it['tipo_documento']) ? (string)$it['tipo_documento'] : '';
                                     $medio = isset($it['medio_doc']) ? (string)$it['medio_doc'] : '';
-                                    $fecha = (string)($it['cobro']['fecha_cobro'] ?? date('Y-m-d'));
+                                    $fecha = (string)(isset($it['cobro']['fecha_cobro']) ? $it['cobro']['fecha_cobro'] : date('Y-m-d'));
                                     $anioTry = (int)date('Y', strtotime($fecha));
-                                    if ($tipo === 'R' && $medio === 'C' && !empty($it['nro_recibo'] ?? null)) {
+                                    if ($tipo === 'R' && $medio === 'C' && !empty(isset($it['nro_recibo']) ? $it['nro_recibo'] : null)) {
                                         $docTipo = 'R'; $anioDoc = $anioTry; $nroDoc = (int)$it['nro_recibo'];
                                         $payloadDoc = ['documento_tipo' => 'R', 'anio_recibo' => $anioDoc, 'nro_recibo' => $nroDoc];
                                         break;
                                     }
-                                    if ($tipo === 'F' && $medio === 'C' && !empty($it['nro_factura'] ?? null)) {
+                                    if ($tipo === 'F' && $medio === 'C' && !empty(isset($it['nro_factura']) ? $it['nro_factura'] : null)) {
                                         $docTipo = 'F'; $anioDoc = $anioTry; $nroDoc = (int)$it['nro_factura'];
                                         $payloadDoc = ['documento_tipo' => 'F', 'anio_factura' => $anioDoc, 'nro_factura' => $nroDoc];
                                         break;
@@ -907,7 +992,7 @@ class QrController extends Controller
             $rowNow = DB::table('qr_transacciones')->select('processed')->where('alias', $alias)->first();
             if (isset($rowNow->processed)) { $processedNow = (int)$rowNow->processed; }
         } catch (\Throwable $e) {}
-        return response()->json(['codigo' => '0000', 'mensaje' => 'Registro exitoso', 'meta' => ['alias' => $alias, 'processed' => $processedNow ?? null]]);
+        return response()->json(['codigo' => '0000', 'mensaje' => 'Registro exitoso', 'meta' => ['alias' => $alias, 'processed' => isset($processedNow) ? $processedNow : null]]);
     }
 
     public function disable(Request $request, QrGatewayService $gateway)
@@ -918,14 +1003,14 @@ class QrController extends Controller
         $trx = DB::table('qr_transacciones')->where('alias', $alias)->first();
         if (!$trx) { return response()->json(['success' => false, 'message' => 'Transaction not found'], 404); }
         try {
-            $isSaved = (bool)($trx->saved_by_user ?? false);
-            $est = (string)($trx->estado ?? '');
+            $isSaved = (bool)(isset($trx->saved_by_user) ? $trx->saved_by_user : false);
+            $est = (string)(isset($trx->estado) ? $trx->estado : '');
             if ($isSaved && !in_array($est, ['completado','cancelado','expirado'], true)) {
                 return response()->json(['success' => false, 'message' => 'No se puede anular un QR guardado en espera.'], 422);
             }
         } catch (\Throwable $e) {}
         // Aplicar overrides por cuenta de la transacción
-        try { $this->applyAccountOverrides((int)($trx->id_cuenta_bancaria ?? 0)); } catch (\Throwable $e) {}
+        try { $this->applyAccountOverrides((int)(isset($trx->id_cuenta_bancaria) ? $trx->id_cuenta_bancaria : 0)); } catch (\Throwable $e) {}
 
         $auth = $gateway->authenticate();
         if (!$auth['ok']) { return response()->json(['success' => false, 'message' => 'QR auth failed'], 500); }
@@ -949,7 +1034,7 @@ class QrController extends Controller
                 'estado_anterior' => $estadoAnterior,
                 'estado_nuevo' => $estadoNuevo,
                 'motivo_cambio' => 'inhabilitar',
-                'usuario' => (string)($request->input('id_usuario') ?? ''),
+                'usuario' => (string)(($request->input('id_usuario') !== null ? $request->input('id_usuario') : '')),
                 'fecha_cambio' => now(),
                 'created_at' => now(),
                 'updated_at' => now(),
@@ -967,7 +1052,7 @@ class QrController extends Controller
         $trx = DB::table('qr_transacciones')->where('alias', $alias)->first();
         if (!$trx) { return response()->json(['success' => false, 'message' => 'Transaction not found'], 404); }
         // Aplicar overrides por cuenta de la transacción
-        try { $this->applyAccountOverrides((int)($trx->id_cuenta_bancaria ?? 0)); } catch (\Throwable $e) {}
+        try { $this->applyAccountOverrides((int)(isset($trx->id_cuenta_bancaria) ? $trx->id_cuenta_bancaria : 0)); } catch (\Throwable $e) {}
 
         $auth = $gateway->authenticate();
         if (!$auth['ok']) { return response()->json(['success' => false, 'message' => 'QR auth failed'], 500); }
@@ -978,8 +1063,8 @@ class QrController extends Controller
             return response()->json(['success' => false, 'message' => 'QR provider error', 'meta' => $resp], 502);
         }
 
-        $payload = $resp['data'] ?? [];
-        $estadoExt = strtoupper((string)($payload['objeto']['estadoActual'] ?? ''));
+        $payload = isset($resp['data']) ? $resp['data'] : [];
+        $estadoExt = strtoupper((string)(isset($payload['objeto']['estadoActual']) ? $payload['objeto']['estadoActual'] : ''));
         $map = [
             'PAGADO' => 'completado',
             'INHABILITADO' => 'cancelado',
@@ -987,7 +1072,7 @@ class QrController extends Controller
             'EXPIRADO' => 'expirado',
             'PENDIENTE' => 'procesando',
         ];
-        $estadoNuevo = $map[$estadoExt] ?? (string)$trx->estado;
+        $estadoNuevo = isset($map[$estadoExt]) ? $map[$estadoExt] : (string)$trx->estado;
 
         if ($estadoNuevo !== (string)$trx->estado) {
             DB::table('qr_transacciones')->where('id_qr_transaccion', $trx->id_qr_transaccion)->update([
@@ -999,7 +1084,7 @@ class QrController extends Controller
                 'estado_anterior' => (string)$trx->estado,
                 'estado_nuevo' => $estadoNuevo,
                 'motivo_cambio' => 'consulta_estado',
-                'usuario' => (string)($request->input('id_usuario') ?? ''),
+                'usuario' => (string)(($request->input('id_usuario') !== null ? $request->input('id_usuario') : '')),
                 'fecha_cambio' => now(),
                 'created_at' => now(),
                 'updated_at' => now(),
@@ -1024,13 +1109,13 @@ class QrController extends Controller
             return response()->json(['success' => true, 'data' => ['alias' => $alias, 'estado' => $estado]]);
         }
         // Aplicar overrides por cuenta de la transacción
-        try { $this->applyAccountOverrides((int)($trx->id_cuenta_bancaria ?? 0)); } catch (\Throwable $e) {}
+        try { $this->applyAccountOverrides((int)(isset($trx->id_cuenta_bancaria) ? $trx->id_cuenta_bancaria : 0)); } catch (\Throwable $e) {}
         $auth = $gateway->authenticate();
         if (!$auth['ok']) { return response()->json(['success' => true, 'data' => ['alias' => $alias, 'estado' => $estado]]); }
         $resp = $gateway->getStatus($auth['token'], $alias);
         if (!$resp['ok']) { return response()->json(['success' => true, 'data' => ['alias' => $alias, 'estado' => $estado]]); }
-        $payload = $resp['data'] ?? [];
-        $estadoExt = strtoupper((string)($payload['objeto']['estadoActual'] ?? ''));
+        $payload = isset($resp['data']) ? $resp['data'] : [];
+        $estadoExt = strtoupper((string)(isset($payload['objeto']['estadoActual']) ? $payload['objeto']['estadoActual'] : ''));
         $map = [
             'PAGADO' => 'completado',
             'INHABILITADO' => 'cancelado',
@@ -1038,7 +1123,7 @@ class QrController extends Controller
             'EXPIRADO' => 'expirado',
             'PENDIENTE' => 'procesando',
         ];
-        $nuevo = $map[$estadoExt] ?? $estado;
+        $nuevo = isset($map[$estadoExt]) ? $map[$estadoExt] : $estado;
         if ($nuevo !== $estado) {
             DB::table('qr_transacciones')->where('id_qr_transaccion', $trx->id_qr_transaccion)->update([
                 'estado' => $nuevo,
@@ -1049,13 +1134,13 @@ class QrController extends Controller
                 'estado_anterior' => $estado,
                 'estado_nuevo' => $nuevo,
                 'motivo_cambio' => 'sync_cod_ceta',
-                'usuario' => (string)($request->input('id_usuario') ?? ''),
+                'usuario' => (string)(($request->input('id_usuario') !== null ? $request->input('id_usuario') : '')),
                 'fecha_cambio' => now(),
                 'created_at' => now(),
                 'updated_at' => now(),
             ]);
         }
-        return response()->json(['success' => true, 'data' => ['alias' => $alias, 'estado' => $nuevo, 'payload' => $payload, 'saved_by_user' => (bool)($trx->saved_by_user ?? false)]]);
+        return response()->json(['success' => true, 'data' => ['alias' => $alias, 'estado' => $nuevo, 'payload' => $payload, 'saved_by_user' => (bool)(isset($trx->saved_by_user) ? $trx->saved_by_user : false)]]);
     }
 
     public function stateByCodCeta(Request $request)
@@ -1073,7 +1158,7 @@ class QrController extends Controller
             'estado' => (string)$trx->estado,
             'id_qr_transaccion' => (int)$trx->id_qr_transaccion,
             'updated_at' => (string)$trx->updated_at,
-            'saved_by_user' => (bool)($trx->saved_by_user ?? false),
+            'saved_by_user' => (bool)(isset($trx->saved_by_user) ? $trx->saved_by_user : false),
         ]]);
     }
 
@@ -1087,7 +1172,8 @@ class QrController extends Controller
         if ($request->filled('estado')) { $q->where('estado', $request->query('estado')); }
         if ($request->filled('desde')) { $q->whereDate('fecha_generacion', '>=', $request->query('desde')); }
         if ($request->filled('hasta')) { $q->whereDate('fecha_generacion', '<=', $request->query('hasta')); }
-        $total = (clone $q)->count();
+        $qClone = clone $q;
+        $total = $qClone->count();
         $items = $q->orderByDesc('fecha_generacion')->limit($limit)->offset(($page - 1) * $limit)->get();
         // Evitar error de UTF-8 malformado por BLOB (imagenQr)
         $items = $items->map(function ($row) {
@@ -1133,13 +1219,13 @@ class QrController extends Controller
             'template_mensaje' => 'nullable|string',
             'estado' => 'nullable|boolean',
         ]);
-        $key = ['cod_pensum' => $validated['cod_pensum'] ?? null];
+        $key = ['cod_pensum' => isset($validated['cod_pensum']) ? $validated['cod_pensum'] : null];
         $data = [
-            'tiempo_expiracion_minutos' => $validated['tiempo_expiracion_minutos'] ?? 1440,
-            'monto_minimo' => $validated['monto_minimo'] ?? 200,
-            'permite_pago_parcial' => $validated['permite_pago_parcial'] ?? false,
-            'template_mensaje' => $validated['template_mensaje'] ?? null,
-            'estado' => $validated['estado'] ?? true,
+            'tiempo_expiracion_minutos' => isset($validated['tiempo_expiracion_minutos']) ? $validated['tiempo_expiracion_minutos'] : 1440,
+            'monto_minimo' => isset($validated['monto_minimo']) ? $validated['monto_minimo'] : 200,
+            'permite_pago_parcial' => isset($validated['permite_pago_parcial']) ? $validated['permite_pago_parcial'] : false,
+            'template_mensaje' => isset($validated['template_mensaje']) ? $validated['template_mensaje'] : null,
+            'estado' => isset($validated['estado']) ? $validated['estado'] : true,
         ];
         DB::table('qr_configuracion')->updateOrInsert($key, $data);
         $row = DB::table('qr_configuracion')->where('cod_pensum', $key['cod_pensum'])->first();
