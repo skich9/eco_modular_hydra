@@ -279,13 +279,14 @@ class FacturaPayloadBuilder
             $tar = new \PharData($tarPath);
             foreach ($xmlFiles as $file) {
                 $name = isset($file['nombre']) ? (string)$file['nombre'] : ('factura_' . uniqid() . '.xml');
-                $content = (string)($file['contenido'] ?? '');
+                $content = isset($file['contenido']) ? (string)$file['contenido'] : '';
                 $tar[$name] = $content;
             }
 
             // Comprimir a GZ (tar.gz)
             $tar->compress(\Phar::GZ);
             if (!is_file($gzPath)) {
+                // ...
                 return null;
             }
             $bytes = file_get_contents($gzPath);
@@ -463,7 +464,8 @@ class FacturaPayloadBuilder
 
     private function buildXmlSectorEducativo($args, $docSector)
     {
-        $fechaIso = Carbon::parse($args['fecha_emision'] ?? Carbon::now())->format('Y-m-d\\TH:i:s.000');
+        $fechaEmisionArg = isset($args['fecha_emision']) ? $args['fecha_emision'] : Carbon::now();
+        $fechaIso = Carbon::parse($fechaEmisionArg)->format('Y-m-d\\TH:i:s.000');
 
         // Catálogos
         $codigoMetodoPago = 1; // Efectivo por defecto
@@ -474,49 +476,37 @@ class FacturaPayloadBuilder
             }
         }
         $numeroTarjetaXml = null;
-        // if ((int)$codigoMetodoPago === 2) {
-        //     $nt = $args['numero_tarjeta'] ?? null;
-        //     Log::debug('FacturaPayloadBuilder.buildXmlSectorEducativo.numeroTarjetaInput', [
-        //         'input' => $nt,
-        //     ]);
-        //     if (is_string($nt) || is_numeric($nt)) {
-        //         $ntSan = preg_replace('/\D/', '', (string)$nt);
-        //         Log::info('entrando al if de referencia el valor de ntScan es:', $ntSan);
-        //         if ($ntSan !== '') {
-        //             $numeroTarjetaXml = $ntSan;
-        //             Log::info('se esta actualizando el valor de $numeroTarjetaXml:'.$ntSan);
-        //             /// colocar un log aqui
-        //             Log::debug('FacturaPayloadBuilder.buildXmlSectorEducativo.numeroTarjetaSanitized', [
-        //                 'sanitized' => $numeroTarjetaXml,
-        //             ]);
-        //         }
-        //     }
-        //     Log::info('el valor de numero de tarjeta xml es:'.$numeroTarjetaXml);
-        //     if ($numeroTarjetaXml === null) {
-        //         $nf = isset($args['numero_factura']) ? (string)$args['numero_factura'] : '';
-        //         Log::debug('FacturaPayloadBuilder.buildXmlSectorEducativo.numeroTarjetaFallbackFactura', [
-        //             'numero_factura' => $nf,
-        //         ]);
-        //         if ($nf !== '') {
-        //             try {
-        //                 $nb = DB::table('nota_bancaria')
-        //                     ->where('nro_factura', (string)$nf)
-        //                     ->orderBy('anio_deposito', 'desc')
-        //                     ->orderBy('correlativo', 'desc')
-        //                     ->first();
-        //                 if ($nb && !empty($nb->nro_tarjeta)) {
-        //                     $ntSan = preg_replace('/\D/', '', (string)$nb->nro_tarjeta);
-        //                     Log::debug('FacturaPayloadBuilder.buildXmlSectorEducativo.numeroTarjetaFallbackSanitized', [
-        //                         'sanitized' => $ntSan,
-        //                     ]);
-        //                     if ($ntSan !== '') {
-        //                         $numeroTarjetaXml = $ntSan;
-        //                     }
-        //                 }
-        //             } catch (\Throwable $e) {}
-        //         }
-        //     }
-        // }
+        if ((int)$codigoMetodoPago === 2) {
+            $nt = isset($args['numero_tarjeta']) ? $args['numero_tarjeta'] : null;
+            if (is_string($nt) || is_numeric($nt)) {
+                $ntSan = preg_replace('/\D/', '', (string)$nt);
+                if ($ntSan !== '') {
+                    $numeroTarjetaXml = $ntSan;
+                }
+            }
+
+            // Fallback: si no llegó por args, intentar recuperar de nota_bancaria por nro_factura
+            if ($numeroTarjetaXml === null) {
+                $nf = isset($args['numero_factura']) ? (string)$args['numero_factura'] : '';
+                if ($nf !== '') {
+                    try {
+                        $nb = DB::table('nota_bancaria')
+                            ->where('nro_factura', (string)$nf)
+                            ->orderBy('anio_deposito', 'desc')
+                            ->orderBy('correlativo', 'desc')
+                            ->first();
+                        if ($nb && !empty($nb->nro_tarjeta)) {
+                            $ntSan = preg_replace('/\D/', '', (string)$nb->nro_tarjeta);
+                            if ($ntSan !== '') {
+                                $numeroTarjetaXml = $ntSan;
+                            }
+                        }
+                    } catch (\Throwable $e) {
+                        // noop
+                    }
+                }
+            }
+        }
         $actividad = DB::table('sin_actividades')->value('codigo_caeb') ?: '00000';
         $leyenda = DB::table('sin_list_leyenda_factura')
             ->where('codigo_actividad', $actividad)
@@ -526,34 +516,45 @@ class FacturaPayloadBuilder
                 ?: 'Ley N° 453: Esta factura contribuye al desarrollo del país.');
 
         // Cliente
-        $cli = $args['cliente'] ?? [];
-        $nombreEst = $args['nombre_estudiante'] ?? ($cli['razon'] ?? 'S/N');
-        $periodo = $args['periodo_facturado'] ?? ($args['detalle']['periodo_facturado'] ?? null);
+        $cli = isset($args['cliente']) ? $args['cliente'] : [];
+        $nombreEst = isset($args['nombre_estudiante'])
+            ? $args['nombre_estudiante']
+            : (isset($cli['razon']) ? $cli['razon'] : 'S/N');
+        $periodo = isset($args['periodo_facturado'])
+            ? $args['periodo_facturado']
+            : ((isset($args['detalle']) && is_array($args['detalle']) && isset($args['detalle']['periodo_facturado'])) ? $args['detalle']['periodo_facturado'] : null);
 
         // Detalle
-        $det = $args['detalle'] ?? [];
-        $codigoProductoSin = (int) ($det['codigo_sin'] ?? (int) config('sin.codigo_producto_sin', 99100));
+        $det = isset($args['detalle']) ? $args['detalle'] : [];
+        $codigoProductoSin = (int) (isset($det['codigo_sin']) ? $det['codigo_sin'] : (int) config('sin.codigo_producto_sin', 99100));
         if ($codigoProductoSin <= 0) {
             $codigoProductoSin = (int) config('sin.codigo_producto_sin', 99100);
         }
-        $unidadMedida = (int) ($det['unidad_medida'] ?? 1);
-        $codigoProducto = (string) ($det['codigo'] ?? '123456');
-        $descripcion = (string) ($det['descripcion'] ?? 'Servicio educativo');
-        $cantidad = (float) ($det['cantidad'] ?? 1);
-        $precioUnitario = (float) ($det['precio_unitario'] ?? ($args['monto_total'] ?? 0));
-        $subTotal = (float) ($det['subtotal'] ?? ($args['monto_total'] ?? 0));
+        $unidadMedida = (int) (isset($det['unidad_medida']) ? $det['unidad_medida'] : 1);
+        $codigoProducto = (string) (isset($det['codigo']) ? $det['codigo'] : '123456');
+        $descripcion = (string) (isset($det['descripcion']) ? $det['descripcion'] : 'Servicio educativo');
+        $cantidad = (float) (isset($det['cantidad']) ? $det['cantidad'] : 1);
+        $montoTotalArg = isset($args['monto_total']) ? $args['monto_total'] : 0;
+        $precioUnitario = (float) (isset($det['precio_unitario']) ? $det['precio_unitario'] : $montoTotalArg);
+        $subTotal = (float) (isset($det['subtotal']) ? $det['subtotal'] : $montoTotalArg);
 
         // Suma de subtotales (netos) y totales de cabecera según lógica SGA
         $sumSub = 0.0;
         if (!empty($args['detalles']) && is_array($args['detalles'])) {
-            foreach ($args['detalles'] as $dx) {
-                $sumSub += (float) ($dx['subtotal'] ?? 0);
+            foreach ($args['detalles'] as $d) {
+                $sumSub += (float) (isset($d['subtotal']) ? $d['subtotal'] : 0);
             }
         } else {
-            $sumSub = (float) ($det['subtotal'] ?? ($args['monto_total'] ?? 0));
+            $sumSub = (float) (isset($det['subtotal']) ? $det['subtotal'] : $montoTotalArg);
         }
-        $descAdic = (float) ($args['descuento_adicional'] ?? ($args['descuentoAdicional'] ?? 0));
-        $giftCard = (float) ($args['gift_card'] ?? ($args['monto_gift_card'] ?? ($args['giftCard'] ?? 0)));
+        $descAdic = (float) (isset($args['descuento_adicional'])
+            ? $args['descuento_adicional']
+            : (isset($args['descuentoAdicional']) ? $args['descuentoAdicional'] : 0));
+        $giftCard = (float) (isset($args['gift_card'])
+            ? $args['gift_card']
+            : (isset($args['monto_gift_card'])
+                ? $args['monto_gift_card']
+                : (isset($args['giftCard']) ? $args['giftCard'] : 0)));
         $montoTotalCalc = round($sumSub - $descAdic, 2);
         $montoTotalSujetoIvaCalc = round($montoTotalCalc - $giftCard, 2);
         $montoMonedaCalc = $montoTotalCalc;
@@ -562,14 +563,14 @@ class FacturaPayloadBuilder
         $razonEmisorCfg = (string) config('sin.razon_social', 'INSTITUTO TECNOLOGICO DE ENSEÑANZA AUTOMOTRIZ "CETA" S.R.L.');
         $municipioCfg = (string) config('sin.municipio', 'COCHABAMBA');
         $telefonoCfg = config('sin.telefono');
-        $razonEmisor = (string) ($args['razon_emisor'] ?? $razonEmisorCfg);
-        $municipio = (string) ($args['municipio'] ?? $municipioCfg);
+        $razonEmisor = (string) (isset($args['razon_emisor']) ? $args['razon_emisor'] : $razonEmisorCfg);
+        $municipio = (string) (isset($args['municipio']) ? $args['municipio'] : $municipioCfg);
         $telefono = isset($args['telefono']) ? (int)$args['telefono'] : (is_numeric($telefonoCfg) ? (int)$telefonoCfg : null);
         $direccion = isset($args['direccion']) ? (string)$args['direccion'] : '';
         if ($direccion === '') {
             try {
-                $sucArg = (int) ($args['sucursal'] ?? 0);
-                $pvArg = (int) ($args['punto_venta'] ?? 0);
+                $sucArg = (int) (isset($args['sucursal']) ? $args['sucursal'] : 0);
+                $pvArg = (int) (isset($args['punto_venta']) ? $args['punto_venta'] : 0);
                 $dirRow = DB::table('sin_cufd')
                     ->where('codigo_sucursal', $sucArg)
                     ->where('codigo_punto_venta', $pvArg)
@@ -587,33 +588,33 @@ class FacturaPayloadBuilder
         $xml .= '<?xml version="1.0" encoding="UTF-8" standalone="yes"?>';
         $xml .= '<facturaElectronicaSectorEducativo xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance" xsi:noNamespaceSchemaLocation="facturaElectronicaSectorEducativo.xsd">';
         $xml .= '<cabecera>';
-        $xml .= '<nitEmisor>' . (int)($args['nit'] ?? 0) . '</nitEmisor>';
+        $xml .= '<nitEmisor>' . (int)(isset($args['nit']) ? $args['nit'] : 0) . '</nitEmisor>';
         $xml .= '<razonSocialEmisor>' . htmlspecialchars($razonEmisor, ENT_QUOTES | ENT_SUBSTITUTE, 'UTF-8') . '</razonSocialEmisor>';
         $xml .= '<municipio>' . htmlspecialchars($municipio, ENT_QUOTES | ENT_SUBSTITUTE, 'UTF-8') . '</municipio>';
         $xml .= ($telefono ? '<telefono>' . (int)$telefono . '</telefono>' : '<telefono xsi:nil="true"/>');
-        $xml .= '<numeroFactura>' . (int)($args['numero_factura'] ?? 0) . '</numeroFactura>';
-        $xml .= '<cuf>' . htmlspecialchars((string)($args['cuf'] ?? ''), ENT_QUOTES | ENT_SUBSTITUTE, 'UTF-8') . '</cuf>';
-        $xml .= '<cufd>' . htmlspecialchars((string)($args['cufd'] ?? ''), ENT_QUOTES | ENT_SUBSTITUTE, 'UTF-8') . '</cufd>';
-        $xml .= '<codigoSucursal>' . (int)($args['sucursal'] ?? 0) . '</codigoSucursal>';
+        $xml .= '<numeroFactura>' . (int)(isset($args['numero_factura']) ? $args['numero_factura'] : 0) . '</numeroFactura>';
+        $xml .= '<cuf>' . htmlspecialchars((string)(isset($args['cuf']) ? $args['cuf'] : ''), ENT_QUOTES | ENT_SUBSTITUTE, 'UTF-8') . '</cuf>';
+        $xml .= '<cufd>' . htmlspecialchars((string)(isset($args['cufd']) ? $args['cufd'] : ''), ENT_QUOTES | ENT_SUBSTITUTE, 'UTF-8') . '</cufd>';
+        $xml .= '<codigoSucursal>' . (int)(isset($args['sucursal']) ? $args['sucursal'] : 0) . '</codigoSucursal>';
         $xml .= '<direccion>' . htmlspecialchars($direccion, ENT_QUOTES | ENT_SUBSTITUTE, 'UTF-8') . '</direccion>';
-        $xml .= '<codigoPuntoVenta>' . (int)($args['punto_venta'] ?? 0) . '</codigoPuntoVenta>';
+        $xml .= '<codigoPuntoVenta>' . (int)(isset($args['punto_venta']) ? $args['punto_venta'] : 0) . '</codigoPuntoVenta>';
         $xml .= '<fechaEmision>' . $fechaIso . '</fechaEmision>';
-        $xml .= '<nombreRazonSocial>' . htmlspecialchars((string)($cli['razon'] ?? 'S/N'), ENT_QUOTES | ENT_SUBSTITUTE, 'UTF-8') . '</nombreRazonSocial>';
-        $xml .= '<codigoTipoDocumentoIdentidad>' . (int)($cli['tipo_doc'] ?? 5) . '</codigoTipoDocumentoIdentidad>';
-        $xml .= '<numeroDocumento>' . htmlspecialchars((string)($cli['numero'] ?? '0'), ENT_QUOTES | ENT_SUBSTITUTE, 'UTF-8') . '</numeroDocumento>';
+        $xml .= '<nombreRazonSocial>' . htmlspecialchars((string)(isset($cli['razon']) ? $cli['razon'] : 'S/N'), ENT_QUOTES | ENT_SUBSTITUTE, 'UTF-8') . '</nombreRazonSocial>';
+        $xml .= '<codigoTipoDocumentoIdentidad>' . (int)(isset($cli['tipo_doc']) ? $cli['tipo_doc'] : 5) . '</codigoTipoDocumentoIdentidad>';
+        $xml .= '<numeroDocumento>' . htmlspecialchars((string)(isset($cli['numero']) ? $cli['numero'] : '0'), ENT_QUOTES | ENT_SUBSTITUTE, 'UTF-8') . '</numeroDocumento>';
         $xml .= (!empty($cli['complemento']) ? ('<complemento>' . htmlspecialchars((string)$cli['complemento'], ENT_QUOTES | ENT_SUBSTITUTE, 'UTF-8') . '</complemento>') : '<complemento xsi:nil="true"/>' );
-        $xml .= '<codigoCliente>' . htmlspecialchars((string)($cli['codigo'] ?? ($cli['numero'] ?? '0')), ENT_QUOTES | ENT_SUBSTITUTE, 'UTF-8') . '</codigoCliente>';
+        $codigoClienteVal = isset($cli['codigo']) ? $cli['codigo'] : (isset($cli['numero']) ? $cli['numero'] : '0');
+        $xml .= '<codigoCliente>' . htmlspecialchars((string)$codigoClienteVal, ENT_QUOTES | ENT_SUBSTITUTE, 'UTF-8') . '</codigoCliente>';
         $xml .= '<nombreEstudiante>' . htmlspecialchars((string)$nombreEst, ENT_QUOTES | ENT_SUBSTITUTE, 'UTF-8') . '</nombreEstudiante>';
-        $valorPeriodo = (string)($periodo ?? 'SIN PERIODO');
+        $valorPeriodo = (string)($periodo !== null ? $periodo : 'SIN PERIODO');
         if ($valorPeriodo === '') {
             $valorPeriodo = 'SIN PERIODO';
         }
         $xml .= '<periodoFacturado>' . htmlspecialchars($valorPeriodo, ENT_QUOTES | ENT_SUBSTITUTE, 'UTF-8') . '</periodoFacturado>';
         $xml .= '<codigoMetodoPago>' . (int)$codigoMetodoPago . '</codigoMetodoPago>';
-        if ($numeroTarjetaXml !== null) {
+        // IMPORTANTE (SIAT 1012): numeroTarjeta solo debe enviarse cuando el método sea TARJETA (2) y el valor no sea vacío
+        if ((int)$codigoMetodoPago === 2 && $numeroTarjetaXml !== null) {
             $xml .= '<numeroTarjeta>' . htmlspecialchars($numeroTarjetaXml, ENT_QUOTES | ENT_SUBSTITUTE, 'UTF-8') . '</numeroTarjeta>';
-        } else {
-            $xml .= '<numeroTarjeta xsi:nil="true"/>';
         }
         $xml .= '<montoTotal>' . number_format($montoTotalCalc, 2, '.', '') . '</montoTotal>';
         $xml .= '<montoTotalSujetoIva>' . number_format($montoTotalSujetoIvaCalc, 2, '.', '') . '</montoTotalSujetoIva>';
@@ -633,7 +634,7 @@ class FacturaPayloadBuilder
         $xml .= '<codigoExcepcion xsi:nil="true"/>';
         $xml .= '<cafc xsi:nil="true"/>';
         $xml .= '<leyenda>' . htmlspecialchars($leyenda, ENT_QUOTES | ENT_SUBSTITUTE, 'UTF-8') . '</leyenda>';
-        $xml .= '<usuario>' . htmlspecialchars((string)($args['usuario'] ?? 'system'), ENT_QUOTES | ENT_SUBSTITUTE, 'UTF-8') . '</usuario>';
+        $xml .= '<usuario>' . htmlspecialchars((string)(isset($args['usuario']) ? $args['usuario'] : 'system'), ENT_QUOTES | ENT_SUBSTITUTE, 'UTF-8') . '</usuario>';
         $xml .= '<codigoDocumentoSector>' . (int)$docSector . '</codigoDocumentoSector>';
         $xml .= '</cabecera>';
         // Detalle(s) para XML: si viene 'detalles' usar lista repetida <detalle>...
@@ -641,16 +642,16 @@ class FacturaPayloadBuilder
             foreach ($args['detalles'] as $d) {
                 $xml .= '<detalle>';
                 $xml .= '<actividadEconomica>' . htmlspecialchars((string)$actividad, ENT_QUOTES | ENT_SUBSTITUTE, 'UTF-8') . '</actividadEconomica>';
-                $xml .= '<codigoProductoSin>' . (int)($d['codigo_sin'] ?? $codigoProductoSin) . '</codigoProductoSin>';
-                $xml .= '<codigoProducto>' . htmlspecialchars((string)($d['codigo'] ?? $codigoProducto), ENT_QUOTES | ENT_SUBSTITUTE, 'UTF-8') . '</codigoProducto>';
-                $xml .= '<descripcion>' . htmlspecialchars((string)($d['descripcion'] ?? $descripcion), ENT_QUOTES | ENT_SUBSTITUTE, 'UTF-8') . '</descripcion>';
-                $cantItem = (float)($d['cantidad'] ?? $cantidad);
-                $subItem = (float)($d['subtotal'] ?? $subTotal);
-                $descItem = (float)($d['descuento'] ?? 0);
-                $puRaw = $d['precio_unitario'] ?? null;
+                $xml .= '<codigoProductoSin>' . (int)(isset($d['codigo_sin']) ? $d['codigo_sin'] : $codigoProductoSin) . '</codigoProductoSin>';
+                $xml .= '<codigoProducto>' . htmlspecialchars((string)(isset($d['codigo']) ? $d['codigo'] : $codigoProducto), ENT_QUOTES | ENT_SUBSTITUTE, 'UTF-8') . '</codigoProducto>';
+                $xml .= '<descripcion>' . htmlspecialchars((string)(isset($d['descripcion']) ? $d['descripcion'] : $descripcion), ENT_QUOTES | ENT_SUBSTITUTE, 'UTF-8') . '</descripcion>';
+                $cantItem = (float)(isset($d['cantidad']) ? $d['cantidad'] : $cantidad);
+                $subItem = (float)(isset($d['subtotal']) ? $d['subtotal'] : $subTotal);
+                $descItem = (float)(isset($d['descuento']) ? $d['descuento'] : 0);
+                $puRaw = isset($d['precio_unitario']) ? $d['precio_unitario'] : null;
                 $puItem = ($puRaw !== null) ? (float)$puRaw : ($cantItem > 0 ? (($subItem + $descItem) / $cantItem) : ($subItem + $descItem));
                 $xml .= '<cantidad>' . number_format($cantItem, 2, '.', '') . '</cantidad>';
-                $xml .= '<unidadMedida>' . (int)($d['unidad_medida'] ?? $unidadMedida) . '</unidadMedida>';
+                $xml .= '<unidadMedida>' . (int)(isset($d['unidad_medida']) ? $d['unidad_medida'] : $unidadMedida) . '</unidadMedida>';
                 $xml .= '<precioUnitario>' . number_format($puItem, 2, '.', '') . '</precioUnitario>';
                 if ($descItem > 0) {
                     $xml .= '<montoDescuento>' . number_format($descItem, 2, '.', '') . '</montoDescuento>';
@@ -668,8 +669,8 @@ class FacturaPayloadBuilder
             $xml .= '<descripcion>' . htmlspecialchars($descripcion, ENT_QUOTES | ENT_SUBSTITUTE, 'UTF-8') . '</descripcion>';
             $cantItem = (float)$cantidad;
             $subItem = (float)$subTotal;
-            $descItem = (float)($det['descuento'] ?? 0);
-            $puRaw = $det['precio_unitario'] ?? null;
+            $descItem = (float)(isset($det['descuento']) ? $det['descuento'] : 0);
+            $puRaw = isset($det['precio_unitario']) ? $det['precio_unitario'] : null;
             $puItem = ($puRaw !== null) ? (float)$puRaw : ($cantItem > 0 ? (($subItem + $descItem) / $cantItem) : ($subItem + $descItem));
             $xml .= '<cantidad>' . number_format($cantItem, 2, '.', '') . '</cantidad>';
             $xml .= '<unidadMedida>' . (int)$unidadMedida . '</unidadMedida>';
@@ -690,10 +691,10 @@ class FacturaPayloadBuilder
     {
         try {
             $anio = null;
-            try { $anio = (int) date('Y', strtotime((string)($args['fecha_emision'] ?? ''))); } catch (\Throwable $e) { $anio = (int) date('Y'); }
+            try { $anio = (int) date('Y', strtotime((string)(isset($args['fecha_emision']) ? $args['fecha_emision'] : ''))); } catch (\Throwable $e) { $anio = (int) date('Y'); }
             if ($anio <= 0) { $anio = (int) date('Y'); }
-            $nro = (int) ($args['numero_factura'] ?? 0);
-            $cuf = (string) ($args['cuf'] ?? '');
+            $nro = (int) (isset($args['numero_factura']) ? $args['numero_factura'] : 0);
+            $cuf = (string) (isset($args['cuf']) ? $args['cuf'] : '');
             $safeCuf = $cuf !== '' ? preg_replace('/[^A-Za-z0-9]/', '', $cuf) : '';
 
             $dir = storage_path('siat_xml' . DIRECTORY_SEPARATOR . 'index');
@@ -713,10 +714,10 @@ class FacturaPayloadBuilder
     {
         try {
             $anio = null;
-            try { $anio = (int) date('Y', strtotime((string)($args['fecha_emision'] ?? ''))); } catch (\Throwable $e) { $anio = (int) date('Y'); }
+            try { $anio = (int) date('Y', strtotime((string)(isset($args['fecha_emision']) ? $args['fecha_emision'] : ''))); } catch (\Throwable $e) { $anio = (int) date('Y'); }
             if ($anio <= 0) { $anio = (int) date('Y'); }
-            $nro = (int) ($args['numero_factura'] ?? 0);
-            $cuf = (string) ($args['cuf'] ?? '');
+            $nro = (int) (isset($args['numero_factura']) ? $args['numero_factura'] : 0);
+            $cuf = (string) (isset($args['cuf']) ? $args['cuf'] : '');
             $safeCuf = $cuf !== '' ? preg_replace('/[^A-Za-z0-9]/', '', $cuf) : '';
 
             $dir = storage_path('siat_xml' . DIRECTORY_SEPARATOR . 'comprimidos' . DIRECTORY_SEPARATOR . 'index');

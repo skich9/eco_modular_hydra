@@ -235,6 +235,20 @@
                 <label class="form-label">Mora</label>
                 <input class="form-control" [value]="moraDisplay | number:'1.2-2'" readonly />
               </div>
+              <div class="col-md-4" *ngIf="form.get('pago_parcial')?.value">
+                <label class="form-label">{{ tipo === 'arrastre' ? 'Monto cobro parcial arrastre' : 'Monto cobro parcial' }}</label>
+                <input type="number" step="1" min="1" [attr.max]="montoParcialMax" class="form-control"
+                       [ngClass]="{ 'is-invalid': (form.get('monto_parcial')?.hasError('max') || form.get('monto_parcial')?.hasError('min')) && form.get('monto_parcial')?.touched }"
+                       formControlName="monto_parcial"
+                       placeholder="Ingrese solo números enteros" />
+                <small class="text-muted" *ngIf="montoParcialMax">Mínimo: 1 - Máximo: {{ montoParcialMax }}</small>
+                <div class="invalid-feedback" *ngIf="form.get('monto_parcial')?.hasError('min')">El monto mínimo es 1</div>
+                <div class="invalid-feedback" *ngIf="form.get('monto_parcial')?.hasError('max')">El monto que está ingresando excede el saldo.</div>
+              </div>
+              <div class="col-md-4">
+                <label class="form-label">Total Cobrar</label>
+                <input class="form-control" formControlName="costo_total" readonly />
+              </div>
             </ng-container>
             <ng-template #noCuotasPendientes>
               <div class="col-12">
@@ -271,41 +285,62 @@
             </ng-template>
           </ng-template>
 
+          <div class="col-12" *ngIf="showMorasTabla">
+            <div class="table-responsive mt-2">
+              <table class="table table-sm table-bordered align-middle mb-2">
+                <thead class="table-light">
+                  <tr>
+                    <th>Mora</th>
+                    <th>Fecha Inicio</th>
+                    <th>Fecha Fin</th>
+                    <th class="text-end">Días Mora</th>
+                    <th class="text-center">Prórroga</th>
+                    <th class="text-center">Descuento</th>
+                    <th class="text-end">Monto Mora</th>
+                  </tr>
+                </thead>
+                <tbody>
+                  <tr *ngFor="let m of morasTabla">
+                    <td>{{ m?.id_asignacion_mora || '-' }}</td>
+                    <td>{{ getMoraFechaInicio(m) ? (getMoraFechaInicio(m) | date:'yyyy-MM-dd') : '-' }}</td>
+                    <td>{{ getMoraFechaFin(m) ? (getMoraFechaFin(m) | date:'yyyy-MM-dd') : '-' }}</td>
+                    <td class="text-end">{{ getMoraDias(m) }}</td>
+                    <td class="text-center">{{ getMoraTieneProrroga(m) ? 'Si' : 'No' }}</td>
+                    <td class="text-end">{{ getMoraMontoDescuento(m) | number:'1.2-2' }}</td>
+                    <td class="text-end">{{ getMoraMontoMora(m) | number:'1.2-2' }}</td>
+                  </tr>
+                </tbody>
+              </table>
+            </div>
+          </div>
 
-          <!-- Pago parcial: mensualidad o reincorporacion -->
-          <div class="col-md-8 d-flex align-items-center gap-4" *ngIf="tipo === 'reincorporacion'">
-            <div class="form-check">
-              <input class="form-check-input" type="checkbox" id="pagoParcial_reinc" formControlName="pago_parcial" />
-              <label class="form-check-label" for="pagoParcial_reinc">Pago parcial de Reincorporación</label>
-            </div>
-          </div>
-          <div class="col-md-4" *ngIf="(tipo === 'mensualidad' || tipo === 'arrastre' || tipo === 'reincorporacion' || tipo === 'mora') && form.get('pago_parcial')?.value">
-            <label class="form-label">{{ tipo === 'reincorporacion' ? 'Saldo a pagar' : (tipo === 'mora' ? 'Monto parcial mora' : (tipo === 'arrastre' ? 'Monto cobro parcial arrastre' : 'Monto cobro parcial')) }}</label>
-            <input type="number" step="1" min="1" class="form-control"
-                   [ngClass]="{ 'is-invalid': form.get('monto_parcial')?.hasError('max') && form.get('monto_parcial')?.touched }"
-                   formControlName="monto_parcial"
-                   placeholder="Ingrese solo números enteros" />
-            <div class="invalid-feedback" *ngIf="form.get('monto_parcial')?.hasError('max') && form.get('monto_parcial')?.touched">
-              El monto ingresado excede el saldo.
-            </div>
-            <div class="form-text">Mínimo: 1 - Máximo: {{ getParcialMax() | number:'1.0-0' }}</div>
-          </div>
-          <div class="col-md-4" *ngIf="(tipo === 'mensualidad' || tipo === 'arrastre') && pendientes > 0 || tipo === 'mora'">
-            <label class="form-label">Total Cobrar</label>
-            <input class="form-control" formControlName="costo_total" readonly />
-          </div>
-          <div class="col-12" *ngIf="(tipo === 'mensualidad' || tipo === 'arrastre') && pendientes > 0 || tipo !== 'mensualidad' && tipo !== 'arrastre'">
+          <div class="col-12">
             <label class="form-label">Observaciones</label>
             <textarea class="form-control" rows="2" formControlName="observaciones"></textarea>
           </div>
+
+          <div class="col-md-4" *ngIf="(tipo === 'reincorporacion' || tipo === 'mora') && form.get('pago_parcial')?.value">
+            <label class="form-label">{{ tipo === 'reincorporacion' ? 'Saldo a pagar' : 'Monto parcial mora' }}</label>
+            <input type="number" step="1" min="1" [attr.max]="montoParcialMax" class="form-control"
+                   [ngClass]="{ 'is-invalid': (form.get('monto_parcial')?.hasError('max') || form.get('monto_parcial')?.hasError('min')) && form.get('monto_parcial')?.touched }"
+                   formControlName="monto_parcial"
+                   placeholder="Ingrese solo números enteros" />
+            <small class="text-muted" *ngIf="montoParcialMax">Mínimo: 1 - Máximo: {{ montoParcialMax }}</small>
+            <div class="invalid-feedback" *ngIf="form.get('monto_parcial')?.hasError('min')">El monto mínimo es 1</div>
+            <div class="invalid-feedback" *ngIf="form.get('monto_parcial')?.hasError('max')">El monto que está ingresando excede el saldo.</div>
+          </div>
         </form>
       </div>
-      <div class="modal-footer" *ngIf="!showOrdenPagoInfo && ((tipo === 'mensualidad' || tipo === 'arrastre') && pendientes > 0 || tipo !== 'mensualidad' && tipo !== 'arrastre')">
-        <button type="button" class="btn btn-success" [appClickLock]="true" [lockDuration]="3000" (click)="addAndClose()"><i class="bi bi-plus-circle me-1"></i> Adicionar y Salir</button>
-        <button type="button" class="btn btn-secondary" [appClickLock]="true" [lockDuration]="1200" data-bs-dismiss="modal">Cerrar</button>
-      </div>
-      <div class="modal-footer justify-content-center" *ngIf="!showOrdenPagoInfo && (tipo === 'mensualidad' || tipo === 'arrastre') && pendientes === 0">
-        <button type="button" class="btn btn-secondary" [appClickLock]="true" [lockDuration]="1200" data-bs-dismiss="modal">Cerrar</button>
+      <div class="modal-footer" *ngIf="!showOrdenPagoInfo">
+        <div class="w-100 d-flex justify-content-between align-items-center">
+          <div class="small text-muted">Total: <strong>{{ (form.get('costo_total')?.value || 0) | number:'1.2-2' }}</strong></div>
+          <div class="d-flex gap-2">
+            <button type="button" class="btn btn-success" [appClickLock]="true" [lockDuration]="3000" (click)="addAndClose()" [disabled]="(tipo === 'mensualidad' || tipo === 'arrastre' || tipo === 'mora') && pendientes === 0">
+              <i class="bi bi-plus-circle me-1"></i> Adicionar y Salir
+            </button>
+            <button type="button" class="btn btn-secondary" [appClickLock]="true" [lockDuration]="1200" data-bs-dismiss="modal">Cancelar</button>
+          </div>
+        </div>
       </div>
       <div class="modal-footer justify-content-center" *ngIf="showOrdenPagoInfo">
         <button type="button" class="btn btn-secondary" data-bs-dismiss="modal">Cerrar</button>

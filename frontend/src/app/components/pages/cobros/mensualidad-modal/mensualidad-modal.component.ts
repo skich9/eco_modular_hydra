@@ -44,17 +44,99 @@ export class MensualidadModalComponent implements OnInit, OnChanges {
   showOrdenPagoInfo = false;
   ordenPagoInfoMessage = '';
   moraPendienteDetectada: any = null;
+  private lastMorasLen: number = -1;
 
-	private isMoraEstadoPendiente(estadoRaw: any): boolean {
-		try {
-			const estado = (estadoRaw || '').toString().toUpperCase();
-			return estado === 'PENDIENTE' || estado === 'CERRADA_SIN_CUOTA';
-		} catch {
-			return false;
-		}
-	}
+  private isMoraEstadoPendiente(estadoRaw: any): boolean {
+    try {
+      const estado = (estadoRaw || '').toString().toUpperCase();
+      return estado === 'PENDIENTE' || estado === 'CERRADA_SIN_CUOTA' || estado === 'CONGELADA_PRORROGA';
+    } catch {
+      return false;
+    }
+  }
 
-  // Configuración de descuento automático de semestre completo
+  private parseDateLoose(raw: any): Date | null {
+    try {
+      if (!raw) return null;
+      if (raw instanceof Date) return raw;
+      const s = (raw || '').toString().trim();
+      if (!s) return null;
+      const d = new Date(s);
+      if (!isNaN(d.getTime())) return d;
+      return null;
+    } catch {
+      return null;
+    }
+  }
+
+  get morasTabla(): any[] {
+    try {
+      const list: any[] = Array.isArray(this.morasPendientes) ? this.morasPendientes : [];
+      const asignacionesNormal: any[] = Array.isArray(this.resumen?.asignaciones) ? this.resumen.asignaciones : [];
+      const normalAsignIds = new Set<number>((asignacionesNormal || []).map((a: any) => Number(a?.id_asignacion_costo || 0)).filter((n: number) => n > 0));
+      return list.filter((m: any) => {
+        const estado = (m?.estado || '').toString().toUpperCase();
+        if (!(estado === 'PENDIENTE' || estado === 'CONGELADA_PRORROGA' || estado === 'CERRADA_SIN_CUOTA')) return false;
+        const idAsignCostoMora = Number(m?.id_asignacion_costo || 0);
+        return normalAsignIds.size === 0 ? true : normalAsignIds.has(idAsignCostoMora);
+      });
+    } catch {
+      return [];
+    }
+  }
+
+  get showMorasTabla(): boolean {
+    return this.morasTabla.length > 0;
+  }
+
+  getMoraFechaInicio(m: any): Date | null {
+    return this.parseDateLoose(m?.fecha_inicio_mora ?? m?.fecha_inicio ?? m?.inicio_mora ?? null);
+  }
+
+  getMoraFechaFin(m: any): Date | null {
+    return this.parseDateLoose(m?.fecha_fin_mora ?? m?.fecha_fin ?? m?.fin_mora ?? null);
+  }
+
+  getMoraDias(m: any): number {
+    try {
+      const ini = this.getMoraFechaInicio(m);
+      if (!ini) return 0;
+      const fin = this.getMoraFechaFin(m) || new Date();
+      const ms = fin.getTime() - ini.getTime();
+      const days = Math.floor(ms / (1000 * 60 * 60 * 24));
+      return days > 0 ? days : 0;
+    } catch {
+      return 0;
+    }
+  }
+
+  getMoraTieneProrroga(m: any): boolean {
+    try {
+      if (!!m?.tiene_prorroga) return true;
+      if (!!m?.prorroga) return true;
+      const estado = (m?.estado || '').toString().toUpperCase();
+      return estado === 'CONGELADA_PRORROGA';
+    } catch {
+      return false;
+    }
+  }
+
+  getMoraMontoDescuento(m: any): number {
+    try {
+      return Number(m?.monto_descuento ?? m?.descuento ?? 0) || 0;
+    } catch {
+      return 0;
+    }
+  }
+
+  getMoraMontoMora(m: any): number {
+    try {
+      return Number(m?.monto_mora ?? 0) || 0;
+    } catch {
+      return 0;
+    }
+  }
+
   private descuentoSemestreActivar = false;
   private descuentoSemestreFechaLimite: string | null = null;
   private descuentoSemestreIdDefDescuento: number | null = null;
@@ -67,7 +149,7 @@ export class MensualidadModalComponent implements OnInit, OnChanges {
   ) {
     console.log('[MensualidadModal] Constructor ejecutado');
     this.form = this.fb.group({
-      metodo_pago: ['',[Validators.required]],
+      metodo_pago: ['', [Validators.required]],
       cantidad: [1, [Validators.min(1)]],
       costo_total: [{ value: 0, disabled: true }],
       descuento: [{ value: 0, disabled: true }],
@@ -126,7 +208,7 @@ export class MensualidadModalComponent implements OnInit, OnChanges {
             id_asignacion_costo: m?.id_asignacion_costo,
             id_asignacion_vinculada: moraIdVinculada,
             estado: estado,
-			coincide: moraIdVinculada === id && this.isMoraEstadoPendiente(estado)
+            coincide: moraIdVinculada === id && this.isMoraEstadoPendiente(estado)
           });
         });
 
@@ -134,7 +216,7 @@ export class MensualidadModalComponent implements OnInit, OnChanges {
           const moraIdVinculada = Number(m?.id_asignacion_vinculada || 0);
           const estado = (m?.estado || '').toString().toUpperCase();
           // Buscar mora PENDIENTE (de inscripción normal) que esté vinculada a esta asignación de arrastre
-			return moraIdVinculada === id && this.isMoraEstadoPendiente(estado);
+          return moraIdVinculada === id && this.isMoraEstadoPendiente(estado);
         });
 
         console.log('[MensualidadModal] Mora encontrada para arrastre:', hit);
@@ -142,11 +224,11 @@ export class MensualidadModalComponent implements OnInit, OnChanges {
       }
 
       console.log('[MensualidadModal] Buscando mora para MENSUALIDAD');
-		const hit = list.find((m: any) => {
-			const idMoraAsign = Number(m?.id_asignacion_costo || 0);
-			const estado = (m?.estado || '').toString().toUpperCase();
-			return idMoraAsign === id && this.isMoraEstadoPendiente(estado);
-		});
+      const hit = list.find((m: any) => {
+        const idMoraAsign = Number(m?.id_asignacion_costo || 0);
+        const estado = (m?.estado || '').toString().toUpperCase();
+        return idMoraAsign === id && this.isMoraEstadoPendiente(estado);
+      });
       console.log('[MensualidadModal] Mora encontrada para mensualidad:', hit);
       return hit || null;
     } catch (e) {
@@ -385,7 +467,7 @@ export class MensualidadModalComponent implements OnInit, OnChanges {
       if (this.tipo === 'arrastre') {
         console.log('[MensualidadModal] moraDisplay - ARRASTRE');
 
-        const next = this.resumen?.arrastre?.next_cuota || null;
+        const next: any = this.resumen?.arrastre?.next_cuota || null;
         console.log('[MensualidadModal] next_cuota:', next);
 
         const numeroCuotaArrastre = Number(next?.numero_cuota || 0);
@@ -447,7 +529,7 @@ export class MensualidadModalComponent implements OnInit, OnChanges {
             const moraNormal = morasPendientes.find((m: any) => {
               const moraIdVinculada = Number(m?.id_asignacion_vinculada || 0);
               const estado = (m?.estado || '').toString().toUpperCase();
-				return moraIdVinculada === idAsignArrastre && this.isMoraEstadoPendiente(estado);
+              return moraIdVinculada === idAsignArrastre && this.isMoraEstadoPendiente(estado);
             });
             return moraNormal ? this.recalcularMoraConFechaDeposito(moraNormal) : 0;
           }
@@ -663,7 +745,7 @@ export class MensualidadModalComponent implements OnInit, OnChanges {
       const cuota = asignaciones.find((a: any) => Number(a?.numero_cuota) === start);
 
       if (!cuota) {
-        return Number.MAX_SAFE_INTEGER;
+        return Math.max(1, Math.floor(Number(this.puDisplay || 0)) || 0);
       }
 
       const monto = Number(cuota?.monto || 0);
@@ -693,9 +775,29 @@ export class MensualidadModalComponent implements OnInit, OnChanges {
         }
       }
 
-      return (isNaN(deudaReal) || deudaReal <= 0) ? Number.MAX_SAFE_INTEGER : deudaReal;
+      return (isNaN(deudaReal) || deudaReal <= 0)
+        ? Math.max(1, Math.floor(Number(this.puDisplay || 0)) || 0)
+        : deudaReal;
     } catch {
-      return Number.MAX_SAFE_INTEGER;
+      return Math.max(1, Math.floor(Number(this.puDisplay || 0)) || 0);
+    }
+  }
+
+  get montoParcialMax(): number | null {
+    try {
+      if (!this.form?.get('pago_parcial')?.value) return null;
+      if (this.moraPendienteDetectada) {
+        return Math.floor(this.recalcularMoraConFechaDeposito(this.moraPendienteDetectada) || 0) || null;
+      }
+      if (this.tipo === 'reincorporacion') {
+        return Math.floor(Number(this.puDisplay || 0)) || null;
+      }
+      if (this.tipo === 'mora') {
+        return Math.floor(Number(this.puDisplay || 0)) || null;
+      }
+      return Math.floor(this.getParcialMax() || 0) || null;
+    } catch {
+      return null;
     }
   }
 
@@ -994,7 +1096,7 @@ export class MensualidadModalComponent implements OnInit, OnChanges {
                 const moraNormal = morasPendientes.find((m: any) => {
                   const moraIdVinculada = Number(m?.id_asignacion_vinculada || 0);
                   const estado = (m?.estado || '').toString().toUpperCase();
-                  return moraIdVinculada === idAsignArrastre && estado === 'PENDIENTE';
+                  return moraIdVinculada === idAsignArrastre && this.isMoraEstadoPendiente(estado);
                 });
                 if (moraNormal && this.shouldCobrarMoraForPago(total, numeroCuotaArrastre, idAsignArrastre)) {
                   total += this.recalcularMoraConFechaDeposito(moraNormal);
@@ -1061,7 +1163,7 @@ export class MensualidadModalComponent implements OnInit, OnChanges {
                   const moraNormal = morasPendientes.find((m: any) => {
                     const moraIdVinculada = Number(m?.id_asignacion_vinculada || 0);
                     const estado = (m?.estado || '').toString().toUpperCase();
-                    return moraIdVinculada === idAsignArrastre && estado === 'PENDIENTE';
+                    return moraIdVinculada === idAsignArrastre && this.isMoraEstadoPendiente(estado);
                   });
                   if (moraNormal) total += this.recalcularMoraConFechaDeposito(moraNormal);
                 }
@@ -1295,7 +1397,8 @@ export class MensualidadModalComponent implements OnInit, OnChanges {
 
     // Verificar mensualidad (cobrada en BD o en detalle actual)
     const asignMensualidad = asignaciones.find((a: any) => Number(a?.numero_cuota || 0) === numeroCuota);
-    const mensualidadCobrada = asignMensualidad ? (asignMensualidad?.estado_pago || '').toString().toUpperCase() === 'COBRADO' : false;
+    const estadoMens = asignMensualidad ? (asignMensualidad?.estado_pago || '').toString().toUpperCase() : '';
+    const mensualidadCobrada = !!estadoMens && (estadoMens === 'COBRADO' || estadoMens === 'PAGADO');
     const mensualidadEnDetalle = (this.detalleFactura || []).some((item: any) => {
       const tipoPago = (item?.tipo_pago || item?.cod_tipo_cobro || '').toString().toUpperCase();
       const numCuota = Number(item?.numero_cuota || 0);
@@ -1309,7 +1412,8 @@ export class MensualidadModalComponent implements OnInit, OnChanges {
     const asignArrastre = asignacionesArrastre.find((a: any) => Number(a?.numero_cuota || 0) === numeroCuota);
     let arrastrePagado = true; // Si no hay arrastre, considerarlo como "pagado"
     if (asignArrastre) {
-      const arrastreCobrado = (asignArrastre?.estado_pago || '').toString().toUpperCase() === 'COBRADO';
+      const estadoArr = (asignArrastre?.estado_pago || '').toString().toUpperCase();
+      const arrastreCobrado = !!estadoArr && (estadoArr === 'COBRADO' || estadoArr === 'PAGADO');
       const arrastreEnDetalle = (this.detalleFactura || []).some((item: any) => {
         const tipoPago = (item?.tipo_pago || item?.cod_tipo_cobro || '').toString().toUpperCase();
         const numCuota = Number(item?.numero_cuota || 0);
@@ -2489,7 +2593,7 @@ export class MensualidadModalComponent implements OnInit, OnChanges {
                     const moraNormal = morasPendientes.find((m: any) => {
                       const moraIdVinculada = Number(m?.id_asignacion_vinculada || 0);
                       const estado = (m?.estado || '').toString().toUpperCase();
-                      return moraIdVinculada === idAsignArrastre && estado === 'PENDIENTE';
+                      return moraIdVinculada === idAsignArrastre && this.isMoraEstadoPendiente(estado);
                     });
                     if (moraNormal) {
                       const moraItem = this.buildPagoMoraItem(moraNormal, hoy, compSel, tipo_documento, medio_doc);

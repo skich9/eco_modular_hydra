@@ -1,4 +1,4 @@
-import { Component, Input, Output, EventEmitter, OnDestroy } from '@angular/core';
+import { Component, Input, Output, EventEmitter, OnDestroy, OnChanges, SimpleChanges } from '@angular/core';
 import { CommonModule } from '@angular/common';
 import { FormArray, FormGroup } from '@angular/forms';
 import { CobrosService } from '../../../../services/cobros.service';
@@ -12,7 +12,7 @@ import { Subscription } from 'rxjs';
 	templateUrl: './qr-panel.component.html',
 	styleUrls: ['./qr-panel.component.scss']
 })
-export class QrPanelComponent implements OnDestroy {
+export class QrPanelComponent implements OnDestroy, OnChanges {
 	@Input() cabecera: any;
 	@Input() pagos!: FormArray;
 	@Input() totalCobro: number = 0;
@@ -44,13 +44,76 @@ export class QrPanelComponent implements OnDestroy {
 
 	constructor(private cobrosService: CobrosService, private ws: WsService) {}
 
+	ngOnChanges(changes: SimpleChanges): void {
+		try {
+			const selChanged = !!changes['isSelected'];
+			const formasChanged = !!changes['formasCobro'];
+			if (!selChanged && !formasChanged) return;
+			if (!this.isSelected) return;
+			if (Array.isArray(this.formasCobro) && this.formasCobro.length > 0) return;
+			console.log('[QR-Panel] formasCobro vacío al seleccionar panel; cargando catálogo...');
+			this.ensureFormasCobroLoaded().then(() => {
+				try {
+					console.log('[QR-Panel] formasCobro cargado', { formasCobroLen: this.formasCobro?.length ?? 0, qrRowsAmount: this.qrRowsAmount });
+				} catch {}
+			});
+		} catch {}
+	}
+
+	get qrRowsAmount(): number {
+		try {
+			if (!this.isSelected) return 0;
+			if (!Array.isArray(this.formasCobro) || this.formasCobro.length === 0) {
+				try {
+					console.log('[QR-Panel] qrRowsAmount: formasCobro vacío; no se puede identificar filas QR aún', { pagosLen: this.pagos?.length ?? 0 });
+				} catch {}
+			}
+			let sum = 0;
+			for (let i = 0; i < (this.pagos?.length ?? 0); i++) {
+				const g = this.pagos.at(i) as FormGroup;
+				const idf = g.get('id_forma_cobro')?.value;
+				if (!this.isIdQR(idf)) continue;
+				const subtotal = Number(g.get('monto')?.value || 0) || 0;
+				sum += subtotal;
+			}
+			return sum;
+		} catch { return 0; }
+	}
+
+	get canGenerateQr(): boolean {
+		try {
+			if (this.loading) return false;
+			if (this.status === 'completado') return false;
+			if (this.savedByUser) return false;
+			if (this.alias) return true;
+			return this.qrRowsAmount > 0;
+		} catch { return false; }
+	}
+
 	// Handlers explícitos para trazar click desde template
 	async onClickGenerar(): Promise<void> {
-		console.log('[QR-Panel] boton Generar QR click');
+		console.log('[QR-Panel] boton Generar QR click', {
+			isSelected: this.isSelected,
+			totalCobroInput: this.totalCobro,
+			qrRowsAmount: this.qrRowsAmount,
+			status: this.status,
+			alias: this.alias,
+			loading: this.loading,
+			savedByUser: this.savedByUser,
+			pagosLen: this.pagos?.length ?? 0,
+			formasCobroLen: this.formasCobro?.length ?? 0
+		});
 		this.errorMsg = '';
 		this.saveMsg = '';
 		const isFinal = this.status === 'completado' || this.status === 'cancelado' || this.status === 'expirado';
 		await this.ensureFormasCobroLoaded();
+		try {
+			console.log('[QR-Panel] pre-check generar()', {
+				qrRowsAmount: this.qrRowsAmount,
+				canGenerateQr: this.canGenerateQr,
+				formasCobroLen: this.formasCobro?.length ?? 0
+			});
+		} catch {}
 		const cod = this.getCodCeta();
 		this.loading = true;
 		this.cobrosService.stateQrByCodCeta({ cod_ceta: cod }).subscribe({
