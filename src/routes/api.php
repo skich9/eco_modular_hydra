@@ -119,6 +119,7 @@ Route::middleware('auth:sanctum')->group(function () {
 	Route::post('/verify', [\App\Http\Controllers\Api\AuthController::class, 'verify']);
 	Route::post('/refresh-token', [\App\Http\Controllers\Api\AuthController::class, 'refreshToken']);
 	Route::post('/change-password', [\App\Http\Controllers\Api\AuthController::class, 'changePassword']);
+	Route::get('sin/mis-sucursales', [\App\Http\Controllers\Api\SinAdminController::class, 'misSucursales']);
 });
 
 // Ruta de prueba

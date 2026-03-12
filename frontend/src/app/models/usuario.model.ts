@@ -7,6 +7,7 @@ export interface Usuario {
 	ci: string;
 	estado: boolean;
 	id_rol: number;
+	apoyoCobranzas?: boolean;
 	rol?: Rol;
 	nombre_completo?: string;
 	funciones?: UsuarioFuncion[];

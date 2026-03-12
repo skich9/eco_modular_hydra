@@ -91,6 +91,7 @@ class AuthController extends Controller
 					'ci' => $usuario->ci,
 					'estado' => $usuario->estado,
 					'id_rol' => $usuario->id_rol,
+					'apoyoCobranzas' => (bool) $usuario->apoyoCobranzas,
 					'nombre_completo' => $usuario->nombre . ' ' . $usuario->ap_paterno . ' ' . $usuario->ap_materno,
 					'rol' => [
 						'id_rol' => $usuario->rol->id_rol,
@@ -153,6 +154,7 @@ class AuthController extends Controller
 				'ci' => $usuario->ci,
 				'estado' => $usuario->estado,
 				'id_rol' => $usuario->id_rol,
+				'apoyoCobranzas' => (bool) $usuario->apoyoCobranzas,
 				'nombre_completo' => $usuario->nombre . ' ' . $usuario->ap_paterno . ' ' . $usuario->ap_materno,
 				'rol' => [
 					'id_rol' => $usuario->rol->id_rol,

@@ -1799,75 +1799,66 @@ class CobroController extends Controller
 				$gestionCtx = $request->gestion;
 
                 ////////////////////////////////////////////////////
-                /// necesito recuperar el codigo_sucursal en funcion al cod_pensum
-                $respSucursal = DB::table('sin_sucursal_pensum')
-                    ->where('cod_pensum', $codPensumCtx)
-                    ->first();
+                // Determinar sucursal y punto de venta según tipo de usuario
+                ////////////////////////////////////////////////////
+                $sucursalInput   = $request->input('codigo_sucursal');
+                $puntoVentaInput = $request->input('codigo_punto_venta');
+                $usuarioId       = (int) $request->id_usuario;
 
-                if(!$respSucursal) {
-                    throw new \Exception("No se encontró una sucursal asociada al pensum {$codPensumCtx}");
+                $nick = DB::table('usuarios')->where('id_usuario', $usuarioId)->value('nickname');
+                $usuarioLabel = $nick ? (string) $nick : (string) $usuarioId;
+
+                if (!is_null($sucursalInput) && !is_null($puntoVentaInput)) {
+                    // Usuario apoyoCobranzas=true: frontend envía sucursal y PV seleccionados
+                    $respPuntoVenta = DB::table('sin_punto_venta_usuario')
+                        ->where('id_usuario', $usuarioId)
+                        ->where('codigo_sucursal', (int) $sucursalInput)
+                        ->where('codigo_punto_venta', (int) $puntoVentaInput)
+                        ->where('codigo_ambiente', $codigoAmbiente)
+                        ->where('activo', 1)
+                        ->where(function ($q) {
+                            $q->whereNull('vencimiento_asig')
+                              ->orWhere('vencimiento_asig', '>=', now());
+                        })
+                        ->first();
+
+                    if (!$respPuntoVenta) {
+                        throw new \Exception("El usuario {$usuarioLabel} no tiene una asignación activa para la sucursal y punto de venta seleccionados. Contáctese con el administrador.");
+                    }
+
+                    $sucursal = (int) $sucursalInput;
+                } else {
+                    // Usuario apoyoCobranzas=false: única asignación activa
+                    $asignaciones = DB::table('sin_punto_venta_usuario')
+                        ->where('id_usuario', $usuarioId)
+                        ->where('codigo_ambiente', $codigoAmbiente)
+                        ->where('activo', 1)
+                        ->where(function ($q) {
+                            $q->whereNull('vencimiento_asig')
+                              ->orWhere('vencimiento_asig', '>=', now());
+                        })
+                        ->get();
+
+                    if ($asignaciones->isEmpty()) {
+                        throw new \Exception("No se puede realizar el cobro. El usuario {$usuarioLabel} no tiene punto de venta asignado. Contáctese con el administrador.");
+                    }
+
+                    if ($asignaciones->count() > 1) {
+                        throw new \Exception("MULTIPLES_ASIGNACIONES: El usuario {$usuarioLabel} tiene múltiples puntos de venta asignados. Configure el campo Apoyo en Cobranzas o corrija las asignaciones.");
+                    }
+
+                    $respPuntoVenta = $asignaciones->first();
+                    $sucursal = (int) $respPuntoVenta->codigo_sucursal;
                 }
-                // $sucursal = (int) ($request->input('codigo_sucursal', config('sin.sucursal')));
-                $sucursal = $respSucursal->codigo_sucursal;
 
-                log::info('batchStore: determined sucursal', [
-                    'cod_ceta' => $codCetaCtx,
-                    'cod_pensum' => $codPensumCtx,
-                    'gestion' => $gestionCtx,
-                    'sucursal' => $sucursal,
-                    'respSucursal' => $respSucursal->codigo_sucursal,
+                $pv = (int) $respPuntoVenta->codigo_punto_venta;
+
+                Log::info('batchStore: determined sucursal/pv', [
+                    'id_usuario'         => $usuarioId,
+                    'sucursal'           => $sucursal,
+                    'codigo_punto_venta' => $pv,
+                    'modo'               => (!is_null($sucursalInput) && !is_null($puntoVentaInput)) ? 'apoyo' : 'normal',
                 ]);
-
-                $respPuntoVenta = DB::table('sin_punto_venta_usuario')
-                    ->where('id_usuario', $request->id_usuario)
-                    ->where('codigo_sucursal', $sucursal)
-                    ->where('codigo_ambiente', $codigoAmbiente)
-                    ->where('activo', 1)
-                    ->where(function ($q) {
-						$q->whereNull('vencimiento_asig')
-							->orWhere('vencimiento_asig', '>=', now());
-					})
-					->orderByDesc('vencimiento_asig')
-					->orderByDesc('created_at')
-					->first();
-
-
-                Log::info('batchStore: punto de venta query result', [
-                    'id_usuario' => $request->id_usuario,
-                    'codigo_sucursal' => $sucursal,
-                    'codigo_ambiente' => $codigoAmbiente,
-                    'respPuntoVenta' => $respPuntoVenta ? [
-                        'codigo_punto_venta' => $respPuntoVenta->codigo_punto_venta,
-                        'vencimiento_asig' => $respPuntoVenta->vencimiento_asig,
-                    ] : null,
-                ]);
-
-                // IMPORTANTE
-                // como no recupera el punto de venta lanza la excepcion se debe corregir el error
-                // IMPORTANTE
-                if(!$respPuntoVenta) {
-                    // Construir mensaje amigable usando nickname del usuario y nombre de sucursal configurable
-					$nick = DB::table('usuarios')
-						->where('id_usuario', (int) $request->id_usuario)
-						->value('nickname');
-					$usuarioLabel = $nick ? (string) $nick : (string) $request->id_usuario;
-					$sucursalNombre = null;
-					try {
-						$labels = config('sin.sucursal_labels', []);
-						if (is_array($labels) && array_key_exists($sucursal, $labels)) {
-							$sucursalNombre = (string) $labels[$sucursal];
-						}
-					} catch (\Throwable $e) {
-						// fallback silencioso; si falla config usamos el código de sucursal
-					}
-					if (!$sucursalNombre) {
-						$sucursalNombre = 'código ' . (string) $sucursal;
-					}
-					$message = "No se puede realizar el cobro. El usuario {$usuarioLabel} no está habilitado para hacer cobros en la sucursal {$sucursalNombre}. Contáctese con el administrador.";
-					throw new \Exception($message);
-                }
-                $pv = $respPuntoVenta->codigo_punto_venta;
-				// $pv = (int) ($request->input('codigo_punto_venta', 0));
 
                 Log::info('batchStore: determined sucursal/punto_venta xxxxxx', [
                     'sucursal' => $sucursal,

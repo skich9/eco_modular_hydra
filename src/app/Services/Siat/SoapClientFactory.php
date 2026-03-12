@@ -51,17 +51,16 @@ class SoapClientFactory
 		];
 
 		// Siempre pre-descarga el WSDL con header apikey y lo usa localmente
-		$headers = "apikey: {$apiKey}\r\nAccept: application/wsdl+xml, text/xml, */*\r\nAccept-Encoding: identity\r\nUser-Agent: PHP-SOAP\r\n";
-
         $dir = sys_get_temp_dir() . DIRECTORY_SEPARATOR . 'siat_wsdl';
 		if (!is_dir($dir)) {
             @mkdir($dir, 0777, true);
         }
 		$local = $dir . DIRECTORY_SEPARATOR . md5($wsdl) . '.wsdl';
         if(!file_exists($local)) {
+            // El WSDL es público, no requiere apikey. Solo las llamadas SOAP la necesitan.
             $ctx = stream_context_create([
                 'http' => [
-                    'header' => $headers,
+                    'header' => "Accept: application/wsdl+xml, text/xml, */*\r\nAccept-Encoding: identity\r\nUser-Agent: PHP-SOAP\r\n",
                     'timeout' => 20,
                 ],
                 'ssl' => [

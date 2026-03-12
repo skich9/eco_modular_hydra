@@ -12,6 +12,8 @@ return new class extends Migration
             return;
         }
 
+        // Laravel 11 no soporta verificación de foreign keys de forma nativa
+        // Usamos try-catch para evitar errores si la FK ya existe
         try {
             Schema::table('cobro', function (Blueprint $table) {
                 $table->foreign('cod_tipo_cobro')
@@ -21,14 +23,18 @@ return new class extends Migration
                       ->onUpdate('restrict');
             });
         } catch (\Exception $e) {
-            // La foreign key ya existe, continuar
+            // Foreign key ya existe, continuar
         }
     }
 
     public function down(): void
     {
-        Schema::table('cobro', function (Blueprint $table) {
-            $table->dropForeign(['cod_tipo_cobro']);
-        });
+        try {
+            Schema::table('cobro', function (Blueprint $table) {
+                $table->dropForeign(['cod_tipo_cobro']);
+            });
+        } catch (\Exception $e) {
+            // Foreign key no existe, continuar
+        }
     }
 };

@@ -23,7 +23,8 @@ class Usuario extends Authenticatable
         'contrasenia',
         'ci',
         'estado',
-        'id_rol'
+        'id_rol',
+        'apoyoCobranzas'
     ];
 
     protected $hidden = [

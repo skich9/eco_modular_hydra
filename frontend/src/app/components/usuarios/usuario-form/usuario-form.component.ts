@@ -59,6 +59,7 @@ export class UsuarioFormComponent implements OnInit {
 			ci: ['', Validators.required],
 			id_rol: [null],
 			estado: [true],
+			apoyoCobranzas: [false],
 			contrasenia: ['', [Validators.required, Validators.minLength(6)]],
 			contraseniaConfirm: ['', [Validators.required]],
 			resetPassword: [false]
@@ -136,7 +137,8 @@ export class UsuarioFormComponent implements OnInit {
 						ap_materno: usuario.ap_materno,
 						ci: usuario.ci,
 						id_rol: usuario.id_rol,
-						estado: usuario.estado
+						estado: usuario.estado,
+            apoyoCobranzas: usuario.apoyoCobranzas || false
 					});
 				}
 			},

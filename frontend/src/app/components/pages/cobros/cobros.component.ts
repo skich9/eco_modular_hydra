@@ -21,6 +21,7 @@ import { saveBlobAsFile, generateQuickReciboPdf, generateQuickFacturaPdf } from 
 import * as QRCode from 'qrcode';
 import { ActivatedRoute } from '@angular/router';
 import { forkJoin } from 'rxjs';
+import { PuntoVentaService, MiSucursalAsignacion } from '../../../services/punto-venta.service';
 
 @Component({
   selector: 'app-cobros-page',
@@ -129,13 +130,20 @@ export class CobrosComponent implements OnInit {
   descuentoInstitucionalFechaLimite: string | null = null;
   private alertTimeoutHandle: any = null;
 
+  // Selector de sucursal para usuarios apoyoCobranzas
+  showSucursalSelector = false;
+  sucursalesDisponibles: MiSucursalAsignacion[] = [];
+  sucursalSeleccionada: number | null = null;
+  esUsuarioApoyo = false;
+
   constructor(
     private fb: FormBuilder,
     private cobrosService: CobrosService,
     private auth: AuthService,
     private gestionService: GestionService,
     private peService: ParametrosEconomicosService,
-    private route: ActivatedRoute
+    private route: ActivatedRoute,
+    private puntoVentaService: PuntoVentaService
   ) {
     this.searchForm = this.fb.group({
       cod_ceta: ['', Validators.required],
@@ -194,6 +202,37 @@ export class CobrosComponent implements OnInit {
       pensum: [''],
       turno: ['']
     });
+  }
+
+  private cargarSucursalesUsuario(): void {
+    const currentUser = this.auth.getCurrentUser();
+    if (!currentUser?.apoyoCobranzas) return;
+
+    this.esUsuarioApoyo = true;
+    this.puntoVentaService.getMisSucursales().subscribe({
+      next: (res) => {
+        console.log('[Cobros] Sucursales disponibles para apoyoCobranzas  se ejecuta la respuesta xyz:', res);
+        if (!res.success || !res.data?.length) return;
+        this.sucursalesDisponibles = res.data;
+        if (res.data.length === 1) {
+          this.sucursalSeleccionada = res.data[0].codigo_sucursal;
+        } else {
+          this.showSucursalSelector = true;
+        }
+      },
+      error: () => {
+        console.log('[Cobros] Error al cargar sucursales para apoyoCobranzas');
+      }
+    });
+  }
+
+  confirmarSucursal(codigoSucursal: number): void {
+    this.sucursalSeleccionada = codigoSucursal;
+    this.showSucursalSelector = false;
+  }
+
+  cambiarSucursal(): void {
+    this.showSucursalSelector = true;
   }
 
   // Helper method to extract form errors for debugging
@@ -1852,6 +1891,7 @@ export class CobrosComponent implements OnInit {
       if (v) ctrl?.enable(); else ctrl?.disable();
     });
 
+    this.cargarSucursalesUsuario();
     this.loadGestiones();
     // Documentos de identidad desde SIN
     this.cobrosService.getSinDocumentosIdentidad().subscribe({
@@ -3632,6 +3672,22 @@ export class CobrosComponent implements OnInit {
       const shouldEmitOnline = pagos.some((p: any) => (p?.tipo_documento === 'F') && (p?.medio_doc === 'C'));
       if (shouldEmitOnline) (payload as any).emitir_online = true;
     } catch {}
+    // Para usuario apoyoCobranzas: validar que seleccionó sucursal e inyectar sucursal+PV en payload
+    if (this.esUsuarioApoyo) {
+      if (this.sucursalSeleccionada === null) {
+        this.showAlert('Debe seleccionar la sucursal antes de registrar el cobro.', 'warning');
+        this.loading = false;
+        return;
+      }
+      const asig = this.sucursalesDisponibles.find(s => s.codigo_sucursal === this.sucursalSeleccionada);
+      if (!asig) {
+        this.showAlert('No se encontró la asignación de punto de venta para la sucursal seleccionada.', 'error');
+        this.loading = false;
+        return;
+      }
+      (payload as any).codigo_sucursal    = asig.codigo_sucursal;
+      (payload as any).codigo_punto_venta = asig.codigo_punto_venta;
+    }
     // Agregar descuentos del modal si existen
     if (this.descuentosFromModal && this.descuentosFromModal.length > 0) {
       (payload as any).descuentos = this.descuentosFromModal;
@@ -3702,7 +3758,9 @@ export class CobrosComponent implements OnInit {
         const backendMsg = (err?.error?.message || '').toString();
         const validationErrors = err?.error?.errors;
         let msg = backendMsg || err?.message || 'Error al registrar cobros';
-        if (validationErrors && typeof validationErrors === 'object') {
+        if (backendMsg.startsWith('MULTIPLES_ASIGNACIONES:')) {
+          msg = 'Este usuario tiene múltiples puntos de venta asignados. Active la opción "Apoyo en Cobranzas" en su perfil o corrija las asignaciones con el administrador.';
+        } else if (validationErrors && typeof validationErrors === 'object') {
           const parts: string[] = [];
           for (const k of Object.keys(validationErrors)) {
             const arr = validationErrors[k];

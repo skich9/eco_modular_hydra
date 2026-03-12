@@ -11,6 +11,7 @@ use App\Repositories\Sin\SyncRepository;
 use App\Repositories\Sin\CuisRepository;
 use App\Repositories\Sin\CufdRepository;
 use App\Repositories\Sin\PuntoVentaRepository;
+use Carbon\Carbon;
 
 class SinAdminController extends Controller
 {
@@ -415,12 +416,7 @@ class SinAdminController extends Controller
 				], Response::HTTP_BAD_REQUEST);
 			}
 
-			if (empty($vencimientoAsig)) {
-				return response()->json([
-					'success' => false,
-					'message' => 'La fecha de vencimiento es requerida'
-				], Response::HTTP_BAD_REQUEST);
-			}
+			// vencimiento_asig es opcional: null significa asignacion permanente (sin vencimiento)
 
 			Log::info('SIN assignUserToPuntoVenta: start', [
 				'usuario' => $idUsuario,
@@ -549,12 +545,7 @@ class SinAdminController extends Controller
 			$vencimientoAsig = $request->input('vencimiento_asig');
 			$activo = $request->input('activo', 1);
 
-			if (empty($vencimientoAsig)) {
-				return response()->json([
-					'success' => false,
-					'message' => 'La fecha de vencimiento es requerida'
-				], Response::HTTP_BAD_REQUEST);
-			}
+			// vencimiento_asig puede ser null (asignacion permanente)
 
 			Log::info('SIN updateAsignacionPuntoVenta: start', [
 				'id' => $id,
@@ -593,6 +584,59 @@ class SinAdminController extends Controller
 			return response()->json([
 				'success' => false,
 				'message' => 'Error al actualizar asignación: ' . $e->getMessage(),
+			], Response::HTTP_INTERNAL_SERVER_ERROR);
+		}
+	}
+
+	// Obtener sucursales disponibles del usuario autenticado según sus asignaciones activas
+	public function misSucursales(Request $request)
+	{
+		try {
+			$usuario = auth()->user();
+
+			if (!$usuario) {
+				return response()->json([
+					'success' => false,
+					'message' => 'No autenticado'
+				], Response::HTTP_UNAUTHORIZED);
+			}
+
+			$codigoAmbiente = (int) config('sin.ambiente');
+			$now = Carbon::now('America/La_Paz');
+
+			$asignaciones = DB::table('sin_punto_venta_usuario as pvu')
+				->join('sin_punto_venta as pv', function($join) {
+					$join->on('pvu.codigo_punto_venta', '=', 'pv.codigo_punto_venta')
+						->on('pvu.codigo_sucursal', '=', 'pv.sucursal')
+						->on('pvu.codigo_ambiente', '=', 'pv.codigo_ambiente');
+				})
+				->where('pvu.id_usuario', $usuario->id_usuario)
+				->where('pvu.codigo_ambiente', $codigoAmbiente)
+				->where('pvu.activo', 1)
+				->where(function($q) use ($now) {
+					$q->whereNull('pvu.vencimiento_asig')
+						->orWhere('pvu.vencimiento_asig', '>=', $now);
+				})
+				->select(
+					'pvu.codigo_sucursal',
+					'pvu.codigo_punto_venta',
+					'pvu.vencimiento_asig',
+					'pv.nombre as nombre_punto_venta'
+				)
+				->orderBy('pvu.codigo_sucursal')
+				->get();
+
+			return response()->json([
+				'success' => true,
+				'apoyoCobranzas' => (bool) $usuario->apoyoCobranzas,
+				'data' => $asignaciones
+			]);
+
+		} catch (\Throwable $e) {
+			Log::error('SIN misSucursales: exception', [ 'error' => $e->getMessage() ]);
+			return response()->json([
+				'success' => false,
+				'message' => 'Error al obtener sucursales: ' . $e->getMessage(),
 			], Response::HTTP_INTERNAL_SERVER_ERROR);
 		}
 	}

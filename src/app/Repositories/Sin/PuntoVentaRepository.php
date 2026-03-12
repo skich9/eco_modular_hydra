@@ -308,7 +308,10 @@ class PuntoVentaRepository
 					->on('pv.sucursal', '=', 'pvu.codigo_sucursal')
 					->on('pv.codigo_ambiente', '=', 'pvu.codigo_ambiente')
 					->where('pvu.activo', '=', 1)
-					->where('pvu.vencimiento_asig', '>=', $now);
+					->where(function($q) use ($now) {
+						$q->whereNull('pvu.vencimiento_asig')
+							->orWhere('pvu.vencimiento_asig', '>=', $now);
+					});
 			})
 			->leftJoin('usuarios as u', 'pvu.id_usuario', '=', 'u.id_usuario')
 			->select(

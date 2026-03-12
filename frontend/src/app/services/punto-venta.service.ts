@@ -46,7 +46,7 @@ export interface AssignUserRequest {
 	id_usuario: number;
 	codigo_punto_venta: string | number;
 	codigo_sucursal: number;
-	vencimiento_asig: string;
+	vencimiento_asig: string | null;
 	usuario_crea: number;
 }
 
@@ -64,8 +64,21 @@ export interface AsignacionPuntoVenta {
 }
 
 export interface UpdateAsignacionRequest {
-	vencimiento_asig: string;
+	vencimiento_asig: string | null;
 	activo: number;
+}
+
+export interface MiSucursalAsignacion {
+	codigo_sucursal: number;
+	codigo_punto_venta: string;
+	vencimiento_asig: string | null;
+	nombre_punto_venta: string;
+}
+
+export interface MisSucursalesResponse {
+	success: boolean;
+	apoyoCobranzas: boolean;
+	data: MiSucursalAsignacion[];
 }
 
 export interface ApiResponse<T> {
@@ -142,6 +155,10 @@ export class PuntoVentaService {
 
 	updateAsignacionPuntoVenta(id: number, data: UpdateAsignacionRequest): Observable<ApiResponse<any>> {
 		return this.http.put<ApiResponse<any>>(`${this.apiUrl}/sin/puntos-venta/asignacion/${id}`, data);
+	}
+
+	getMisSucursales(): Observable<MisSucursalesResponse> {
+		return this.http.get<MisSucursalesResponse>(`${this.apiUrl}/sin/mis-sucursales`);
 	}
 
 	syncPuntosVenta(idUsuario: number): Observable<ApiResponse<any>> {
