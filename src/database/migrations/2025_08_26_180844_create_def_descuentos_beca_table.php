@@ -8,6 +8,10 @@ return new class extends Migration
 {
 	public function up(): void
 	{
+		if (Schema::hasTable('def_descuentos_beca')) {
+			return;
+		}
+
 		Schema::create('def_descuentos_beca', function (Blueprint $table) {
 			$table->bigIncrements('cod_beca');
 			$table->string('nombre_beca', 255);

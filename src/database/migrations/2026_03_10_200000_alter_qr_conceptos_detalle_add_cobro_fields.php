@@ -15,7 +15,7 @@ class AlterQrConceptosDetalleAddCobroFields extends Migration
 
 		Schema::table('qr_conceptos_detalle', function (Blueprint $table) {
 			if (!Schema::hasColumn('qr_conceptos_detalle', 'cod_tipo_cobro')) {
-				$table->string('cod_tipo_cobro', 50)->nullable()->after('medio_doc');
+				$table->string('cod_tipo_cobro', 50)->nullable();
 			}
 			if (!Schema::hasColumn('qr_conceptos_detalle', 'tipo_pago')) {
 				$table->string('tipo_pago', 50)->nullable()->after('cod_tipo_cobro');
