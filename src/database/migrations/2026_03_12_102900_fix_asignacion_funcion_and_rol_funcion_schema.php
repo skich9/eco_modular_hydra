@@ -3,6 +3,7 @@
 use Illuminate\Database\Migrations\Migration;
 use Illuminate\Database\Schema\Blueprint;
 use Illuminate\Support\Facades\Schema;
+use Illuminate\Support\Facades\DB;
 
 class FixAsignacionFuncionAndRolFuncionSchema extends Migration
 {
@@ -23,9 +24,21 @@ class FixAsignacionFuncionAndRolFuncionSchema extends Migration
 
 			Schema::table('asignacion_funcion', function (Blueprint $table) {
 				if (Schema::hasColumn('asignacion_funcion', 'asignado_por')) {
+					$fkExists = null;
 					try {
-						$table->foreign('asignado_por')->references('id_usuario')->on('usuarios')->onDelete('set null');
+						$fkExists = DB::selectOne("SELECT CONSTRAINT_NAME FROM information_schema.KEY_COLUMN_USAGE WHERE TABLE_SCHEMA = DATABASE() AND TABLE_NAME = 'asignacion_funcion' AND COLUMN_NAME = 'asignado_por' AND REFERENCED_TABLE_NAME IS NOT NULL LIMIT 1");
 					} catch (\Throwable $e) {
+						$fkExists = null;
+					}
+
+					if (empty($fkExists)) {
+						try {
+							$table->foreign('asignado_por', 'asignacion_funcion_asignado_por_foreign')
+								->references('id_usuario')
+								->on('usuarios')
+								->onDelete('set null');
+						} catch (\Throwable $e) {
+						}
 					}
 				}
 			});
