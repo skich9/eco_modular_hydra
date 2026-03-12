@@ -2,7 +2,7 @@
 	<div class="d-flex align-items-center gap-2 mt-2">
 		<span class="me-2">Estado QR</span>
 		<span class="badge" [ngClass]="statusClass">{{ statusLabel }}</span>
-		<button type="button" class="btn btn-success btn-sm ms-3" (click)="onClickGenerar()" [disabled]="loading || status==='completado' || (totalCobro <= 0 && !alias) || savedByUser">
+		<button type="button" class="btn btn-success btn-sm ms-3" (click)="onClickGenerar()" [disabled]="!canGenerateQr">
 			{{ (alias && !isFinalStatus) ? 'Mostrar QR' : 'Generar QR' }}
 		</button>
 		<button type="button" class="btn btn-outline-secondary btn-sm" (click)="onClickConsultar()" [disabled]="loading || !alias">Consultar</button>

@@ -14,9 +14,10 @@ class DatabaseSeeder extends Seeder
     {
         $this->call([
             // Usuarios y permisos
-            RolSeeder::class,
-            FuncionSeeder::class,
+            RolesFuncionesActualesSeeder::class,
             UsuarioSeeder::class,
+            // Asegurar que el admin tenga funciones asignadas para no bloquear el sistema
+            AsignarFuncionesUsuarioAdminSeeder::class,
 
             // Parámetros del sistema (CRÍTICOS para cobrar)
             ParametrosGeneralesSeeder::class,
