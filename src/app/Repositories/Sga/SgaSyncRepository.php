@@ -885,17 +885,20 @@ class SgaSyncRepository
 	public function syncPensums(string $source, int $chunk = 1000, bool $dryRun = false): array
 	{
 		$source = in_array($source, ['sga_elec','sga_mec']) ? $source : 'sga_elec';
-		$carreraNombre = $source === 'sga_elec' ? 'Electricidad y Electrónica Automotriz' : 'Mecánica Automotriz';
-		// Resolver codigo_carrera por nombre o env
-		$codigoCarrera = DB::table('carrera')->where('nombre', $carreraNombre)->value('codigo_carrera');
+		$defaultCodigoCarrera = $source === 'sga_elec' ? 'EEA' : 'MEA';
+		// Resolver codigo_carrera por código (evita problemas por nombres con tildes/variantes)
+		$codigoCarrera = DB::table('carrera')->where('codigo_carrera', $defaultCodigoCarrera)->value('codigo_carrera');
 		if (!$codigoCarrera) {
-			$codigoCarrera = $source === 'sga_elec' ? env('CARRERA_CODE_ELEC', null) : env('CARRERA_CODE_MEC', null);
+			$codigoCarrera = $source === 'sga_elec' ? env('CARRERA_CODE_ELEC', $defaultCodigoCarrera) : env('CARRERA_CODE_MEC', $defaultCodigoCarrera);
 		}
 
 		$total = 0; $inserted = 0; $updated = 0; $skipped = 0;
 
-		DB::connection($source)
-			->table('registro_inscripcion')
+		$sgaConn = DB::connection($source);
+		$sgaTable = $sgaConn->getSchemaBuilder()->hasTable('pensum') ? 'pensum' : 'registro_inscripcion';
+
+		$sgaConn
+			->table($sgaTable)
 			->select('cod_pensum')
 			->orderBy('cod_pensum')
 			->chunk($chunk, function ($rows) use (&$total, &$inserted, &$updated, &$skipped, $dryRun, $codigoCarrera) {
