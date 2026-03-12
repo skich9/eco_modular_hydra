@@ -271,16 +271,31 @@ class MoraRecalculoService
 			->toArray();
 
 		// Calcular monto_mora_total acumulado para cada mora (sumando moras vinculadas)
+		$hoy = Carbon::today();
 		$morasConTotal = [];
 		foreach ($moras as $mora) {
 			$moraArray = (array)$mora;
 			$moraArray['monto_mora_total'] = $this->calcularMoraTotalAcumulado($mora);
+			
+			// Calcular dias_mora: desde fecha_inicio_mora hasta hoy
+			$diasMora = 0;
+			if (!empty($mora->fecha_inicio_mora)) {
+				try {
+					$fechaInicio = Carbon::parse($mora->fecha_inicio_mora)->startOfDay();
+					$diasMora = $fechaInicio->diffInDays($hoy) + 1; // +1 para incluir el día de inicio
+				} catch (\Throwable $e) {
+					$diasMora = 0;
+				}
+			}
+			$moraArray['dias_mora'] = $diasMora;
+			
 			$morasConTotal[] = $moraArray;
 
 			$this->debugLog('mora con total calculado', [
 				'id_asignacion_mora' => isset($mora->id_asignacion_mora) ? (int)$mora->id_asignacion_mora : 0,
 				'monto_mora' => isset($mora->monto_mora) ? (float)$mora->monto_mora : 0,
 				'monto_mora_total' => $moraArray['monto_mora_total'],
+				'dias_mora' => $diasMora,
 				'id_mora_vinculada' => isset($mora->id_mora_vinculada) ? (int)$mora->id_mora_vinculada : null,
 			]);
 		}

@@ -22,11 +22,14 @@ class CuentaBancaria extends Model
 		'habilitado_QR',
 		'I_R',
 		'estado',
+		'activo',
+		'moneda',
 	];
 
 	protected $casts = [
 		'habilitado_QR' => 'boolean',
 		'I_R' => 'boolean',
 		'estado' => 'boolean',
+		'activo' => 'boolean',
 	];
 }

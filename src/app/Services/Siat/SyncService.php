@@ -2,6 +2,8 @@
 
 namespace App\Services\Siat;
 
+use Illuminate\Support\Facades\Log;
+
 class SyncService
 {
 	public function tipoDocumentoIdentidad(string $cuis, int $puntoVenta = 0): array
