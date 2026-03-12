@@ -26,6 +26,10 @@ return new class extends Migration
 		];
 
 		foreach ($fkMap as $fk) {
+			if (!Schema::hasTable($fk['ref_table'])) {
+				continue;
+			}
+
 			$exists = DB::selectOne("SELECT 1 FROM INFORMATION_SCHEMA.KEY_COLUMN_USAGE WHERE TABLE_SCHEMA = DATABASE() AND TABLE_NAME = 'asignacion_costos' AND COLUMN_NAME = ? AND REFERENCED_TABLE_NAME IS NOT NULL LIMIT 1", [$fk['column']]);
 			if (!$exists) {
 				Schema::table('asignacion_costos', function (Blueprint $table) use ($fk) {
