@@ -328,10 +328,10 @@ class DefDescuentosBecaSeeder extends Seeder
         ];
 
 		foreach ($becas as $beca) {
-			DB::table('def_descuentos_beca')->insert(array_merge($beca, [
-				'created_at' => now(),
-				'updated_at' => now(),
-			]));
+			if (!isset($beca['porcentaje']) || $beca['porcentaje'] === null) {
+				$beca['porcentaje'] = 0;
+			}
+			DB::table('def_descuentos_beca')->insert($beca);
 		}
 	}
 }

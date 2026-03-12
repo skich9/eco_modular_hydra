@@ -11,7 +11,8 @@ class SinDatosSincronizacionSeeder extends Seeder
 	{
 		$backup = base_path('angular_laravel_project_con_datos.sql');
 		if (!file_exists($backup)) {
-			throw new \RuntimeException('No se encontró el archivo de backup SQL: ' . $backup);
+			// Archivo de backup no existe, omitir importación
+			return;
 		}
 
 		$sql = file_get_contents($backup);

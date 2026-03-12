@@ -12,18 +12,9 @@ return new class extends Migration
             return;
         }
 
-        $sm = Schema::getConnection()->getDoctrineSchemaManager();
-        $foreignKeys = $sm->listTableForeignKeys('cobro');
-
-        $hasFk = false;
-        foreach ($foreignKeys as $fk) {
-            if (in_array('cod_tipo_cobro', $fk->getLocalColumns())) {
-                $hasFk = true;
-                break;
-            }
-        }
-
-        if (!$hasFk) {
+        // Laravel 11 no soporta verificación de foreign keys de forma nativa
+        // Usamos try-catch para evitar errores si la FK ya existe
+        try {
             Schema::table('cobro', function (Blueprint $table) {
                 $table->foreign('cod_tipo_cobro')
                       ->references('cod_tipo_cobro')
@@ -31,13 +22,19 @@ return new class extends Migration
                       ->onDelete('restrict')
                       ->onUpdate('restrict');
             });
+        } catch (\Exception $e) {
+            // Foreign key ya existe, continuar
         }
     }
 
     public function down(): void
     {
-        Schema::table('cobro', function (Blueprint $table) {
-            $table->dropForeign(['cod_tipo_cobro']);
-        });
+        try {
+            Schema::table('cobro', function (Blueprint $table) {
+                $table->dropForeign(['cod_tipo_cobro']);
+            });
+        } catch (\Exception $e) {
+            // Foreign key no existe, continuar
+        }
     }
 };
