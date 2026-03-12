@@ -36,8 +36,22 @@ export class AddUsersModalComponent implements OnInit, OnChanges {
 	) {
 		this.form = this.fb.group({
 			id_usuario: ['', Validators.required],
-			vencimiento_asig: ['', Validators.required],
+			permanente: [false],
+			vencimiento_asig: [''],
 			activo: [true]
+		});
+
+		this.form.get('permanente')?.valueChanges.subscribe((esPermanente: boolean) => {
+			const ctrl = this.form.get('vencimiento_asig');
+			if (esPermanente) {
+				ctrl?.clearValidators();
+				ctrl?.setValue('');
+				ctrl?.disable();
+			} else {
+				ctrl?.setValidators(Validators.required);
+				ctrl?.enable();
+			}
+			ctrl?.updateValueAndValidity();
 		});
 	}
 
@@ -122,15 +136,27 @@ export class AddUsersModalComponent implements OnInit, OnChanges {
 		if (!this.asignacionActual) return;
 
 		const vencimiento = this.asignacionActual.vencimiento_asig;
+		const esPermanente = !vencimiento;
 		const fechaFormateada = vencimiento ? this.formatDateForInput(vencimiento) : '';
 
 		this.form.patchValue({
 			id_usuario: this.asignacionActual.id_usuario,
+			permanente: esPermanente,
 			vencimiento_asig: fechaFormateada,
 			activo: this.asignacionActual.activo === 1
 		});
 
 		this.form.get('id_usuario')?.disable();
+
+		const ctrl = this.form.get('vencimiento_asig');
+		if (esPermanente) {
+			ctrl?.clearValidators();
+			ctrl?.disable();
+		} else {
+			ctrl?.setValidators(Validators.required);
+			ctrl?.enable();
+		}
+		ctrl?.updateValueAndValidity();
 	}
 
 	formatDateForInput(dateString: string): string {
@@ -210,11 +236,12 @@ export class AddUsersModalComponent implements OnInit, OnChanges {
 			usuarioCrea = Number(currentUser.id_usuario) || 1;
 		}
 
+		const esPermanente = this.form.value.permanente;
 		const requestData: AssignUserRequest = {
 			id_usuario: this.form.value.id_usuario,
 			codigo_punto_venta: this.puntoVenta.codigo_punto_venta,
 			codigo_sucursal: this.puntoVenta.sucursal || 0,
-			vencimiento_asig: this.form.value.vencimiento_asig,
+			vencimiento_asig: esPermanente ? null : this.form.getRawValue().vencimiento_asig,
 			usuario_crea: usuarioCrea
 		};
 
@@ -245,17 +272,12 @@ export class AddUsersModalComponent implements OnInit, OnChanges {
 			return;
 		}
 
-		const vencimientoControl = this.form.get('vencimiento_asig');
-		if (!vencimientoControl || !vencimientoControl.value) {
-			this.submitError = 'La fecha de vencimiento es requerida';
-			return;
-		}
-
 		this.isSaving = true;
 		this.submitError = '';
 
+		const esPermanente = this.form.value.permanente;
 		const requestData: UpdateAsignacionRequest = {
-			vencimiento_asig: vencimientoControl.value,
+			vencimiento_asig: esPermanente ? null : (this.form.getRawValue().vencimiento_asig || null),
 			activo: this.form.value.activo ? 1 : 0
 		};
 
@@ -308,9 +330,14 @@ export class AddUsersModalComponent implements OnInit, OnChanges {
 	resetForm(): void {
 		this.form.reset({
 			id_usuario: '',
+			permanente: false,
 			vencimiento_asig: '',
 			activo: true
 		});
+		const ctrl = this.form.get('vencimiento_asig');
+		ctrl?.setValidators(Validators.required);
+		ctrl?.enable();
+		ctrl?.updateValueAndValidity();
 		this.form.get('id_usuario')?.enable();
 		this.searchTerm = '';
 		this.submitError = '';

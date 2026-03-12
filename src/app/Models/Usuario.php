@@ -23,7 +23,8 @@ class Usuario extends Model
         'contrasenia',
         'ci',
         'estado',
-        'id_rol'
+        'id_rol',
+        'apoyoCobranzas'
     ];
 
     protected $hidden = [
