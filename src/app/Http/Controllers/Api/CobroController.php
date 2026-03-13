@@ -420,13 +420,20 @@ class CobroController extends Controller
 				], 404);
 			}
 
+			$inscripcionesAll = Inscripcion::with('pensum')->where('cod_ceta', $codCeta)
+				->orderByDesc('fecha_inscripcion')
+				->orderByDesc('created_at')
+				->get();
+			if ($inscripcionesAll->isEmpty()) {
+				return response()->json([
+					'success' => false,
+					'message' => 'El estudiante no posee inscripciones registradas',
+				], 404);
+			}
+
 			// Estrategia de gestión: si viene gestion en request, usarla; caso contrario usar la última inscripción del estudiante
 			if ($gestionReq) {
-				$inscripciones = Inscripcion::with('pensum')->where('cod_ceta', $codCeta)
-					->where('gestion', $gestionReq)
-					->orderByDesc('fecha_inscripcion')
-					->orderByDesc('created_at')
-					->get();
+				$inscripciones = $inscripcionesAll->where('gestion', $gestionReq)->values();
 				if ($inscripciones->isEmpty()) {
 					return response()->json([
 						'success' => false,
@@ -435,22 +442,9 @@ class CobroController extends Controller
 				}
 				$gestionToUse = $gestionReq;
 			} else {
-				$ultima = Inscripcion::where('cod_ceta', $codCeta)
-					->orderByDesc('fecha_inscripcion')
-					->orderByDesc('created_at')
-					->first();
-				if (!$ultima) {
-					return response()->json([
-						'success' => false,
-						'message' => 'El estudiante no posee inscripciones registradas',
-					], 404);
-				}
+				$ultima = $inscripcionesAll->first();
 				$gestionToUse = $ultima->gestion;
-				$inscripciones = Inscripcion::with('pensum')->where('cod_ceta', $codCeta)
-					->where('gestion', $gestionToUse)
-					->orderByDesc('fecha_inscripcion')
-					->orderByDesc('created_at')
-					->get();
+				$inscripciones = $inscripcionesAll->where('gestion', $gestionToUse)->values();
 				$warnings[] = 'Se usó la última inscripción del estudiante: ' . $gestionToUse;
 			}
 			// Seleccionar inscripción principal: priorizar NORMAL si existe, caso contrario la primera
@@ -764,7 +758,9 @@ class CobroController extends Controller
 					}
 					// Mapear descuentos para ARRASTRE
 					if ($asignacionesArrastre && $asignacionesArrastre->count() > 0) {
-						$idsDetA = $asignacionesArrastre->pluck('id_descuentoDetalle')->filter()->map(fn($v) => (int)$v)->unique()->values();
+						$idsDetA = $asignacionesArrastre->pluck('id_descuentoDetalle')->filter()->map(function($v){
+							return (int) $v;
+						})->unique()->values();
 						if ($idsDetA->count() > 0) {
 							$detRowsA = DescuentoDetalle::whereIn('id_descuento_detalle', $idsDetA)->get(['id_descuento_detalle','monto_descuento']);
 							$detByIdA = [];
@@ -775,7 +771,9 @@ class CobroController extends Controller
 								$descuentosPorAsignArrastre[$ida] = ($idDet && isset($detByIdA[$idDet])) ? (float)$detByIdA[$idDet] : 0.0;
 							}
 						}
-						$idsAsignA = $asignacionesArrastre->pluck('id_asignacion_costo')->filter()->map(fn($v) => (int)$v)->unique()->values();
+						$idsAsignA = $asignacionesArrastre->pluck('id_asignacion_costo')->filter()->map(function($v){
+							return (int) $v;
+						})->unique()->values();
 						if ($idsAsignA->count() > 0) {
 							$detByCuotaA = DescuentoDetalle::whereIn('id_cuota', $idsAsignA)->get(['id_cuota','monto_descuento']);
 							$mapByCuotaA = [];
@@ -1010,12 +1008,12 @@ class CobroController extends Controller
 
 			// Debug para verificar datos del estudiante antes de devolver
 			Log::info('Datos del estudiante a devolver:', [
-				'cod_ceta' => $estudianteData['cod_ceta'] ?? 'no existe',
-				'nombre' => $estudianteData['nombre'] ?? 'no existe',
-				'apellido' => $estudianteData['apellido'] ?? 'no existe',
-				'nombre_completo' => $estudianteData['nombre_completo'] ?? 'no existe',
-				'ci_original' => $estudianteData['ci'] ?? 'no existe',
-				'ci_dp' => $estudiante->dp->ci_doc ?? 'no existe dp'
+				'cod_ceta' => isset($estudianteData['cod_ceta']) ? $estudianteData['cod_ceta'] : 'no existe',
+				'nombre' => isset($estudianteData['nombre']) ? $estudianteData['nombre'] : 'no existe',
+				'apellido' => isset($estudianteData['apellido']) ? $estudianteData['apellido'] : 'no existe',
+				'nombre_completo' => isset($estudianteData['nombre_completo']) ? $estudianteData['nombre_completo'] : 'no existe',
+				'ci_original' => isset($estudianteData['ci']) ? $estudianteData['ci'] : 'no existe',
+				'ci_dp' => (isset($estudiante->dp) && isset($estudiante->dp->ci_doc)) ? $estudiante->dp->ci_doc : 'no existe dp'
 			]);
 
 			if (isset($estudiante->dp)) {
@@ -1099,11 +1097,16 @@ class CobroController extends Controller
 				Log::error('Error al obtener descuentos aplicados: ' . $e->getMessage());
 			}
 
+			$inscripcionesAll = Inscripcion::where('cod_ceta', $codCeta)
+				->orderByDesc('fecha_inscripcion')
+				->orderByDesc('created_at')
+				->get();
+
 			return response()->json([
 				'success' => true,
 				'data' => [
 					'estudiante' => $estudianteData,
-					'inscripciones' => $inscripciones,
+					'inscripciones' => $inscripcionesAll,
 					'grupos' => $grupos,
 					'gestiones_all' => $gestionesAll,
 					'pensums_disponibles' => $pensumsDetalle,
