@@ -84,12 +84,33 @@ export class MensualidadModalComponent implements OnInit, OnChanges {
   get morasTabla(): any[] {
     try {
       const list: any[] = Array.isArray(this.morasPendientes) ? this.morasPendientes : [];
+
+      if (this.tipo === 'arrastre') {
+        const next: any = this.resumen?.arrastre?.next_cuota || null;
+        if (!next) return [];
+        const numeroCuotaArrastre = Number(next?.numero_cuota || 0);
+        const { mensualidadPagada } = this.esCuotaPagadaOEnDetalle(numeroCuotaArrastre);
+        if (!mensualidadPagada) return [];
+        const asignacionesNormal: any[] = Array.isArray(this.resumen?.asignaciones) ? this.resumen.asignaciones : [];
+        const asignNormal = asignacionesNormal.find((a: any) => Number(a?.numero_cuota || 0) === numeroCuotaArrastre);
+        if (!asignNormal) return [];
+        const idAsignNormal = Number(asignNormal?.id_asignacion_costo || 0);
+        return list.filter((m: any) => {
+          const estado = (m?.estado || '').toString().toUpperCase();
+          if (!(estado === 'PENDIENTE' || estado === 'CONGELADA_PRORROGA' || estado === 'CERRADA_SIN_CUOTA')) return false;
+          const idAsignCostoMora = Number(m?.id_asignacion_costo || 0);
+          return idAsignCostoMora === idAsignNormal;
+        });
+      }
+
       const asignacionesNormal: any[] = Array.isArray(this.resumen?.asignaciones) ? this.resumen.asignaciones : [];
       const normalAsignIds = new Set<number>((asignacionesNormal || []).map((a: any) => Number(a?.id_asignacion_costo || 0)).filter((n: number) => n > 0));
       return list.filter((m: any) => {
         const estado = (m?.estado || '').toString().toUpperCase();
         if (!(estado === 'PENDIENTE' || estado === 'CONGELADA_PRORROGA' || estado === 'CERRADA_SIN_CUOTA')) return false;
         const idAsignCostoMora = Number(m?.id_asignacion_costo || 0);
+        const idAsignVinculada = Number(m?.id_asignacion_vinculada || 0);
+        if (idAsignVinculada > 0) return false;
         return normalAsignIds.size === 0 ? true : normalAsignIds.has(idAsignCostoMora);
       });
     } catch {
@@ -425,10 +446,10 @@ export class MensualidadModalComponent implements OnInit, OnChanges {
     console.log('[MensualidadModal] ===== buildPagoMoraItem INICIO =====');
     console.log('[MensualidadModal] mora recibida:', mora);
 
-    // Usar el monto recalculado con fecha_deposito si aplica
+    // Calcular el monto neto (con descuento restado) para el campo 'monto'
     const neto = this.recalcularMoraConFechaDeposito(mora);
-    // Obtener el monto recalculado para actualizar en el backend
-    const montoMoraRecalculado = this.recalcularMoraConFechaDeposito(mora);
+    // Para pu_mensualidad, usar el monto_mora ORIGINAL (sin restar descuento)
+    const montoMoraOriginal = Number(mora?.monto_mora || 0);
     const numeroCuota = Number(mora?.numero_cuota || 0);
     const mesNombre = numeroCuota > 0 ? this.getMesNombreByCuota(numeroCuota) : null;
 
@@ -454,7 +475,7 @@ export class MensualidadModalComponent implements OnInit, OnChanges {
       monto: neto,
       fecha_cobro: hoy,
       observaciones: obs,
-      pu_mensualidad: montoMoraRecalculado,
+      pu_mensualidad: montoMoraOriginal,
       detalle: detalleMora.trim(),
       tipo_pago: 'MORA',
       cod_tipo_cobro: 'NIVELACION',
@@ -1481,12 +1502,19 @@ export class MensualidadModalComponent implements OnInit, OnChanges {
           console.log('[MensualidadModal] morasPendientes:', morasPendientes);
           console.log('[MensualidadModal] asignaciones:', asignaciones);
 
-          // Buscar solo moras de inscripción NORMAL (id_asignacion_costo apunta a mensualidad normal)
+          // Buscar solo moras de inscripción NORMAL (id_asignacion_costo apunta a mensualidad normal y sin vinculación)
           const moraPendiente = morasPendientes.find((m: any) => {
             const estado = (m?.estado || '').toString().toUpperCase();
             const idAsignCostoMora = Number(m?.id_asignacion_costo || 0);
+            const idAsignVinculada = Number(m?.id_asignacion_vinculada || 0);
 
             if (!this.isMoraEstadoPendiente(estado)) {
+              return false;
+            }
+
+            // Excluir moras de arrastre (tienen id_asignacion_vinculada > 0)
+            if (idAsignVinculada > 0) {
+              console.log(`[MensualidadModal] Mora id_asignacion_costo=${idAsignCostoMora} DESCARTADA - es de arrastre (id_asignacion_vinculada=${idAsignVinculada})`);
               return false;
             }
 

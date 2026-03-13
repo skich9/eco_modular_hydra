@@ -138,7 +138,7 @@ class MoraRecalculoService
 						'id_asignacion_costo' => $idAsignacionCosto,
 					]);
 					continue;
-				}
+				}fdslfdksaoisdhfsa
 
 				$estado = $isArray ? strtoupper(trim((string)(isset($mora['estado']) ? $mora['estado'] : ''))) : (isset($mora->estado) ? strtoupper(trim((string)$mora->estado)) : '');
 				if ($estado !== 'PENDIENTE') {
