@@ -115,9 +115,9 @@
 								<div class="col-12">
 									<label class="form-label">Grupos</label>
 									<div class="form-control-plaintext border rounded px-2 py-2">
-										<ng-container *ngIf="(resumen?.inscripciones?.length || 0) > 0; else noInscripciones">
+										<ng-container *ngIf="(inscripcionesParaGrupos?.length || 0) > 0; else noInscripciones">
 											<div class="d-flex flex-column gap-2">
-												<div class="d-flex align-items-center gap-2" *ngFor="let ins of resumen?.inscripciones">
+												<div class="d-flex align-items-center gap-2" *ngFor="let ins of inscripcionesParaGrupos">
 													<span class="badge rounded-pill bg-primary">{{ ins?.cod_curso || '-' }}</span>
 													<span class="badge rounded-pill" [ngClass]="{'bg-warning text-dark': true}">{{ (ins?.tipo_inscripcion || '-').toUpperCase() }}</span>
 												</div>

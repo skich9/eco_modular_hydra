@@ -186,11 +186,23 @@ export class DescuentoMoraComponent implements OnInit {
 		if (this.gestionSeleccionada && this.gestionesDisponibles.length > 0 && !this.gestionesDisponibles.includes(this.gestionSeleccionada)) {
 			this.gestionSeleccionada = this.gestionesDisponibles[0] || this.gestionSeleccionada;
 		}
-
-		this.grupos = (inscripciones as any[])
-			.filter((i: any) => String(i?.gestion || '') === String(this.gestionSeleccionada || gestion))
-			.map((i: any) => String(i?.cod_curso || ''))
+		const gestionToUse = String(this.gestionSeleccionada || gestion);
+		const codPensumToUse = String(this.codPensumSeleccionado || '');
+		const gruposTmp = (inscripciones as any[])
+			.filter((i: any) => {
+				const gestionI = String(i?.gestion || '');
+				const codPensumI = String(i?.cod_pensum || i?.pensum?.cod_pensum || '');
+				if (gestionI !== gestionToUse) {
+					return false;
+				}
+				if (codPensumToUse && codPensumI !== codPensumToUse) {
+					return false;
+				}
+				return true;
+			})
+			.map((i: any) => String(i?.cod_curso || '').trim())
 			.filter((c: string) => !!c);
+		this.grupos = Array.from(new Set(gruposTmp));
 
 		this.morasPendientes = Array.isArray(data?.moras_pendientes) ? data.moras_pendientes : [];
 		this.morasPendientes = (this.morasPendientes || []).slice().sort((a: any, b: any) => Number(a?.numero_cuota || 0) - Number(b?.numero_cuota || 0));

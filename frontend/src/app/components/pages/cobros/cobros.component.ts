@@ -2334,6 +2334,24 @@ export class CobrosComponent implements OnInit {
     });
   }
 
+	get inscripcionesParaGrupos(): any[] {
+		const inscripcionesAll = Array.isArray((this.resumen as any)?.inscripciones) ? (this.resumen as any).inscripciones : [];
+		if (!inscripcionesAll.length) {
+			return [];
+		}
+		const cabecera = this.batchForm.get('cabecera') as FormGroup;
+		const gestionSel = (cabecera?.get('gestion')?.value ?? (this.resumen as any)?.gestion ?? '').toString();
+		const pensumSel = (cabecera?.get('cod_pensum')?.value ?? (this.resumen as any)?.inscripcion?.cod_pensum ?? '').toString();
+		const out = (inscripcionesAll as any[]).filter((i: any) => {
+			const g = (i?.gestion ?? '').toString();
+			const p = (i?.cod_pensum ?? i?.pensum?.cod_pensum ?? '').toString();
+			if (gestionSel && g !== gestionSel) return false;
+			if (pensumSel && p !== pensumSel) return false;
+			return true;
+		});
+		return out;
+	}
+
   // Botones del card "Opciones de cobro"
   limpiarOpcionesCobro(): void {
     // Ocultar el card y limpiar pagos del lote

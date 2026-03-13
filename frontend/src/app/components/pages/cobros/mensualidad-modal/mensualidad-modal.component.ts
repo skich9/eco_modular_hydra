@@ -61,6 +61,18 @@ export class MensualidadModalComponent implements OnInit, OnChanges {
       if (raw instanceof Date) return raw;
       const s = (raw || '').toString().trim();
       if (!s) return null;
+      // Evitar desfase por timezone: strings tipo 'YYYY-MM-DD' se interpretan como UTC en JS.
+      // Aquí las convertimos a fecha LOCAL (00:00 local) para que el date pipe muestre el día correcto.
+      if (/^\d{4}-\d{2}-\d{2}$/.test(s)) {
+        const parts = s.split('-').map((x: string) => Number(x));
+        const y = parts[0];
+        const m = parts[1];
+        const d0 = parts[2];
+        if (y && m && d0) {
+          const local = new Date(y, m - 1, d0, 0, 0, 0, 0);
+          if (!isNaN(local.getTime())) return local;
+        }
+      }
       const d = new Date(s);
       if (!isNaN(d.getTime())) return d;
       return null;
@@ -101,10 +113,16 @@ export class MensualidadModalComponent implements OnInit, OnChanges {
     try {
       const ini = this.getMoraFechaInicio(m);
       if (!ini) return 0;
-      const fin = this.getMoraFechaFin(m) || new Date();
-      const ms = fin.getTime() - ini.getTime();
+      // Días mora = días transcurridos desde fecha_inicio hasta HOY (fecha de consulta), no hasta fecha_fin.
+      const hoy = new Date();
+      hoy.setHours(0, 0, 0, 0);
+      const iniLocal = new Date(ini.getTime());
+      iniLocal.setHours(0, 0, 0, 0);
+      const ms = hoy.getTime() - iniLocal.getTime();
       const days = Math.floor(ms / (1000 * 60 * 60 * 24));
-      return days > 0 ? days : 0;
+      // Inclusivo: si ini=2026-02-01 y hoy=2026-02-20 => 20 días
+      const inclusive = days + 1;
+      return inclusive > 0 ? inclusive : 0;
     } catch {
       return 0;
     }
@@ -134,6 +152,20 @@ export class MensualidadModalComponent implements OnInit, OnChanges {
       return Number(m?.monto_mora ?? 0) || 0;
     } catch {
       return 0;
+    }
+  }
+
+  getMoraMensualidadLabel(m: any): string {
+    try {
+      const idAsignCostoMora = Number(m?.id_asignacion_costo || 0);
+      const asignacionesNormal: any[] = Array.isArray(this.resumen?.asignaciones) ? this.resumen.asignaciones : [];
+      const asign = asignacionesNormal.find((a: any) => Number(a?.id_asignacion_costo || 0) === idAsignCostoMora) || null;
+      const numeroCuota = Number(asign?.numero_cuota || m?.numero_cuota || 0);
+      if (!numeroCuota) return '-';
+      const mes = this.getMesNombreByCuota(numeroCuota);
+      return mes ? `Cuota ${numeroCuota} (${mes})` : `Cuota ${numeroCuota}`;
+    } catch {
+      return '-';
     }
   }
 
@@ -269,13 +301,13 @@ export class MensualidadModalComponent implements OnInit, OnChanges {
       }
 
       // Parsear fechas
-      const fechaDeposito = new Date(fechaDepositoStr);
-      const fechaInicioMora = mora?.fecha_inicio_mora ? new Date(mora.fecha_inicio_mora) : null;
+      const fechaDeposito = this.parseDateLoose(fechaDepositoStr);
+      const fechaInicioMora = this.parseDateLoose(mora?.fecha_inicio_mora ?? mora?.fecha_inicio_mora ?? mora?.fecha_inicio ?? null);
       const hoy = new Date();
       hoy.setHours(0, 0, 0, 0);
-      fechaDeposito.setHours(0, 0, 0, 0);
+      if (fechaDeposito) fechaDeposito.setHours(0, 0, 0, 0);
 
-      if (!fechaInicioMora) {
+      if (!fechaInicioMora || !fechaDeposito) {
         return this.getMoraNetoFromRow(mora);
       }
       fechaInicioMora.setHours(0, 0, 0, 0);
@@ -909,6 +941,14 @@ export class MensualidadModalComponent implements OnInit, OnChanges {
   }
 
   ngOnChanges(changes: SimpleChanges): void {
+    if (changes['defaultMetodoPago']) {
+      const v = (this.defaultMetodoPago || '').toString();
+      if (v) {
+        this.form.patchValue({ metodo_pago: v }, { emitEvent: false });
+        this.updateTarjetaValidators();
+        this.recalcTotal();
+      }
+    }
     if (changes['pendientes'] || changes['pu'] || changes['tipo'] || changes['resumen'] || changes['startCuotaOverride'] || changes['morasPendientes']) {
       // Si cambia a un tipo distinto de mensualidad o arrastre, forzar pago_parcial=false
       if (changes['tipo'] && this.tipo !== 'mensualidad' && this.tipo !== 'arrastre') {
@@ -986,12 +1026,6 @@ export class MensualidadModalComponent implements OnInit, OnChanges {
         this.form.get('monto_parcial')?.setValidators([Validators.required, Validators.min(1), Validators.max(Number(maxParcial || Number.MAX_SAFE_INTEGER))]);
         this.form.get('monto_parcial')?.setValue(0, { emitEvent: false });
         this.form.get('monto_parcial')?.updateValueAndValidity({ emitEvent: false });
-      }
-    }
-    if (changes['defaultMetodoPago']) {
-      const v = (this.defaultMetodoPago || '').toString();
-      if (v) {
-        this.form.patchValue({ metodo_pago: v }, { emitEvent: false });
       }
     }
     // Revalidar tarjeta al cambiar inputs relevantes
