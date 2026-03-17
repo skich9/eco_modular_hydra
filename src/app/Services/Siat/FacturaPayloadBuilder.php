@@ -121,7 +121,6 @@ class FacturaPayloadBuilder
 
         // SIAT valida tolerancia de 5 minutos sobre fechaEnvio; usar tiempo actual en La Paz
         $fechaEnvioIso = $now->format('Y-m-d\\TH:i:s.000');
-
         $payload = [
             'codigoAmbiente' => (int) (isset($args['ambiente']) ? $args['ambiente'] : 2),
             'codigoModalidad' => $modalidad,
@@ -615,6 +614,8 @@ class FacturaPayloadBuilder
         // IMPORTANTE (SIAT 1012): numeroTarjeta solo debe enviarse cuando el método sea TARJETA (2) y el valor no sea vacío
         if ((int)$codigoMetodoPago === 2 && $numeroTarjetaXml !== null) {
             $xml .= '<numeroTarjeta>' . htmlspecialchars($numeroTarjetaXml, ENT_QUOTES | ENT_SUBSTITUTE, 'UTF-8') . '</numeroTarjeta>';
+        } else {
+            $xml .= '<numeroTarjeta xsi:nil="true"/>';
         }
         $xml .= '<montoTotal>' . number_format($montoTotalCalc, 2, '.', '') . '</montoTotal>';
         $xml .= '<montoTotalSujetoIva>' . number_format($montoTotalSujetoIvaCalc, 2, '.', '') . '</montoTotalSujetoIva>';
