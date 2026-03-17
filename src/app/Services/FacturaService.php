@@ -25,7 +25,7 @@ class FacturaService
 			'anio' => $anio,
 			'nro_factura' => $nroFactura,
 			'tipo' => 'C',
-			'estado' => 'VIGENTE',
+			'estado' => 'EN PROCESO',
 		], $data);
 		DB::table('factura')->insert($payload);
 		Log::info('FacturaService.createComputarizada', [ 'anio' => $anio, 'nro_factura' => $nroFactura ]);
@@ -37,7 +37,7 @@ class FacturaService
 			'anio' => $anio,
 			'nro_factura' => $nroFactura,
 			'tipo' => 'M',
-			'estado' => 'VIGENTE',
+			'estado' => 'EN PROCESO',
 		], $data);
 		DB::table('factura')->insert($payload);
 		Log::info('FacturaService.createManual', [ 'anio' => $anio, 'nro_factura' => $nroFactura ]);

@@ -196,6 +196,7 @@ Route::get('facturas/{anio}/{nro}/meta', [CobroController::class, 'facturaMeta']
 
 // Facturas: listado paginado para UI SIN (anio opcional)
 Route::get('facturas', [FacturaEstadoController::class, 'lista']);
+Route::get('facturas/sucursales', [FacturaEstadoController::class, 'sucursales']);
 
 // Facturas: verificación de estado en SIN
 Route::get('facturas/{anio}/{nro}/estado', [FacturaEstadoController::class, 'estado'])

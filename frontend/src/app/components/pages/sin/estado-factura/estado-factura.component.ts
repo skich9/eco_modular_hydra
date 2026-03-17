@@ -23,6 +23,10 @@ export class EstadoFacturaComponent implements OnInit {
 	meta: { page: number; per_page: number; total: number; last_page: number } = { page: 1, per_page: 10, total: 0, last_page: 0 };
 	pageOptions = [10, 20, 50];
 	filterAnio: number | null = new Date().getFullYear();
+	filterSucursal: number | null = null;
+	sucursalesDisponibles: number[] = [];
+	filterFechaInicio: string = '';
+	filterFechaFin: string = '';
 	loadingList = false;
 
 	// Detalles
@@ -48,6 +52,7 @@ export class EstadoFacturaComponent implements OnInit {
 
 	ngOnInit(): void {
 		this.loadList();
+		this.cobros.getFacturasSucursales().subscribe({ next: (list) => { this.sucursalesDisponibles = list; } });
 	}
 
 	get badgeClass(): string { return this.stateBadgeClass(this.statusData?.estado || ''); }
@@ -114,9 +119,10 @@ export class EstadoFacturaComponent implements OnInit {
 	stateBadgeClass(estStr: string): string {
 		const est = (estStr || '').toString().toUpperCase();
 		if (!est) return 'badge bg-secondary';
-		if (est.includes('ENVIADO') || est.includes('ACEPT') || est.includes('VIGENTE')) return 'badge bg-success';
-		if (est.includes('ANUL') || est.includes('RECH') || est.includes('ERROR')) return 'badge bg-danger';
-		if (est.includes('PROCES')) return 'badge bg-warning text-dark';
+		if (est.includes('VALIDADA')) return 'badge bg-success';
+    if (est.includes('ANULADA')) return 'badge bg-secondary';
+		if (est.includes('PENDIENTE') || est.includes('CONTINGENCIA') || est.includes('EN PROCESO')) return 'badge bg-warning text-dark';
+		if (est.includes('RECHAZADA')) return 'badge bg-danger';
 		return 'badge bg-secondary';
 	}
 
@@ -175,6 +181,9 @@ export class EstadoFacturaComponent implements OnInit {
 		this.loadingList = true;
 		const params: any = { page: this.meta.page, per_page: this.meta.per_page || 10 };
 		if (this.filterAnio) params.anio = this.filterAnio;
+		if (this.filterSucursal !== null && this.filterSucursal !== undefined) params.sucursal = this.filterSucursal;
+		if (this.filterFechaInicio) params.fecha_inicio = this.filterFechaInicio;
+		if (this.filterFechaFin) params.fecha_fin = this.filterFechaFin;
 		this.cobros.getFacturasLista(params).subscribe({
 			next: (res: any) => {
 				this.rows = Array.isArray(res?.data) ? res.data : [];
@@ -194,6 +203,7 @@ export class EstadoFacturaComponent implements OnInit {
 	setPage(p: number): void { if (p < 1 || p > (this.meta.last_page||1)) return; this.meta.page = p; this.loadList(); }
 	setPerPage(n: number): void { this.meta.per_page = n; this.meta.page = 1; this.loadList(); }
 	buscarPorAnio(): void { this.meta.page = 1; this.loadList(); }
+	buscarPorSucursal(): void { this.meta.page = 1; this.loadList(); }
 
 	refreshEstado(row: any): void { this.openEstado(row); }
 
@@ -209,7 +219,7 @@ export class EstadoFacturaComponent implements OnInit {
 	openEstado(row: any, fromTopForm: boolean = false): void {
 		const anio = Number(row?.anio || 0);
 		const nro = Number(row?.nro_factura || 0);
-		if (!anio || !nro) { this.loading = false; return; }
+		if (!anio || !nro) { this.loading = false; return; } // si no tiene el año o número, no se puede consultar el estado
 		if (!fromTopForm) { row.__updating = true; }
 		this.statusRow = row;
 		this.statusLoading = true;

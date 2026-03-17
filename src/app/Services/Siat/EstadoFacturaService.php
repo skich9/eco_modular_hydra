@@ -30,11 +30,7 @@ class EstadoFacturaService
 		if ($cuf === '') {
 			return [ 'success' => false, 'message' => 'CUF vacío' ];
 		}
-
-		$services = [
-			(string) config('sin.servicio_operaciones', 'FacturacionOperaciones'),
-			(string) config('sin.servicio_facturacion_electronica', 'ServicioFacturacionElectronica'),
-		];
+        $svc = (string) config('sin.servicio_facturacion_electronica', 'ServicioFacturacionElectronica');
 		try {
 			// Asegurar CUIS/CUFD vigentes
 			$cuisRow = $this->cuisRepo->getVigenteOrCreate2($codigoAmbiente, $sucursal, $puntoVenta);
@@ -57,9 +53,7 @@ class EstadoFacturaService
 				'tipoFacturaDocumento'  => (int) config('sin.tipo_factura'),
 				'cuf'                   => $cuf,
 			];
-
 			Log::debug('EstadoFacturaService.request', [
-				'candidate_services' => $services,
 				'payload' => $payload,
 				'punto_venta' => (int)$puntoVenta,
 				'sucursal' => (int)$sucursal,
@@ -67,72 +61,71 @@ class EstadoFacturaService
 				'cuis' => $cuis,
 				'cufd' => $cufd,
 			]);
-
 			$lastError = null;
-			foreach ($services as $svc) {
-				try {
-					$client = SoapClientFactory::build($svc);
-					$wrappers = ['SolicitudServicioVerificacionEstadoFactura', 'SolicitudVerificacionEstadoFactura'];
-					$lastWrapperError = null;
-					foreach ($wrappers as $wrap) {
-						try {
-							$arg = new \stdClass();
-							$arg->{$wrap} = (object) $payload;
-							$result = $client->__soapCall('verificacionEstadoFactura', [ $arg ]);
-                            Log::debug('el resultado que llega es eeeee:'.print_r($result,true));
-							$arr = json_decode(json_encode($result), true);
-							$root = is_array($arr) ? reset($arr) : null;
-							$codigoEstado = is_array($root) && isset($root['codigoEstado']) ? (int)$root['codigoEstado'] : null;
-							$descripcion = is_array($root) && isset($root['mensajesList']) ? $this->firstMessage($root['mensajesList']) : null;
-							$estado = $this->mapEstado($codigoEstado);
-							$lastReq = method_exists($client, '__getLastRequest') ? (string)$client->__getLastRequest() : null;
-							$lastResp = method_exists($client, '__getLastResponse') ? (string)$client->__getLastResponse() : null;
-							Log::debug('EstadoFacturaService.response', [
-								'service' => $svc,
-								'wrapper' => $wrap,
-								'codigoEstado' => $codigoEstado,
-								'estado' => $estado,
-								'descripcion' => $descripcion,
-								'raw' => $arr,
-							]);
-							return [
-								'success' => true,
-								'codigoEstado' => $codigoEstado,
-								'descripcion' => $descripcion,
-								'estado' => $estado,
-								'raw' => $arr,
-								'payload' => $payload,
-								'last_request' => $lastReq,
-								'last_response' => $lastResp,
-								'service' => $svc,
-							];
-						} catch (SoapFault $we) {
-							$lastWrapperError = $we; continue;
-						}
-					}
-					if ($lastWrapperError) { $lastError = $lastWrapperError; continue; }
-				} catch (\Throwable $se) {
-					$lastError = $se; continue;
-				}
-			}
-			if ($lastError) { throw $lastError; }
-			return [ 'success' => false, 'message' => 'No se pudo invocar verificacionEstadoFactura en ninguno de los servicios' ];
+
+            $client = SoapClientFactory::build($svc);
+            $wrap = 'SolicitudServicioVerificacionEstadoFactura';
+            $lastWrapperError = null;
+
+            $arg = new \stdClass();
+            $arg->{$wrap} = (object) $payload;
+            $result = $client->__soapCall('verificacionEstadoFactura', [ $arg ]);
+            Log::debug('el resultado que llega es eeeee:'.print_r($result,true));
+            $arr = json_decode(json_encode($result), true);
+            $root = is_array($arr) ? reset($arr) : null;
+            $codigoEstado = is_array($root) && isset($root['codigoEstado']) ? (int)$root['codigoEstado'] : null;
+            $descripcionEstado = is_array($root) && isset($root['codigoDescripcion']) ? (string)$root['codigoDescripcion'] : null;
+            // $descripcion = is_array($root) && isset($root['mensajesList']) ? $this->firstMessage($root['mensajesList']) : null;
+            $mensajesList = is_array($root) && isset($root['mensajesList']) ? $root['mensajesList'] : null;
+            // YA NO SE VA A MAPEAR EL ESTADO, SE DEJA TAL CUAL VIENE DEL SERVICIO
+            // $estado = $this->mapEstado($codigoEstado);
+            $lastReq = method_exists($client, '__getLastRequest') ? (string)$client->__getLastRequest() : null;
+            $lastResp = method_exists($client, '__getLastResponse') ? (string)$client->__getLastResponse() : null;
+            Log::debug('EstadoFacturaService.response', [
+                'service' => $svc,
+                'wrapper' => $wrap,
+                'codigoEstado' => $codigoEstado,
+                'descripcionEstado' => $descripcionEstado,
+                // 'estado' => $estado,
+                // 'descripcion' => $descripcion,
+                'mensajesList' => $mensajesList,
+                'raw' => $arr,
+            ]);
+            return [
+                'success' => true,
+                'codigoEstado' => $codigoEstado,
+                'descripcionEstado' => $descripcionEstado,
+                // 'estado' => $estado,
+                // 'descripcion' => $descripcion,
+                'mensajesList' => $mensajesList,
+                'raw' => $arr,
+
+                'payload' => $payload,          // REVISAR SI SE UTILIZA EN ALGUN LUGAR
+                'last_request' => $lastReq,     // 'last_response' => $lastResp,   // REVISAR SI SE UTILIZA EN ALGUN LUGAR
+                'last_response' => $lastResp,   // REVISAR SI SE UTILIZA EN ALGUN LUGAR
+                'service' => $svc,              // REVISAR SI SE UTILIZA EN ALGUN LUGAR
+            ];
+            // if ($lastWrapperError) {
+            //     $lastError = $lastWrapperError;
+            // }
+			// if ($lastError) {
+            //     throw $lastError;
+            // }
+			// return [ 'success' => false, 'message' => 'No se pudo invocar verificacionEstadoFactura en ninguno de los servicios' ];
 		} catch (\Throwable $e) {
-			Log::error('EstadoFacturaService.verificacionEstadoFactura', [ 'services' => $services, 'error' => $e->getMessage() ]);
+			Log::error('EstadoFacturaService.verificacionEstadoFactura', [ 'service' => $svc, 'error' => $e->getMessage() ]);
 			return [ 'success' => false, 'message' => $e->getMessage() ];
 		}
 	}
-
-	private function mapEstado($codigo)
-	{
-		if ($codigo === 690) return 'ACEPTADA';
-		if ($codigo === 908) return 'ANULADA';
-		if ($codigo === 691) return 'ANULADA'; // Código que devuelve SIAT tras anulación confirmada
-		if ($codigo === 905) return 'ANULADA'; // Código de confirmación de anulación
-		if ($codigo === null) return 'DESCONOCIDO';
-		return 'RECHAZADA';
-	}
-
+	// private function mapEstado($codigo)
+	// {
+    //         if ($codigo === 690) return 'ACEPTADA';
+    //         if ($codigo === 908) return 'ANULADA';
+    //         if ($codigo === 691) return 'ANULADA'; // Código que devuelve SIAT tras anulación confirmada
+    //         if ($codigo === 905) return 'ANULADA'; // Código de confirmación de anulación
+    //         if ($codigo === null) return 'RECHAZADA';
+    //         return 'RECHAZADA';
+	// }
 	private function firstMessage($mensajes)
 	{
 		if (!$mensajes) return null;
