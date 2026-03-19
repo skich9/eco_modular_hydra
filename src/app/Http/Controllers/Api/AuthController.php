@@ -33,16 +33,23 @@ class AuthController extends Controller
 				], 422);
 			}
 
-			// Buscar usuario por nickname o CI
+			// Buscar usuario por nickname
 			$usuario = Usuario::with('rol')
 				->where(function($query) use ($request) {
-					$query->where('nickname', $request->nickname)
-						  ->orWhere('ci', $request->nickname);
+					$query->where('nickname', $request->nickname);
 				})
 				->where('estado', true)
 				->first();
 
 			if (!$usuario) {
+				return response()->json([
+					'success' => false,
+					'message' => 'Las credenciales no coinciden con nuestros registros.'
+				], 401);
+			}
+
+			// verificacion case sensitive
+			if ($usuario->nickname !== $request->nickname ) {
 				return response()->json([
 					'success' => false,
 					'message' => 'Las credenciales no coinciden con nuestros registros.'
