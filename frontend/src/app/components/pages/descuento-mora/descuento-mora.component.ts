@@ -38,7 +38,7 @@ export class DescuentoMoraComponent implements OnInit {
 		private cobrosService: CobrosService,
 		private authService: AuthService,
 		private descuentoMoraService: DescuentoMoraService
-	) {}
+	) { }
 
 	ngOnInit(): void {
 		this.authService.currentUser$.subscribe(user => {
@@ -49,6 +49,32 @@ export class DescuentoMoraComponent implements OnInit {
 
 	toggleDescuento(d: any): void {
 		if (!d || !d.id_descuento_mora) return;
+
+		if (d.activo != 1 && d.activo !== true) {
+
+			let existeOtroActivo = false;
+			const tabla = this.descuentosTabla || [];
+
+			for (let i = 0; i < tabla.length; i++) {
+				let fila = tabla[i];
+
+				if (fila.id_asignacion_mora === d.id_asignacion_mora && fila.id_descuento_mora !== d.id_descuento_mora) {
+
+					if (fila.activo === true) {
+						existeOtroActivo = true;
+						break;
+					}
+				}
+			}
+
+			if (existeOtroActivo) {
+				const confirmar = window.confirm('Ya existe un descuento activo en esta cuota. ¿Desea reemplazarlo?');
+				if (!confirmar) {
+					return;
+				}
+			}
+		}
+
 
 		this.loading = true;
 		this.descuentoMoraService.toggleStatus(d.id_descuento_mora).subscribe({
