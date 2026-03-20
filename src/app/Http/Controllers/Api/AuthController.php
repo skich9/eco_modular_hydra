@@ -33,14 +33,23 @@ class AuthController extends Controller
 				], 422);
 			}
 
-			// Buscar usuario por nickname o CI
-			$usuario = Usuario::with('rol')
-				->where(function($query) use ($request) {
-					$query->where('nickname', $request->nickname)
-						  ->orWhere('ci', $request->nickname);
-				})
+			// Usuario o CI deben coincidir exactamente (mayúsculas/minúsculas).
+			// MySQL con collation *_ci hace que nickname = ? sea insensible; BINARY/COLLATE bin
+			// a veces no aplica igual en todos los servidores. Se obtienen candidatos por LOWER()
+			// y se exige igualdad estricta en PHP (===), que no depende del motor.
+			$inputLogin = trim((string) $request->nickname);
+
+			$candidatos = Usuario::with('rol')
 				->where('estado', true)
-				->first();
+				->where(function ($query) use ($inputLogin) {
+					$query->whereRaw('LOWER(nickname) = LOWER(?)', [$inputLogin])
+						->orWhereRaw('LOWER(ci) = LOWER(?)', [$inputLogin]);
+				})
+				->get();
+
+			$usuario = $candidatos->first(function ($u) use ($inputLogin) {
+				return (string) $u->nickname === $inputLogin || (string) $u->ci === $inputLogin;
+			});
 
 			if (!$usuario) {
 				return response()->json([

@@ -13,7 +13,6 @@ import { ItemsModalComponent } from './items-modal/items-modal.component';
 import { KardexModalComponent } from './kardex-modal/kardex-modal.component';
 import { BusquedaEstudianteModalComponent } from './busqueda-estudiante-modal/busqueda-estudiante-modal.component';
 import { DescuentoFormModalComponent } from './descuento-form-modal/descuento-form-modal.component';
-import { MoraModalComponent } from './mora-modal/mora-modal.component';
 import { QrPanelComponent } from './qr-panel/qr-panel.component';
 import { ClickLockDirective } from '../../../directives/click-lock.directive';
 import { environment } from '../../../../environments/environment';
@@ -26,7 +25,7 @@ import { PuntoVentaService, MiSucursalAsignacion } from '../../../services/punto
 @Component({
   selector: 'app-cobros-page',
   standalone: true,
-  imports: [CommonModule, ReactiveFormsModule, FormsModule, MensualidadModalComponent, ItemsModalComponent, RezagadoModalComponent, RecuperacionModalComponent, ReincorporacionModalComponent, BusquedaEstudianteModalComponent, DescuentoFormModalComponent, MoraModalComponent, KardexModalComponent, QrPanelComponent, ClickLockDirective],
+  imports: [CommonModule, ReactiveFormsModule, FormsModule, MensualidadModalComponent, ItemsModalComponent, RezagadoModalComponent, RecuperacionModalComponent, ReincorporacionModalComponent, BusquedaEstudianteModalComponent, DescuentoFormModalComponent, KardexModalComponent, QrPanelComponent, ClickLockDirective],
   templateUrl: './cobros.component.html',
   styleUrls: ['./cobros.component.scss']
 })

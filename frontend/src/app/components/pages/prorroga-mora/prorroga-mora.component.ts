@@ -56,8 +56,29 @@ export class ProrrogaMoraComponent implements OnInit {
 		this.loadProrrogas();
 	}
 
+	/**
+	 * Bloquea caracteres no numéricos al escribir (permite teclas de control, Enter, Tab, etc.).
+	 */
+	onCodCetaKeydown(event: KeyboardEvent): void {
+		const k = event.key;
+		if (k.length === 1 && !/\d/.test(k) && !event.ctrlKey && !event.metaKey && !event.altKey) {
+			event.preventDefault();
+		}
+	}
+
+	/** Normaliza el valor ante pegado u otros casos: solo dígitos. */
+	onCodCetaInput(event: Event): void {
+		const el = event.target as HTMLInputElement;
+		const only = (el.value || '').replace(/\D/g, '');
+		if (el.value !== only) {
+			this.searchCodCeta = only;
+			el.value = only;
+		}
+	}
+
 	buscarPorCodCeta(): void {
-		const code = (this.searchCodCeta || '').toString().trim();
+		const code = (this.searchCodCeta || '').toString().replace(/\D/g, '');
+		this.searchCodCeta = code;
 		if (!code) {
 			this.displayAlert('Ingrese el Código CETA', 'warning');
 			return;
@@ -218,6 +239,11 @@ export class ProrrogaMoraComponent implements OnInit {
 			this.displayAlert('Busque primero un estudiante por Código CETA', 'warning');
 			return;
 		}
+		const rawCod = String(this.estudianteEncontrado.cod_ceta ?? '').trim();
+		if (!/^\d+$/.test(rawCod)) {
+			this.displayAlert('Código CETA del estudiante no es válido. Vuelva a buscar con un código numérico.', 'error');
+			return;
+		}
 
 		// Validar cuota seleccionada
 		if (this.selectedCuota == null) {
@@ -247,12 +273,13 @@ export class ProrrogaMoraComponent implements OnInit {
 		}
 
 		// Crear array de payloads para todas las asignaciones de la cuota (NORMAL y ARRASTRE)
+		const codCetaInt = parseInt(rawCod, 10);
 		const payloads = cuotasSeleccionadas.map((cuota: any) => ({
 			id_asignacion_costo: cuota.id_asignacion_costo,
 			fecha_inicio_prorroga: fechaInicio,
 			fecha_fin_prorroga: fechaFin,
 			id_usuario: this.currentUser.id_usuario,
-			cod_ceta: this.estudianteEncontrado.cod_ceta,
+			cod_ceta: codCetaInt,
 			activo: true,
 			motivo: this.motivo
 		}));

@@ -28,6 +28,7 @@ use App\Services\Siat\CufGenerator;
 use App\Services\Siat\FacturaPayloadBuilder;
 use App\Services\Qr\QrSocketNotifier;
 use App\Services\MoraRecalculoService;
+use App\Services\LibroDiarioIdentificadorHelper;
 use Carbon\Carbon;
 
 class CobroController extends Controller
@@ -48,6 +49,16 @@ class CobroController extends Controller
 			$fecha = $request->query('fecha');
 			if ($fecha) {
 				$query->whereDate('fecha_cobro', $fecha);
+			}
+
+			// Filtro por carrera (codigo_carrera): solo cobros de estudiantes de esa carrera
+			$codigoCarrera = $request->query('codigo_carrera');
+			if ($codigoCarrera !== null && $codigoCarrera !== '') {
+				$query->whereIn('cod_pensum', function ($sub) use ($codigoCarrera) {
+					$sub->select('cod_pensum')
+						->from('pensums')
+						->where('codigo_carrera', $codigoCarrera);
+				});
 			}
 
 			$cobros = $query->get();
@@ -4041,6 +4052,252 @@ class CobroController extends Controller
 					'error' => $e->getMessage(),
 				]);
 			} catch (\Throwable $e2) {}
+		}
+	}
+
+	/**
+	 * Cierra la caja de un usuario para una fecha determinada.
+	 * Registra el cierre en libro_diario_cierre y devuelve orden_cierre para el código RD-xxx.
+	 *
+	 * Request:
+	 * - usuario: string|int (id_usuario)
+	 * - fecha: string (d/m/Y o Y-m-d)
+	 * - codigo_carrera: string opcional (se guarda en libro_diario_cierre para RD-… y reimpresiones)
+	 *
+	 * Response:
+	 * - { success, message, orden_cierre?, id_libro_diario_cierre?, correlativo?, correlativo_padded?, codigo_rd?, hora_cierre? }
+	 */
+	public function cerrarCaja(Request $request)
+	{
+		try {
+			$usuarioRaw = $request->input('usuario');
+			$fechaRaw = $request->input('fecha');
+			$codigoCarreraReq = $request->input('codigo_carrera');
+			$codigoCarreraVal = $codigoCarreraReq !== null && $codigoCarreraReq !== ''
+				? substr(trim((string) $codigoCarreraReq), 0, 50)
+				: null;
+
+			if ($usuarioRaw === null || $usuarioRaw === '') {
+				return response()->json([
+					'success' => false,
+					'message' => 'usuario requerido para cerrar caja',
+				], 400);
+			}
+			if ($fechaRaw === null || $fechaRaw === '') {
+				return response()->json([
+					'success' => false,
+					'message' => 'fecha requerida para cerrar caja',
+				], 400);
+			}
+
+			// Normalizar usuario a id_usuario entero
+			$idUsuario = (int)$usuarioRaw;
+
+			// Normalizar fecha a Y-m-d
+			$fechaYmd = null;
+			try {
+				$fechaStr = (string)$fechaRaw;
+				if (preg_match('/^\d{2}\/\d{2}\/\d{4}$/', $fechaStr)) {
+					// d/m/Y -> Y-m-d
+					$partes = explode('/', $fechaStr);
+					$fechaYmd = sprintf('%04d-%02d-%02d', (int)$partes[2], (int)$partes[1], (int)$partes[0]);
+				} elseif (preg_match('/^\d{4}-\d{2}-\d{2}$/', $fechaStr)) {
+					$fechaYmd = $fechaStr;
+				} else {
+					$fechaYmd = Carbon::parse($fechaStr)->format('Y-m-d');
+				}
+			} catch (\Throwable $e) {
+				return response()->json([
+					'success' => false,
+					'message' => 'Formato de fecha no válido para cerrar caja',
+				], 400);
+			}
+
+			$ordenCierre = 1;
+			$horaCierreRespuesta = null;
+			$idLibroDiarioCierre = null;
+			$correlativoOut = null;
+			$correlativoPaddedOut = null;
+			$codigoRdOut = null;
+			$respuestaAnticipada = null;
+
+			$tieneNumeracionRd = Schema::hasTable('libro_diario_cierre')
+				&& Schema::hasColumn('libro_diario_cierre', 'correlativo')
+				&& Schema::hasColumn('libro_diario_cierre', 'codigo_rd');
+
+			try {
+				if (Schema::hasTable('libro_diario_cierre')) {
+					DB::transaction(function () use (
+						$idUsuario,
+						$fechaYmd,
+						$codigoCarreraVal,
+						$tieneNumeracionRd,
+						&$ordenCierre,
+						&$horaCierreRespuesta,
+						&$idLibroDiarioCierre,
+						&$correlativoOut,
+						&$correlativoPaddedOut,
+						&$codigoRdOut,
+						&$respuestaAnticipada
+					) {
+						$primera = DB::table('libro_diario_cierre')
+							->where('id_usuario', $idUsuario)
+							->where('fecha', $fechaYmd)
+							->orderBy('id', 'asc')
+							->lockForUpdate()
+							->first();
+
+						if ($primera) {
+							$ordenCierre = (int) $primera->orden_cierre;
+							$idLibroDiarioCierre = (int) $primera->id;
+							$hc = $primera->hora_cierre ?? null;
+
+							if ($tieneNumeracionRd
+								&& ($primera->correlativo === null || (int) $primera->correlativo < 1)
+								&& empty($primera->codigo_rd)) {
+								$ids = LibroDiarioIdentificadorHelper::reservarSiguienteIdentificador($fechaYmd, $codigoCarreraVal);
+								DB::table('libro_diario_cierre')->where('id', $primera->id)->update([
+									'correlativo' => $ids['correlativo'],
+									'codigo_rd' => $ids['codigo_rd'],
+									'updated_at' => now(),
+								]);
+								$primera->correlativo = $ids['correlativo'];
+								$primera->codigo_rd = $ids['codigo_rd'];
+							}
+
+							if ($hc !== null && $hc !== '') {
+								$horaCierreRespuesta = is_string($hc) ? $hc : substr((string) $hc, 0, 8);
+
+								$updReuso = ['updated_at' => now()];
+								if ($codigoCarreraVal !== null) {
+									$updReuso['codigo_carrera'] = $codigoCarreraVal;
+								}
+								if (count($updReuso) > 1) {
+									DB::table('libro_diario_cierre')->where('id', $primera->id)->update($updReuso);
+								}
+
+								$fila = DB::table('libro_diario_cierre')->where('id', $primera->id)->first();
+								if ($fila) {
+									$correlativoOut = isset($fila->correlativo) ? (int) $fila->correlativo : null;
+									$correlativoPaddedOut = $correlativoOut !== null
+										? LibroDiarioIdentificadorHelper::formatearCorrelativoMin3Digitos($correlativoOut)
+										: null;
+									$codigoRdOut = isset($fila->codigo_rd) ? (string) $fila->codigo_rd : null;
+								}
+
+								Log::info('[CobroController] cerrarCaja: reutiliza cierre existente (hora_cierre sin cambiar)', [
+									'id_usuario' => $idUsuario,
+									'fecha' => $fechaYmd,
+									'orden_cierre' => $ordenCierre,
+								]);
+
+								$respuestaAnticipada = [
+									'success' => true,
+									'message' => 'La caja ya figuraba cerrada para esta fecha; se mantiene la hora de cierre registrada.',
+									'orden_cierre' => $ordenCierre,
+									'id_libro_diario_cierre' => $idLibroDiarioCierre,
+									'hora_cierre' => $horaCierreRespuesta,
+									'correlativo' => $correlativoOut,
+									'correlativo_padded' => $correlativoPaddedOut,
+									'codigo_rd' => $codigoRdOut,
+								];
+
+								return;
+							}
+
+							$horaCierreRespuesta = now()->format('H:i:s');
+							$updPrimera = [
+								'hora_cierre' => $horaCierreRespuesta,
+								'updated_at' => now(),
+							];
+							if ($codigoCarreraVal !== null) {
+								$updPrimera['codigo_carrera'] = $codigoCarreraVal;
+							}
+							DB::table('libro_diario_cierre')
+								->where('id', $primera->id)
+								->update($updPrimera);
+
+							$fila = DB::table('libro_diario_cierre')->where('id', $primera->id)->first();
+							if ($fila && $tieneNumeracionRd) {
+								$correlativoOut = isset($fila->correlativo) ? (int) $fila->correlativo : null;
+								$correlativoPaddedOut = $correlativoOut !== null
+									? LibroDiarioIdentificadorHelper::formatearCorrelativoMin3Digitos($correlativoOut)
+									: null;
+								$codigoRdOut = isset($fila->codigo_rd) ? (string) $fila->codigo_rd : null;
+							}
+						} else {
+							$ordenCierre = (int) DB::table('libro_diario_cierre')
+								->where('id_usuario', $idUsuario)
+								->where('fecha', $fechaYmd)
+								->max('orden_cierre');
+							$ordenCierre += 1;
+
+							$horaCierreRespuesta = now()->format('H:i:s');
+
+							$insert = [
+								'id_usuario' => $idUsuario,
+								'fecha' => $fechaYmd,
+								'orden_cierre' => $ordenCierre,
+								'codigo_carrera' => $codigoCarreraVal,
+								'hora_cierre' => $horaCierreRespuesta,
+								'created_at' => now(),
+								'updated_at' => now(),
+							];
+
+							if ($tieneNumeracionRd) {
+								$ids = LibroDiarioIdentificadorHelper::reservarSiguienteIdentificador($fechaYmd, $codigoCarreraVal);
+								$insert['correlativo'] = $ids['correlativo'];
+								$insert['codigo_rd'] = $ids['codigo_rd'];
+								$correlativoOut = $ids['correlativo'];
+								$correlativoPaddedOut = $ids['correlativo_padded'];
+								$codigoRdOut = $ids['codigo_rd'];
+							}
+
+							$idLibroDiarioCierre = (int) DB::table('libro_diario_cierre')->insertGetId($insert);
+						}
+					});
+
+					if ($respuestaAnticipada !== null) {
+						return response()->json($respuestaAnticipada);
+					}
+				}
+			} catch (\Throwable $e) {
+				Log::warning('[CobroController] cerrarCaja: no se pudo usar libro_diario_cierre, usando orden_cierre=1', ['error' => $e->getMessage()]);
+			}
+
+			Log::info('[CobroController] cerrarCaja llamado', [
+				'id_usuario' => $idUsuario,
+				'fecha' => $fechaYmd,
+				'orden_cierre' => $ordenCierre,
+			]);
+
+			$jsonOk = [
+				'success' => true,
+				'message' => 'Caja cerrada exitosamente.',
+				'orden_cierre' => $ordenCierre,
+				'id_libro_diario_cierre' => $idLibroDiarioCierre,
+				'hora_cierre' => $horaCierreRespuesta,
+			];
+			if ($correlativoOut !== null) {
+				$jsonOk['correlativo'] = $correlativoOut;
+			}
+			if ($correlativoPaddedOut !== null) {
+				$jsonOk['correlativo_padded'] = $correlativoPaddedOut;
+			}
+			if ($codigoRdOut !== null) {
+				$jsonOk['codigo_rd'] = $codigoRdOut;
+			}
+
+			return response()->json($jsonOk);
+		} catch (\Throwable $e) {
+			Log::warning('[CobroController] cerrarCaja exception', [
+				'error' => $e->getMessage(),
+			]);
+
+			return response()->json([
+				'success' => false,
+				'message' => 'Error interno al cerrar caja',
+			], 500);
 		}
 	}
 }

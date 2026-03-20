@@ -85,7 +85,7 @@ export class AsignacionBecasDescuentosComponent implements OnInit {
 
 	constructor(private fb: FormBuilder, private cobrosService: CobrosService,private auth:AuthService) {
 		this.searchForm = this.fb.group({
-			cod_ceta: [''],
+			cod_ceta: ['', [Validators.pattern(/^[0-9]*$/)]],
 			gestion: ['']
 		});
 		this.contextForm = this.fb.group({
@@ -294,9 +294,19 @@ export class AsignacionBecasDescuentosComponent implements OnInit {
 		return Math.round((n + Number.EPSILON) * 100) / 100;
 	}
 
+	/** Solo dígitos en Código CETA (teclado y pegado). */
+	onCodCetaInput(event: Event): void {
+		const el = event.target as HTMLInputElement;
+		const onlyDigits = (el.value || '').replace(/\D/g, '');
+		if (el.value !== onlyDigits) {
+			this.searchForm.get('cod_ceta')?.setValue(onlyDigits, { emitEvent: false });
+		}
+	}
+
 	buscarPorCodCeta(): void {
 		const code = (this.searchForm.value?.cod_ceta || '').toString().trim();
 		if (!code) return;
+		if (!/^\d+$/.test(code)) return;
 		const gesRaw = (this.searchForm.value?.gestion || '').toString().trim();
 		const ges = this.gestionesCatalogo.includes(gesRaw) ? gesRaw : '';
 		this.cobrosService.getResumen(code, ges || undefined).subscribe({

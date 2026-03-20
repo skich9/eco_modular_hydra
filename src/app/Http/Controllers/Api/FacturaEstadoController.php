@@ -18,6 +18,9 @@ class FacturaEstadoController extends Controller
             $perPage = (int) ($request->query('per_page', 10));
             if ($perPage < 1) $perPage = 10; if ($perPage > 100) $perPage = 100;
             $anio = $request->query('anio');
+            $idUsuario = $request->query('id_usuario');
+            $fecha = $request->query('fecha');
+            $codigoCarrera = $request->query('codigo_carrera');
 
             $q = DB::table('factura as f')
                 ->select(
@@ -35,6 +38,17 @@ class FacturaEstadoController extends Controller
                     'f.monto_total'
                 );
             if ($anio) { $q->where('f.anio', (int)$anio); }
+            if ($idUsuario !== null && $idUsuario !== '') { $q->where('f.id_usuario', (int)$idUsuario); }
+            if ($fecha) { $q->whereDate('f.fecha_emision', $fecha); }
+            if ($codigoCarrera !== null && $codigoCarrera !== '') {
+                $q->whereExists(function ($sub) use ($codigoCarrera) {
+                    $sub->select(DB::raw(1))
+                        ->from('inscripciones as i')
+                        ->join('pensums as p', 'p.cod_pensum', '=', 'i.cod_pensum')
+                        ->whereColumn('i.cod_ceta', 'f.cod_ceta')
+                        ->where('p.codigo_carrera', $codigoCarrera);
+                });
+            }
             $q->orderBy('f.anio', 'desc')->orderBy('f.nro_factura', 'desc');
 
             $total = $q->count();

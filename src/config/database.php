@@ -97,13 +97,29 @@ return [
             'sslmode' => 'prefer',
         ],
 
+        // Conexión MySQL local para migración con API REST
+        'mysql_local' => [
+            'driver' => 'mysql',
+            'host' => env('MYSQL_LOCAL_HOST', '127.0.0.1'),
+            'port' => env('MYSQL_LOCAL_PORT', '3306'),
+            'database' => env('MYSQL_LOCAL_DATABASE', 'electroniba_bd_29_12_2025'),
+            'username' => env('MYSQL_LOCAL_USERNAME', 'root'),
+            'password' => env('MYSQL_LOCAL_PASSWORD', ''),
+            'charset' => 'utf8mb4',
+            'collation' => 'utf8mb4_unicode_ci',
+            'prefix' => '',
+            'prefix_indexes' => true,
+            'strict' => true,
+            'engine' => null,
+        ],
+
         // Conexiones SGA (PostgreSQL) - Electronica y Mecanica
         'sga_elec' => [
             'driver' => 'pgsql',
             'url' => env('SGA_ELEC_DB_URL'),
             'host' => env('SGA_ELEC_DB_HOST', '127.0.0.1'),
             'port' => env('SGA_ELEC_DB_PORT', '5432'),
-            'database' => env('SGA_ELEC_DB_DATABASE', 'EEA20250625'),
+            'database' => env('SGA_ELEC_DB_DATABASE', 'electroniba_bd_29_12_2025'),
             'username' => env('SGA_ELEC_DB_USERNAME', 'postgres'),
             'password' => env('SGA_ELEC_DB_PASSWORD', 'admin'),
             'charset' => env('SGA_ELEC_DB_CHARSET', 'utf8'),
@@ -118,7 +134,7 @@ return [
             'url' => env('SGA_MEC_DB_URL'),
             'host' => env('SGA_MEC_DB_HOST', '127.0.0.1'),
             'port' => env('SGA_MEC_DB_PORT', '5432'),
-            'database' => env('SGA_MEC_DB_DATABASE', 'molinete_MEA'),
+            'database' => env('SGA_MEC_DB_DATABASE', 'sga_mea'),
             'username' => env('SGA_MEC_DB_USERNAME', 'postgres'),
             'password' => env('SGA_MEC_DB_PASSWORD', 'admin'),
             'charset' => env('SGA_MEC_DB_CHARSET', 'utf8'),

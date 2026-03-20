@@ -1,4 +1,4 @@
-﻿<div class="container-fluid py-3">
+<div class="container-fluid py-3">
 	<h4 class="mb-3">Asignación de Becas / Descuentos</h4>
 
 	<!-- Búsqueda por Código CETA -->
@@ -9,8 +9,14 @@
 					<div class="col-sm-4">
 						<label class="form-label">Código CETA</label>
 						<div class="input-group">
-							<input type="text" class="form-control" formControlName="cod_ceta" />
+							<input type="text" class="form-control" formControlName="cod_ceta"
+								inputmode="numeric" autocomplete="off"
+								[class.is-invalid]="searchForm.get('cod_ceta')?.invalid && searchForm.get('cod_ceta')?.touched"
+								(input)="onCodCetaInput($event)" />
 							<button type="submit" class="btn btn-primary"><i class="fas fa-search me-1"></i>Buscar</button>
+						</div>
+						<div *ngIf="searchForm.get('cod_ceta')?.invalid && searchForm.get('cod_ceta')?.touched" class="invalid-feedback d-block">
+							Solo se permiten números.
 						</div>
 					</div>
 					<div class="col-sm-4">

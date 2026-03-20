@@ -37,6 +37,7 @@ use App\Http\Controllers\Api\FacturaEstadoController;
 use App\Http\Controllers\Api\FacturaAnulacionController;
 use App\Http\Controllers\Api\FacturaPdfController;
 use App\Http\Controllers\Api\SgaSyncController;
+use App\Http\Controllers\Api\ReporteLibroDiarioController;
 
 // Búsqueda de estudiantes
 Route::get('/estudiantes/search', [EstudianteController::class, 'search']);
@@ -174,6 +175,10 @@ Route::get('cobros/resumen', [CobroController::class, 'resumen']);
 Route::post('cobros/batch', [CobroController::class, 'batchStore']);
 Route::post('cobros/validar-impuestos', [CobroController::class, 'validarImpuestos']);
 Route::post('cobros/marcar-recibo-repuesto', [CobroController::class, 'marcarReciboRepuesto']);
+Route::post('cobros/cerrar-caja', [CobroController::class, 'cerrarCaja']);
+
+// Reportes: Libro Diario
+Route::post('reportes/libro-diario/imprimir', [ReporteLibroDiarioController::class, 'imprimir']);
 Route::get('cobros/{cod_ceta}/{cod_pensum}/{tipo_inscripcion}/{nro_cobro}', [CobroController::class, 'show']);
 Route::put('cobros/{cod_ceta}/{cod_pensum}/{tipo_inscripcion}/{nro_cobro}', [CobroController::class, 'update']);
 Route::delete('cobros/{cod_ceta}/{cod_pensum}/{tipo_inscripcion}/{nro_cobro}', [CobroController::class, 'destroy']);
