@@ -123,11 +123,15 @@ class MoraRecalculoService
 	public function recalcularMorasPendientesPorBusqueda($moras, $hoy = null)
 	{
 		$hoy = $hoy ? Carbon::parse($hoy)->startOfDay() : Carbon::today();
+		$hoyStr = $hoy->toDateString();
 
 		foreach ($moras as $i => $mora) {
 			try {
-				$idAsignacionMora = (int)(isset($mora->id_asignacion_mora) ? $mora->id_asignacion_mora : 0);
-				$idAsignacionCosto = (int)(isset($mora->id_asignacion_costo) ? $mora->id_asignacion_costo : 0);
+				// Moras vienen como arrays desde obtenerMorasPendientesEstudiante
+				$isArray = is_array($mora);
+				$idAsignacionMora = (int)($isArray ? (isset($mora['id_asignacion_mora']) ? $mora['id_asignacion_mora'] : 0) : (isset($mora->id_asignacion_mora) ? $mora->id_asignacion_mora : 0));
+				$idAsignacionCosto = (int)($isArray ? (isset($mora['id_asignacion_costo']) ? $mora['id_asignacion_costo'] : 0) : (isset($mora->id_asignacion_costo) ? $mora->id_asignacion_costo : 0));
+				$codCeta = (int)($isArray ? (isset($mora['cod_ceta']) ? $mora['cod_ceta'] : 0) : (isset($mora->cod_ceta) ? $mora->cod_ceta : 0));
 				if ($idAsignacionMora <= 0 || $idAsignacionCosto <= 0) {
 					$this->debugLog('recalcular skip: ids invalidos', [
 						'id_asignacion_mora' => $idAsignacionMora,
@@ -136,7 +140,7 @@ class MoraRecalculoService
 					continue;
 				}
 
-				$estado = isset($mora->estado) ? strtoupper(trim((string)$mora->estado)) : '';
+				$estado = $isArray ? strtoupper(trim((string)(isset($mora['estado']) ? $mora['estado'] : ''))) : (isset($mora->estado) ? strtoupper(trim((string)$mora->estado)) : '');
 				if ($estado !== 'PENDIENTE') {
 					$this->debugLog('recalcular skip: estado no recalculable', [
 						'id_asignacion_mora' => $idAsignacionMora,
@@ -146,30 +150,46 @@ class MoraRecalculoService
 					continue;
 				}
 
-				$prorrogaActiva = DB::table('prorrogas_mora')
+				$prorrogaActivaQuery = DB::table('prorrogas_mora')
 					->where('id_asignacion_costo', $idAsignacionCosto)
-					->where('activo', true)
-					->where('fecha_inicio_prorroga', '<=', $hoy)
-					->where('fecha_fin_prorroga', '>=', $hoy)
-					->exists();
+					->where('activo', 1)
+					->where('fecha_inicio_prorroga', '<=', $hoyStr)
+					->where('fecha_fin_prorroga', '>=', $hoyStr);
+				if ($codCeta > 0) {
+					$prorrogaActivaQuery->where('cod_ceta', $codCeta);
+				}
+				$prorrogaActiva = $prorrogaActivaQuery->exists();
 
 				if ($prorrogaActiva) {
+					$prorrogaRow = null;
+					try {
+						$prorrogaRow = $prorrogaActivaQuery
+							->orderBy('id_prorroga_mora', 'desc')
+							->first(['id_prorroga_mora', 'cod_ceta', 'id_asignacion_costo', 'fecha_inicio_prorroga', 'fecha_fin_prorroga', 'activo']);
+					} catch (\Throwable $e) {
+						$prorrogaRow = null;
+					}
 					$this->debugLog('recalcular skip: prorroga activa', [
 						'id_asignacion_mora' => $idAsignacionMora,
 						'id_asignacion_costo' => $idAsignacionCosto,
+						'cod_ceta' => $codCeta,
+						'hoy' => $hoyStr,
+						'prorroga' => $prorrogaRow,
 					]);
 					continue;
 				}
 
-				$montoBaseDia = (float)(isset($mora->monto_base) ? $mora->monto_base : 0);
-				$fechaInicio = !empty($mora->fecha_inicio_mora) ? Carbon::parse($mora->fecha_inicio_mora)->startOfDay() : null;
-				$fechaFin = !empty($mora->fecha_fin_mora) ? Carbon::parse($mora->fecha_fin_mora)->startOfDay() : null;
+				$montoBaseDia = (float)($isArray ? (isset($mora['monto_base']) ? $mora['monto_base'] : 0) : (isset($mora->monto_base) ? $mora->monto_base : 0));
+				$fechaInicioRaw = $isArray ? (isset($mora['fecha_inicio_mora']) ? $mora['fecha_inicio_mora'] : null) : (isset($mora->fecha_inicio_mora) ? $mora->fecha_inicio_mora : null);
+				$fechaFinRaw = $isArray ? (isset($mora['fecha_fin_mora']) ? $mora['fecha_fin_mora'] : null) : (isset($mora->fecha_fin_mora) ? $mora->fecha_fin_mora : null);
+				$fechaInicio = !empty($fechaInicioRaw) ? Carbon::parse($fechaInicioRaw)->startOfDay() : null;
+				$fechaFin = !empty($fechaFinRaw) ? Carbon::parse($fechaFinRaw)->startOfDay() : null;
 
 				if (!$fechaInicio || $montoBaseDia <= 0) {
 					$this->debugLog('recalcular skip: sin fechaInicio o monto_base<=0', [
 						'id_asignacion_mora' => $idAsignacionMora,
 						'id_asignacion_costo' => $idAsignacionCosto,
-						'fecha_inicio_mora' => isset($mora->fecha_inicio_mora) ? $mora->fecha_inicio_mora : null,
+						'fecha_inicio_mora' => $fechaInicioRaw,
 						'monto_base' => $montoBaseDia,
 					]);
 					continue;
@@ -198,7 +218,7 @@ class MoraRecalculoService
 
 				$dias = $fechaInicio->diffInDays($fechaCalculo) + 1;
 				$montoCalculado = (float)$montoBaseDia * (int)$dias;
-				$montoActual = (float)(isset($mora->monto_mora) ? $mora->monto_mora : 0);
+				$montoActual = (float)($isArray ? (isset($mora['monto_mora']) ? $mora['monto_mora'] : 0) : (isset($mora->monto_mora) ? $mora->monto_mora : 0));
 
 				if ($montoCalculado > ($montoActual + 0.0001)) {
 					$this->debugLog('recalcular update monto_mora', [
@@ -215,7 +235,11 @@ class MoraRecalculoService
 							'updated_at' => now(),
 						]);
 
-					$moras[$i]->monto_mora = $montoCalculado;
+					if ($isArray) {
+						$moras[$i]['monto_mora'] = $montoCalculado;
+					} else {
+						$moras[$i]->monto_mora = $montoCalculado;
+					}
 				}
 			} catch (\Throwable $e) {
 				continue;
@@ -248,6 +272,7 @@ class MoraRecalculoService
 
 		$moras = DB::table('asignacion_mora as am')
 			->join('asignacion_costos as ac', 'am.id_asignacion_costo', '=', 'ac.id_asignacion_costo')
+			->join('inscripciones as i', 'ac.cod_inscrip', '=', 'i.cod_inscrip')
 			->whereIn('am.id_asignacion_costo', $asignacionIds)
 			->whereIn('am.estado', ['PENDIENTE', 'CONGELADA_PRORROGA', 'PAUSADA_DUPLICIDAD', 'CERRADA_SIN_CUOTA', 'EN_ESPERA'])
 			->select(
@@ -263,6 +288,7 @@ class MoraRecalculoService
 				'am.monto_pagado',
 				'am.estado',
 				'am.observaciones',
+				'i.cod_ceta',
 				'ac.numero_cuota',
 				'ac.id_cuota_template'
 			)
@@ -276,7 +302,7 @@ class MoraRecalculoService
 		foreach ($moras as $mora) {
 			$moraArray = (array)$mora;
 			$moraArray['monto_mora_total'] = $this->calcularMoraTotalAcumulado($mora);
-			
+
 			// Calcular dias_mora: desde fecha_inicio_mora hasta hoy
 			$diasMora = 0;
 			if (!empty($mora->fecha_inicio_mora)) {
@@ -288,7 +314,7 @@ class MoraRecalculoService
 				}
 			}
 			$moraArray['dias_mora'] = $diasMora;
-			
+
 			$morasConTotal[] = $moraArray;
 
 			$this->debugLog('mora con total calculado', [
@@ -314,18 +340,19 @@ class MoraRecalculoService
 			'gestion' => (string)$gestion,
 			'hoy' => $hoy->toDateString(),
 		]);
+		$hoyStr = $hoy->toDateString();
 		try {
 			$prorrogasActivas = DB::table('prorrogas_mora')
 				->where('cod_ceta', $codCeta)
-				->where('activo', true)
-				->where('fecha_inicio_prorroga', '<=', $hoy)
-				->where('fecha_fin_prorroga', '>=', $hoy)
+				->where('activo', 1)
+				->where('fecha_inicio_prorroga', '<=', $hoyStr)
+				->where('fecha_fin_prorroga', '>=', $hoyStr)
 				->orderBy('id_asignacion_costo', 'asc')
 				->get(['id_asignacion_costo', 'fecha_inicio_prorroga', 'fecha_fin_prorroga'])
 				->toArray();
 			$this->debugLog('prorrogas activas (cod_ceta)', [
 				'cod_ceta' => $codCeta,
-				'hoy' => $hoy->toDateString(),
+				'hoy' => $hoyStr,
 				'count' => is_array($prorrogasActivas) ? count($prorrogasActivas) : 0,
 				'items' => $prorrogasActivas,
 			]);
@@ -425,15 +452,17 @@ class MoraRecalculoService
 				}
 
 				$prorrogaActiva = DB::table('prorrogas_mora')
+					->where('cod_ceta', $codCeta)
 					->where('id_asignacion_costo', $idAsign)
-					->where('activo', true)
-					->where('fecha_inicio_prorroga', '<=', $hoy)
-					->where('fecha_fin_prorroga', '>=', $hoy)
-					->first(['fecha_inicio_prorroga', 'fecha_fin_prorroga']);
+					->where('activo', 1)
+					->where('fecha_inicio_prorroga', '<=', $hoyStr)
+					->where('fecha_fin_prorroga', '>=', $hoyStr)
+					->first(['id_prorroga_mora', 'cod_ceta', 'id_asignacion_costo', 'fecha_inicio_prorroga', 'fecha_fin_prorroga', 'activo']);
 
 				$prorrogaTerminada = DB::table('prorrogas_mora')
+					->where('cod_ceta', $codCeta)
 					->where('id_asignacion_costo', $idAsign)
-					->where('fecha_fin_prorroga', '<', $hoy)
+					->where('fecha_fin_prorroga', '<', $hoyStr)
 					->orderBy('fecha_fin_prorroga', 'desc')
 					->first(['fecha_fin_prorroga']);
 				$inicioPosterior = null;
@@ -485,7 +514,9 @@ class MoraRecalculoService
 				if ($prorrogaActiva) {
 					$this->debugLog('crearMorasFaltantes skip: prorroga activa', [
 						'id_asignacion_costo' => $idAsign,
-						'hoy' => $hoy->toDateString(),
+						'cod_ceta' => (int)$codCeta,
+						'hoy' => $hoyStr,
+						'prorroga' => $prorrogaActiva,
 					]);
 					continue;
 				}

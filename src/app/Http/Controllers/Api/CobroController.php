@@ -431,13 +431,20 @@ class CobroController extends Controller
 				], 404);
 			}
 
+			$inscripcionesAll = Inscripcion::with('pensum')->where('cod_ceta', $codCeta)
+				->orderByDesc('fecha_inscripcion')
+				->orderByDesc('created_at')
+				->get();
+			if ($inscripcionesAll->isEmpty()) {
+				return response()->json([
+					'success' => false,
+					'message' => 'El estudiante no posee inscripciones registradas',
+				], 404);
+			}
+
 			// Estrategia de gestión: si viene gestion en request, usarla; caso contrario usar la última inscripción del estudiante
 			if ($gestionReq) {
-				$inscripciones = Inscripcion::with('pensum')->where('cod_ceta', $codCeta)
-					->where('gestion', $gestionReq)
-					->orderByDesc('fecha_inscripcion')
-					->orderByDesc('created_at')
-					->get();
+				$inscripciones = $inscripcionesAll->where('gestion', $gestionReq)->values();
 				if ($inscripciones->isEmpty()) {
 					return response()->json([
 						'success' => false,
@@ -446,22 +453,9 @@ class CobroController extends Controller
 				}
 				$gestionToUse = $gestionReq;
 			} else {
-				$ultima = Inscripcion::where('cod_ceta', $codCeta)
-					->orderByDesc('fecha_inscripcion')
-					->orderByDesc('created_at')
-					->first();
-				if (!$ultima) {
-					return response()->json([
-						'success' => false,
-						'message' => 'El estudiante no posee inscripciones registradas',
-					], 404);
-				}
+				$ultima = $inscripcionesAll->first();
 				$gestionToUse = $ultima->gestion;
-				$inscripciones = Inscripcion::with('pensum')->where('cod_ceta', $codCeta)
-					->where('gestion', $gestionToUse)
-					->orderByDesc('fecha_inscripcion')
-					->orderByDesc('created_at')
-					->get();
+				$inscripciones = $inscripcionesAll->where('gestion', $gestionToUse)->values();
 				$warnings[] = 'Se usó la última inscripción del estudiante: ' . $gestionToUse;
 			}
 			// Seleccionar inscripción principal: priorizar NORMAL si existe, caso contrario la primera
@@ -775,7 +769,9 @@ class CobroController extends Controller
 					}
 					// Mapear descuentos para ARRASTRE
 					if ($asignacionesArrastre && $asignacionesArrastre->count() > 0) {
-						$idsDetA = $asignacionesArrastre->pluck('id_descuentoDetalle')->filter()->map(fn($v) => (int)$v)->unique()->values();
+						$idsDetA = $asignacionesArrastre->pluck('id_descuentoDetalle')->filter()->map(function($v){
+							return (int) $v;
+						})->unique()->values();
 						if ($idsDetA->count() > 0) {
 							$detRowsA = DescuentoDetalle::whereIn('id_descuento_detalle', $idsDetA)->get(['id_descuento_detalle','monto_descuento']);
 							$detByIdA = [];
@@ -786,7 +782,9 @@ class CobroController extends Controller
 								$descuentosPorAsignArrastre[$ida] = ($idDet && isset($detByIdA[$idDet])) ? (float)$detByIdA[$idDet] : 0.0;
 							}
 						}
-						$idsAsignA = $asignacionesArrastre->pluck('id_asignacion_costo')->filter()->map(fn($v) => (int)$v)->unique()->values();
+						$idsAsignA = $asignacionesArrastre->pluck('id_asignacion_costo')->filter()->map(function($v){
+							return (int) $v;
+						})->unique()->values();
 						if ($idsAsignA->count() > 0) {
 							$detByCuotaA = DescuentoDetalle::whereIn('id_cuota', $idsAsignA)->get(['id_cuota','monto_descuento']);
 							$mapByCuotaA = [];
@@ -1021,12 +1019,12 @@ class CobroController extends Controller
 
 			// Debug para verificar datos del estudiante antes de devolver
 			Log::info('Datos del estudiante a devolver:', [
-				'cod_ceta' => $estudianteData['cod_ceta'] ?? 'no existe',
-				'nombre' => $estudianteData['nombre'] ?? 'no existe',
-				'apellido' => $estudianteData['apellido'] ?? 'no existe',
-				'nombre_completo' => $estudianteData['nombre_completo'] ?? 'no existe',
-				'ci_original' => $estudianteData['ci'] ?? 'no existe',
-				'ci_dp' => $estudiante->dp->ci_doc ?? 'no existe dp'
+				'cod_ceta' => isset($estudianteData['cod_ceta']) ? $estudianteData['cod_ceta'] : 'no existe',
+				'nombre' => isset($estudianteData['nombre']) ? $estudianteData['nombre'] : 'no existe',
+				'apellido' => isset($estudianteData['apellido']) ? $estudianteData['apellido'] : 'no existe',
+				'nombre_completo' => isset($estudianteData['nombre_completo']) ? $estudianteData['nombre_completo'] : 'no existe',
+				'ci_original' => isset($estudianteData['ci']) ? $estudianteData['ci'] : 'no existe',
+				'ci_dp' => (isset($estudiante->dp) && isset($estudiante->dp->ci_doc)) ? $estudiante->dp->ci_doc : 'no existe dp'
 			]);
 
 			if (isset($estudiante->dp)) {
@@ -1110,11 +1108,16 @@ class CobroController extends Controller
 				Log::error('Error al obtener descuentos aplicados: ' . $e->getMessage());
 			}
 
+			$inscripcionesAll = Inscripcion::where('cod_ceta', $codCeta)
+				->orderByDesc('fecha_inscripcion')
+				->orderByDesc('created_at')
+				->get();
+
 			return response()->json([
 				'success' => true,
 				'data' => [
 					'estudiante' => $estudianteData,
-					'inscripciones' => $inscripciones,
+					'inscripciones' => $inscripcionesAll,
 					'grupos' => $grupos,
 					'gestiones_all' => $gestionesAll,
 					'pensums_disponibles' => $pensumsDetalle,
@@ -1796,8 +1799,7 @@ class CobroController extends Controller
 						}
 					}
 				}
-			}
- catch (\Throwable $e) {
+			} catch (\Throwable $e) {
 				// Si falla la validación de negocio, no bloquear por defecto; pero registrar para depurar
 				try { Log::warning('batchStore: validacion mora/arrastre fallo', ['error' => $e->getMessage()]); } catch (\Throwable $e2) {}
 			}
@@ -2755,585 +2757,585 @@ class CobroController extends Controller
 							}
 						}
 					}
-}
-					$conceptoOut = isset($item['concepto']) && $item['concepto'] !== '' ? (string)$item['concepto'] : '';
-					if ($conceptoOut === '') {
-						if ($codTipoCobroItem === 'ARRASTRE') {
-							$conceptoOut = 'Mens.' . ($mesNombre !== '' ? ' ' . $mesNombre : '') . ' Niv';
-						} elseif ($codTipoCobroItem === 'MENSUALIDAD') {
-							$conceptoOut = 'Mensualidad' . ($parcialForConcepto ? ' Parcial' : '') . ($mesNombre !== '' ? " '" . $mesNombre . "'" : '');
-						} elseif ($codTipoCobroItem === 'NIVELACION') {
-							$conceptoOut = 'Mensualidad' . ($mesNombre !== '' ? ' ' . $mesNombre : '') . ' Niv';
-						} elseif ($codTipoCobroItem === 'REINCORPORACION') {
-							$conceptoOut = 'Reincorporación';
-						} else {
-							$conceptoOut = $detalle !== '' ? (string)$detalle : ((string)(isset($item['observaciones']) ? $item['observaciones'] : (isset($request->observaciones) ? $request->observaciones : 'Cobro')));
-						}
-					}
+                }
+                $conceptoOut = isset($item['concepto']) && $item['concepto'] !== '' ? (string)$item['concepto'] : '';
+                if ($conceptoOut === '') {
+                    if ($codTipoCobroItem === 'ARRASTRE') {
+                        $conceptoOut = 'Mens.' . ($mesNombre !== '' ? ' ' . $mesNombre : '') . ' Niv';
+                    } elseif ($codTipoCobroItem === 'MENSUALIDAD') {
+                        $conceptoOut = 'Mensualidad' . ($parcialForConcepto ? ' Parcial' : '') . ($mesNombre !== '' ? " '" . $mesNombre . "'" : '');
+                    } elseif ($codTipoCobroItem === 'NIVELACION') {
+                        $conceptoOut = 'Mensualidad' . ($mesNombre !== '' ? ' ' . $mesNombre : '') . ' Niv';
+                    } elseif ($codTipoCobroItem === 'REINCORPORACION') {
+                        $conceptoOut = 'Reincorporación';
+                    } else {
+                        $conceptoOut = $detalle !== '' ? (string)$detalle : ((string)(isset($item['observaciones']) ? $item['observaciones'] : (isset($request->observaciones) ? $request->observaciones : 'Cobro')));
+                    }
+                }
 
-					$fechaCobroRaw = (string)(isset($item['fecha_cobro']) ? $item['fecha_cobro'] : date('Y-m-d H:i:s'));
-					$fechaCobroSave = $fechaCobroRaw;
-					try {
-						if (preg_match('/^\d{4}-\d{2}-\d{2}$/', $fechaCobroRaw)) {
-							$nowLaPaz = \Carbon\Carbon::now('America/La_Paz');
-							$fechaCobroSave = substr($fechaCobroRaw, 0, 10) . ' ' . $nowLaPaz->format('H:i:s');
-						} else {
-							$fechaCobroSave = \Carbon\Carbon::parse($fechaCobroRaw, 'America/La_Paz')->format('Y-m-d H:i:s');
-						}
-					} catch (\Throwable $e) {
-						$fechaCobroSave = date('Y-m-d H:i:s');
-					}
+                $fechaCobroRaw = (string)(isset($item['fecha_cobro']) ? $item['fecha_cobro'] : date('Y-m-d H:i:s'));
+                $fechaCobroSave = $fechaCobroRaw;
+                try {
+                    if (preg_match('/^\d{4}-\d{2}-\d{2}$/', $fechaCobroRaw)) {
+                        $nowLaPaz = \Carbon\Carbon::now('America/La_Paz');
+                        $fechaCobroSave = substr($fechaCobroRaw, 0, 10) . ' ' . $nowLaPaz->format('H:i:s');
+                    } else {
+                        $fechaCobroSave = \Carbon\Carbon::parse($fechaCobroRaw, 'America/La_Paz')->format('Y-m-d H:i:s');
+                    }
+                } catch (\Throwable $e) {
+                    $fechaCobroSave = date('Y-m-d H:i:s');
+                }
 
-					// Inserción en notas SGA usando el detalle correcto
-					try {
-						$fechaNota = (string)(isset($item['fecha_cobro']) ? $item['fecha_cobro'] : date('Y-m-d'));
-						$anioFull = (int) date('Y', strtotime($fechaNota));
-						$anio2 = (int) date('y', strtotime($fechaNota));
-						$prefijoCarrera = 'E';
-						$codCeta = (int) $request->cod_ceta;
-						$monto = (float) $item['monto'];
-						$isEfectivo = ($formaNombre === 'EFECTIVO');
-						$isBancario = in_array($formaNombre, ['TARJETA','CHEQUE','DEPOSITO','TRANSFERENCIA','QR']) || in_array($formaCode, ['O']);
+                // Inserción en notas SGA usando el detalle correcto
+                try {
+                    $fechaNota = (string)(isset($item['fecha_cobro']) ? $item['fecha_cobro'] : date('Y-m-d'));
+                    $anioFull = (int) date('Y', strtotime($fechaNota));
+                    $anio2 = (int) date('y', strtotime($fechaNota));
+                    $prefijoCarrera = 'E';
+                    $codCeta = (int) $request->cod_ceta;
+                    $monto = (float) $item['monto'];
+                    $isEfectivo = ($formaNombre === 'EFECTIVO');
+                    $isBancario = in_array($formaNombre, ['TARJETA','CHEQUE','DEPOSITO','TRANSFERENCIA','QR']) || in_array($formaCode, ['O']);
 
-						if ($isEfectivo) {
-							DB::statement(
-								"INSERT INTO doc_counter (scope, last, created_at, updated_at) VALUES (?, 1, NOW(), NOW())\n"
-								. "ON DUPLICATE KEY UPDATE last = LAST_INSERT_ID(last + 1), updated_at = NOW()",
-								['NOTA_REPOSICION']
-							);
-							$rowNr = DB::selectOne('SELECT LAST_INSERT_ID() AS id');
-							$nrCorrelativo = (int)(isset($rowNr->id) ? $rowNr->id : 0);
-							DB::table('nota_reposicion')->insert([
-								'correlativo' => $nrCorrelativo,
-								'usuario' => $usuarioNick,
-								'cod_ceta' => $codCeta,
-								'monto' => $monto,
-								'concepto_adm' => $detalle,
-								'fecha_nota' => $fechaNota,
-								'concepto_est' => $detalle,
-								'observaciones' => $obsOriginal,
-								'prefijo_carrera' => $prefijoCarrera,
-								'anulado' => false,
-								'anio_reposicion' => $anio2,
-								'nro_recibo' => $nroRecibo ? (string)$nroRecibo : null,
-								'tipo_ingreso' => null,
-								'cont' => 2,
-							]);
-						}
+                    if ($isEfectivo) {
+                        DB::statement(
+                            "INSERT INTO doc_counter (scope, last, created_at, updated_at) VALUES (?, 1, NOW(), NOW())\n"
+                            . "ON DUPLICATE KEY UPDATE last = LAST_INSERT_ID(last + 1), updated_at = NOW()",
+                            ['NOTA_REPOSICION']
+                        );
+                        $rowNr = DB::selectOne('SELECT LAST_INSERT_ID() AS id');
+                        $nrCorrelativo = (int)(isset($rowNr->id) ? $rowNr->id : 0);
+                        DB::table('nota_reposicion')->insert([
+                            'correlativo' => $nrCorrelativo,
+                            'usuario' => $usuarioNick,
+                            'cod_ceta' => $codCeta,
+                            'monto' => $monto,
+                            'concepto_adm' => $detalle,
+                            'fecha_nota' => $fechaNota,
+                            'concepto_est' => $detalle,
+                            'observaciones' => $obsOriginal,
+                            'prefijo_carrera' => $prefijoCarrera,
+                            'anulado' => false,
+                            'anio_reposicion' => $anio2,
+                            'nro_recibo' => $nroRecibo ? (string)$nroRecibo : null,
+                            'tipo_ingreso' => null,
+                            'cont' => 2,
+                        ]);
+                    }
 
-						if ($isBancario) {
-							DB::statement(
-								"INSERT INTO doc_counter (scope, last, created_at, updated_at) VALUES (?, 1, NOW(), NOW())\n"
-								. "ON DUPLICATE KEY UPDATE last = LAST_INSERT_ID(last + 1), updated_at = NOW()",
-								['NOTA_BANCARIA']
-							);
-							$rowNb = DB::selectOne('SELECT LAST_INSERT_ID() AS id');
-							$nbCorrelativo = (int)(isset($rowNb->id) ? $rowNb->id : 0);
-							$tarj4 = trim((string)(isset($item['tarjeta_first4']) ? $item['tarjeta_first4'] : ''));
-							$tarjL4 = trim((string)(isset($item['tarjeta_last4']) ? $item['tarjeta_last4'] : ''));
-							// Banco destino desde la cuenta seleccionada
-							$bancoDest = '';
-							try {
-								$idCuenta = isset($request->id_cuentas_bancarias) ? $request->id_cuentas_bancarias : (isset($item['id_cuentas_bancarias']) ? $item['id_cuentas_bancarias'] : null);
-								if ($idCuenta) {
-									$cb = DB::table('cuentas_bancarias')->where('id_cuentas_bancarias', (int)$idCuenta)->first();
-									if ($cb) { $bancoDest = trim((string)(isset($cb->banco) ? $cb->banco : '')) . ' - ' . trim((string)(isset($cb->numero_cuenta) ? $cb->numero_cuenta : '')); }
-								}
-							} catch (\Throwable $e) {}
-							// nro_tarjeta completo: first4 + 00000000 + last4
-							$nroTarjetaFull = ($tarj4 && $tarjL4) ? ($tarj4 . '00000000' . $tarjL4) : null;
-							DB::table('nota_bancaria')->insert([
-								'anio_deposito' => $anioFull,
-								'correlativo' => $nbCorrelativo,
-								'usuario' => $usuarioNick,
-								'fecha_nota' => $fechaNota,
-								'cod_ceta' => $codCeta,
-								'monto' => $monto,
-								'concepto' => $detalle,
-								'nro_factura' => $nroFactura ? (string)$nroFactura : '',
-								'nro_recibo' => $nroRecibo ? (string)$nroRecibo : '',
-								'banco' => $bancoDest,
-								'fecha_deposito' => (string)(isset($item['fecha_deposito']) ? $item['fecha_deposito'] : ''),
-								'nro_transaccion' => (string)(isset($item['nro_deposito']) ? $item['nro_deposito'] : ''),
-								'prefijo_carrera' => $prefijoCarrera,
-								'concepto_est' => $detalle,
-								'observacion' => $obsOriginal,
-								'anulado' => false,
-								'tipo_nota' => (string)(isset($formaIdItem) ? $formaIdItem : ''),
-								'banco_origen' => (string)(isset($item['banco_origen']) ? $item['banco_origen'] : ''),
-								'nro_tarjeta' => $nroTarjetaFull,
-							]);
-						}
-					} catch (\Throwable $e) {
-						\Log::warning('batchStore: nota insert failed', [ 'err' => $e->getMessage() ]);
-					}
+                    if ($isBancario) {
+                        DB::statement(
+                            "INSERT INTO doc_counter (scope, last, created_at, updated_at) VALUES (?, 1, NOW(), NOW())\n"
+                            . "ON DUPLICATE KEY UPDATE last = LAST_INSERT_ID(last + 1), updated_at = NOW()",
+                            ['NOTA_BANCARIA']
+                        );
+                        $rowNb = DB::selectOne('SELECT LAST_INSERT_ID() AS id');
+                        $nbCorrelativo = (int)(isset($rowNb->id) ? $rowNb->id : 0);
+                        $tarj4 = trim((string)(isset($item['tarjeta_first4']) ? $item['tarjeta_first4'] : ''));
+                        $tarjL4 = trim((string)(isset($item['tarjeta_last4']) ? $item['tarjeta_last4'] : ''));
+                        // Banco destino desde la cuenta seleccionada
+                        $bancoDest = '';
+                        try {
+                            $idCuenta = isset($request->id_cuentas_bancarias) ? $request->id_cuentas_bancarias : (isset($item['id_cuentas_bancarias']) ? $item['id_cuentas_bancarias'] : null);
+                            if ($idCuenta) {
+                                $cb = DB::table('cuentas_bancarias')->where('id_cuentas_bancarias', (int)$idCuenta)->first();
+                                if ($cb) { $bancoDest = trim((string)(isset($cb->banco) ? $cb->banco : '')) . ' - ' . trim((string)(isset($cb->numero_cuenta) ? $cb->numero_cuenta : '')); }
+                            }
+                        } catch (\Throwable $e) {}
+                        // nro_tarjeta completo: first4 + 00000000 + last4
+                        $nroTarjetaFull = ($tarj4 && $tarjL4) ? ($tarj4 . '00000000' . $tarjL4) : null;
+                        DB::table('nota_bancaria')->insert([
+                            'anio_deposito' => $anioFull,
+                            'correlativo' => $nbCorrelativo,
+                            'usuario' => $usuarioNick,
+                            'fecha_nota' => $fechaNota,
+                            'cod_ceta' => $codCeta,
+                            'monto' => $monto,
+                            'concepto' => $detalle,
+                            'nro_factura' => $nroFactura ? (string)$nroFactura : '',
+                            'nro_recibo' => $nroRecibo ? (string)$nroRecibo : '',
+                            'banco' => $bancoDest,
+                            'fecha_deposito' => (string)(isset($item['fecha_deposito']) ? $item['fecha_deposito'] : ''),
+                            'nro_transaccion' => (string)(isset($item['nro_deposito']) ? $item['nro_deposito'] : ''),
+                            'prefijo_carrera' => $prefijoCarrera,
+                            'concepto_est' => $detalle,
+                            'observacion' => $obsOriginal,
+                            'anulado' => false,
+                            'tipo_nota' => (string)(isset($formaIdItem) ? $formaIdItem : ''),
+                            'banco_origen' => (string)(isset($item['banco_origen']) ? $item['banco_origen'] : ''),
+                            'nro_tarjeta' => $nroTarjetaFull,
+                        ]);
+                    }
+                } catch (\Throwable $e) {
+                    \Log::warning('batchStore: nota insert failed', [ 'err' => $e->getMessage() ]);
+                }
 
-					// Si hay agrupación de factura, acumular el detalle formateado para el envío único
-					if ($hasFacturaGroup && $tipoDoc === 'F' && $medioDoc === 'C') {
-						$detalleDesc = isset($detalle) && $detalle !== '' ? (string)$detalle : ((string)(isset($item['observaciones']) ? $item['observaciones'] : 'Cobro'));
+                // Si hay agrupación de factura, acumular el detalle formateado para el envío único
+                if ($hasFacturaGroup && $tipoDoc === 'F' && $medioDoc === 'C') {
+                    $detalleDesc = isset($detalle) && $detalle !== '' ? (string)$detalle : ((string)(isset($item['observaciones']) ? $item['observaciones'] : 'Cobro'));
 
-						// Usar valores PRE-CALCULADOS de descuento prorrateado
-						$precioBruto = 0.0;
-						$descuentoMonto = 0.0;
-						$precioNeto = (float)$item['monto'];
+                    // Usar valores PRE-CALCULADOS de descuento prorrateado
+                    $precioBruto = 0.0;
+                    $descuentoMonto = 0.0;
+                    $precioNeto = (float)$item['monto'];
 
-						// Si tiene valores pre-calculados, usarlos
-						if (isset($descuentosCalculados[$idx]) && $descuentosCalculados[$idx]['precio_bruto_prorrateado'] > 0) {
-							$precioBruto = $descuentosCalculados[$idx]['precio_bruto_prorrateado'];
-							$descuentoMonto = $descuentosCalculados[$idx]['descuento_prorrateado'];
-						} elseif (isset($item['pu_mensualidad']) && (float)$item['pu_mensualidad'] > 0) {
-							// Fallback: si no hay pre-calculados, usar valores del item
-							$precioBruto = (float)$item['pu_mensualidad'];
-							$descuentoMonto = isset($item['descuento']) && (float)$item['descuento'] > 0 ? (float)$item['descuento'] : 0;
-						} else {
-							// Si no hay pu_mensualidad, usar el monto como precio bruto (sin descuento)
-							$precioBruto = $precioNeto;
-						}
+                    // Si tiene valores pre-calculados, usarlos
+                    if (isset($descuentosCalculados[$idx]) && $descuentosCalculados[$idx]['precio_bruto_prorrateado'] > 0) {
+                        $precioBruto = $descuentosCalculados[$idx]['precio_bruto_prorrateado'];
+                        $descuentoMonto = $descuentosCalculados[$idx]['descuento_prorrateado'];
+                    } elseif (isset($item['pu_mensualidad']) && (float)$item['pu_mensualidad'] > 0) {
+                        // Fallback: si no hay pre-calculados, usar valores del item
+                        $precioBruto = (float)$item['pu_mensualidad'];
+                        $descuentoMonto = isset($item['descuento']) && (float)$item['descuento'] > 0 ? (float)$item['descuento'] : 0;
+                    } else {
+                        // Si no hay pu_mensualidad, usar el monto como precio bruto (sin descuento)
+                        $precioBruto = $precioNeto;
+                    }
 
-						try {
-							Log::info('batchStore: construyendo factDetalle', [
-								'idx' => $idx,
-								'item_monto' => $precioNeto,
-								'item_pu_mensualidad' => isset($item['pu_mensualidad']) ? (float)$item['pu_mensualidad'] : null,
-								'item_descuento_frontend' => isset($item['descuento']) ? (float)$item['descuento'] : null,
-								'pre_calculado' => isset($descuentosCalculados[$idx]) ? $descuentosCalculados[$idx] : null,
-								'usando_precioBruto' => $precioBruto,
-								'usando_descuentoMonto' => $descuentoMonto,
-								'usando_precioNeto' => $precioNeto
-							]);
-						} catch (\Throwable $e) {}
+                    try {
+                        Log::info('batchStore: construyendo factDetalle', [
+                            'idx' => $idx,
+                            'item_monto' => $precioNeto,
+                            'item_pu_mensualidad' => isset($item['pu_mensualidad']) ? (float)$item['pu_mensualidad'] : null,
+                            'item_descuento_frontend' => isset($item['descuento']) ? (float)$item['descuento'] : null,
+                            'pre_calculado' => isset($descuentosCalculados[$idx]) ? $descuentosCalculados[$idx] : null,
+                            'usando_precioBruto' => $precioBruto,
+                            'usando_descuentoMonto' => $descuentoMonto,
+                            'usando_precioNeto' => $precioNeto
+                        ]);
+                    } catch (\Throwable $e) {}
 
-						$codigoSin = 99100; // Default para SIN
-						$codigoInterno = null; // Default para PDF
-						$actividadEconomica = 853000; // Default
-						$unidadMedida = 58; // Default
+                    $codigoSin = 99100; // Default para SIN
+                    $codigoInterno = null; // Default para PDF
+                    $actividadEconomica = 853000; // Default
+                    $unidadMedida = 58; // Default
 
-						// Mapeo de palabras clave a nombre_servicio en items_cobro
-						$textoDetalle = strtolower($detalleDesc);
-						$nombreServicio = null;
+                    // Mapeo de palabras clave a nombre_servicio en items_cobro
+                    $textoDetalle = strtolower($detalleDesc);
+                    $nombreServicio = null;
 
-						if (strpos($textoDetalle, 'mensualidad') !== false) {
-							$nombreServicio = 'mensualidad_factura';
-						} elseif (strpos($textoDetalle, 'rezagado') !== false || strpos($textoDetalle, '[rezagado]') !== false) {
-							$nombreServicio = 'rezagado';
-						} elseif (strpos($textoDetalle, 'arrastre') !== false || strpos($textoDetalle, 'nivelacion') !== false || strpos($textoDetalle, 'nivelación') !== false) {
-							$nombreServicio = 'arrastre';
-						} elseif (strpos($textoDetalle, 'multa') !== false || strpos($textoDetalle, 'niv') !== false) {
-							$nombreServicio = 'multa';
-						} elseif (strpos($textoDetalle, 'reincorporacion') !== false || strpos($textoDetalle, 'reincorporación') !== false) {
-							$nombreServicio = 'reincorporacion';
-						} elseif (strpos($textoDetalle, 'carnet') !== false) {
-							$nombreServicio = 'E9';
-						}
+                    if (strpos($textoDetalle, 'mensualidad') !== false) {
+                        $nombreServicio = 'mensualidad_factura';
+                    } elseif (strpos($textoDetalle, 'rezagado') !== false || strpos($textoDetalle, '[rezagado]') !== false) {
+                        $nombreServicio = 'rezagado';
+                    } elseif (strpos($textoDetalle, 'arrastre') !== false || strpos($textoDetalle, 'nivelacion') !== false || strpos($textoDetalle, 'nivelación') !== false) {
+                        $nombreServicio = 'arrastre';
+                    } elseif (strpos($textoDetalle, 'multa') !== false || strpos($textoDetalle, 'niv') !== false) {
+                        $nombreServicio = 'multa';
+                    } elseif (strpos($textoDetalle, 'reincorporacion') !== false || strpos($textoDetalle, 'reincorporación') !== false) {
+                        $nombreServicio = 'reincorporacion';
+                    } elseif (strpos($textoDetalle, 'carnet') !== false) {
+                        $nombreServicio = 'E9';
+                    }
 
-						// Buscar en items_cobro por nombre_servicio
-						if ($nombreServicio) {
-							$itemCobro = DB::table('items_cobro')
-								->where('nombre_servicio', $nombreServicio)
-								->first();
+                    // Buscar en items_cobro por nombre_servicio
+                    if ($nombreServicio) {
+                        $itemCobro = DB::table('items_cobro')
+                            ->where('nombre_servicio', $nombreServicio)
+                            ->first();
 
-							if ($itemCobro) {
-								$codigoSin = (int)(isset($itemCobro->codigo_producto_impuestos) ? $itemCobro->codigo_producto_impuestos : 99100);
-								$codigoInternoRaw = isset($itemCobro->codigo_producto_interno) ? (int)$itemCobro->codigo_producto_interno : 0;
-								$codigoInterno = ($codigoInternoRaw > 0) ? $codigoInternoRaw : null;
-								$actividadEconomica = (int)(isset($itemCobro->actividad_economica) ? $itemCobro->actividad_economica : 853000);
-								$unidadMedida = (int)(isset($itemCobro->unidad_medida) ? $itemCobro->unidad_medida : 58);
-							}
-						}
-						$factDetalles[] = [
-							'codigo_sin' => $codigoSin, // Para enviar al SIN
-							'codigo_interno' => $codigoInterno, // Para mostrar en PDF
-							'codigo' => 'ITEM-' . (int)$nroCobro,
-							'descripcion' => $detalleDesc,
-							'cantidad' => 1,
-							'unidad_medida' => $unidadMedida,
-							// Redondear a 2 decimales para SIAT (impuestos requieren 2 decimales)
-							'precio_unitario' => round($precioBruto, 2),
-							'descuento' => round($descuentoMonto, 2),
-							'subtotal' => round($precioNeto, 2),
-							'actividad_economica' => $actividadEconomica,
-						];
-						// También acumular en meta para post-commit
-						if (is_array($emitGroupMeta)) {
-                            $emitGroupMeta['detalles'][] = end($factDetalles);
+                        if ($itemCobro) {
+                            $codigoSin = (int)(isset($itemCobro->codigo_producto_impuestos) ? $itemCobro->codigo_producto_impuestos : 99100);
+                            $codigoInternoRaw = isset($itemCobro->codigo_producto_interno) ? (int)$itemCobro->codigo_producto_interno : 0;
+                            $codigoInterno = ($codigoInternoRaw > 0) ? $codigoInternoRaw : null;
+                            $actividadEconomica = (int)(isset($itemCobro->actividad_economica) ? $itemCobro->actividad_economica : 853000);
+                            $unidadMedida = (int)(isset($itemCobro->unidad_medida) ? $itemCobro->unidad_medida : 58);
                         }
-					}
+                    }
+                    $factDetalles[] = [
+                        'codigo_sin' => $codigoSin, // Para enviar al SIN
+                        'codigo_interno' => $codigoInterno, // Para mostrar en PDF
+                        'codigo' => 'ITEM-' . (int)$nroCobro,
+                        'descripcion' => $detalleDesc,
+                        'cantidad' => 1,
+                        'unidad_medida' => $unidadMedida,
+                        // Redondear a 2 decimales para SIAT (impuestos requieren 2 decimales)
+                        'precio_unitario' => round($precioBruto, 2),
+                        'descuento' => round($descuentoMonto, 2),
+                        'subtotal' => round($precioNeto, 2),
+                        'actividad_economica' => $actividadEconomica,
+                    ];
+                    // También acumular en meta para post-commit
+                    if (is_array($emitGroupMeta)) {
+                        $emitGroupMeta['detalles'][] = end($factDetalles);
+                    }
+                }
 
-					// Usar valores PRE-CALCULADOS de descuento y precio unitario (aplica para recibos y facturas)
-					$puMensualidadFinal = isset($item['pu_mensualidad']) ? $item['pu_mensualidad'] : 0;
-					$descuentoFinal = isset($item['descuento']) ? $item['descuento'] : null;
+                // Usar valores PRE-CALCULADOS de descuento y precio unitario (aplica para recibos y facturas)
+                $puMensualidadFinal = isset($item['pu_mensualidad']) ? $item['pu_mensualidad'] : 0;
+                $descuentoFinal = isset($item['descuento']) ? $item['descuento'] : null;
 
-					if (isset($descuentosCalculados[$idx]) && $descuentosCalculados[$idx]['precio_bruto_prorrateado'] > 0) {
-						// Mantener 4 decimales para la base de datos (mayor precisión)
-						$puMensualidadFinal = round($descuentosCalculados[$idx]['precio_bruto_prorrateado'], 4);
-						$descuentoFinal = round($descuentosCalculados[$idx]['descuento_prorrateado'], 4);
+                if (isset($descuentosCalculados[$idx]) && $descuentosCalculados[$idx]['precio_bruto_prorrateado'] > 0) {
+                    // Mantener 4 decimales para la base de datos (mayor precisión)
+                    $puMensualidadFinal = round($descuentosCalculados[$idx]['precio_bruto_prorrateado'], 4);
+                    $descuentoFinal = round($descuentosCalculados[$idx]['descuento_prorrateado'], 4);
 
-						try {
-							Log::info('batchStore: usando valores pre-calculados en cobro', [
-								'idx' => $idx,
-								'tipo_doc' => $tipoDoc,
-								'medio_doc' => $medioDoc,
-								'pu_original' => isset($item['pu_mensualidad']) ? $item['pu_mensualidad'] : 0,
-								'pu_prorrateado' => $puMensualidadFinal,
-								'desc_prorrateado' => $descuentoFinal,
-								'es_pago_parcial' => $descuentosCalculados[$idx]['es_pago_parcial'],
-								'monto_pagado_previo' => $descuentosCalculados[$idx]['monto_pagado_previo']
-							]);
-						} catch (\Throwable $e) {}
-					}
+                    try {
+                        Log::info('batchStore: usando valores pre-calculados en cobro', [
+                            'idx' => $idx,
+                            'tipo_doc' => $tipoDoc,
+                            'medio_doc' => $medioDoc,
+                            'pu_original' => isset($item['pu_mensualidad']) ? $item['pu_mensualidad'] : 0,
+                            'pu_prorrateado' => $puMensualidadFinal,
+                            'desc_prorrateado' => $descuentoFinal,
+                            'es_pago_parcial' => $descuentosCalculados[$idx]['es_pago_parcial'],
+                            'monto_pagado_previo' => $descuentosCalculados[$idx]['monto_pagado_previo']
+                        ]);
+                    } catch (\Throwable $e) {}
+                }
 
-					$payload = array_merge($composite, [
-						'monto' => $item['monto'],
-						'fecha_cobro' => $fechaCobroSave,
-						'cobro_completo' => isset($item['cobro_completo']) ? $item['cobro_completo'] : null,
-						'observaciones' => isset($item['observaciones']) ? $item['observaciones'] : null,
-						'detalle' => $detalle,
-						'id_usuario' => $idUsuarioReposicion ?: (int)$request->id_usuario,
-						'id_forma_cobro' => isset($item['id_forma_cobro']) ? $item['id_forma_cobro'] : $formaIdItem,
-						'pu_mensualidad' => $puMensualidadFinal,
-						'order' => $order,
-						'descuento' => $descuentoFinal,
-						'id_cuentas_bancarias' => isset($request->id_cuentas_bancarias) ? $request->id_cuentas_bancarias : null,
-						'nro_factura' => $nroFactura,
-						'nro_recibo' => $nroRecibo,
-						'id_item' => isset($item['id_item']) ? $item['id_item'] : null,
-						'id_asignacion_costo' => $isSecundario ? null : $idAsign,
-						'id_cuota' => $isSecundario ? null : $idCuota,
-						'tipo_documento' => $tipoDoc,
-						'medio_doc' => $medioDoc,
-						'gestion' => isset($request->gestion) ? $request->gestion : null,
-						'cod_inscrip' => $primaryInscripcion ? (int)$primaryInscripcion->cod_inscrip : null,
-						'cod_tipo_cobro' => $codTipoCobroItem,
-						'concepto' => $conceptoOut,
-						'reposicion_factura' => $isReposicionFactura ? 1 : null,
-					]);
-					$created = Cobro::create($payload)->load(['usuario', 'cuota', 'formaCobro', 'cuentaBancaria', 'itemCobro']);
+                $payload = array_merge($composite, [
+                    'monto' => $item['monto'],
+                    'fecha_cobro' => $fechaCobroSave,
+                    'cobro_completo' => isset($item['cobro_completo']) ? $item['cobro_completo'] : null,
+                    'observaciones' => isset($item['observaciones']) ? $item['observaciones'] : null,
+                    'detalle' => $detalle,
+                    'id_usuario' => $idUsuarioReposicion ?: (int)$request->id_usuario,
+                    'id_forma_cobro' => isset($item['id_forma_cobro']) ? $item['id_forma_cobro'] : $formaIdItem,
+                    'pu_mensualidad' => $puMensualidadFinal,
+                    'order' => $order,
+                    'descuento' => $descuentoFinal,
+                    'id_cuentas_bancarias' => isset($request->id_cuentas_bancarias) ? $request->id_cuentas_bancarias : null,
+                    'nro_factura' => $nroFactura,
+                    'nro_recibo' => $nroRecibo,
+                    'id_item' => isset($item['id_item']) ? $item['id_item'] : null,
+                    'id_asignacion_costo' => $isSecundario ? null : $idAsign,
+                    'id_cuota' => $isSecundario ? null : $idCuota,
+                    'tipo_documento' => $tipoDoc,
+                    'medio_doc' => $medioDoc,
+                    'gestion' => isset($request->gestion) ? $request->gestion : null,
+                    'cod_inscrip' => $primaryInscripcion ? (int)$primaryInscripcion->cod_inscrip : null,
+                    'cod_tipo_cobro' => $codTipoCobroItem,
+                    'concepto' => $conceptoOut,
+                    'reposicion_factura' => $isReposicionFactura ? 1 : null,
+                ]);
+                $created = Cobro::create($payload)->load(['usuario', 'cuota', 'formaCobro', 'cuentaBancaria', 'itemCobro']);
 
-					// Si es MORA o NIVELACION y viene identificada, actualizar monto_pagado y marcar como PAGADO cuando corresponda
-					$esMoraONivelacion = in_array(strtoupper((string)$codTipoCobroItem), ['MORA', 'NIVELACION']);
-					if ($esMoraONivelacion) {
-						try {
-							$idMora = isset($item['id_asignacion_mora']) ? (int)$item['id_asignacion_mora'] : 0;
-							$idAsignMora = isset($item['id_asignacion_costo']) ? (int)$item['id_asignacion_costo'] : 0;
-							$estadosMoraPagables = ['PENDIENTE', 'CONGELADA_PRORROGA', 'PAUSADA_DUPLICIDAD', 'CERRADA_SIN_CUOTA', 'EN_ESPERA'];
-							$montoPagoTotal = (float)(isset($item['monto']) ? $item['monto'] : 0);
-							if ($montoPagoTotal <= 0) {
-								throw new \Exception('Pago de mora inválido (monto<=0)');
-							}
+                // Si es MORA o NIVELACION y viene identificada, actualizar monto_pagado y marcar como PAGADO cuando corresponda
+                $esMoraONivelacion = in_array(strtoupper((string)$codTipoCobroItem), ['MORA', 'NIVELACION']);
+                if ($esMoraONivelacion) {
+                    try {
+                        $idMora = isset($item['id_asignacion_mora']) ? (int)$item['id_asignacion_mora'] : 0;
+                        $idAsignMora = isset($item['id_asignacion_costo']) ? (int)$item['id_asignacion_costo'] : 0;
+                        $estadosMoraPagables = ['PENDIENTE', 'CONGELADA_PRORROGA', 'PAUSADA_DUPLICIDAD', 'CERRADA_SIN_CUOTA', 'EN_ESPERA'];
+                        $montoPagoTotal = (float)(isset($item['monto']) ? $item['monto'] : 0);
+                        if ($montoPagoTotal <= 0) {
+                            throw new \Exception('Pago de mora inválido (monto<=0)');
+                        }
 
-							// Si viene id_asignacion_mora específico, buscar todas las moras vinculadas
-							// para distribuir el pago entre ellas (congelada + pendiente)
-							$morasRows = collect();
-							if ($idMora > 0) {
-								// Obtener la mora target
-								$moraTarget = DB::table('asignacion_mora')
-									->where('id_asignacion_mora', $idMora)
-									->first(['id_asignacion_mora', 'id_asignacion_vinculada', 'id_mora_vinculada']);
+                        // Si viene id_asignacion_mora específico, buscar todas las moras vinculadas
+                        // para distribuir el pago entre ellas (congelada + pendiente)
+                        $morasRows = collect();
+                        if ($idMora > 0) {
+                            // Obtener la mora target
+                            $moraTarget = DB::table('asignacion_mora')
+                                ->where('id_asignacion_mora', $idMora)
+                                ->first(['id_asignacion_mora', 'id_asignacion_vinculada', 'id_mora_vinculada']);
 
-								if ($moraTarget) {
-									// Buscar todas las moras del mismo grupo de vinculación
-									// Pueden estar vinculadas por id_asignacion_vinculada o id_mora_vinculada
-									$idsVinculadas = [$idMora];
+                            if ($moraTarget) {
+                                // Buscar todas las moras del mismo grupo de vinculación
+                                // Pueden estar vinculadas por id_asignacion_vinculada o id_mora_vinculada
+                                $idsVinculadas = [$idMora];
 
-									// Si tiene id_mora_vinculada, incluir esa mora
-									if (!empty($moraTarget->id_mora_vinculada)) {
-										$idsVinculadas[] = (int)$moraTarget->id_mora_vinculada;
-									}
+                                // Si tiene id_mora_vinculada, incluir esa mora
+                                if (!empty($moraTarget->id_mora_vinculada)) {
+                                    $idsVinculadas[] = (int)$moraTarget->id_mora_vinculada;
+                                }
 
-									// Buscar otras moras que apunten a esta como vinculada
-									$morasRelacionadas = DB::table('asignacion_mora')
-										->where(function($q) use ($idMora) {
-											$q->where('id_mora_vinculada', $idMora)
-											  ->orWhere('id_asignacion_vinculada', $idMora);
-										})
-										->whereIn('estado', $estadosMoraPagables)
-										->pluck('id_asignacion_mora');
+                                // Buscar otras moras que apunten a esta como vinculada
+                                $morasRelacionadas = DB::table('asignacion_mora')
+                                    ->where(function($q) use ($idMora) {
+                                        $q->where('id_mora_vinculada', $idMora)
+                                            ->orWhere('id_asignacion_vinculada', $idMora);
+                                    })
+                                    ->whereIn('estado', $estadosMoraPagables)
+                                    ->pluck('id_asignacion_mora');
 
-									foreach ($morasRelacionadas as $idRel) {
-										if (!in_array($idRel, $idsVinculadas)) {
-											$idsVinculadas[] = (int)$idRel;
-										}
-									}
+                                foreach ($morasRelacionadas as $idRel) {
+                                    if (!in_array($idRel, $idsVinculadas)) {
+                                        $idsVinculadas[] = (int)$idRel;
+                                    }
+                                }
 
-									// Obtener todas las moras vinculadas ordenadas por ID ascendente (más antigua primero)
-									$morasRows = DB::table('asignacion_mora')
-										->whereIn('id_asignacion_mora', $idsVinculadas)
-										->whereIn('estado', $estadosMoraPagables)
-										->orderBy('id_asignacion_mora', 'asc')
-										->get(['id_asignacion_mora','estado','monto_mora','monto_descuento','monto_pagado','fecha_inicio_mora','fecha_fin_mora','monto_base']);
-								}
-							} elseif ($idAsignMora > 0) {
-								// Si no viene id_asignacion_mora, pagar en orden cronológico (la más antigua primero)
-								$morasRows = DB::table('asignacion_mora')
-									->where('id_asignacion_costo', $idAsignMora)
-									->whereIn('estado', $estadosMoraPagables)
-									->orderBy('fecha_inicio_mora', 'asc')
-									->orderBy('id_asignacion_mora', 'asc')
-									->get(['id_asignacion_mora','estado','monto_mora','monto_descuento','monto_pagado','fecha_inicio_mora','fecha_fin_mora','monto_base']);
-							}
-							if ($morasRows && method_exists($morasRows, 'count') && $morasRows->count() > 0) {
-								\Log::info('[CobroController] Distribuyendo pago entre moras vinculadas:', [
-									'id_mora_solicitada' => $idMora,
-									'monto_pago_total' => $montoPagoTotal,
-									'count_moras_vinculadas' => $morasRows->count(),
-									'ids_moras' => $morasRows->pluck('id_asignacion_mora')->toArray(),
-								]);
+                                // Obtener todas las moras vinculadas ordenadas por ID ascendente (más antigua primero)
+                                $morasRows = DB::table('asignacion_mora')
+                                    ->whereIn('id_asignacion_mora', $idsVinculadas)
+                                    ->whereIn('estado', $estadosMoraPagables)
+                                    ->orderBy('id_asignacion_mora', 'asc')
+                                    ->get(['id_asignacion_mora','estado','monto_mora','monto_descuento','monto_pagado','fecha_inicio_mora','fecha_fin_mora','monto_base']);
+                            }
+                        } elseif ($idAsignMora > 0) {
+                            // Si no viene id_asignacion_mora, pagar en orden cronológico (la más antigua primero)
+                            $morasRows = DB::table('asignacion_mora')
+                                ->where('id_asignacion_costo', $idAsignMora)
+                                ->whereIn('estado', $estadosMoraPagables)
+                                ->orderBy('fecha_inicio_mora', 'asc')
+                                ->orderBy('id_asignacion_mora', 'asc')
+                                ->get(['id_asignacion_mora','estado','monto_mora','monto_descuento','monto_pagado','fecha_inicio_mora','fecha_fin_mora','monto_base']);
+                        }
+                        if ($morasRows && method_exists($morasRows, 'count') && $morasRows->count() > 0) {
+                            \Log::info('[CobroController] Distribuyendo pago entre moras vinculadas:', [
+                                'id_mora_solicitada' => $idMora,
+                                'monto_pago_total' => $montoPagoTotal,
+                                'count_moras_vinculadas' => $morasRows->count(),
+                                'ids_moras' => $morasRows->pluck('id_asignacion_mora')->toArray(),
+                            ]);
 
-								$montoRestantePago = $montoPagoTotal;
-								foreach ($morasRows as $moraRow) {
-									if ($montoRestantePago <= 0.0001) break;
+                            $montoRestantePago = $montoPagoTotal;
+                            foreach ($morasRows as $moraRow) {
+                                if ($montoRestantePago <= 0.0001) break;
 
-									$montoMoraCalc = (float)(isset($moraRow->monto_mora) ? $moraRow->monto_mora : 0);
-									$descMora = (float)(isset($moraRow->monto_descuento) ? $moraRow->monto_descuento : 0);
-									$montoBaseDia = (float)(isset($moraRow->monto_base) ? $moraRow->monto_base : 0);
-									$montoPagadoPrevio = (float)(isset($moraRow->monto_pagado) ? $moraRow->monto_pagado : 0);
-									$neto = max(0, $montoMoraCalc - $descMora);
-									$pendiente = max(0, $neto - $montoPagadoPrevio);
+                                $montoMoraCalc = (float)(isset($moraRow->monto_mora) ? $moraRow->monto_mora : 0);
+                                $descMora = (float)(isset($moraRow->monto_descuento) ? $moraRow->monto_descuento : 0);
+                                $montoBaseDia = (float)(isset($moraRow->monto_base) ? $moraRow->monto_base : 0);
+                                $montoPagadoPrevio = (float)(isset($moraRow->monto_pagado) ? $moraRow->monto_pagado : 0);
+                                $neto = max(0, $montoMoraCalc - $descMora);
+                                $pendiente = max(0, $neto - $montoPagadoPrevio);
 
-									\Log::info('[CobroController] Procesando mora en loop:', [
-										'id_asignacion_mora' => $moraRow->id_asignacion_mora,
-										'estado' => $moraRow->estado,
-										'monto_mora' => $montoMoraCalc,
-										'descuento' => $descMora,
-										'neto' => $neto,
-										'pagado_previo' => $montoPagadoPrevio,
-										'pendiente' => $pendiente,
-										'monto_restante_pago' => $montoRestantePago,
-									]);
+                                \Log::info('[CobroController] Procesando mora en loop:', [
+                                    'id_asignacion_mora' => $moraRow->id_asignacion_mora,
+                                    'estado' => $moraRow->estado,
+                                    'monto_mora' => $montoMoraCalc,
+                                    'descuento' => $descMora,
+                                    'neto' => $neto,
+                                    'pagado_previo' => $montoPagadoPrevio,
+                                    'pendiente' => $pendiente,
+                                    'monto_restante_pago' => $montoRestantePago,
+                                ]);
 
-									if ($pendiente <= 0.0001) {
-										\Log::info('[CobroController] Mora sin pendiente, saltando');
-										continue;
-									}
+                                if ($pendiente <= 0.0001) {
+                                    \Log::info('[CobroController] Mora sin pendiente, saltando');
+                                    continue;
+                                }
 
-									$updateData = [ 'updated_at' => now() ];
+                                $updateData = [ 'updated_at' => now() ];
 
-									// Corrección de devengado hasta fecha_deposito (si viene y es anterior a hoy)
-									try {
-										$fechaDepositoStr = isset($item['fecha_deposito']) ? (string)$item['fecha_deposito'] : '';
-										$fechaDepositoStr = trim($fechaDepositoStr);
-										if ($fechaDepositoStr !== '') {
-											$hoyCalc = \Carbon\Carbon::today();
-											$fechaDeposito = \Carbon\Carbon::parse($fechaDepositoStr)->startOfDay();
-											if ($fechaDeposito->lt($hoyCalc)) {
-												$inicio = !empty($moraRow->fecha_inicio_mora) ? \Carbon\Carbon::parse($moraRow->fecha_inicio_mora)->startOfDay() : null;
-												$fin = !empty($moraRow->fecha_fin_mora) ? \Carbon\Carbon::parse($moraRow->fecha_fin_mora)->startOfDay() : null;
-												if ($inicio && $montoBaseDia > 0) {
-													$fechaCalculo = $fin ? ($fechaDeposito->lt($fin) ? $fechaDeposito : $fin) : $fechaDeposito;
-													if ($fechaCalculo->gte($inicio)) {
-														$dias = $inicio->diffInDays($fechaCalculo) + 1;
-														$montoMoraCalc = (float)$montoBaseDia * (int)$dias;
-														$updateData['monto_mora'] = $montoMoraCalc;
-														$neto = max(0, $montoMoraCalc - $descMora);
-														$pendiente = max(0, $neto - $montoPagadoPrevio);
-													}
-												}
-											}
-										}
-									} catch (\Throwable $e) {}
+                                // Corrección de devengado hasta fecha_deposito (si viene y es anterior a hoy)
+                                try {
+                                    $fechaDepositoStr = isset($item['fecha_deposito']) ? (string)$item['fecha_deposito'] : '';
+                                    $fechaDepositoStr = trim($fechaDepositoStr);
+                                    if ($fechaDepositoStr !== '') {
+                                        $hoyCalc = \Carbon\Carbon::today();
+                                        $fechaDeposito = \Carbon\Carbon::parse($fechaDepositoStr)->startOfDay();
+                                        if ($fechaDeposito->lt($hoyCalc)) {
+                                            $inicio = !empty($moraRow->fecha_inicio_mora) ? \Carbon\Carbon::parse($moraRow->fecha_inicio_mora)->startOfDay() : null;
+                                            $fin = !empty($moraRow->fecha_fin_mora) ? \Carbon\Carbon::parse($moraRow->fecha_fin_mora)->startOfDay() : null;
+                                            if ($inicio && $montoBaseDia > 0) {
+                                                $fechaCalculo = $fin ? ($fechaDeposito->lt($fin) ? $fechaDeposito : $fin) : $fechaDeposito;
+                                                if ($fechaCalculo->gte($inicio)) {
+                                                    $dias = $inicio->diffInDays($fechaCalculo) + 1;
+                                                    $montoMoraCalc = (float)$montoBaseDia * (int)$dias;
+                                                    $updateData['monto_mora'] = $montoMoraCalc;
+                                                    $neto = max(0, $montoMoraCalc - $descMora);
+                                                    $pendiente = max(0, $neto - $montoPagadoPrevio);
+                                                }
+                                            }
+                                        }
+                                    }
+                                } catch (\Throwable $e) {}
 
-									$montoAplicar = $montoRestantePago > $pendiente ? $pendiente : $montoRestantePago;
-									$nuevoMontoPagado = $montoPagadoPrevio + $montoAplicar;
-									$updateData['monto_pagado'] = $nuevoMontoPagado;
-									if ($neto <= 0.0001 || $nuevoMontoPagado >= ($neto - 0.0001)) {
-										$updateData['estado'] = 'PAGADO';
-									}
+                                $montoAplicar = $montoRestantePago > $pendiente ? $pendiente : $montoRestantePago;
+                                $nuevoMontoPagado = $montoPagadoPrevio + $montoAplicar;
+                                $updateData['monto_pagado'] = $nuevoMontoPagado;
+                                if ($neto <= 0.0001 || $nuevoMontoPagado >= ($neto - 0.0001)) {
+                                    $updateData['estado'] = 'PAGADO';
+                                }
 
-									DB::table('asignacion_mora')
-										->where('id_asignacion_mora', (int)$moraRow->id_asignacion_mora)
-										->update($updateData);
+                                DB::table('asignacion_mora')
+                                    ->where('id_asignacion_mora', (int)$moraRow->id_asignacion_mora)
+                                    ->update($updateData);
 
-									\Log::info('[CobroController] Mora actualizada:', [
-										'id_asignacion_mora' => $moraRow->id_asignacion_mora,
-										'monto_aplicado' => $montoAplicar,
-										'nuevo_monto_pagado' => $nuevoMontoPagado,
-										'neto' => $neto,
-										'nuevo_estado' => isset($updateData['estado']) ? $updateData['estado'] : 'sin_cambio',
-									]);
+                                \Log::info('[CobroController] Mora actualizada:', [
+                                    'id_asignacion_mora' => $moraRow->id_asignacion_mora,
+                                    'monto_aplicado' => $montoAplicar,
+                                    'nuevo_monto_pagado' => $nuevoMontoPagado,
+                                    'neto' => $neto,
+                                    'nuevo_estado' => isset($updateData['estado']) ? $updateData['estado'] : 'sin_cambio',
+                                ]);
 
-									$montoRestantePago = $montoRestantePago - $montoAplicar;
-								}
+                                $montoRestantePago = $montoRestantePago - $montoAplicar;
+                            }
 
-								try {
-									\Log::info('[CobroController] Mora actualizada (multi):', [
-										'id_asignacion_costo' => $idAsignMora,
-										'id_asignacion_mora_target' => $idMora,
-										'monto_pago_total' => $montoPagoTotal,
-										'monto_pago_restante' => isset($montoRestantePago) ? $montoRestantePago : null,
-										'count_moras' => $morasRows->count(),
-									]);
-								} catch (\Throwable $e) {}
-							}
-						} catch (\Throwable $e) {
-							Log::warning('batchStore: no se pudo actualizar mora', ['err' => $e->getMessage()]);
-						}
-					}
+                            try {
+                                \Log::info('[CobroController] Mora actualizada (multi):', [
+                                    'id_asignacion_costo' => $idAsignMora,
+                                    'id_asignacion_mora_target' => $idMora,
+                                    'monto_pago_total' => $montoPagoTotal,
+                                    'monto_pago_restante' => isset($montoRestantePago) ? $montoRestantePago : null,
+                                    'count_moras' => $morasRows->count(),
+                                ]);
+                            } catch (\Throwable $e) {}
+                        }
+                    } catch (\Throwable $e) {
+                        Log::warning('batchStore: no se pudo actualizar mora', ['err' => $e->getMessage()]);
+                    }
+                }
 
-					if (!$isSecundario) {
-						try {
-							DB::table('cobros_detalle_regular')->updateOrInsert(
-								[
-									'nro_cobro' => (int)$nroCobro,
-								],
-								[
-									'cod_ceta' => (int)$request->cod_ceta,
-									'cod_pensum' => (string)$request->cod_pensum,
-									'tipo_inscripcion' => (string)$request->tipo_inscripcion,
-									'cod_inscrip' => $primaryInscripcion ? (int)$primaryInscripcion->cod_inscrip : 0,
-									'pu_mensualidad' => (float)$puMensualidadFinal,
-									'turno' => (string)(isset($primaryInscripcion->turno) ? $primaryInscripcion->turno : ''),
-									'updated_at' => now(),
-									'created_at' => DB::raw('COALESCE(created_at, NOW())'),
-								]
-							);
-						} catch (\Throwable $e) {
-							Log::warning('batchStore: detalle_regular insert failed', [ 'err' => $e->getMessage() ]);
-						}
-					}
+                if (!$isSecundario) {
+                    try {
+                        DB::table('cobros_detalle_regular')->updateOrInsert(
+                            [
+                                'nro_cobro' => (int)$nroCobro,
+                            ],
+                            [
+                                'cod_ceta' => (int)$request->cod_ceta,
+                                'cod_pensum' => (string)$request->cod_pensum,
+                                'tipo_inscripcion' => (string)$request->tipo_inscripcion,
+                                'cod_inscrip' => $primaryInscripcion ? (int)$primaryInscripcion->cod_inscrip : 0,
+                                'pu_mensualidad' => (float)$puMensualidadFinal,
+                                'turno' => (string)(isset($primaryInscripcion->turno) ? $primaryInscripcion->turno : ''),
+                                'updated_at' => now(),
+                                'created_at' => DB::raw('COALESCE(created_at, NOW())'),
+                            ]
+                        );
+                    } catch (\Throwable $e) {
+                        Log::warning('batchStore: detalle_regular insert failed', [ 'err' => $e->getMessage() ]);
+                    }
+                }
 
-					// Acumular pagos del batch por id_asignacion_costo (no por template) para evitar duplicados
-					if ($idAsign) {
-						$batchPaidByAsign[$idAsign] = (isset($batchPaidByAsign[$idAsign]) ? $batchPaidByAsign[$idAsign] : 0) + (float)$item['monto'];
-						try { Log::info('batchStore:paidByAsign', [ 'idx' => $idx, 'id_asign' => $idAsign, 'batch_paid' => $batchPaidByAsign[$idAsign] ]); } catch (\Throwable $e) {}
-					}
-					// También mantener el tracking por template para compatibilidad
-					if ($idCuota) {
-						$batchPaidByTpl[$idCuota] = (isset($batchPaidByTpl[$idCuota]) ? $batchPaidByTpl[$idCuota] : 0) + (float)$item['monto'];
-						try { Log::info('batchStore:paidByTpl', [ 'idx' => $idx, 'tpl' => $idCuota, 'batch_paid' => $batchPaidByTpl[$idCuota] ]); } catch (\Throwable $e) {}
-					}
-					// Actualizar estado de pago de la asignación (solo si NO es secundario ni reposición)
-					if (!$isSecundario && !$isReposicionFactura && $idAsign) {
-						// Releer siempre desde DB para evitar usar un snapshot desactualizado cuando hay múltiples ítems a la misma cuota
-						$toUpd = AsignacionCostos::find((int)$idAsign);
-						if ($toUpd) {
-							$prevPagado = (float)(isset($toUpd->monto_pagado) ? $toUpd->monto_pagado : 0);
+                // Acumular pagos del batch por id_asignacion_costo (no por template) para evitar duplicados
+                if ($idAsign) {
+                    $batchPaidByAsign[$idAsign] = (isset($batchPaidByAsign[$idAsign]) ? $batchPaidByAsign[$idAsign] : 0) + (float)$item['monto'];
+                    try { Log::info('batchStore:paidByAsign', [ 'idx' => $idx, 'id_asign' => $idAsign, 'batch_paid' => $batchPaidByAsign[$idAsign] ]); } catch (\Throwable $e) {}
+                }
+                // También mantener el tracking por template para compatibilidad
+                if ($idCuota) {
+                    $batchPaidByTpl[$idCuota] = (isset($batchPaidByTpl[$idCuota]) ? $batchPaidByTpl[$idCuota] : 0) + (float)$item['monto'];
+                    try { Log::info('batchStore:paidByTpl', [ 'idx' => $idx, 'tpl' => $idCuota, 'batch_paid' => $batchPaidByTpl[$idCuota] ]); } catch (\Throwable $e) {}
+                }
+                // Actualizar estado de pago de la asignación (solo si NO es secundario ni reposición)
+                if (!$isSecundario && !$isReposicionFactura && $idAsign) {
+                    // Releer siempre desde DB para evitar usar un snapshot desactualizado cuando hay múltiples ítems a la misma cuota
+                    $toUpd = AsignacionCostos::find((int)$idAsign);
+                    if ($toUpd) {
+                        $prevPagado = (float)(isset($toUpd->monto_pagado) ? $toUpd->monto_pagado : 0);
 
-							// CORRECCIÓN: Solo aplicar el monto del item actual, sin acumular pagos previos del batch
-							// El tracking en $batchPaidByAsign ya se hace DESPUÉS de aplicar cada item
-							$montoAplicar = (float)$item['monto'];
-							$newPagado = $prevPagado + $montoAplicar;
+                        // CORRECCIÓN: Solo aplicar el monto del item actual, sin acumular pagos previos del batch
+                        // El tracking en $batchPaidByAsign ya se hace DESPUÉS de aplicar cada item
+                        $montoAplicar = (float)$item['monto'];
+                        $newPagado = $prevPagado + $montoAplicar;
 
-							$descN = 0.0;
-							try {
-								$idDet = (int)($toUpd->id_descuentoDetalle ?? 0);
-								if ($idDet) {
-									$dr = DescuentoDetalle::where('id_descuento_detalle', $idDet)->first(['monto_descuento']);
-									$descN = $dr ? (float)($dr->monto_descuento ?? 0) : 0.0;
-								} else {
-									$dr = DescuentoDetalle::where('id_cuota', (int)($toUpd->id_asignacion_costo ?? 0))->first(['monto_descuento']);
-									$descN = $dr ? (float)($dr->monto_descuento ?? 0) : 0.0;
-								}
-							} catch (\Throwable $e) { $descN = 0.0; }
-							$nominal = (float) ($toUpd->monto ?? 0);
-							$neto = max(0, $nominal - $descN);
-							$fullNow = ($newPagado >= $neto) || !empty($item['cobro_completo']);
-							$upd = [ 'monto_pagado' => $newPagado ];
-							if ($fullNow) {
-								$upd['estado_pago'] = 'COBRADO';
-								$upd['fecha_pago'] = $item['fecha_cobro'];
-							} else {
-								$upd['estado_pago'] = 'PARCIAL';
-							}
-							try { Log::info('batchStore:asign_update', [ 'idx' => $idx, 'id_asignacion_costo' => (int)$toUpd->id_asignacion_costo, 'add_monto' => $montoAplicar, 'prev_pagado' => $prevPagado, 'new_pagado' => $newPagado, 'total' => (float)(isset($toUpd->monto) ? $toUpd->monto : 0), 'neto' => $neto, 'batch_paid_before' => $batchPaidToThisAsign, 'estado_final' => $upd['estado_pago'] ]); } catch (\Throwable $e) {}
-							$aff = AsignacionCostos::where('id_asignacion_costo', (int)$toUpd->id_asignacion_costo)->update($upd);
-							try { Log::info('batchStore:asign_updated', [ 'idx' => $idx, 'id_asignacion_costo' => (int)$toUpd->id_asignacion_costo, 'affected' => $aff ]); } catch (\Throwable $e) {}
+                        $descN = 0.0;
+                        try {
+                            $idDet = (int)($toUpd->id_descuentoDetalle ?? 0);
+                            if ($idDet) {
+                                $dr = DescuentoDetalle::where('id_descuento_detalle', $idDet)->first(['monto_descuento']);
+                                $descN = $dr ? (float)($dr->monto_descuento ?? 0) : 0.0;
+                            } else {
+                                $dr = DescuentoDetalle::where('id_cuota', (int)($toUpd->id_asignacion_costo ?? 0))->first(['monto_descuento']);
+                                $descN = $dr ? (float)($dr->monto_descuento ?? 0) : 0.0;
+                            }
+                        } catch (\Throwable $e) { $descN = 0.0; }
+                        $nominal = (float) ($toUpd->monto ?? 0);
+                        $neto = max(0, $nominal - $descN);
+                        $fullNow = ($newPagado >= $neto) || !empty($item['cobro_completo']);
+                        $upd = [ 'monto_pagado' => $newPagado ];
+                        if ($fullNow) {
+                            $upd['estado_pago'] = 'COBRADO';
+                            $upd['fecha_pago'] = $item['fecha_cobro'];
+                        } else {
+                            $upd['estado_pago'] = 'PARCIAL';
+                        }
+                        try { Log::info('batchStore:asign_update', [ 'idx' => $idx, 'id_asignacion_costo' => (int)$toUpd->id_asignacion_costo, 'add_monto' => $montoAplicar, 'prev_pagado' => $prevPagado, 'new_pagado' => $newPagado, 'total' => (float)(isset($toUpd->monto) ? $toUpd->monto : 0), 'neto' => $neto, 'batch_paid_before' => $batchPaidToThisAsign, 'estado_final' => $upd['estado_pago'] ]); } catch (\Throwable $e) {}
+                        $aff = AsignacionCostos::where('id_asignacion_costo', (int)$toUpd->id_asignacion_costo)->update($upd);
+                        try { Log::info('batchStore:asign_updated', [ 'idx' => $idx, 'id_asignacion_costo' => (int)$toUpd->id_asignacion_costo, 'affected' => $aff ]); } catch (\Throwable $e) {}
 
-							// LÓGICA DE VINCULACIÓN DE MORA EN TIEMPO REAL
-							// Si se pagó completo, gestionar mora vinculada entre inscripciones NORMAL/ARRASTRE
-							if ($fullNow) {
-								$this->gestionarMoraVinculada($toUpd, $request);
-								$this->cerrarMoraPorCuotaCobrada($toUpd, $request, $item, $idx);
-							}
-						}
-					}
-					else {
-						try { Log::info('batchStore:asign_skip', [ 'idx' => $idx, 'reason' => 'missing_id_asign', 'is_secundario' => $isSecundario ]); } catch (\Throwable $e) {}
-					}
-					// Rezagados: si el item contiene el marcador, registrar en la tabla 'rezagados'
-					try {
-						$obsVal = (string)(isset($item['observaciones']) ? $item['observaciones'] : '');
-						if ($obsVal !== '' && preg_match('/\[\s*REZAGADO\s*\]\s*Rezagado\s*-\s*([A-Z0-9\-]+)\b.*?-(\s*)([123])er\s*P\.?/i', $obsVal, $mm)) {
-							$siglaMateria = strtoupper(trim((string)$mm[1]));
-							$parcialNum = (string)trim((string)$mm[3]); // '1' | '2' | '3'
-							$fechaPago = (string)(isset($item['fecha_cobro']) ? $item['fecha_cobro'] : date('Y-m-d'));
-							$anioPago = (int) date('Y', strtotime($fechaPago));
-							$codInscrip = $primaryInscripcion ? (int)$primaryInscripcion->cod_inscrip : null;
-							if ($codInscrip) {
-								// Reutilizar num_rezagado para la misma materia/año si existe
-								$rowExist = DB::table('rezagados')
-									->where('cod_inscrip', $codInscrip)
-									->where(DB::raw('YEAR(fecha_pago)'), $anioPago)
-									->where('materia', $siglaMateria)
-									->orderByDesc('num_rezagado')
-									->first();
-								$numRezagado = $rowExist ? (int)$rowExist->num_rezagado : null;
-								if (!$numRezagado) {
-									$maxRow = DB::table('rezagados')
-										->select(DB::raw('MAX(num_rezagado) as mx'))
-										->where('cod_inscrip', $codInscrip)
-										->where(DB::raw('YEAR(fecha_pago)'), $anioPago)
-										->first();
-									$nextSeq = (int)(isset($maxRow->mx) ? $maxRow->mx : 0) + 1;
-									$numRezagado = max(1, $nextSeq);
-								}
-								$numPagoRezagado = (int)$parcialNum; // un pago por parcial
-								$obsClean = trim(preg_replace('/\|?\s*\[\s*REZAGADO\s*\]\s*.+$/i', '', (string)$item['observaciones']));
-								DB::table('rezagados')->updateOrInsert(
-									[
-										'cod_inscrip' => $codInscrip,
-										'num_rezagado' => $numRezagado,
-										'num_pago_rezagado' => $numPagoRezagado,
-									],
-									[
-										'num_factura' => is_numeric($nroFactura) ? (int)$nroFactura : null,
-										'num_recibo' => is_numeric($nroRecibo) ? (int)$nroRecibo : null,
-										'fecha_pago' => $fechaPago,
-										'monto' => (float)$item['monto'],
-										'pago_completo' => true,
-										'observaciones' => $obsClean !== '' ? $obsClean : null,
-										'usuario' => (int)$request->id_usuario,
-										'materia' => $siglaMateria,
-										'parcial' => (string)$parcialNum,
-										'updated_at' => now(),
-										'created_at' => DB::raw('COALESCE(created_at, NOW())'),
-									]
-								);
-							}
-						}
-					} catch (\Throwable $e) {
-						Log::warning('batchStore: rezagados insert failed', [ 'err' => $e->getMessage() ]);
-					}
+                        // LÓGICA DE VINCULACIÓN DE MORA EN TIEMPO REAL
+                        // Si se pagó completo, gestionar mora vinculada entre inscripciones NORMAL/ARRASTRE
+                        if ($fullNow) {
+                            $this->gestionarMoraVinculada($toUpd, $request);
+                            $this->cerrarMoraPorCuotaCobrada($toUpd, $request, $item, $idx);
+                        }
+                    }
+                }
+                else {
+                    try { Log::info('batchStore:asign_skip', [ 'idx' => $idx, 'reason' => 'missing_id_asign', 'is_secundario' => $isSecundario ]); } catch (\Throwable $e) {}
+                }
+                // Rezagados: si el item contiene el marcador, registrar en la tabla 'rezagados'
+                try {
+                    $obsVal = (string)(isset($item['observaciones']) ? $item['observaciones'] : '');
+                    if ($obsVal !== '' && preg_match('/\[\s*REZAGADO\s*\]\s*Rezagado\s*-\s*([A-Z0-9\-]+)\b.*?-(\s*)([123])er\s*P\.?/i', $obsVal, $mm)) {
+                        $siglaMateria = strtoupper(trim((string)$mm[1]));
+                        $parcialNum = (string)trim((string)$mm[3]); // '1' | '2' | '3'
+                        $fechaPago = (string)(isset($item['fecha_cobro']) ? $item['fecha_cobro'] : date('Y-m-d'));
+                        $anioPago = (int) date('Y', strtotime($fechaPago));
+                        $codInscrip = $primaryInscripcion ? (int)$primaryInscripcion->cod_inscrip : null;
+                        if ($codInscrip) {
+                            // Reutilizar num_rezagado para la misma materia/año si existe
+                            $rowExist = DB::table('rezagados')
+                                ->where('cod_inscrip', $codInscrip)
+                                ->where(DB::raw('YEAR(fecha_pago)'), $anioPago)
+                                ->where('materia', $siglaMateria)
+                                ->orderByDesc('num_rezagado')
+                                ->first();
+                            $numRezagado = $rowExist ? (int)$rowExist->num_rezagado : null;
+                            if (!$numRezagado) {
+                                $maxRow = DB::table('rezagados')
+                                    ->select(DB::raw('MAX(num_rezagado) as mx'))
+                                    ->where('cod_inscrip', $codInscrip)
+                                    ->where(DB::raw('YEAR(fecha_pago)'), $anioPago)
+                                    ->first();
+                                $nextSeq = (int)(isset($maxRow->mx) ? $maxRow->mx : 0) + 1;
+                                $numRezagado = max(1, $nextSeq);
+                            }
+                            $numPagoRezagado = (int)$parcialNum; // un pago por parcial
+                            $obsClean = trim(preg_replace('/\|?\s*\[\s*REZAGADO\s*\]\s*.+$/i', '', (string)$item['observaciones']));
+                            DB::table('rezagados')->updateOrInsert(
+                                [
+                                    'cod_inscrip' => $codInscrip,
+                                    'num_rezagado' => $numRezagado,
+                                    'num_pago_rezagado' => $numPagoRezagado,
+                                ],
+                                [
+                                    'num_factura' => is_numeric($nroFactura) ? (int)$nroFactura : null,
+                                    'num_recibo' => is_numeric($nroRecibo) ? (int)$nroRecibo : null,
+                                    'fecha_pago' => $fechaPago,
+                                    'monto' => (float)$item['monto'],
+                                    'pago_completo' => true,
+                                    'observaciones' => $obsClean !== '' ? $obsClean : null,
+                                    'usuario' => (int)$request->id_usuario,
+                                    'materia' => $siglaMateria,
+                                    'parcial' => (string)$parcialNum,
+                                    'updated_at' => now(),
+                                    'created_at' => DB::raw('COALESCE(created_at, NOW())'),
+                                ]
+                            );
+                        }
+                    }
+                } catch (\Throwable $e) {
+                    Log::warning('batchStore: rezagados insert failed', [ 'err' => $e->getMessage() ]);
+                }
 
-					$resultItem = [
-						'indice' => $idx,
-						'tipo_documento' => $tipoDoc,
-						'medio_doc' => $medioDoc,
-						'nro_recibo' => $nroRecibo,
-						'nro_factura' => $nroFactura,
-						'cobro' => $created,
-						'codigo_recepcion' => $codigoRecepcionLocal,
-						'estado_factura' => $estadoFacturaLocal,
-						'mensaje' => $mensajeLocal,
-						'cuf' => $cufLocal,
-					];
+                $resultItem = [
+                    'indice' => $idx,
+                    'tipo_documento' => $tipoDoc,
+                    'medio_doc' => $medioDoc,
+                    'nro_recibo' => $nroRecibo,
+                    'nro_factura' => $nroFactura,
+                    'cobro' => $created,
+                    'codigo_recepcion' => $codigoRecepcionLocal,
+                    'estado_factura' => $estadoFacturaLocal,
+                    'mensaje' => $mensajeLocal,
+                    'cuf' => $cufLocal,
+                ];
 
-					// Agregar valores prorrateados calculados para que el frontend los muestre correctamente
-					if (isset($descuentosCalculados[$idx])) {
-						$resultItem['valores_prorrateados'] = [
-							'precio_bruto' => $descuentosCalculados[$idx]['precio_bruto_prorrateado'],
-							'descuento' => $descuentosCalculados[$idx]['descuento_prorrateado'],
-							'es_pago_parcial' => $descuentosCalculados[$idx]['es_pago_parcial'],
-							'monto_pagado_previo' => $descuentosCalculados[$idx]['monto_pagado_previo'],
-						];
-					}
+                // Agregar valores prorrateados calculados para que el frontend los muestre correctamente
+                if (isset($descuentosCalculados[$idx])) {
+                    $resultItem['valores_prorrateados'] = [
+                        'precio_bruto' => $descuentosCalculados[$idx]['precio_bruto_prorrateado'],
+                        'descuento' => $descuentosCalculados[$idx]['descuento_prorrateado'],
+                        'es_pago_parcial' => $descuentosCalculados[$idx]['es_pago_parcial'],
+                        'monto_pagado_previo' => $descuentosCalculados[$idx]['monto_pagado_previo'],
+                    ];
+                }
 
-					// Si hay error de facturación, agregarlo al resultado
-					if (isset($facturaError)) {
-						$resultItem['factura_error'] = $facturaError;
-					}
+                // Si hay error de facturación, agregarlo al resultado
+                if (isset($facturaError)) {
+                    $resultItem['factura_error'] = $facturaError;
+                }
 
-					$results[] = $resultItem;
-				}
+                $results[] = $resultItem;
+            }
 
 				// Insertar detalles de la factura en factura_detalle (SIEMPRE, incluso si no se emite online)
 			if ($hasFacturaGroup && !empty($factDetalles)) {
@@ -3392,6 +3394,8 @@ class CobroController extends Controller
 							$cufGroup = $cufBase . $codigoControl;
 							Log::info('batchStore: CUF calculado (grupo)', ['cuf_base' => $cufBase, 'codigo_control' => $codigoControl, 'cuf_final' => $cufGroup, 'cufd' => $cufdGroup]);
 
+                            Log::info('batchStore: primera identificador');
+
 							// Actualizar DB si el CUFD cambió
 							if ($cufdOld !== $cufdGroup) {
 								DB::table('factura')
@@ -3403,6 +3407,7 @@ class CobroController extends Controller
 								Log::warning('batchStore: CUFD rotó antes de emitir (grupo), CUF recalculado', ['cufd_old' => $cufdOld, 'cufd_new' => $cufdGroup, 'cuf_new' => $cufGroup]);
 							}
 							$cuisCode = isset($cufdNow['codigo_cuis']) ? $cufdNow['codigo_cuis'] : '';
+                            Log::info('batchStore: segundo identificador');
 
 							// Construir payload con los valores actualizados
 							$cliIn = (array) $request->input('cliente', []);
@@ -3413,6 +3418,7 @@ class CobroController extends Controller
 								'complemento' => isset($cliIn['complemento']) ? $cliIn['complemento'] : null,
 								'codigo' => (string)(isset($cliIn['codigo']) ? $cliIn['codigo'] : (isset($cliIn['numero']) ? $cliIn['numero'] : '0')),
 							];
+                            Log::info('batchStore: tercer identificador');
 
 							// IMPORTANTE: Usar las variables actualizadas ($cufGroup, $cufdGroup, $cuisCode)
 							$payloadArgs = [
@@ -3459,14 +3465,18 @@ class CobroController extends Controller
                             // $mensajes = is_array($root) ? (isset($root['mensajesList']) ? $root['mensajesList'] : null) : null;
 							$mensajeGroup = null;
 
+                            Log::info('batchStore: cuarto identificador');
+
                             /***********************************************/
                             /*************** INI MODIFICACION **************/
                             /***********************************************/
                             Log::info('La respuesta que se recupera es:'.print_r($resp,true));
                             Log::info('El codigo de estado que se maneja:'.$codigoEstado."    anio:".$anioFacturaGroup."   nroFActura".$nroFacturaGroup."   sucursal:".$sucursal."   punto Venta:".$pv);
 
+
                             /// registro factura validada
                             if($codigoEstado == 908){
+                                Log::info('batchStore: quinto identificador');
                                 $mensajeGroup = ""; // NO SE DEBE MOSTRAR NINGUN MENSAJE
                                 //SI EL CODIGO ES 908 QUIERE DECIR QUE EL REGISTRO DE LA FACTURA FUE EXITOSO
                                 DB::table('factura')
@@ -3478,10 +3488,17 @@ class CobroController extends Controller
                                         'estado' => 'VALIDADA',
                                         'codigo_recepcion' => $codRecep
                                     ]);
-                            }
 
-                            if($codigoEstado == 901){
-                                $mensajeGroup = "Factura en estado PENDIENTE. Por favor verifique vuelva a verificar el estado, contacte con el administrador.";
+                                foreach ($results as &$r) {
+									if (is_array($r) && strtoupper((string)(isset($r['tipo_documento']) ? $r['tipo_documento'] : '')) === 'F') {
+										$r['codigo_recepcion'] = $codRecep;
+										$r['estado_factura'] = 'VALIDADA';
+										$r['mensaje'] = $mensajeGroup;
+									}
+								}
+                            } else if($codigoEstado == 901){
+                                Log::info('batchStore: sexto identificador');
+                                $mensajeGroup = "Factura en estado PENDIENTE. Por favor vuelva a verificar el estado o contacte con el administrador.";
                                 // Actualizar estado a PENDIENTE en DB
                                 DB::table('factura')
                                     ->where('anio', $anioFacturaGroup)
@@ -3492,9 +3509,16 @@ class CobroController extends Controller
                                         'estado' => 'PENDIENTE',
                                         'codigo_recepcion' => $codRecep
                                     ]);
-                            }
-                            /// SE DEBE CREAR ALGUNA MECANISMO QUE MANEJAR EL REISGRRO facturas rechazadas
-                            if($codigoEstado == 902){
+                                 foreach ($results as &$r) {
+									if (is_array($r) && strtoupper((string)(isset($r['tipo_documento']) ? $r['tipo_documento'] : '')) === 'F') {
+										$r['codigo_recepcion'] = $codRecep;
+										$r['estado_factura'] = 'PENDIENTE';
+										$r['mensaje'] = $mensajeGroup;
+									}
+								}
+                            } else if($codigoEstado == 902){
+                                Log::info('batchStore: septimo identificador');
+                                /// SE DEBE CREAR ALGUNA MECANISMO QUE MANEJAR EL REISGRRO facturas rechazadas
                                 $mensajeGroup = "Factura rechazada por impuestos. por favor contacte con el administrador";
                                 // Actualizar estado a PENDIENTE en DB
                                 DB::table('factura')
@@ -3518,53 +3542,63 @@ class CobroController extends Controller
                                         }
                                     }
                                 }
-                            }
-							if ($codRecep) {
-								\DB::table('factura')
-									->where('anio', (int)$anioFacturaGroup)
-									->where('nro_factura', (int)$nroFacturaGroup)
-									->where('codigo_sucursal', (int)$sucursal)
-									->where('codigo_punto_venta', (string)$pv)
-									->update([
-                                        'codigo_recepcion' => $codRecep,
-                                        'estado' => 'ACEPTADA'
-                                    ]);
-								Log::warning('batchStore: recepcionFactura ok (grupo)', [ 'codigo_recepcion' => $codRecep ]);
-								foreach ($results as &$r) {
+
+                                foreach ($results as &$r) {
 									if (is_array($r) && strtoupper((string)(isset($r['tipo_documento']) ? $r['tipo_documento'] : '')) === 'F') {
-										$r['codigo_recepcion'] = $codRecep;
-										$r['estado_factura'] = 'ACEPTADA';
+										$r['estado_factura'] = 'RECHAZADA';
+										$r['mensaje'] = $mensajeGroup;
+										$r['factura_error'] = $ListaMensajes;
+									}
+								}
+                            } else {
+                                Log::info('batchStore: octaba identificador');
+                                /// INGRESA A ESTA OPCION CUANDO NO DEVUELVE UN CODIGO DE ESTADO, SE DEBE MANEJAR DE MANERA ESPECIAL YA QUE NO SE SABE SI LA FACTURA FUE ACEPTADA O RECHAZADA, POR LO QUE SE DEBE GUARDAR EN LA BASE DE DATOS PARA SU POSTERIOR ANALISIS
+                                /// TODO: manejar caso de respuesta sin codigo de estado
+                                $mensajeGroup = "Error desconocido al emitir factura. Por favor contacte con el administrador.";
+                                DB::table('factura')
+                                    ->where('anio', $anioFacturaGroup)
+                                    ->where('nro_factura', $nroFacturaGroup)
+                                    ->where('codigo_sucursal', $sucursal)
+                                    ->where('codigo_punto_venta', (string)$pv)
+                                    ->update([
+                                        'estado' => 'CONTINGENCIA',
+                                        'mensaje_sin' => print_r($resp["RespuestaServicioFacturacion"],true)
+                                    ]);
+
+                                foreach ($results as &$r) {
+									if (is_array($r) && strtoupper((string)(isset($r['tipo_documento']) ? $r['tipo_documento'] : '')) === 'F') {
+                                        $r['codigo_recepcion'] = "";
+										$r['estado_factura'] = 'CONTINGENCIA';
 										$r['mensaje'] = $mensajeGroup;
 									}
 								}
-							} else {
-								$mensajeRechazoGroup = isset($mensajeGroup) ? $mensajeGroup : 'Factura rechazada por el SIN';
-								\DB::table('factura')
-									->where('anio', (int)$anioFacturaGroup)
-									->where('nro_factura', (int)$nroFacturaGroup)
-									->where('codigo_sucursal', (int)$sucursal)
-									->where('codigo_punto_venta', (string)$pv)
-									->update(['estado' => 'RECHAZADA']);
-								Log::warning('batchStore: recepcionFactura sin codigoRecepcion (grupo)', [ 'resp' => $resp, 'mensaje' => $mensajeRechazoGroup ]);
-
-								// Agregar información de error a todos los items de factura
-								$facturaErrorGroup = [
-									'estado' => 'RECHAZADA',
-									'mensaje' => $mensajeRechazoGroup,
-									'anio' => (int)$anioFacturaGroup,
-									'nro_factura' => (int)$nroFacturaGroup
-								];
-
-								foreach ($results as &$r) {
-									if (is_array($r) && strtoupper((string)(isset($r['tipo_documento']) ? $r['tipo_documento'] : '')) === 'F') {
-										$r['estado_factura'] = 'RECHAZADA';
-										$r['mensaje'] = $mensajeRechazoGroup;
-										$r['factura_error'] = $facturaErrorGroup;
-									}
+                            }
+						} catch (\Throwable $e) {
+							Log::error('batchStore: recepcionFactura exception (grupo)', [
+								'error' => $e->getMessage(),
+								'trace' => $e->getTraceAsString(),
+								'anio' => $anioFacturaGroup,
+								'nro_factura' => $nroFacturaGroup,
+								'sucursal' => $sucursal,
+								'punto_venta' => $pv,
+							]);
+							// Marcar la factura como CONTINGENCIA para que sea regularizable
+							DB::table('factura')
+								->where('anio', $anioFacturaGroup)
+								->where('nro_factura', $nroFacturaGroup)
+								->where('codigo_sucursal', $sucursal)
+								->where('codigo_punto_venta', (string)$pv)
+								->update([
+									'estado' => 'CONTINGENCIA',
+									'mensaje_sin' => json_encode(['exception' => $e->getMessage()]),
+								]);
+							foreach ($results as &$r) {
+								if (is_array($r) && strtoupper((string)(isset($r['tipo_documento']) ? $r['tipo_documento'] : '')) === 'F') {
+									$r['codigo_recepcion'] = '';
+									$r['estado_factura'] = 'CONTINGENCIA';
+									$r['mensaje'] = 'Error al conectar con el servicio de impuestos. La factura será regularizada posteriormente.';
 								}
 							}
-						} catch (\Throwable $e) {
-							Log::error('batchStore: recepcionFactura exception (grupo)', [ 'error' => $e->getMessage() ]);
 						}
 					}
 				}
@@ -3605,6 +3639,7 @@ class CobroController extends Controller
 				} catch (\Throwable $e) {
 					Log::warning('batchStore: sync docnums to qr_transacciones failed', [ 'error' => $e->getMessage() ]);
 				}
+                Log::info('batchStore: octavo identificador');
 
 				// Emitir evento de sockets para multi-sesión: si el batch contiene un ítem QR, notificar factura_generada
 				try {

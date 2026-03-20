@@ -207,6 +207,11 @@ export class CobrosService {
 		return this.http.get<any>(url).pipe(map((res: any) => (Array.isArray(res?.data) ? res.data : [])));
 	}
 
+	// Facturas: sucursales disponibles
+	getFacturasSucursales(): Observable<number[]> {
+		return this.http.get<any>(`${this.apiUrl}/facturas/sucursales`).pipe(map((res: any) => (Array.isArray(res?.data) ? res.data : [])));
+	}
+
 	// Facturas: listado paginado para UI SIN
 	getFacturasLista(params: { page?: number; per_page?: number; anio?: number | string } = {}): Observable<any> {
 		let httpParams = new HttpParams();

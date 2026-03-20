@@ -16,6 +16,10 @@ export class DescuentoMoraComponent implements OnInit {
 	searchCodCeta = '';
 	estudianteEncontrado: any = null;
 	pensumNombre = '';
+	gestionSeleccionada: string = '';
+	codPensumSeleccionado: string = '';
+	gestionesDisponibles: string[] = [];
+	pensumsDisponibles: Array<{ cod_pensum: string; nombre: string }> = [];
 	studentDisplayName = '';
 	grupos: string[] = [];
 
@@ -66,6 +70,22 @@ export class DescuentoMoraComponent implements OnInit {
 		});
 	}
 
+	private handleResumenSinInformacion(): void {
+		this.resetResumenLocal();
+		this.displayAlert('No se encontró el registro o información, contactarse con el administrador', 'warning');
+		this.loading = false;
+	}
+
+	private resumenTieneInformacion(data: any): boolean {
+		if (!data) {
+			return false;
+		}
+		const est = data?.estudiante;
+		const hasEst = !!est && !!(est?.cod_ceta || est?.id_estudiante || est?.nombres || est?.nombre);
+		const hasInsc = Array.isArray(data?.inscripciones) && data.inscripciones.length > 0;
+		return hasEst || hasInsc;
+	}
+
 	buscarPorCodCeta(): void {
 		const code = (this.searchCodCeta || '').toString().trim();
 		if (!code) {
@@ -81,14 +101,47 @@ export class DescuentoMoraComponent implements OnInit {
 			},
 			error: (err: any) => {
 				console.error('Error al buscar por Código CETA:', err);
-				this.resetResumenLocal();
+				this.handleResumenSinInformacion();
 				this.loading = false;
+			}
+		});
+	}
+
+	onGestionChange(): void {
+		this.reloadResumenWithFilters();
+	}
+
+	onPensumChange(): void {
+		this.reloadResumenWithFilters();
+	}
+
+	private reloadResumenWithFilters(): void {
+		const code = (this.searchCodCeta || '').toString().trim();
+		if (!code) {
+			return;
+		}
+
+		this.loading = true;
+		const gestion = (this.gestionSeleccionada || '').toString().trim();
+		const codPensum = (this.codPensumSeleccionado || '').toString().trim();
+		this.cobrosService.getResumen(code, gestion || undefined, codPensum || undefined).subscribe({
+			next: (res: any) => {
+				this.applyResumenData(res);
+				this.loading = false;
+			},
+			error: (err: any) => {
+				console.error('Error al recargar resumen:', err);
+				this.handleResumenSinInformacion();
 			}
 		});
 	}
 
 	private applyResumenData(res: any): void {
 		const data = res?.data || {};
+		if (!res?.success || !this.resumenTieneInformacion(data)) {
+			this.handleResumenSinInformacion();
+			return;
+		}
 		const est = data?.estudiante || {};
 		const insc = data?.inscripcion || null;
 		const inscripciones = Array.isArray(data?.inscripciones) ? data.inscripciones : [];
@@ -96,12 +149,60 @@ export class DescuentoMoraComponent implements OnInit {
 
 		this.estudianteEncontrado = est;
 		this.studentDisplayName = [est?.ap_paterno, est?.ap_materno, est?.nombres].filter(Boolean).join(' ').trim();
-		this.pensumNombre = String(insc?.pensum?.nombre || est?.pensum?.nombre || '');
 
-		this.grupos = (inscripciones as any[])
-			.filter((i: any) => String(i?.gestion || '') === gestion)
-			.map((i: any) => String(i?.cod_curso || ''))
+		// Listas para selector (gestión/pensum)
+		const gestiones = (inscripciones as any[])
+			.map((i: any) => String(i?.gestion || '').trim())
+			.filter((g: string) => !!g);
+		this.gestionesDisponibles = Array.from(new Set(gestiones)).sort((a: string, b: string) => b.localeCompare(a));
+
+		const pensumsTmp = (inscripciones as any[])
+			.map((i: any) => ({
+				cod_pensum: String(i?.cod_pensum || i?.pensum?.cod_pensum || '').trim(),
+				nombre: String(i?.pensum?.nombre || i?.cod_pensum || '').trim(),
+			}))
+			.filter((p: any) => !!p.cod_pensum);
+		const pensumMap = new Map<string, { cod_pensum: string; nombre: string }>();
+		pensumsTmp.forEach((p: any) => {
+			if (!pensumMap.has(p.cod_pensum)) {
+				pensumMap.set(p.cod_pensum, { cod_pensum: p.cod_pensum, nombre: p.nombre || p.cod_pensum });
+			}
+		});
+		this.pensumsDisponibles = Array.from(pensumMap.values()).sort((a, b) => a.cod_pensum.localeCompare(b.cod_pensum));
+
+		if (!this.gestionSeleccionada) {
+			this.gestionSeleccionada = gestion;
+		}
+		if (!this.codPensumSeleccionado) {
+			this.codPensumSeleccionado = String(insc?.cod_pensum || insc?.pensum?.cod_pensum || '');
+		}
+		this.pensumNombre = String(insc?.pensum?.nombre || est?.pensum?.nombre || '');
+		if (this.codPensumSeleccionado) {
+			const found = this.pensumsDisponibles.find(p => p.cod_pensum === this.codPensumSeleccionado);
+			if (found) {
+				this.pensumNombre = found.nombre;
+			}
+		}
+		if (this.gestionSeleccionada && this.gestionesDisponibles.length > 0 && !this.gestionesDisponibles.includes(this.gestionSeleccionada)) {
+			this.gestionSeleccionada = this.gestionesDisponibles[0] || this.gestionSeleccionada;
+		}
+		const gestionToUse = String(this.gestionSeleccionada || gestion);
+		const codPensumToUse = String(this.codPensumSeleccionado || '');
+		const gruposTmp = (inscripciones as any[])
+			.filter((i: any) => {
+				const gestionI = String(i?.gestion || '');
+				const codPensumI = String(i?.cod_pensum || i?.pensum?.cod_pensum || '');
+				if (gestionI !== gestionToUse) {
+					return false;
+				}
+				if (codPensumToUse && codPensumI !== codPensumToUse) {
+					return false;
+				}
+				return true;
+			})
+			.map((i: any) => String(i?.cod_curso || '').trim())
 			.filter((c: string) => !!c);
+		this.grupos = Array.from(new Set(gruposTmp));
 
 		this.morasPendientes = Array.isArray(data?.moras_pendientes) ? data.moras_pendientes : [];
 		this.morasPendientes = (this.morasPendientes || []).slice().sort((a: any, b: any) => Number(a?.numero_cuota || 0) - Number(b?.numero_cuota || 0));
@@ -120,6 +221,10 @@ export class DescuentoMoraComponent implements OnInit {
 	private resetResumenLocal(): void {
 		this.estudianteEncontrado = null;
 		this.pensumNombre = '';
+		this.gestionSeleccionada = '';
+		this.codPensumSeleccionado = '';
+		this.gestionesDisponibles = [];
+		this.pensumsDisponibles = [];
 		this.studentDisplayName = '';
 		this.grupos = [];
 		this.morasPendientes = [];

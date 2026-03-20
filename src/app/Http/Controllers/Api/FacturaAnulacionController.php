@@ -56,6 +56,7 @@ class FacturaAnulacionController extends Controller
 				'punto_venta' => $pv,
 				'sucursal' => $sucursal,
 				'motivo' => $codigoMotivo,
+                'row' => $row,
 			]);
 
 			// 1) Verificar estado actual en SIN

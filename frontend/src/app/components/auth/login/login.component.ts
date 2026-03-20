@@ -49,7 +49,8 @@ const USE_MOCK_AUTH = false; // Cambiar a false para usar el servicio real
 								type="text"
 								class="login-input"
 								[class.is-invalid]="loginForm.get('nickname')?.invalid && loginForm.get('nickname')?.touched"
-								placeholder="Ingrese su usuario o CI"
+								placeholder="Ingrese su usuario"
+
 							>
 							<div class="position-absolute top-50 end-0 translate-middle-y pe-3">
 								<i class="fas fa-user text-muted"></i>

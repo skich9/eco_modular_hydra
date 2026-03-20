@@ -293,7 +293,7 @@
                     <th>Mora</th>
                     <th>Fecha Inicio</th>
                     <!--<th>Fecha Fin</th>-->
-                    <!--<th class="text-end">Días Mora</th>-->
+                    <th class="text-end">Días Mora</th>
                     <th class="text-center">Prórroga</th>
                     <th class="text-center">Descuento</th>
                     <th class="text-end">Monto Mora</th>
@@ -301,10 +301,10 @@
                 </thead>
                 <tbody>
                   <tr *ngFor="let m of morasTabla">
-                    <td>{{ m?.id_asignacion_mora || '-' }}</td>
+                    <td>{{ getMoraMensualidadLabel(m) }}</td>
                     <td>{{ getMoraFechaInicio(m) ? (getMoraFechaInicio(m) | date:'yyyy-MM-dd') : '-' }}</td>
                     <!--<td>{{ getMoraFechaFin(m) ? (getMoraFechaFin(m) | date:'yyyy-MM-dd') : '-' }}</td>-->
-                    <!--<td class="text-end">{{ getMoraDias(m) }}</td>-->
+                    <td class="text-end">{{ getMoraDias(m) }}</td>
                     <td class="text-center">{{ getMoraTieneProrroga(m) ? 'Si' : 'No' }}</td>
                     <td class="text-end">{{ getMoraMontoDescuento(m) | number:'1.2-2' }}</td>
                     <td class="text-end">{{ getMoraMontoMora(m) | number:'1.2-2' }}</td>

@@ -411,7 +411,7 @@ class ContingenciaService
 					->where('nro_factura', $factura->nro_factura)
 					->where('anio', $factura->anio)
 					->update([
-						'estado' => 'Enviado',
+						'estado' => 'VALIDADA',
 						'aceptado_impuestos' => true,
 						'mensaje_sin' => 'Factura validada correctamente'
 					]);
@@ -450,7 +450,7 @@ class ContingenciaService
 					->where('nro_factura', $factura->nro_factura)
 					->where('anio', $factura->anio)
 					->update([
-						'estado' => 'Rechazado',
+						'estado' => 'RECHAZADA',
 						'mensaje_sin' => $mensajeError
 					]);
 
@@ -467,6 +467,9 @@ class ContingenciaService
 		}
 
 		// Caso 4: OBSERVADA - Algunas facturas tienen errores, otras fueron aceptadas
+        /*******************************************************************************************/
+        /**************** ANALISAR SI SE VA MANTENER EL VALOR DE OBSERVADA *************************/
+        /*******************************************************************************************/
 		if ($codigoDescripcion === 'OBSERVADA') {
 			$mensajesList = isset($resp['mensajesList']) ? $resp['mensajesList'] : [];
 
@@ -505,7 +508,7 @@ class ContingenciaService
 						->where('nro_factura', $factura->nro_factura)
 						->where('anio', $factura->anio)
 						->update([
-							'estado' => 'Rechazado',
+							'estado' => 'RECHAZADA',
 							'mensaje_sin' => $erroresTexto
 						]);
 
@@ -523,7 +526,7 @@ class ContingenciaService
 						->where('nro_factura', $factura->nro_factura)
 						->where('anio', $factura->anio)
 						->update([
-							'estado' => 'Enviado',
+							'estado' => 'VALIDADA',
 							'aceptado_impuestos' => true,
 							'mensaje_sin' => 'Factura validada correctamente'
 						]);
@@ -560,10 +563,10 @@ class ContingenciaService
 				$mensaje = isset($respuesta['mensajesList']['descripcion']) ? $respuesta['mensajesList']['descripcion'] : '';
 
 				// Mapear código de estado
-				$nuevoEstado = 'PENDIENTE';
+				$nuevoEstado = 'EN PROCESO';
 				$aceptado = false;
 				if ($codigoEstado === 908 || $codigoEstado === 905) {
-					$nuevoEstado = 'ACEPTADA';
+					$nuevoEstado = 'VALIDADA';
 					$aceptado = true;
 				} elseif ($codigoEstado === 901) {
 					$nuevoEstado = 'RECHAZADA';

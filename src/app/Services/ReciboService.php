@@ -55,7 +55,7 @@ class ReciboService
 		$payload = array_merge([
 			'anio' => $anio,
 			'nro_recibo' => $nroRecibo,
-			'estado' => 'VIGENTE',
+			'estado' => 'EN PROCESO',
 			'codigo_doc_sector' => null,
 		], $data);
 		DB::table('recibo')->insert($payload);

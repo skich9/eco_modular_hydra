@@ -18,11 +18,12 @@ class FacturaEstadoController extends Controller
             $perPage = (int) ($request->query('per_page', 10));
             if ($perPage < 1) $perPage = 10; if ($perPage > 100) $perPage = 100;
             $anio = $request->query('anio');
-            $idUsuario = $request->query('id_usuario');
-            $fecha = $request->query('fecha');
-            $codigoCarrera = $request->query('codigo_carrera');
+            $sucursal = $request->query('sucursal');
+            $fechaInicio = $request->query('fecha_inicio');
+            $fechaFin = $request->query('fecha_fin');
 
             $q = DB::table('factura as f')
+                ->leftJoin('usuarios as u', 'u.id_usuario', '=', 'f.id_usuario')
                 ->select(
                     'f.anio',
                     'f.nro_factura',
@@ -30,25 +31,19 @@ class FacturaEstadoController extends Controller
                     'f.estado',
                     'f.cuf',
                     'f.codigo_recepcion',
+                    'f.codigo_sucursal',
                     // Datos adicionales para libro diario y otras UIs
                     'f.cliente',
                     'f.nro_documento_cobro',
                     'f.cod_ceta',
                     'f.id_forma_cobro',
-                    'f.monto_total'
+                    'f.monto_total',
+                    'u.nickname as nombre_usuario'
                 );
             if ($anio) { $q->where('f.anio', (int)$anio); }
-            if ($idUsuario !== null && $idUsuario !== '') { $q->where('f.id_usuario', (int)$idUsuario); }
-            if ($fecha) { $q->whereDate('f.fecha_emision', $fecha); }
-            if ($codigoCarrera !== null && $codigoCarrera !== '') {
-                $q->whereExists(function ($sub) use ($codigoCarrera) {
-                    $sub->select(DB::raw(1))
-                        ->from('inscripciones as i')
-                        ->join('pensums as p', 'p.cod_pensum', '=', 'i.cod_pensum')
-                        ->whereColumn('i.cod_ceta', 'f.cod_ceta')
-                        ->where('p.codigo_carrera', $codigoCarrera);
-                });
-            }
+            if ($sucursal !== null && $sucursal !== '') { $q->where('f.codigo_sucursal', (int)$sucursal); }
+            if ($fechaInicio) { $q->where('f.fecha_emision', '>=', $fechaInicio . ' 00:00:00'); }
+            if ($fechaFin)    { $q->where('f.fecha_emision', '<=', $fechaFin    . ' 23:59:59'); }
             $q->orderBy('f.anio', 'desc')->orderBy('f.nro_factura', 'desc');
 
             $total = $q->count();
@@ -130,6 +125,8 @@ class FacturaEstadoController extends Controller
                     'cod_ceta' => $codCeta,
                     'id_forma_cobro' => $idFormaCobro,
                     'monto_total' => $montoTotal,
+                    'codigo_sucursal' => isset($r->codigo_sucursal) ? (int)$r->codigo_sucursal : 0,
+                    'nombre_usuario' => isset($r->nombre_usuario) ? trim((string)$r->nombre_usuario) : '',
                 ];
             }
 
@@ -146,6 +143,19 @@ class FacturaEstadoController extends Controller
         }
     }
 
+    public function sucursales()
+    {
+        try {
+            $rows = DB::table('factura')
+                ->select('codigo_sucursal')
+                ->distinct()
+                ->orderBy('codigo_sucursal')
+                ->pluck('codigo_sucursal');
+            return response()->json([ 'success' => true, 'data' => $rows ]);
+        } catch (\Throwable $e) {
+            return response()->json([ 'success' => false, 'message' => $e->getMessage() ], 500);
+        }
+    }
     public function estado($anio, $nro, EstadoFacturaService $estadoSvc)
     {
         try {
@@ -162,40 +172,142 @@ class FacturaEstadoController extends Controller
             $suc = isset($row->codigo_sucursal) ? (int)$row->codigo_sucursal : (int)config('sin.sucursal');
             $cuf = isset($row->cuf) ? (string)$row->cuf : '';
 
-            $resp = $estadoSvc->verificacionEstadoFactura($cuf, $pv, $suc);
-            $estadoNorm = is_array($resp) && isset($resp['estado']) ? (string)$resp['estado'] : null;
-            $codigoEstadoNorm = is_array($resp) && isset($resp['codigoEstado']) ? $resp['codigoEstado'] : null;
-            $descripcionNorm = is_array($resp) && isset($resp['descripcion']) ? $resp['descripcion'] : null;
-            // Fallback a estado local en BD si el servicio no devuelve datos
-            $codigoRecep = isset($row->codigo_recepcion) ? (string)$row->codigo_recepcion : '';
-            if ($estadoNorm === null || $estadoNorm === '' || empty($resp['success'])) {
-                $estadoLocal = isset($row->estado) ? strtoupper(trim((string)$row->estado)) : '';
-                // Normalizar estados locales para UI
-                if ($estadoLocal === 'VIGENTE') { $estadoLocal = 'ACEPTADA'; if ($codigoEstadoNorm === null) { $codigoEstadoNorm = 690; } }
-                if ($estadoLocal === 'CONTINGENC' || $estadoLocal === 'CONTINGENCIA') { $estadoLocal = 'EN_PROCESO'; }
-                // Derivar estado si BD no tiene valor explícito
-                if ($estadoLocal === '' && $codigoRecep !== '') { $estadoLocal = 'ACEPTADA'; if ($codigoEstadoNorm === null) { $codigoEstadoNorm = 690; } }
-                if ($estadoLocal === '' && $codigoRecep === '' && $cuf !== '') { $estadoLocal = 'ENVIADA'; }
-                if ($estadoLocal === '') { $estadoLocal = 'DESCONOCIDO'; }
-                if ($estadoLocal === 'ACEPTADA' && $codigoEstadoNorm === null) { $codigoEstadoNorm = 690; }
+            Log::info('FacturaEstadoController.estado el rou que se recupera es:', [
+                'anio' => $anio,
+                'nro_factura' => $nro,
+                'cuf' => $cuf,
+                'codigo_punto_venta' => $pv,
+                'codigo_sucursal' => $suc,
+                'row' => $row
+            ]);
 
-                $estadoNorm = $estadoNorm ?: $estadoLocal;
-                if ($descripcionNorm === null) { $descripcionNorm = 'Estado derivado localmente'; }
+            // Verificar estado local antes de llamar al SIN
+            $estadoLocal = isset($row->estado) ? strtoupper(trim((string)$row->estado)) : '';
+
+            if ($estadoLocal === 'ANULADA') {
+                return response()->json([
+                    'success' => true,
+                    'estado'  => 'ANULADA',
+                    'message' => 'Esta factura ya se encuentra anulada.',
+                    'data'    => [
+                        'estado'           => 'ANULADA',
+                        'codigo_recepcion' => isset($row->codigo_recepcion) ? (string)$row->codigo_recepcion : '',
+                    ],
+                ]);
             }
 
-            // Persistir estado simple en tabla factura (opcional)
-            try {
-                if (!empty($resp['estado'])) {
-                    DB::table('factura')
-                        ->where('anio', (int)$anio)
-                        ->where('nro_factura', (int)$nro)
-                        ->update([
-                            'estado' => (string)$resp['estado'],
-                            'updated_at' => now(),
-                        ]);
-                }
-            } catch (\Throwable $e) { /* best-effort */ }
+            $estadosNoRegistrados = ['CONTINGENCIA', 'RECHAZADA', 'EN PROCESO'];
+            if (in_array($estadoLocal, $estadosNoRegistrados)) {
+                return response()->json([
+                    'success' => false,
+                    'estado'  => $estadoLocal,
+                    'message' => 'La factura no se encuentra registrada en impuestos. Debe regularizarla primero para poder consultar su estado en el servidor de impuestos.',
+                    'data'    => [
+                        'estado'           => $estadoLocal,
+                        'codigo_recepcion' => isset($row->codigo_recepcion) ? (string)$row->codigo_recepcion : '',
+                    ],
+                ], 422);
+            }
 
+            $resp = $estadoSvc->verificacionEstadoFactura($cuf, $pv, $suc);
+            // $estadoNorm = is_array($resp) && isset($resp['estado']) ? (string)$resp['estado'] : null;
+            // Ya no se maneja estadoNorm  // SE QUITARA DE LA LOGICA
+            /****************************************************************************************************************************************************/
+            /************************************ TRABAJAR AQUI Y TERMINAR LA VERIFICACION DE ESTADO ************************************************************/
+            /****************************************************************************************************************************************************/
+                // 'codigoEstado' => $codigoEstado,
+                // 'descripcionEstado' => $descripcionEstado,
+            $codigoEstado = is_array($resp) && isset($resp['codigoEstado']) ? $resp['codigoEstado'] : null;
+            $descripcionEstado = is_array($resp) && isset($resp['descripcionEstado']) ? $resp['descripcionEstado'] : null;
+            $codigoRecep = isset($row->codigo_recepcion) ? (string)$row->codigo_recepcion : '';
+
+            // if ($estadoNorm === null || $estadoNorm === '' || empty($resp['success'])) {
+            //     $estadoLocal = isset($row->estado) ? strtoupper(trim((string)$row->estado)) : '';
+            //     // Normalizar estados locales para UI
+            //     if ($estadoLocal === 'VIGENTE') {
+            //         $estadoLocal = 'ACEPTADA';
+            //         if ($codigoEstadoNorm === null) { $codigoEstadoNorm = 690; }
+            //     }
+            //     if ($estadoLocal === 'CONTINGENC' || $estadoLocal === 'CONTINGENCIA') {
+            //         $estadoLocal = 'EN_PROCESO';
+            //     }
+            //     // Derivar estado si BD no tiene valor explícito
+            //     if ($estadoLocal === '' && $codigoRecep !== '') {
+            //         $estadoLocal = 'ACEPTADA';
+            //         if ($codigoEstadoNorm === null) { $codigoEstadoNorm = 690; }
+            //     }
+            //     if ($estadoLocal === '' && $codigoRecep === '' && $cuf !== '') {
+            //         $estadoLocal = 'ENVIADA';
+            //     }
+            //     if ($estadoLocal === '') {
+            //         $estadoLocal = 'DESCONOCIDO';
+            //     }
+            //     if ($estadoLocal === 'ACEPTADA' && $codigoEstadoNorm === null) {
+            //         $codigoEstadoNorm = 690;
+            //     }
+
+            //     $estadoNorm = $estadoNorm ?: $estadoLocal;
+            //     if ($descripcionNorm === null) { $descripcionNorm = 'Estado derivado localmente'; }
+            // }
+            Log::debug('FacturaEstadoController.estado', [
+                'anio' => $anio,
+                'nro_factura' => $nro,
+                'cuf' => $cuf,
+                'codigo_punto_venta' => $pv,
+                'codigo_sucursal' => $suc,
+                'codigo_recepcion' => $codigoRecep,
+                'estado_local' => $estadoLocal,
+                // 'estado_norm' => $estadoNorm, // SE QUITARA DE LA LOGICA
+                'codigo_estado' => $codigoEstado,
+                'descripcion_estado' => $descripcionEstado,
+                // 'descripcion_norm' => $descripcionNorm, // SE QUITARA DE LA LOGICA
+            ]);
+            $nuevoEstadoFactura = "";
+            if($codigoEstado == 690 ) {
+                $nuevoEstadoFactura = "VALIDADA";
+                $codigoRecepcion = is_array($resp) && isset($resp['codigoRecepcion']) ? $resp['codigoRecepcion'] : null;
+                DB::table('factura')
+                    ->where('anio', (int)$anio)
+                    ->where('nro_factura', (int)$nro)
+                    ->update([
+                        'estado' => $nuevoEstadoFactura,
+                        'updated_at' => now(),
+                        'codigo_recepcion' => $codigoRecepcion
+                    ]);
+            } else if($codigoEstado == 902) {
+                $nuevoEstadoFactura = "RECHAZADA";
+                $mensajesList = is_array($resp) && isset($resp['mensajesList']) ? $resp['mensajesList'] : null;
+                DB::table('factura')
+                    ->where('anio', (int)$anio)
+                    ->where('nro_factura', (int)$nro)
+                    ->update([
+                        'estado' => $nuevoEstadoFactura,
+                        'updated_at' => now(),
+                        'codigo_excepcion' => json_encode($mensajesList)
+                    ]);
+
+            } else if($codigoEstado == 691) {
+                $nuevoEstadoFactura = "ANULADA";
+                DB::table('factura')
+                    ->where('anio', (int)$anio)
+                    ->where('nro_factura', (int)$nro)
+                    ->update([
+                        'estado' => $nuevoEstadoFactura,
+                        'updated_at' => now(),
+                        'codigo_recepcion' => $codigoRecep
+                    ]);
+            } else {
+                $nuevoEstadoFactura = "CONTINGENCIA";
+                DB::table('factura')
+                    ->where('anio', (int)$anio)
+                    ->where('nro_factura', (int)$nro)
+                    ->update([
+                        'estado' => $nuevoEstadoFactura,
+                        'updated_at' => now(),
+                        'codigo_excepcion' => json_encode($resp)
+                    ]);
+            }
+            Log::debug('FacturaEstadoController.estado Paso la ejecucion de todos los ifs');
             // Log SOAP si existe tabla
             try {
                 DB::table('sin_soap_logs')->insert([
@@ -210,20 +322,20 @@ class FacturaEstadoController extends Controller
             } catch (\Throwable $e) { /* best-effort */ }
 
             $respData = is_array($resp) ? $resp : [];
-            $respData['estado'] = $estadoNorm;
-            $respData['codigoEstado'] = $codigoEstadoNorm;
-            $respData['descripcion'] = $descripcionNorm;
+            $respData['estado'] = $nuevoEstadoFactura;
+            $respData['codigoEstado'] = $codigoEstado;
+            $respData['descripcion'] = $descripcionEstado;
             $respData['codigo_recepcion'] = $codigoRecep;
 
-            $ok = (!empty($resp['success']) || !empty($estadoNorm));
+            $ok = !empty($resp['success']) || $codigoEstado !== null;
             $respData['success'] = $ok;
             if ($ok && empty($resp['success'])) { $respData['message'] = null; }
 
             return response()->json([
                 'success' => $ok,
-                'estado' => $estadoNorm,
-                'codigoEstado' => $codigoEstadoNorm,
-                'descripcion' => $descripcionNorm,
+                'estado' => $nuevoEstadoFactura,
+                'codigoEstado' => $codigoEstado,
+                'descripcion' => $descripcionEstado,
                 'codigo_recepcion' => $codigoRecep,
                 'data' => $respData,
             ]);

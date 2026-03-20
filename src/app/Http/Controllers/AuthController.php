@@ -41,11 +41,10 @@ class AuthController extends Controller
 				return back()->withErrors($validator)->withInput();
 			}
 
-			// Buscar usuario por nickname o CI (usando email como campo genérico)
+			// Buscar usuario por nickname (usando email como campo genérico)
 			$usuario = Usuario::with('rol')
 				->where(function($query) use ($request) {
-					$query->where('nickname', $request->email)
-						  ->orWhere('ci', $request->email);
+					$query->where('nickname', $request->email);
 				})
 				->where('estado', true)
 				->first();
@@ -55,6 +54,14 @@ class AuthController extends Controller
 					'email' => 'Las credenciales no coinciden con nuestros registros.'
 				])->withInput();
 			}
+
+			// Verificación case sensitive
+			if ($usuario->nickname !== $request->email) {
+				return back()->withErrors([
+					'email' => 'Las credenciales no coinciden con nuestros registros.'
+				])->withInput();
+			}
+
 
 			// Verificar contraseña
 			if (!Hash::check($request->password, $usuario->contrasenia)) {

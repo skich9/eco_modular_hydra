@@ -44,8 +44,28 @@
 					</div>
 				</div>
 				<div class="search-input-group" style="flex-direction: column; gap: 0.5rem; margin-top: 1rem;">
+					<label class="form-label">Gestión</label>
+					<select
+						class="search-input"
+						[(ngModel)]="gestionSeleccionada"
+						(ngModelChange)="onGestionChange()"
+						[disabled]="!estudianteEncontrado || loading"
+					>
+						<option value="">Seleccione gestión</option>
+						<option *ngFor="let g of gestionesDisponibles" [value]="g">{{ g }}</option>
+					</select>
+				</div>
+				<div class="search-input-group" style="flex-direction: column; gap: 0.5rem; margin-top: 1rem;">
 					<label class="form-label">Pensum</label>
-					<input type="text" class="search-input" [value]="pensumNombre" disabled />
+					<select
+						class="search-input"
+						[(ngModel)]="codPensumSeleccionado"
+						(ngModelChange)="onPensumChange()"
+						[disabled]="!estudianteEncontrado || loading"
+					>
+						<option value="">Seleccione pensum</option>
+						<option *ngFor="let p of pensumsDisponibles" [value]="p.cod_pensum">{{ p.nombre }}</option>
+					</select>
 				</div>
 				<div class="search-input-group" style="flex-direction: column; gap: 0.5rem; margin-top: 1rem;">
 					<label class="form-label">Estudiante</label>

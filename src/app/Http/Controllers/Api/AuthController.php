@@ -33,13 +33,11 @@ class AuthController extends Controller
 				], 422);
 			}
 
-			// Usuario o CI deben coincidir exactamente (mayúsculas/minúsculas).
-			// MySQL con collation *_ci hace que nickname = ? sea insensible; BINARY/COLLATE bin
-			// a veces no aplica igual en todos los servidores. Se obtienen candidatos por LOWER()
-			// y se exige igualdad estricta en PHP (===), que no depende del motor.
-			$inputLogin = trim((string) $request->nickname);
-
-			$candidatos = Usuario::with('rol')
+			// Buscar usuario por nickname
+			$usuario = Usuario::with('rol')
+				->where(function($query) use ($request) {
+					$query->where('nickname', $request->nickname);
+				})
 				->where('estado', true)
 				->where(function ($query) use ($inputLogin) {
 					$query->whereRaw('LOWER(nickname) = LOWER(?)', [$inputLogin])
@@ -52,6 +50,14 @@ class AuthController extends Controller
 			});
 
 			if (!$usuario) {
+				return response()->json([
+					'success' => false,
+					'message' => 'Las credenciales no coinciden con nuestros registros.'
+				], 401);
+			}
+
+			// verificacion case sensitive
+			if ($usuario->nickname !== $request->nickname ) {
 				return response()->json([
 					'success' => false,
 					'message' => 'Las credenciales no coinciden con nuestros registros.'
