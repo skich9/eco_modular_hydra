@@ -190,8 +190,8 @@ export class CobrosService {
 	}
 
 	// Facturas: estado en SIN
-	getFacturaEstado(anio: number, nroFactura: number): Observable<any> {
-		const url = `${this.apiUrl}/facturas/${anio}/${nroFactura}/estado`;
+	getFacturaEstado(anio: number, nroFactura: number, sucursal: number): Observable<any> {
+		const url = `${this.apiUrl}/facturas/${anio}/${nroFactura}/${sucursal}/estado`;
 		return this.http.get<any>(url);
 	}
 

@@ -219,6 +219,7 @@ export class EstadoFacturaComponent implements OnInit {
 	openEstado(row: any, fromTopForm: boolean = false): void {
 		const anio = Number(row?.anio || 0);
 		const nro = Number(row?.nro_factura || 0);
+		const sucursal = Number(row?.codigo_sucursal || 0);
 		if (!anio || !nro) { this.loading = false; return; } // si no tiene el año o número, no se puede consultar el estado
 		if (!fromTopForm) { row.__updating = true; }
 		this.statusRow = row;
@@ -236,7 +237,7 @@ export class EstadoFacturaComponent implements OnInit {
 				}
 			});
 		}
-		this.cobros.getFacturaEstado(anio, nro).subscribe({
+		this.cobros.getFacturaEstado(anio, nro, sucursal).subscribe({
 			next: (res: any) => {
 				this.statusData = res?.data || {};
 				if (!fromTopForm) { row.estado = this.statusData?.estado || row.estado; row.__updating = false; }
@@ -264,9 +265,9 @@ export class EstadoFacturaComponent implements OnInit {
 
 	anularDesdeModal(): void {
 		this.statusError = '';
-		if (!this.statusRow) return;
 		const anio = Number(this.statusRow?.anio || 0);
 		const nro = Number(this.statusRow?.nro_factura || 0);
+		const sucursal = Number(this.statusRow?.codigo_sucursal || 0);
 		if (!anio || !nro) { this.statusError = 'Factura inválida'; return; }
 		this.anulando = true;
 		this.cobros.anularFactura(anio, nro, Number(this.codigoMotivo || 1)).subscribe({
@@ -277,7 +278,7 @@ export class EstadoFacturaComponent implements OnInit {
 					this.finalizarAnulacionExitosa(anio, nro);
 				} else {
 					// Polling de estado si queda EN_PROCESO
-					this.pollEstadoPostAnulacion(anio, nro, 6, 1500);
+					this.pollEstadoPostAnulacion(anio, nro, sucursal, 6, 1500);
 				}
 			},
 			error: (err: any) => {
@@ -287,10 +288,10 @@ export class EstadoFacturaComponent implements OnInit {
 		});
 	}
 
-	private pollEstadoPostAnulacion(anio: number, nro: number, tries: number, delayMs: number): void {
+	private pollEstadoPostAnulacion(anio: number, nro: number, sucursal: number, tries: number, delayMs: number): void {
 		if (tries <= 0) {
 			// último refresh y salir
-			this.cobros.getFacturaEstado(anio, nro).subscribe({
+			this.cobros.getFacturaEstado(anio, nro, sucursal).subscribe({
 				next: (st: any) => {
 					this.statusData = st?.data || {};
 					const est = (this.statusData?.estado || '').toString().toUpperCase();
@@ -305,13 +306,13 @@ export class EstadoFacturaComponent implements OnInit {
 			});
 			return;
 		}
-		this.cobros.getFacturaEstado(anio, nro).subscribe({
+		this.cobros.getFacturaEstado(anio, nro, sucursal).subscribe({
 			next: (st: any) => {
 				this.statusData = st?.data || {};
 				const est = (this.statusData?.estado || '').toString().toUpperCase();
 				if (this.statusRow) this.statusRow.estado = this.statusData?.estado || this.statusRow.estado;
 				if (est === 'EN_PROCESO') {
-					setTimeout(() => this.pollEstadoPostAnulacion(anio, nro, tries - 1, delayMs), delayMs);
+					setTimeout(() => this.pollEstadoPostAnulacion(anio, nro, sucursal, tries - 1, delayMs), delayMs);
 				} else if (est === 'ANULADA') {
 					this.finalizarAnulacionExitosa(anio, nro);
 				} else {
@@ -319,7 +320,7 @@ export class EstadoFacturaComponent implements OnInit {
 				}
 			},
 			error: () => {
-				setTimeout(() => this.pollEstadoPostAnulacion(anio, nro, tries - 1, delayMs), delayMs);
+				setTimeout(() => this.pollEstadoPostAnulacion(anio, nro, sucursal, tries - 1, delayMs), delayMs);
 			}
 		});
 	}

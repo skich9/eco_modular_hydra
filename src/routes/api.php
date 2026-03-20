@@ -199,8 +199,8 @@ Route::get('facturas', [FacturaEstadoController::class, 'lista']);
 Route::get('facturas/sucursales', [FacturaEstadoController::class, 'sucursales']);
 
 // Facturas: verificación de estado en SIN
-Route::get('facturas/{anio}/{nro}/estado', [FacturaEstadoController::class, 'estado'])
-    ->where(['anio' => '\\d{4}', 'nro' => '\\d+']);
+Route::get('facturas/{anio}/{nro}/{sucursal}/estado', [FacturaEstadoController::class, 'estado'])
+    ->where(['anio' => '\\d{4}', 'nro' => '\\d+', 'sucursal' => '\\d+']);
 
 // Facturas: anulación (verifica estado y luego anula)
 Route::post('facturas/{anio}/{nro}/anular', [FacturaAnulacionController::class, 'anular'])
