@@ -209,6 +209,18 @@ class FacturaEstadoController extends Controller
                 ], 422);
             }
 
+            if ($estadoLocal == "VIGENTE") {
+                return response()->json([
+                    'success' => FALSE,
+                    'estado'  => 'RECHAZADA',
+                    'message' => 'El estado vigente no es un estado valido por favor revise sus datos o contacte con el adminsitrador.',
+                    'data'    => [
+                        'estado'           => 'RECHAZADA',
+                        'codigo_recepcion' => null,
+                    ],
+                ]);
+                // No se debe procesar el estado vigente
+            }
             $resp = $estadoSvc->verificacionEstadoFactura($cuf, $pv, $suc);
             // $estadoNorm = is_array($resp) && isset($resp['estado']) ? (string)$resp['estado'] : null;
             // Ya no se maneja estadoNorm  // SE QUITARA DE LA LOGICA
