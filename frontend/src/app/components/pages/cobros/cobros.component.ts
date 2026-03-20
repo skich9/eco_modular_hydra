@@ -22,11 +22,12 @@ import * as QRCode from 'qrcode';
 import { ActivatedRoute } from '@angular/router';
 import { forkJoin } from 'rxjs';
 import { PuntoVentaService, MiSucursalAsignacion } from '../../../services/punto-venta.service';
+import { SoloNumerosDirective } from '../../../directives/solo-numeros.directive';
 
 @Component({
   selector: 'app-cobros-page',
   standalone: true,
-  imports: [CommonModule, ReactiveFormsModule, FormsModule, MensualidadModalComponent, ItemsModalComponent, RezagadoModalComponent, RecuperacionModalComponent, ReincorporacionModalComponent, BusquedaEstudianteModalComponent, DescuentoFormModalComponent, MoraModalComponent, KardexModalComponent, QrPanelComponent, ClickLockDirective],
+  imports: [CommonModule, ReactiveFormsModule, FormsModule, MensualidadModalComponent, ItemsModalComponent, RezagadoModalComponent, RecuperacionModalComponent, ReincorporacionModalComponent, BusquedaEstudianteModalComponent, DescuentoFormModalComponent, MoraModalComponent, KardexModalComponent, QrPanelComponent, ClickLockDirective, SoloNumerosDirective],
   templateUrl: './cobros.component.html',
   styleUrls: ['./cobros.component.scss']
 })
@@ -297,7 +298,7 @@ export class CobrosComponent implements OnInit {
         const n = Number(k);
         if (isFinite(n)) out[n] = Number(this.frontSaldoByCuota[n] || 0);
       }
-    } catch {}
+    } catch { }
     return out;
   }
 
@@ -361,7 +362,7 @@ export class CobrosComponent implements OnInit {
                 };
               });
             }
-          } catch {}
+          } catch { }
           if (!items.length) {
             items = [
               {
@@ -402,48 +403,48 @@ export class CobrosComponent implements OnInit {
             }
 
             generateQuickFacturaPdf({
-            anio,
-            nro,
-            razon,
-            nit: '388386029',
-            codigoCliente: numero || (est?.ci ? String(est.ci) : ''),
-            fechaEmision: new Date(fecha.replace(' ', 'T')).toLocaleString(),
-            periodo,
-            nombreEstudiante: [est.nombres, est.ap_paterno, est.ap_materno].filter(Boolean).join(' '),
-            detalle,
-            cantidad: cant,
-            pu,
-            descuento: 0,
-            montoGift: 0,
-            total,
-            importeBase: total,
-            usuarioHora: usuario,
-            qrBase64: qrBase64,
-            sucursal: '1',
-            puntoVenta: puntoVentaVar,
-            direccion: direccionVar,
-            telefono: '4581736',
-            ciudad: municipioVar,
-            codAutorizacion: undefined,
-            // adicionales para respetar orden backend
-            numeroFactura: nro,
-            cuf: (meta?.cuf || cufGuess) as any,
-            codigoSucursal: '1',
-            codigoPuntoVenta: '2',
-            complemento,
-            periodoFacturado: periodo,
-            descuentoAdicional: 0,
-            montoGiftCard: 0,
-            montoTotal: total,
-            montoTotalSujetoIva: total,
-            items,
-            leyenda: meta?.leyenda,
-            leyenda2: meta?.leyenda2 || '“Este documento es la Representación Gráfica de un Documento Fiscal Digital emitido en una modalidad de facturación en línea”',
-            totalTexto: undefined,
-            codCeta: (this.batchForm.get('cabecera.cod_ceta') as any)?.value || (this.resumen?.estudiante?.cod_ceta || ''),
-            formato: 'roll80',
-            textoSucursal,
-            municipioNombre: municipioVar
+              anio,
+              nro,
+              razon,
+              nit: '388386029',
+              codigoCliente: numero || (est?.ci ? String(est.ci) : ''),
+              fechaEmision: new Date(fecha.replace(' ', 'T')).toLocaleString(),
+              periodo,
+              nombreEstudiante: [est.nombres, est.ap_paterno, est.ap_materno].filter(Boolean).join(' '),
+              detalle,
+              cantidad: cant,
+              pu,
+              descuento: 0,
+              montoGift: 0,
+              total,
+              importeBase: total,
+              usuarioHora: usuario,
+              qrBase64: qrBase64,
+              sucursal: '1',
+              puntoVenta: puntoVentaVar,
+              direccion: direccionVar,
+              telefono: '4581736',
+              ciudad: municipioVar,
+              codAutorizacion: undefined,
+              // adicionales para respetar orden backend
+              numeroFactura: nro,
+              cuf: (meta?.cuf || cufGuess) as any,
+              codigoSucursal: '1',
+              codigoPuntoVenta: '2',
+              complemento,
+              periodoFacturado: periodo,
+              descuentoAdicional: 0,
+              montoGiftCard: 0,
+              montoTotal: total,
+              montoTotalSujetoIva: total,
+              items,
+              leyenda: meta?.leyenda,
+              leyenda2: meta?.leyenda2 || '“Este documento es la Representación Gráfica de un Documento Fiscal Digital emitido en una modalidad de facturación en línea”',
+              totalTexto: undefined,
+              codCeta: (this.batchForm.get('cabecera.cod_ceta') as any)?.value || (this.resumen?.estudiante?.cod_ceta || ''),
+              formato: 'roll80',
+              textoSucursal,
+              municipioNombre: municipioVar
             });
           };
           // Obtener meta de factura SIEMPRE para traer leyendas y CUF real
@@ -459,7 +460,7 @@ export class CobrosComponent implements OnInit {
             },
             error: () => build(undefined)
           });
-        } catch {}
+        } catch { }
       }
     });
   }
@@ -469,22 +470,22 @@ export class CobrosComponent implements OnInit {
       const pensum = (this.resumen as any)?.pensum || '';
       const carrera = ((pensum || '').toString() || '').toUpperCase();
       if (carrera.includes('ELECTRONICA')) return 'CASA MATRIZ';
-    } catch {}
+    } catch { }
     return 'SUCURSAL N. 1';
   }
 
   private computePuntoVenta(): string {
-    try { const pv = (this.resumen as any)?.punto_venta; if (pv !== undefined && pv !== null) return String(pv); } catch {}
+    try { const pv = (this.resumen as any)?.punto_venta; if (pv !== undefined && pv !== null) return String(pv); } catch { }
     return '0';
   }
 
   private computeDireccion(): string {
-    try { const dir = (this.resumen as any)?.direccion_sucursal; if (dir) return String(dir); } catch {}
+    try { const dir = (this.resumen as any)?.direccion_sucursal; if (dir) return String(dir); } catch { }
     return 'CALLE SAN ALBERTO NRO. 124';
   }
 
   private computeMunicipio(): string {
-    try { const m = (this.resumen as any)?.municipio; if (m) return String(m); } catch {}
+    try { const m = (this.resumen as any)?.municipio; if (m) return String(m); } catch { }
     return 'COCHABAMBA';
   }
 
@@ -515,10 +516,10 @@ export class CobrosComponent implements OnInit {
           if (!d || !d.id_qr_transaccion) return;
           const est = (d.estado || '').toString().toLowerCase();
           const saved = !!(d.saved_by_user);
-          if (['completado','cancelado','expirado'].includes(est)) return;
-          if (['generado','procesando','pendiente'].includes(est)) {
+          if (['completado', 'cancelado', 'expirado'].includes(est)) return;
+          if (['generado', 'procesando', 'pendiente'].includes(est)) {
             if (saved) {
-              try { this.qrPanel?.setSavedByUser(true, 'Hay un QR en espera. No se puede generar más códigos QR hasta que se complete el que está en espera.'); } catch {}
+              try { this.qrPanel?.setSavedByUser(true, 'Hay un QR en espera. No se puede generar más códigos QR hasta que se complete el que está en espera.'); } catch { }
               return;
             }
           }
@@ -527,25 +528,25 @@ export class CobrosComponent implements OnInit {
               const tr = det?.data?.transaccion || null;
               if (!tr) return;
               const est2 = (tr.estado || '').toString().toLowerCase();
-              if (['completado','cancelado','expirado'].includes(est2)) return;
+              if (['completado', 'cancelado', 'expirado'].includes(est2)) return;
               const ex = (tr.fecha_expiracion || '').toString();
               let valid = true;
-              try { const dt = new Date(ex.replace(' ', 'T')); if (isFinite(dt.getTime())) { valid = dt.getTime() > Date.now(); } } catch {}
+              try { const dt = new Date(ex.replace(' ', 'T')); if (isFinite(dt.getTime())) { valid = dt.getTime() > Date.now(); } } catch { }
               if (!valid) return;
               const base64 = (tr.qr_image_base64 || '').toString();
               if (!base64) return;
               const amt = Number(tr.monto_total || 0);
               const exp = (tr.fecha_expiracion || '').toString();
               const alias = (tr.alias || d.alias || '').toString();
-              try { this.qrPanel?.setWarning('El estudiante tiene un QR pendiente. Debe anularlo o pagarlo para generar otro.'); } catch {}
-              try { this.qrPanel?.showExisting(alias, base64, amt, exp, tr.estado); } catch {}
+              try { this.qrPanel?.setWarning('El estudiante tiene un QR pendiente. Debe anularlo o pagarlo para generar otro.'); } catch { }
+              try { this.qrPanel?.showExisting(alias, base64, amt, exp, tr.estado); } catch { }
             },
-            error: () => {}
+            error: () => { }
           });
         },
-        error: () => {}
+        error: () => { }
       });
-    } catch {}
+    } catch { }
   }
 
   // Guardar snapshot del lote mientras el QR está pendiente
@@ -554,26 +555,26 @@ export class CobrosComponent implements OnInit {
       if (this.loading) return;
       // Delegar al panel QR para reusar su lógica y mensajes
       this.qrPanel?.onClickGuardarEspera();
-    } catch {}
+    } catch { }
   }
 
   // ===================== Reglas de bloqueo por QR =====================
   onQrStatusChange(st: 'pendiente' | 'procesando' | 'completado' | 'expirado' | 'cancelado'): void {
     this.qrPanelStatus = st;
     this.qrPanelActive = true;
-    try { console.log('[Cobros] onQrStatusChange', { st, qrPanelActive: this.qrPanelActive }); } catch {}
+    try { console.log('[Cobros] onQrStatusChange', { st, qrPanelActive: this.qrPanelActive }); } catch { }
     if (st === 'completado') {
       try {
         this.showAlert('Pago QR confirmado y lote procesado.', 'success', 8000);
         const cod = (this.batchForm.get('cabecera.cod_ceta') as any)?.value || '';
-        if (cod) { try { sessionStorage.removeItem(`qr_session:${cod}:waiting_saved`); } catch {} }
+        if (cod) { try { sessionStorage.removeItem(`qr_session:${cod}:waiting_saved`); } catch { } }
         this.qrSavedWaiting = false;
         // Construir y mostrar el modal de éxito reutilizando las filas actuales del lote
         this.successSummary = this.buildSuccessSummary([]);
         this.openSuccessModal();
         // Descargar documentos generados por el callback (recibo/factura) si existen
         this.downloadQrGeneratedDocs();
-      } catch {}
+      } catch { }
     }
   }
 
@@ -582,9 +583,9 @@ export class CobrosComponent implements OnInit {
     try {
       const cod = (this.batchForm.get('cabecera.cod_ceta') as any)?.value || '';
       if (cod) sessionStorage.setItem(`qr_session:${cod}:waiting_saved`, '1');
-    } catch {}
+    } catch { }
     this.showAlert('Lote guardado en espera. Consulte con administración para la impresión de Recibo/Factura seleccionada cuando el pago QR sea confirmado.', 'success', 10000);
-    try { window.scrollTo({ top: 0, behavior: 'smooth' }); } catch {}
+    try { window.scrollTo({ top: 0, behavior: 'smooth' }); } catch { }
   }
 
   private isFormaIdQR(id: any): boolean {
@@ -595,7 +596,7 @@ export class CobrosComponent implements OnInit {
     const nombre = raw.normalize('NFD').replace(/\p{Diacritic}/gu, '');
     // Detectar QR únicamente por etiqueta explícita 'QR' en el catálogo
     const res = nombre.includes('QR');
-    try { console.log('[Cobros] isFormaIdQR', { id: s, label: raw, matchQR: res }); } catch {}
+    try { console.log('[Cobros] isFormaIdQR', { id: s, label: raw, matchQR: res }); } catch { }
     return res;
   }
 
@@ -603,14 +604,14 @@ export class CobrosComponent implements OnInit {
     try {
       // Regla 1: si el método seleccionado en cabecera es QR y ya hay filas en la tabla, bloquear
       if (this.isQrMetodoSeleccionado() && this.pagos.length > 0) {
-        try { console.log('[Cobros] hasQrInPagos: cabecera es QR y hay', this.pagos.length, 'filas'); } catch {}
+        try { console.log('[Cobros] hasQrInPagos: cabecera es QR y hay', this.pagos.length, 'filas'); } catch { }
         return true;
       }
       for (let i = 0; i < this.pagos.length; i++) {
         const g = this.pagos.at(i) as FormGroup;
         const idf = g.get('id_forma_cobro')?.value;
         const isQR = this.isFormaIdQR(idf);
-        try { console.log('[Cobros] scan pago', { index: i, id_forma_cobro: idf, isQR }); } catch {}
+        try { console.log('[Cobros] scan pago', { index: i, id_forma_cobro: idf, isQR }); } catch { }
         if (isQR) return true;
       }
       return false;
@@ -623,13 +624,13 @@ export class CobrosComponent implements OnInit {
     // Regla A: si el panel QR está activo y hay filas -> bloquear hasta completado
     if (this.qrPanelActive && this.pagos.length > 0) {
       const blockedA = this.qrPanelStatus !== 'completado';
-      try { console.log('[Cobros] qrSaveBlocked (panelActive)', { qrPanelStatus: this.qrPanelStatus, blocked: blockedA, len: this.pagos.length }); } catch {}
+      try { console.log('[Cobros] qrSaveBlocked (panelActive)', { qrPanelStatus: this.qrPanelStatus, blocked: blockedA, len: this.pagos.length }); } catch { }
       return blockedA;
     }
     // Regla B: detección por filas con forma QR
     if (!this.hasQrInPagos()) return false;
     const blocked = this.qrPanelStatus !== 'completado';
-    try { console.log('[Cobros] qrSaveBlocked (byRows)', { qrPanelStatus: this.qrPanelStatus, blocked }); } catch {}
+    try { console.log('[Cobros] qrSaveBlocked (byRows)', { qrPanelStatus: this.qrPanelStatus, blocked }); } catch { }
     return blocked;
   }
 
@@ -655,7 +656,7 @@ export class CobrosComponent implements OnInit {
       this.showAlert('No se encontró el costo de Reincorporación en costo_semestral', 'warning');
       return;
     }
-    if (!this.ensureMetodoPagoPermitido(['EFECTIVO','TARJETA','CHEQUE','DEPOSITO','TRANSFERENCIA','QR','OTRO'])) return;
+    if (!this.ensureMetodoPagoPermitido(['EFECTIVO', 'TARJETA', 'CHEQUE', 'DEPOSITO', 'TRANSFERENCIA', 'QR', 'OTRO'])) return;
     this.computeModalFormasFromSelection();
     this.modalTipo = 'reincorporacion';
     // Abrir modal de Reincorporación
@@ -666,7 +667,7 @@ export class CobrosComponent implements OnInit {
         const modal = bs.Modal.getInstance(modalEl) || new bs.Modal(modalEl);
         modal.show();
       }
-    } catch {}
+    } catch { }
   }
 
   // Añadir pago de Reincorporación directo al detalle
@@ -693,7 +694,7 @@ export class CobrosComponent implements OnInit {
       this.showAlert('Ya agregó Reincorporación al detalle', 'warning');
       return;
     }
-    if (!this.ensureMetodoPagoPermitido(['EFECTIVO','TARJETA','CHEQUE','DEPOSITO','TRANSFERENCIA','QR','OTRO'])) return;
+    if (!this.ensureMetodoPagoPermitido(['EFECTIVO', 'TARJETA', 'CHEQUE', 'DEPOSITO', 'TRANSFERENCIA', 'QR', 'OTRO'])) return;
     const hoy = new Date().toISOString().slice(0, 10);
     const nro = this.getNextCobroNro();
     this.pagos.push(this.fb.group({
@@ -854,7 +855,7 @@ export class CobrosComponent implements OnInit {
       const nombre = nombreOrdenado || this.identidadForm?.get('nombre_completo')?.value || '';
       const gestion = this.batchForm?.get('cabecera.gestion')?.value || (this.resumen?.gestion || '');
       const pensum = this.batchForm?.get('cabecera.cod_pensum')?.value || (this.resumen?.pensum || '');
-      try { console.log('[Cobros] openDescuentoModal()', { cod, nombre, gestion, pensum, resumen: this.resumen }); } catch {}
+      try { console.log('[Cobros] openDescuentoModal()', { cod, nombre, gestion, pensum, resumen: this.resumen }); } catch { }
       const turno = (() => {
         // 1) intentar desde identidad (puede ser 'M','T','N' o palabras)
         let t = (this.identidadForm?.get('turno')?.value || '').toString().trim().toUpperCase();
@@ -870,7 +871,7 @@ export class CobrosComponent implements OnInit {
         return '';
       })();
       this.descuentoDlg?.open({ cod_ceta: cod, nombre, gestion, pensum, turno });
-    } catch {}
+    } catch { }
   }
 
   onGuardarDescuento(payload: { cod_ceta: string; nombre: string; gestion: string; pensum: string; turno: string; observaciones?: string }): void {
@@ -934,126 +935,126 @@ export class CobrosComponent implements OnInit {
           console.log('[Cobros] Iniciando búsqueda de definición con cod_beca:', cod_beca);
 
           const proceed = (def: any) => {
-                console.log('[Cobros] === PROCESANDO DEFINICIÓN ===');
-                console.log('[Cobros] Definición encontrada:', def);
+            console.log('[Cobros] === PROCESANDO DEFINICIÓN ===');
+            console.log('[Cobros] Definición encontrada:', def);
 
-                // 4) Construir cuotas objetivo: SOLO mensualidades normales (excluir arrastres)
-                const pendientes: any[] = Array.isArray(this.resumen?.asignaciones) ? this.resumen!.asignaciones : [];
-                const arrastres: any[] = Array.isArray(this.resumen?.asignaciones_arrastre) ? this.resumen!.asignaciones_arrastre : [];
+            // 4) Construir cuotas objetivo: SOLO mensualidades normales (excluir arrastres)
+            const pendientes: any[] = Array.isArray(this.resumen?.asignaciones) ? this.resumen!.asignaciones : [];
+            const arrastres: any[] = Array.isArray(this.resumen?.asignaciones_arrastre) ? this.resumen!.asignaciones_arrastre : [];
 
-                console.log('[Cobros] Cuotas en resumen:');
-                console.log('  - Asignaciones normales:', pendientes.length);
-                console.log('  - Arrastres:', arrastres.length);
-                console.log('  - Detalle asignaciones:', pendientes);
-                console.log('  - Detalle arrastres:', arrastres);
+            console.log('[Cobros] Cuotas en resumen:');
+            console.log('  - Asignaciones normales:', pendientes.length);
+            console.log('  - Arrastres:', arrastres.length);
+            console.log('  - Detalle asignaciones:', pendientes);
+            console.log('  - Detalle arrastres:', arrastres);
 
-                // Filtrar solo cuotas normales pendientes
-                const cuotasTarget = pendientes.filter((a: any) => {
-                  const st = (a?.estado_pago || '').toString().trim().toUpperCase();
-                  const numCuota = Number(a?.numero_cuota || 0);
+            // Filtrar solo cuotas normales pendientes
+            const cuotasTarget = pendientes.filter((a: any) => {
+              const st = (a?.estado_pago || '').toString().trim().toUpperCase();
+              const numCuota = Number(a?.numero_cuota || 0);
 
-                  console.log(`[Cobros] Evaluando cuota ${numCuota}:`, {
-                    estado: st,
-                    cobrado: st === 'COBRADO',
-                    numero_valido: numCuota >= 1
-                  });
+              console.log(`[Cobros] Evaluando cuota ${numCuota}:`, {
+                estado: st,
+                cobrado: st === 'COBRADO',
+                numero_valido: numCuota >= 1
+              });
 
-                  // Excluir cobradas
-                  if (st === 'COBRADO') {
-                    console.log(`  -> Excluida: ya cobrada`);
-                    return false;
-                  }
+              // Excluir cobradas
+              if (st === 'COBRADO') {
+                console.log(`  -> Excluida: ya cobrada`);
+                return false;
+              }
 
-                  // Solo incluir mensualidades normales
-                  if (numCuota < 1) {
-                    console.log(`  -> Excluida: número de cuota inválido`);
-                    return false;
-                  }
+              // Solo incluir mensualidades normales
+              if (numCuota < 1) {
+                console.log(`  -> Excluida: número de cuota inválido`);
+                return false;
+              }
 
-                  console.log(`  -> INCLUIDA`);
-                  return true;
+              console.log(`  -> INCLUIDA`);
+              return true;
+            });
+
+            console.log('[Cobros] Resultado filtrado:');
+            console.log('  - Total pendientes:', pendientes.length);
+            console.log('  - Total filtradas:', cuotasTarget.length);
+            console.log('  - Cuotas seleccionadas:', cuotasTarget);
+
+            if (!cuotasTarget.length) {
+              console.warn('[Cobros] No hay cuotas para aplicar descuento');
+              this.showAlert('No hay cuotas de mensualidad pendientes en la gestión seleccionada', 'warning');
+              return;
+            }
+
+            const toNum = (v: any) => { try { if (v == null) return 0; const n = Number(v); return isFinite(n) ? n : 0; } catch { return 0; } };
+            const isPct = !!def?.porcentaje;
+
+            console.log('[Cobros] Calculando descuentos:');
+            console.log('  - Es porcentaje:', isPct);
+            console.log('  - Monto/Porcentaje:', def?.monto);
+
+            const cuotasPayload = cuotasTarget.map((c: any) => {
+              const monto = Math.max(0, toNum(c?.monto) - toNum(c?.monto_pagado));
+              let md = 0;
+              if (isPct) md = +(monto * (toNum(def?.monto) / 100)).toFixed(2);
+              else md = Math.min(monto, toNum(def?.monto));
+
+              console.log(`  - Cuota ${c?.numero_cuota}: monto=${monto}, descuento=${md}`);
+
+              return {
+                numero_cuota: Number(c?.numero_cuota || 0),
+                id_cuota: (c?.id_cuota != null ? Number(c.id_cuota) : null),
+                monto_descuento: md,
+                observaciones: 'Descuento institucional automático'
+              };
+            }).filter((r: any) => r.numero_cuota > 0 && r.monto_descuento > 0);
+
+            console.log('[Cobros] Payload cuotas final:', cuotasPayload);
+
+            if (!cuotasPayload.length) {
+              console.warn('[Cobros] No hay montos a descontar');
+              this.showAlert('No hay monto a descontar en las cuotas seleccionadas', 'warning');
+              return;
+            }
+
+            const idUsuario = Number(this.auth?.getCurrentUser()?.id_usuario || 0);
+
+            // Fecha actual en formato yyyy-mm-dd
+            const now = new Date();
+            const fechaSolicitud = `${now.getFullYear()}-${String(now.getMonth() + 1).padStart(2, '0')}-${String(now.getDate()).padStart(2, '0')}`;
+
+            const payloadAssign = {
+              cod_ceta,
+              cod_pensum,
+              cod_inscrip,
+              id_usuario: idUsuario,
+              cod_beca: Number(def.cod_beca),
+              nombre: String(def?.nombre_beca || 'Descuento'),
+              porcentaje: toNum(def?.monto), // el backend usará cuotas.monto_descuento
+              observaciones: (payload?.observaciones ? String(payload.observaciones).trim() : 'Descuento institucional aplicado desde formulario'),
+              tipo_inscripcion: String(this.resumen?.inscripcion?.tipo_inscripcion || ''),
+              fechaSolicitud: fechaSolicitud,
+              cuotas: cuotasPayload
+            };
+
+            console.log('[Cobros] === PAYLOAD FINAL ===');
+            console.log('[Cobros] Payload assignDescuento:', payloadAssign);
+
+            this.cobrosService.assignDescuento(payloadAssign).subscribe({
+              next: () => {
+                console.log('[Cobros] ✓ Descuento aplicado exitosamente');
+                this.showAlert('Descuento aplicado correctamente', 'success');
+                this.cobrosService.getResumen(cod_ceta, gestion).subscribe({
+                  next: (r) => { if (r?.success) { this.resumen = r.data; } },
+                  error: () => { }
                 });
-
-                console.log('[Cobros] Resultado filtrado:');
-                console.log('  - Total pendientes:', pendientes.length);
-                console.log('  - Total filtradas:', cuotasTarget.length);
-                console.log('  - Cuotas seleccionadas:', cuotasTarget);
-
-                if (!cuotasTarget.length) {
-                  console.warn('[Cobros] No hay cuotas para aplicar descuento');
-                  this.showAlert('No hay cuotas de mensualidad pendientes en la gestión seleccionada', 'warning');
-                  return;
-                }
-
-                const toNum = (v: any) => { try { if (v == null) return 0; const n = Number(v); return isFinite(n) ? n : 0; } catch { return 0; } };
-                const isPct = !!def?.porcentaje;
-
-                console.log('[Cobros] Calculando descuentos:');
-                console.log('  - Es porcentaje:', isPct);
-                console.log('  - Monto/Porcentaje:', def?.monto);
-
-                const cuotasPayload = cuotasTarget.map((c: any) => {
-                  const monto = Math.max(0, toNum(c?.monto) - toNum(c?.monto_pagado));
-                  let md = 0;
-                  if (isPct) md = +(monto * (toNum(def?.monto) / 100)).toFixed(2);
-                  else md = Math.min(monto, toNum(def?.monto));
-
-                  console.log(`  - Cuota ${c?.numero_cuota}: monto=${monto}, descuento=${md}`);
-
-                  return {
-                    numero_cuota: Number(c?.numero_cuota || 0),
-                    id_cuota: (c?.id_cuota != null ? Number(c.id_cuota) : null),
-                    monto_descuento: md,
-                    observaciones: 'Descuento institucional automático'
-                  };
-                }).filter((r: any) => r.numero_cuota > 0 && r.monto_descuento > 0);
-
-                console.log('[Cobros] Payload cuotas final:', cuotasPayload);
-
-                if (!cuotasPayload.length) {
-                  console.warn('[Cobros] No hay montos a descontar');
-                  this.showAlert('No hay monto a descontar en las cuotas seleccionadas', 'warning');
-                  return;
-                }
-
-                const idUsuario = Number(this.auth?.getCurrentUser()?.id_usuario || 0);
-
-                // Fecha actual en formato yyyy-mm-dd
-                const now = new Date();
-                const fechaSolicitud = `${now.getFullYear()}-${String(now.getMonth() + 1).padStart(2, '0')}-${String(now.getDate()).padStart(2, '0')}`;
-
-                const payloadAssign = {
-                  cod_ceta,
-                  cod_pensum,
-                  cod_inscrip,
-                  id_usuario: idUsuario,
-                  cod_beca: Number(def.cod_beca),
-                  nombre: String(def?.nombre_beca || 'Descuento'),
-                  porcentaje: toNum(def?.monto), // el backend usará cuotas.monto_descuento
-                  observaciones: (payload?.observaciones ? String(payload.observaciones).trim() : 'Descuento institucional aplicado desde formulario'),
-                  tipo_inscripcion: String(this.resumen?.inscripcion?.tipo_inscripcion || ''),
-                  fechaSolicitud: fechaSolicitud,
-                  cuotas: cuotasPayload
-                };
-
-                console.log('[Cobros] === PAYLOAD FINAL ===');
-                console.log('[Cobros] Payload assignDescuento:', payloadAssign);
-
-                this.cobrosService.assignDescuento(payloadAssign).subscribe({
-                  next: () => {
-                    console.log('[Cobros] ✓ Descuento aplicado exitosamente');
-                    this.showAlert('Descuento aplicado correctamente', 'success');
-                    this.cobrosService.getResumen(cod_ceta, gestion).subscribe({
-                      next: (r) => { if (r?.success) { this.resumen = r.data; } },
-                      error: () => {}
-                    });
-                  },
-                  error: (err) => {
-                    console.error('assignDescuento error', err);
-                    const msg = err?.error?.message || 'No se pudo asignar el descuento';
-                    this.showAlert(msg, 'error');
-                  }
-                });
+              },
+              error: (err) => {
+                console.error('assignDescuento error', err);
+                const msg = err?.error?.message || 'No se pudo asignar el descuento';
+                this.showAlert(msg, 'error');
+              }
+            });
           };
 
           // Combinar becas (beca=1) y descuentos (beca=0) de la misma tabla
@@ -1126,7 +1127,7 @@ export class CobrosComponent implements OnInit {
         const instance = bs.Modal.getInstance(modalEl) || new bs.Modal(modalEl);
         instance.hide();
       }
-    } catch {}
+    } catch { }
   }
 
   saveDescuentoForm(): void {
@@ -1141,7 +1142,7 @@ export class CobrosComponent implements OnInit {
 
   // ================== Búsqueda de estudiante por nombre/CI ==================
   openBusquedaModal(): void {
-    try { this.buscarDlg?.open(); } catch {}
+    try { this.buscarDlg?.open(); } catch { }
   }
 
   onBuscarEstudiantes(criteria: { ap_paterno?: string; ap_materno?: string; nombres?: string; ci?: string }): void {
@@ -1159,7 +1160,7 @@ export class CobrosComponent implements OnInit {
   }
 
   onSeleccionarEstudiante(row: any): void {
-    try { this.buscarDlg?.close(); } catch {}
+    try { this.buscarDlg?.close(); } catch { }
     const cod = (row?.cod_ceta ?? row?.codCeta ?? row?.codigo ?? '').toString();
     if (!cod) return;
     this.searchForm.patchValue({ cod_ceta: cod }, { emitEvent: false });
@@ -1254,11 +1255,11 @@ export class CobrosComponent implements OnInit {
       return;
     }
     // Permitir todos los métodos disponibles en el catálogo
-    if (!this.ensureMetodoPagoPermitido(['EFECTIVO','TARJETA','CHEQUE','DEPOSITO','TRANSFERENCIA','QR','OTRO'])) return;
+    if (!this.ensureMetodoPagoPermitido(['EFECTIVO', 'TARJETA', 'CHEQUE', 'DEPOSITO', 'TRANSFERENCIA', 'QR', 'OTRO'])) return;
     // Recalcular lista filtrada para el modal según selección actual
     this.computeModalFormasFromSelection();
     // Abrir modal hijo
-    try { this.itemsDlg?.open(); } catch {}
+    try { this.itemsDlg?.open(); } catch { }
   }
 
   onAddItem(evt: any): void {
@@ -1355,7 +1356,7 @@ export class CobrosComponent implements OnInit {
       this.showAlert('No hay cuotas de arrastre pendientes', 'warning');
       return;
     }
-    if (!this.ensureMetodoPagoPermitido(['EFECTIVO','TARJETA','CHEQUE','DEPOSITO','TRANSFERENCIA','QR','OTRO'])) return;
+    if (!this.ensureMetodoPagoPermitido(['EFECTIVO', 'TARJETA', 'CHEQUE', 'DEPOSITO', 'TRANSFERENCIA', 'QR', 'OTRO'])) return;
     // Definir tipo antes de propagar inputs al modal
     this.modalTipo = 'arrastre';
     // Configurar PU y pendientes para arrastre
@@ -1451,14 +1452,14 @@ export class CobrosComponent implements OnInit {
       <tr>
         <td class="text-center">${r.cant ?? ''}</td>
         <td>
-          <div class="small">${(r.detalle ?? '').toString().replace(/</g,'&lt;')}</div>
-          ${r.obs ? `<div class="text-muted small">${(r.obs ?? '').toString().replace(/</g,'&lt;')}</div>` : ''}
+          <div class="small">${(r.detalle ?? '').toString().replace(/</g, '&lt;')}</div>
+          ${r.obs ? `<div class="text-muted small">${(r.obs ?? '').toString().replace(/</g, '&lt;')}</div>` : ''}
         </td>
-        <td class="text-end">${Number(r.pu||0).toLocaleString(undefined,{minimumFractionDigits:2, maximumFractionDigits:2})}</td>
-        <td class="text-end">${Number(r.descuento||0).toLocaleString(undefined,{minimumFractionDigits:2, maximumFractionDigits:2})}</td>
-        <td class="text-end">${Number(r.subtotal||0).toLocaleString(undefined,{minimumFractionDigits:2, maximumFractionDigits:2})}</td>
+        <td class="text-end">${Number(r.pu || 0).toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })}</td>
+        <td class="text-end">${Number(r.descuento || 0).toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })}</td>
+        <td class="text-end">${Number(r.subtotal || 0).toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })}</td>
       </tr>`).join('');
-    const totalFmt = Number(s.total||0).toLocaleString(undefined,{minimumFractionDigits:2, maximumFractionDigits:2});
+    const totalFmt = Number(s.total || 0).toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 });
     const pensumStr = s.pensum ? ` (${s.pensum})` : '';
     const docs: any[] = Array.isArray(s.docs) ? s.docs : [];
     const facturasHtml = docs.filter((d: any) => d && d.nro_factura)
@@ -1487,8 +1488,8 @@ export class CobrosComponent implements OnInit {
                 <div class="row g-3">
                   <div class="col-9">
                     <div><strong>Código:</strong> ${s.cod_ceta ?? ''}</div>
-                    <div><strong>Estudiante:</strong> ${(s.estudiante ?? '').toString().replace(/</g,'&lt;')}</div>
-                    <div><strong>Carrera:</strong> ${(s.carrera ?? '').toString().replace(/</g,'&lt;')}${pensumStr}</div>
+                    <div><strong>Estudiante:</strong> ${(s.estudiante ?? '').toString().replace(/</g, '&lt;')}</div>
+                    <div><strong>Carrera:</strong> ${(s.carrera ?? '').toString().replace(/</g, '&lt;')}${pensumStr}</div>
                     <div><strong>Gestión:</strong> ${s.gestion ?? ''}</div>
                   </div>
                   <div class="col-3 d-flex align-items-center justify-content-center">
@@ -1557,7 +1558,7 @@ export class CobrosComponent implements OnInit {
       const docs: any[] = [];
       for (const it of (createdItems || [])) {
         try {
-          const fecha = it?.cobro?.fecha_cobro || new Date().toISOString().slice(0,10);
+          const fecha = it?.cobro?.fecha_cobro || new Date().toISOString().slice(0, 10);
           const anio = new Date(fecha).getFullYear();
           if ((it?.tipo_documento === 'R') && (it?.medio_doc === 'C') && it?.nro_recibo) {
             const key = `R:${anio}:${it?.nro_recibo}`;
@@ -1566,7 +1567,7 @@ export class CobrosComponent implements OnInit {
             const key = `F:${anio}:${it?.nro_factura}`;
             if (!seen.has(key)) { docs.push({ tipo: 'F', anio, nro_factura: it?.nro_factura, codigo_recepcion: it?.codigo_recepcion, cuf: it?.cuf }); seen.add(key); }
           }
-        } catch {}
+        } catch { }
       }
       return { cod_ceta, estudiante: nombre, carrera, pensum, gestion, rows, total, docs };
     } catch {
@@ -1578,14 +1579,14 @@ export class CobrosComponent implements OnInit {
     try {
       const docs: any[] = (this.successSummary?.docs || []) as any[];
       if (!docs.length) {
-        try { window.print(); } catch {}
+        try { window.print(); } catch { }
         return;
       }
       const firstFactura = docs.find((x: any) => x && x.nro_factura && x.anio);
       const firstRecibo = docs.find((x: any) => x && x.nro_recibo && x.anio);
       const d: any = firstFactura || firstRecibo || null;
       if (!d) {
-        try { window.print(); } catch {}
+        try { window.print(); } catch { }
         return;
       }
       const base = this.apiBase();
@@ -1596,10 +1597,10 @@ export class CobrosComponent implements OnInit {
       a.href = url;
       a.target = '_blank';
       document.body.appendChild(a);
-      try { a.click(); } catch {}
-      try { a.remove(); } catch {}
+      try { a.click(); } catch { }
+      try { a.remove(); } catch { }
     } catch {
-      try { window.print(); } catch {}
+      try { window.print(); } catch { }
     }
   }
 
@@ -1625,7 +1626,7 @@ export class CobrosComponent implements OnInit {
         const bs = (window as any).bootstrap;
         if (bs?.Modal) {
           modalEl?.addEventListener('hidden.bs.modal', () => {
-            try { modalEl?.remove(); } catch {}
+            try { modalEl?.remove(); } catch { }
           });
         }
       }, 0);
@@ -1682,7 +1683,7 @@ export class CobrosComponent implements OnInit {
                         this.successSummary.docs = docs as any;
                       }
                     }
-                  } catch {}
+                  } catch { }
                   this.downloadFacturaPdfWithFallback(anioFactura, nroFactura);
                   return;
                 }
@@ -1699,17 +1700,17 @@ export class CobrosComponent implements OnInit {
                         this.successSummary.docs = docs as any;
                       }
                     }
-                  } catch {}
+                  } catch { }
                   this.downloadReciboPdfWithFallback(anioRecibo, nroRecibo);
                 }
-              } catch {}
+              } catch { }
             },
-            error: () => {}
+            error: () => { }
           });
         },
-        error: () => {}
+        error: () => { }
       });
-    } catch {}
+    } catch { }
   }
 
   onSuccessClose(): void {
@@ -1760,8 +1761,8 @@ export class CobrosComponent implements OnInit {
       this.alertMessage = '';
       this.metodoPagoLocked = false;
       this.successSummary = null;
-      try { (this.batchForm.get('cabecera.codigo_sin') as any)?.enable?.({ emitEvent: false }); } catch {}
-    } catch {}
+      try { (this.batchForm.get('cabecera.codigo_sin') as any)?.enable?.({ emitEvent: false }); } catch { }
+    } catch { }
   }
 
   private limpiarTodo(): void {
@@ -1777,8 +1778,8 @@ export class CobrosComponent implements OnInit {
       this.alertMessage = '';
       this.metodoPagoLocked = false;
       this.successSummary = null;
-      try { (this.batchForm.get('cabecera.codigo_sin') as any)?.enable?.({ emitEvent: false }); } catch {}
-    } catch {}
+      try { (this.batchForm.get('cabecera.codigo_sin') as any)?.enable?.({ emitEvent: false }); } catch { }
+    } catch { }
   }
 
   openQrSavedWaitingConfirmModal(): void {
@@ -1789,7 +1790,7 @@ export class CobrosComponent implements OnInit {
         const instance = bs.Modal.getInstance(modalEl) || new bs.Modal(modalEl, { backdrop: 'static', keyboard: false });
         instance.show();
       }
-    } catch {}
+    } catch { }
   }
 
   confirmQrSavedWaitingRefresh(): void {
@@ -1800,15 +1801,15 @@ export class CobrosComponent implements OnInit {
         const instance = bs.Modal.getInstance(modalEl) || new bs.Modal(modalEl);
         instance.hide();
       }
-    } catch {}
+    } catch { }
     try {
       const cod = (this.batchForm.get('cabecera.cod_ceta') as any)?.value || '';
       if (cod) {
-        try { sessionStorage.removeItem(`qr_session:${cod}:waiting_saved`); } catch {}
-        try { sessionStorage.removeItem(`qr_session:${cod}`); } catch {}
+        try { sessionStorage.removeItem(`qr_session:${cod}:waiting_saved`); } catch { }
+        try { sessionStorage.removeItem(`qr_session:${cod}`); } catch { }
       }
-    } catch {}
-    try { window.location.reload(); } catch {}
+    } catch { }
+    try { window.location.reload(); } catch { }
   }
 
   private esFormaEfectivoById(val: any): boolean {
@@ -1961,7 +1962,7 @@ export class CobrosComponent implements OnInit {
     // Cargar cuentas bancarias para métodos de pago como TARJETA/DEPÓSITO
     this.cobrosService.getCuentasBancarias().subscribe({
       next: (res) => { if (res.success) this.cuentasBancarias = res.data; },
-      error: () => {}
+      error: () => { }
     });
 
     this.cargarParametrosDescuentoInstitucional();
@@ -1979,7 +1980,7 @@ export class CobrosComponent implements OnInit {
           this.loadResumen();
         }
       });
-    } catch {}
+    } catch { }
 
     // Recalcular costo total de mensualidades cuando cambie la cantidad
     this.mensualidadModalForm.get('cantidad')?.valueChanges.subscribe((v: number) => {
@@ -2104,7 +2105,7 @@ export class CobrosComponent implements OnInit {
         const puNext = Number(this.resumen?.mensualidad_next?.next_cuota?.monto ?? 0);
         this.mensualidadPU = puSem > 0 ? puSem : puNext;
       }
-    } catch {}
+    } catch { }
     this.pagos.removeAt(i);
   }
 
@@ -2132,7 +2133,7 @@ export class CobrosComponent implements OnInit {
             console.log('[RESUMEN] recuperacion', this.resumen?.recuperacion);
             console.log('[RESUMEN] recuperacion_pendiente', this.resumen?.recuperacion_pendiente);
             console.log('[RESUMEN] gestion/pensum', this.resumen?.gestion, this.resumen?.inscripcion?.cod_pensum);
-          } catch {}
+          } catch { }
 
           // Cargar moras pendientes desde asignacion_mora
           this.morasPendientes = Array.isArray(this.resumen?.moras_pendientes) ? this.resumen.moras_pendientes : [];
@@ -2153,7 +2154,7 @@ export class CobrosComponent implements OnInit {
           }
           // Prefill identidad/razón social
           const est = this.resumen?.estudiante || {};
-          const fullName = [est.ap_paterno, est.ap_materno, est.nombres ].filter(Boolean).join(' ');
+          const fullName = [est.ap_paterno, est.ap_materno, est.nombres].filter(Boolean).join(' ');
 
           console.log('[Cobros] Datos del estudiante para llenar formulario:', {
             estudiante: est,
@@ -2226,7 +2227,7 @@ export class CobrosComponent implements OnInit {
               next: (pRes) => {
                 if (pRes.success) this.pensums = pRes.data;
               },
-              error: () => {}
+              error: () => { }
             });
           } else {
             this.pensums = [];
@@ -2307,7 +2308,7 @@ export class CobrosComponent implements OnInit {
               }
             });
             return;
-          } catch {}
+          } catch { }
         }
         // Caso general: mostrar mensajes como antes
         this.resumen = null;
@@ -2334,23 +2335,23 @@ export class CobrosComponent implements OnInit {
     });
   }
 
-	get inscripcionesParaGrupos(): any[] {
-		const inscripcionesAll = Array.isArray((this.resumen as any)?.inscripciones) ? (this.resumen as any).inscripciones : [];
-		if (!inscripcionesAll.length) {
-			return [];
-		}
-		const cabecera = this.batchForm.get('cabecera') as FormGroup;
-		const gestionSel = (cabecera?.get('gestion')?.value ?? (this.resumen as any)?.gestion ?? '').toString();
-		const pensumSel = (cabecera?.get('cod_pensum')?.value ?? (this.resumen as any)?.inscripcion?.cod_pensum ?? '').toString();
-		const out = (inscripcionesAll as any[]).filter((i: any) => {
-			const g = (i?.gestion ?? '').toString();
-			const p = (i?.cod_pensum ?? i?.pensum?.cod_pensum ?? '').toString();
-			if (gestionSel && g !== gestionSel) return false;
-			if (pensumSel && p !== pensumSel) return false;
-			return true;
-		});
-		return out;
-	}
+  get inscripcionesParaGrupos(): any[] {
+    const inscripcionesAll = Array.isArray((this.resumen as any)?.inscripciones) ? (this.resumen as any).inscripciones : [];
+    if (!inscripcionesAll.length) {
+      return [];
+    }
+    const cabecera = this.batchForm.get('cabecera') as FormGroup;
+    const gestionSel = (cabecera?.get('gestion')?.value ?? (this.resumen as any)?.gestion ?? '').toString();
+    const pensumSel = (cabecera?.get('cod_pensum')?.value ?? (this.resumen as any)?.inscripcion?.cod_pensum ?? '').toString();
+    const out = (inscripcionesAll as any[]).filter((i: any) => {
+      const g = (i?.gestion ?? '').toString();
+      const p = (i?.cod_pensum ?? i?.pensum?.cod_pensum ?? '').toString();
+      if (gestionSel && g !== gestionSel) return false;
+      if (pensumSel && p !== pensumSel) return false;
+      return true;
+    });
+    return out;
+  }
 
   // Botones del card "Opciones de cobro"
   limpiarOpcionesCobro(): void {
@@ -2425,7 +2426,7 @@ export class CobrosComponent implements OnInit {
     this.computeModalFormasFromSelection();
     if (this.isQrMetodoSeleccionado()) { this.checkQrPendiente(); }
     this.metodoPagoLocked = true;
-    try { cab.get('codigo_sin')?.disable({ emitEvent: false }); } catch {}
+    try { cab.get('codigo_sin')?.disable({ emitEvent: false }); } catch { }
   }
 
   isQrMetodoSeleccionado(): boolean {
@@ -2526,7 +2527,7 @@ export class CobrosComponent implements OnInit {
     }
     // Fallback: por id_forma_cobro (solo si realmente es 'OTRO')
     const idMap: Record<string, string[]> = {
-      'EFECTIVO': ['E'], 'CHEQUE': ['C'], 'DEPOSITO': ['D'], 'TARJETA': ['T'], 'TRANSFERENCIA': ['TR','X'], 'OTRO': ['O'], 'VALES': ['V']
+      'EFECTIVO': ['E'], 'CHEQUE': ['C'], 'DEPOSITO': ['D'], 'TARJETA': ['T'], 'TRANSFERENCIA': ['TR', 'X'], 'OTRO': ['O'], 'VALES': ['V']
     } as any;
     const ids = idMap[target] || [];
     const byId = (this.formasCobro || []).find((f: any) => ids.includes((`${f?.id_forma_cobro}`).toUpperCase()));
@@ -2586,7 +2587,7 @@ export class CobrosComponent implements OnInit {
         if (f && !seenCodes.has(codeKey)) { out.push(f); seenCodes.add(codeKey); }
       }
       this.modalFormasCobro = out;
-      try { console.log('[Cobros] computeModalFormasFromSelection parts', { raw, parts, out: out.map(f => ({ id: f?.id_forma_cobro, label: (f?.descripcion_sin ?? f?.nombre ?? '') })) }); } catch {}
+      try { console.log('[Cobros] computeModalFormasFromSelection parts', { raw, parts, out: out.map(f => ({ id: f?.id_forma_cobro, label: (f?.descripcion_sin ?? f?.nombre ?? '') })) }); } catch { }
       // Si la selección contiene 'QR', forzar que la forma base 'QR' quede primera en la lista
       try {
         const hasQR = this.normalizeLabel(raw).includes('QR');
@@ -2598,7 +2599,7 @@ export class CobrosComponent implements OnInit {
             this.modalFormasCobro = [qrItem, ...this.modalFormasCobro];
           }
         }
-      } catch {}
+      } catch { }
     } catch {
       this.modalFormasCobro = [];
     }
@@ -2794,7 +2795,7 @@ export class CobrosComponent implements OnInit {
       const backdrops = Array.from(document.querySelectorAll('.modal-backdrop'));
       console.log(`[Cobros] cleanupBootstrapModalArtifacts(${context}) - backdrops:`, backdrops.length);
       for (const bd of backdrops) {
-        try { bd.remove(); } catch {}
+        try { bd.remove(); } catch { }
       }
 
       // Bootstrap agrega estas propiedades al abrir modales
@@ -2842,7 +2843,7 @@ export class CobrosComponent implements OnInit {
             disabled: typeof ae.disabled === 'boolean' ? ae.disabled : undefined,
             readOnly: typeof ae.readOnly === 'boolean' ? ae.readOnly : undefined
           });
-        } catch {}
+        } catch { }
       }, 0);
     } catch (e) {
       console.warn('[Cobros] logHitTestFromEvent - error:', e);
@@ -2857,7 +2858,7 @@ export class CobrosComponent implements OnInit {
       this.showAlert('Debe consultar primero un estudiante/gestión', 'warning');
       return;
     }
-    if (!this.ensureMetodoPagoPermitido(['EFECTIVO','TARJETA','CHEQUE','DEPOSITO','TRANSFERENCIA','QR','OTRO'])) return;
+    if (!this.ensureMetodoPagoPermitido(['EFECTIVO', 'TARJETA', 'CHEQUE', 'DEPOSITO', 'TRANSFERENCIA', 'QR', 'OTRO'])) return;
     const pendFromNext = Number(this.resumen?.mensualidad_next?.pending_count ?? 0) || 0;
     const parcialesCnt = Number(this.resumen?.mensualidad_next?.parcial_count ?? 0) || 0;
     // Mostrar suma pedida por usuario (pendientes + parciales)
@@ -2890,15 +2891,15 @@ export class CobrosComponent implements OnInit {
           // y eso evita que el navegador asigne foco automáticamente. Forzamos foco SINCRÓNICO.
           try {
             console.log('[Cobros] focusFixListener -> intentando focus a', { tag, className: t.className, type: t.type, name: t.name });
-          } catch {}
-          try { t.focus({ preventScroll: true }); } catch {}
+          } catch { }
+          try { t.focus({ preventScroll: true }); } catch { }
           setTimeout(() => {
             try {
               const ae: any = document.activeElement;
               console.log('[Cobros] focusFixListener -> activeElement luego de focus', { tag: ae?.tagName, className: ae?.className });
-            } catch {}
+            } catch { }
           }, 0);
-        } catch {}
+        } catch { }
       };
       modalEl.addEventListener('mousedown', clickListener, true);
       modalEl.addEventListener('mousedown', focusFixListener, true);
@@ -2920,19 +2921,19 @@ export class CobrosComponent implements OnInit {
           if (inertNodes.length) {
             console.log('[Cobros] Removiendo inert dentro del modal:', inertNodes.length);
             inertNodes.forEach((n: any) => {
-              try { n.removeAttribute('inert'); } catch {}
+              try { n.removeAttribute('inert'); } catch { }
             });
           }
-          try { (modalEl as any).removeAttribute('inert'); } catch {}
-        } catch {}
+          try { (modalEl as any).removeAttribute('inert'); } catch { }
+        } catch { }
       }, 0);
 
       // Al cerrar, limpiar backdrops y remover listener
       const onHidden = () => {
-        try { modalEl.removeEventListener('mousedown', clickListener, true); } catch {}
-        try { modalEl.removeEventListener('mousedown', focusFixListener, true); } catch {}
+        try { modalEl.removeEventListener('mousedown', clickListener, true); } catch { }
+        try { modalEl.removeEventListener('mousedown', focusFixListener, true); } catch { }
         this.cleanupBootstrapModalArtifacts('hidden-mensualidadModal');
-        try { modalEl.removeEventListener('hidden.bs.modal', onHidden as any); } catch {}
+        try { modalEl.removeEventListener('hidden.bs.modal', onHidden as any); } catch { }
       };
       modalEl.addEventListener('hidden.bs.modal', onHidden as any);
 
@@ -2964,11 +2965,11 @@ export class CobrosComponent implements OnInit {
       this.showAlert('Debe consultar primero un estudiante/gestión', 'warning');
       return;
     }
-    if (!this.ensureMetodoPagoPermitido(['EFECTIVO','TARJETA','CHEQUE','DEPOSITO','TRANSFERENCIA','QR','OTRO'])) return;
+    if (!this.ensureMetodoPagoPermitido(['EFECTIVO', 'TARJETA', 'CHEQUE', 'DEPOSITO', 'TRANSFERENCIA', 'QR', 'OTRO'])) return;
     // Calcular lista de métodos permitidos en el modal según selección actual
     this.computeModalFormasFromSelection();
     this.modalTipo = 'rezagado';
-    try { this.rezagadoDlg?.open(); } catch {}
+    try { this.rezagadoDlg?.open(); } catch { }
   }
 
 
@@ -2977,7 +2978,7 @@ export class CobrosComponent implements OnInit {
       this.showAlert('Debe consultar primero un estudiante/gestión', 'warning');
       return;
     }
-    if (!this.ensureMetodoPagoPermitido(['EFECTIVO','TARJETA','CHEQUE','DEPOSITO','TRANSFERENCIA','QR','OTRO'])) return;
+    if (!this.ensureMetodoPagoPermitido(['EFECTIVO', 'TARJETA', 'CHEQUE', 'DEPOSITO', 'TRANSFERENCIA', 'QR', 'OTRO'])) return;
     // Calcular lista de métodos permitidos en el modal según selección actual
     this.computeModalFormasFromSelection();
     this.modalTipo = 'recuperacion';
@@ -2989,7 +2990,7 @@ export class CobrosComponent implements OnInit {
         const modal = bs.Modal.getInstance(el) || new bs.Modal(el);
         modal.show();
       }
-    } catch {}
+    } catch { }
   }
 
   openMoraModal(): void {
@@ -3001,7 +3002,7 @@ export class CobrosComponent implements OnInit {
       this.showAlert('No hay moras pendientes para este estudiante', 'warning');
       return;
     }
-    if (!this.ensureMetodoPagoPermitido(['EFECTIVO','TARJETA','CHEQUE','DEPOSITO','TRANSFERENCIA','QR','OTRO'])) return;
+    if (!this.ensureMetodoPagoPermitido(['EFECTIVO', 'TARJETA', 'CHEQUE', 'DEPOSITO', 'TRANSFERENCIA', 'QR', 'OTRO'])) return;
     this.computeModalFormasFromSelection();
 
     const modalEl = document.getElementById('moraModal');
@@ -3185,7 +3186,7 @@ export class CobrosComponent implements OnInit {
   }
 
   private monthName(n: number): string {
-    const names = ['','Enero','Febrero','Marzo','Abril','Mayo','Junio','Julio','Agosto','Septiembre','Octubre','Noviembre','Diciembre'];
+    const names = ['', 'Enero', 'Febrero', 'Marzo', 'Abril', 'Mayo', 'Junio', 'Julio', 'Agosto', 'Septiembre', 'Octubre', 'Noviembre', 'Diciembre'];
     return names[n] || String(n);
   }
 
@@ -3199,7 +3200,7 @@ export class CobrosComponent implements OnInit {
       // Fallback por gestión si el backend no trajo el mapeo
       const gestion = (this.resumen?.gestion || '').toString();
       const sem = parseInt((gestion || '').split('/')[0] || '0', 10);
-      const base = sem === 1 ? [2,3,4,5,6] : sem === 2 ? [7,8,9,10,11] : [];
+      const base = sem === 1 ? [2, 3, 4, 5, 6] : sem === 2 ? [7, 8, 9, 10, 11] : [];
       const idx = n - 1;
       if (idx >= 0 && idx < base.length) return this.monthName(base[idx]);
       return null;
@@ -3212,7 +3213,7 @@ export class CobrosComponent implements OnInit {
   }
 
   onAddPagosFromModal(payload: any): void {
-    try { console.log('[Cobros] onAddPagosFromModal payload', payload); } catch {}
+    try { console.log('[Cobros] onAddPagosFromModal payload', payload); } catch { }
     const hoy = new Date().toISOString().slice(0, 10);
     const pagos = Array.isArray(payload) ? payload : (payload?.pagos || []);
     const headerPatch = Array.isArray(payload) ? null : (payload?.cabecera || null);
@@ -3307,10 +3308,10 @@ export class CobrosComponent implements OnInit {
         const baseDetalle = isMensualidad
           ? `Mensualidad - Cuota ${numeroCuota}${mesSuffix}`
           : (isArrastre
-              ? `Mensualidad (Arrastre) - Cuota ${numeroCuota ?? ''}${mesSuffix}`.trim()
-              : (isReincorporacion
-                  ? 'Reincorporación'
-                  : ''));
+            ? `Mensualidad (Arrastre) - Cuota ${numeroCuota ?? ''}${mesSuffix}`.trim()
+            : (isReincorporacion
+              ? 'Reincorporación'
+              : ''));
         detalle = esParcial ? `${baseDetalle} (Parcial)` : baseDetalle;
       }
 
@@ -3325,8 +3326,8 @@ export class CobrosComponent implements OnInit {
       // Calcular monto según el tipo
       const monto = (isMensualidad || isArrastre)
         ? (esParcial
-            ? Math.max(0, Number(p.monto || 0))
-            : Math.max(0, cant * pu - (isNaN(desc) ? 0 : desc)))
+          ? Math.max(0, Number(p.monto || 0))
+          : Math.max(0, cant * pu - (isNaN(desc) ? 0 : desc)))
         : Math.max(0, Number(p.monto || 0));
       // Inferir turno desde identidad/resumen
       const turnoVal = (() => {
@@ -3427,7 +3428,7 @@ export class CobrosComponent implements OnInit {
         detalle: (ctrl as FormGroup).get('detalle')?.value,
       }));
       console.log('[Cobros] pagos after add', debug);
-    } catch {}
+    } catch { }
     this.showAlert('Pago(s) añadidos al lote', 'success');
   }
 
@@ -3464,7 +3465,7 @@ export class CobrosComponent implements OnInit {
         const codFinal = codFromResumen || codFromSearch;
         if (codFinal) cab.patchValue({ cod_ceta: codFinal }, { emitEvent: false });
       }
-    } catch {}
+    } catch { }
     console.log('HOIla 3');
     // 1.1) cod_pensum / tipo_inscripcion / gestion desde resumen.inscripcion si faltan
     try {
@@ -3474,7 +3475,7 @@ export class CobrosComponent implements OnInit {
       if (!cab?.get('tipo_inscripcion')?.value && ins?.tipo_inscripcion) patch.tipo_inscripcion = String(ins.tipo_inscripcion);
       if (!cab?.get('gestion')?.value && (this.resumen as any)?.gestion) patch.gestion = String((this.resumen as any).gestion);
       if (Object.keys(patch).length) cab.patchValue(patch, { emitEvent: false });
-    } catch {}
+    } catch { }
     // 1.2) Si hay filas de ARRASTRE en el detalle, forzar cabecera a usar la inscripción ARRASTRE
     try {
       const hasArrRows = (this.pagos.controls || []).some(ctrl => {
@@ -3490,7 +3491,7 @@ export class CobrosComponent implements OnInit {
         // Guardar en memoria local para el payload (cod_inscrip no existe en form cabecera)
         (this as any)._arrInsPayload = arrObj;
       }
-    } catch {}
+    } catch { }
     // 2) id_forma_cobro: tomar del modal si cabecera está vacío
     try {
       const currentForma = cab?.get('id_forma_cobro')?.value;
@@ -3498,7 +3499,7 @@ export class CobrosComponent implements OnInit {
         const metodo = this.mensualidadModalForm.get('metodo_pago')?.value;
         if (metodo) cab.patchValue({ id_forma_cobro: String(metodo) }, { emitEvent: false });
       }
-    } catch {}
+    } catch { }
     console.log('HOIla 4');
     // 3) id_usuario: desde AuthService o localStorage current_user
     try {
@@ -3512,7 +3513,7 @@ export class CobrosComponent implements OnInit {
           if (parsed?.id_usuario) cab.patchValue({ id_usuario: parsed.id_usuario }, { emitEvent: false });
         }
       }
-    } catch {}
+    } catch { }
     // 3.1) nro_recibo: asignar número único para el lote (independiente de nro_cobro)
     try {
       const currentNroRecibo = cab?.get('nro_recibo')?.value;
@@ -3521,7 +3522,7 @@ export class CobrosComponent implements OnInit {
         cab.patchValue({ nro_recibo: nextReciboNro }, { emitEvent: false });
         console.log('nro_recibo asignado al lote:', nextReciboNro);
       }
-    } catch {}
+    } catch { }
     console.log('HOIla 5');
     // Pre-completar fecha/monto y ASIGNAR nro_cobro único en cliente (hasta que backend lo haga atómico)
     try {
@@ -3538,10 +3539,10 @@ export class CobrosComponent implements OnInit {
         console.log(`Pago ${idx} - nro_cobro será generado por backend`);
       });
       this.batchForm.updateValueAndValidity({ onlySelf: false, emitEvent: false });
-    } catch {}
+    } catch { }
     console.log('HOIla 6');
     // Forzar visualización de errores de validación en el formulario
-    try { this.batchForm.markAllAsTouched(); } catch {}
+    try { this.batchForm.markAllAsTouched(); } catch { }
     if (!this.batchForm.valid || this.pagos.length === 0) {
       console.warn('[Cobros] submitBatch() invalid form or empty pagos', {
         formValid: this.batchForm.valid,
@@ -3558,7 +3559,7 @@ export class CobrosComponent implements OnInit {
       const hasWaitingFlag = (() => { try { return !!(cod && sessionStorage.getItem(`qr_session:${cod}:waiting_saved`) === '1'); } catch { return false; } })();
       if (this.qrSavedWaiting && hasWaitingFlag) {
         this.showAlert('Lote guardado en espera. Consulte con administración para la impresión de Recibo/Factura seleccionada cuando el pago QR sea confirmado.', 'success', 10000);
-        try { window.scrollTo({ top: 0, behavior: 'smooth' }); } catch {}
+        try { window.scrollTo({ top: 0, behavior: 'smooth' }); } catch { }
         // Mostrar confirmación para refrescar sólo si el usuario lo aprueba
         this.openQrSavedWaitingConfirmModal();
       } else {
@@ -3677,19 +3678,19 @@ export class CobrosComponent implements OnInit {
         if (mem?.cod_inscrip) (payload as any).cod_inscrip = Number(mem.cod_inscrip);
         (payload as any).tipo_inscripcion = 'ARRASTRE';
       }
-    } catch {}
+    } catch { }
     try {
       const uni = String((payload as any).id_forma_cobro || '');
       if (uni) {
         (payload as any).pagos = ((payload as any).pagos || []).map((p: any) => ({ ...p, id_forma_cobro: uni }));
       }
-    } catch {}
+    } catch { }
     console.log('HOIla 10');
     // Forzar bandera emitir_online si hay al menos una Factura Computarizada
     try {
       const shouldEmitOnline = pagos.some((p: any) => (p?.tipo_documento === 'F') && (p?.medio_doc === 'C'));
       if (shouldEmitOnline) (payload as any).emitir_online = true;
-    } catch {}
+    } catch { }
     // Para usuario apoyoCobranzas: validar que seleccionó sucursal e inyectar sucursal+PV en payload
     if (this.esUsuarioApoyo) {
       if (this.sucursalSeleccionada === null) {
@@ -3703,7 +3704,7 @@ export class CobrosComponent implements OnInit {
         this.loading = false;
         return;
       }
-      (payload as any).codigo_sucursal    = asig.codigo_sucursal;
+      (payload as any).codigo_sucursal = asig.codigo_sucursal;
       (payload as any).codigo_punto_venta = asig.codigo_punto_venta;
     }
     // Agregar descuentos del modal si existen
@@ -3725,7 +3726,7 @@ export class CobrosComponent implements OnInit {
                 const det = rechazadas.map((r: any) => `#${r?.nro_factura || '?'}${r?.mensaje ? ' - ' + r.mensaje : ''}`).join(' | ');
                 this.showAlert(`⚠️ Ups! Hubo un problema con la facturación.\n\nEl cobro se registró correctamente pero la factura fue rechazada por el SIN.\n\nPor favor revise más tarde o notifique al administrador.\n\nDetalles: ${det}`, 'warning', 15000);
               }
-            } catch {}
+            } catch { }
             // Construir resumen de éxito ANTES de cualquier limpieza
             this.successSummary = this.buildSuccessSummary(items);
             // Limpiar descuentos del modal para evitar duplicados en el siguiente cobro
@@ -3755,7 +3756,7 @@ export class CobrosComponent implements OnInit {
                 this.downloadFacturaPdfWithFallback(anioF, it.nro_factura, it);
               }
             }
-          } catch {}
+          } catch { }
           this.showAlert('Cobros registrados', 'success');
           // No limpiar aún; se limpia al cerrar el modal de éxito
         } else {
@@ -3772,7 +3773,7 @@ export class CobrosComponent implements OnInit {
             payload
           };
           console.error('Batch error detail:', detail);
-        } catch {}
+        } catch { }
         const backendMsg = (err?.error?.message || '').toString();
         const validationErrors = err?.error?.errors;
         let msg = backendMsg || err?.message || 'Error al registrar cobros';
@@ -3858,8 +3859,8 @@ export class CobrosComponent implements OnInit {
     const asignList: any[] = Array.isArray(this.resumen?.asignaciones)
       ? this.resumen!.asignaciones
       : (Array.isArray(this.resumen?.asignacion_costos?.items)
-          ? this.resumen!.asignacion_costos.items
-          : []);
+        ? this.resumen!.asignacion_costos.items
+        : []);
 
     if (asignList.length === 0) {
       throw new Error('No hay asignaciones disponibles en el resumen');
@@ -4047,7 +4048,7 @@ export class CobrosComponent implements OnInit {
           push(it?.id_inscripcion || it?.id || it?.cod_inscrip);
         }
       }
-    } catch {}
+    } catch { }
     return out;
   }
 
@@ -4086,7 +4087,7 @@ export class CobrosComponent implements OnInit {
       this.showAlert('No hay cuotas de arrastre pendientes', 'warning');
       return;
     }
-    if (!this.ensureMetodoPagoPermitido(['EFECTIVO','TARJETA','CHEQUE','DEPOSITO','TRANSFERENCIA','QR','OTRO'])) return;
+    if (!this.ensureMetodoPagoPermitido(['EFECTIVO', 'TARJETA', 'CHEQUE', 'DEPOSITO', 'TRANSFERENCIA', 'QR', 'OTRO'])) return;
     const hoy = new Date().toISOString().slice(0, 10);
     const nro = this.getNextMensualidadNro();
     // Monto/PU de arrastre debe ser NETO (preferir datos de arrastre.asignacion_costos/asignaciones_arrastre)
@@ -4267,7 +4268,7 @@ export class CobrosComponent implements OnInit {
     // Asegurar que el usuario vea la alerta (especialmente para errores de backend)
     try {
       window.scrollTo({ top: 0, behavior: 'smooth' });
-    } catch {}
+    } catch { }
     if (durationMs > 0) {
       this.alertTimeoutHandle = setTimeout(() => {
         this.alertMessage = '';

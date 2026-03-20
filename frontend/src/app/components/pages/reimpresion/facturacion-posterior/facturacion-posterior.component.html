@@ -14,7 +14,7 @@
 						<div class="mb-2">
 							<label class="form-label">Código CETA</label>
 							<div class="input-group">
-								<input type="text" class="form-control" formControlName="cod_ceta" (keydown.enter)="$event.preventDefault(); buscarPorCodCeta()" />
+								<input type="text" class="form-control" formControlName="cod_ceta" (keydown.enter)="$event.preventDefault(); buscarPorCodCeta()" appSoloNumeros />
 								<button type="submit" class="btn btn-outline-secondary">
 									<i class="fas fa-search"></i>
 								</button>

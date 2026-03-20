@@ -5,6 +5,7 @@ import { RouterModule } from '@angular/router';
 import { CobrosService } from '../../../../services/cobros.service';
 import { AuthService } from '../../../../services/auth.service';
 import { forkJoin, of } from 'rxjs';
+import { SoloNumerosDirective } from '../../../../directives/solo-numeros.directive';
 
 interface DefBeca {
 	cod_beca: number;
@@ -35,10 +36,11 @@ interface AsignacionPreview {
 	cuotasDetalle?: Array<{ numero_cuota: number; monto_descuento: number }>;
 }
 
+
 @Component({
 	selector: 'app-asignacion-becas-descuentos',
 	standalone: true,
-	imports: [CommonModule, FormsModule, ReactiveFormsModule, RouterModule],
+	imports: [CommonModule, FormsModule, ReactiveFormsModule, RouterModule, SoloNumerosDirective],
 	templateUrl: './asignacion-becas-descuentos.component.html',
 	styleUrls: ['./asignacion-becas-descuentos.component.scss']
 })
@@ -83,7 +85,7 @@ export class AsignacionBecasDescuentosComponent implements OnInit {
 	private cuotasArrastre: Array<{ numero_cuota: number; monto: number; monto_bruto: number; estado_pago: string; observacion: string; selected: boolean; id_cuota?: number | null; monto_pagado?: number; descuento_existente?: number; monto_neto?: number; descuento_manual?: number }> = [];
 	allSelected: boolean = false;
 
-	constructor(private fb: FormBuilder, private cobrosService: CobrosService,private auth:AuthService) {
+	constructor(private fb: FormBuilder, private cobrosService: CobrosService, private auth: AuthService) {
 		this.searchForm = this.fb.group({
 			cod_ceta: [''],
 			gestion: ['']
@@ -246,7 +248,7 @@ export class AsignacionBecasDescuentosComponent implements OnInit {
 		return this.cuotas.filter(c => this.isSelectable(c) && !!c.selected).length;
 	}
 
-	private consideredCuotas(): Array<{ numero_cuota: number; monto: number; monto_bruto: number; estado_pago: string; observacion: string; selected: boolean; id_cuota?: number | null; monto_pagado?: number; descuento_existente?: number; monto_neto?: number }>{
+	private consideredCuotas(): Array<{ numero_cuota: number; monto: number; monto_bruto: number; estado_pago: string; observacion: string; selected: boolean; id_cuota?: number | null; monto_pagado?: number; descuento_existente?: number; monto_neto?: number }> {
 		const sel = this.cuotas.filter(c => !!c.selected);
 		if (sel.length > 0) return sel;
 		return this.cuotas.filter(c => ['PENDIENTE', 'PARCIAL'].includes(String(c.estado_pago || '').toUpperCase()));
@@ -288,7 +290,7 @@ export class AsignacionBecasDescuentosComponent implements OnInit {
 		this.updateDescuentoTotal(selectedRow);
 	}
 
-// Eliminado: selección por cuota / seleccionar todo
+	// Eliminado: selección por cuota / seleccionar todo
 
 	private round2(n: number): number {
 		return Math.round((n + Number.EPSILON) * 100) / 100;

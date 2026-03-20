@@ -5,11 +5,12 @@ import { ProrrogaMoraService } from '../../../services/prorroga-mora.service';
 import { CobrosService } from '../../../services/cobros.service';
 import { AuthService } from '../../../services/auth.service';
 import { ProrrogaMora } from '../../../models/prorroga-mora.model';
+import { SoloNumerosDirective } from '../../../directives/solo-numeros.directive';
 
 @Component({
 	selector: 'app-prorroga-mora',
 	standalone: true,
-	imports: [CommonModule, FormsModule, ReactiveFormsModule],
+	imports: [CommonModule, FormsModule, ReactiveFormsModule, SoloNumerosDirective],
 	templateUrl: './prorroga-mora.component.html',
 	styleUrls: ['./prorroga-mora.component.scss']
 })

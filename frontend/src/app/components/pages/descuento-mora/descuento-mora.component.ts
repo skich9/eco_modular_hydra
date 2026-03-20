@@ -4,11 +4,12 @@ import { FormsModule } from '@angular/forms';
 import { CobrosService } from '../../../services/cobros.service';
 import { AuthService } from '../../../services/auth.service';
 import { DescuentoMoraService } from '../../../services/descuento-mora.service';
+import { SoloNumerosDirective } from '../../../directives/solo-numeros.directive';
 
 @Component({
 	selector: 'app-descuento-mora',
 	standalone: true,
-	imports: [CommonModule, FormsModule],
+	imports: [CommonModule, FormsModule, SoloNumerosDirective],
 	templateUrl: './descuento-mora.component.html',
 	styleUrls: ['./descuento-mora.component.scss']
 })
