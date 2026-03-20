@@ -299,6 +299,20 @@ export class DescuentoMoraComponent implements OnInit {
 			return;
 		}
 
+		// Validar que el valor no supere el monto de la mora usando un bucle 'for' básico
+		const listaDescuentos = this.descuentosMora || [];
+		
+		for (let i = 0; i < listaDescuentos.length; i++) {
+			const fila = listaDescuentos[i];
+			const descuentoIngresado = Number(fila.monto_descuento || 0);
+			const limiteMora = Number(fila.monto_mora || 0);
+			
+			if (descuentoIngresado > limiteMora) {
+				this.displayAlert(`El descuento para la Cuota ${fila.numero_cuota} (Bs. ${descuentoIngresado}) no puede ser mayor a la mora actual (Bs. ${limiteMora}).`, 'warning');
+				return;
+			}
+		}
+
 		const rows = (this.descuentosMora || [])
 			.filter((r: any) => Number(r?.monto_descuento || 0) > 0)
 			.map((r: any) => ({
