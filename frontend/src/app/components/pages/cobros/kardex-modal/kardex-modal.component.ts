@@ -163,6 +163,11 @@ export class KardexModalComponent implements OnChanges {
 
 	@Input() resumen: any = null;
 	@Input() gestion: string = '';
+	/**
+	 * Si es true, en la cabecera solo se listan inscripciones/grupos de la gestión consultada
+	 * (p. ej. tras vencer la fecha límite de descuento institucional — alineado con `mostrarBotonDescuento`).
+	 */
+	@Input() filtrarInscripcionesPorGestion = false;
 
 	// Cache para pagos expandidos
 	private _pagosExpandidosCache: any[] | null = null;
@@ -177,6 +182,19 @@ export class KardexModalComponent implements OnChanges {
 				this._lastResumenHash = currentHash;
 			}
 		}
+	}
+
+	/** Inscripciones mostradas en el bloque "Grupos" (toda la historia o solo la gestión actual). */
+	get inscripcionesParaKardex(): any[] {
+		const list = Array.isArray(this.resumen?.inscripciones) ? this.resumen.inscripciones : [];
+		if (!this.filtrarInscripcionesPorGestion) {
+			return list;
+		}
+		const g = `${this.gestion ?? ''}`.trim();
+		if (!g) {
+			return list;
+		}
+		return list.filter((ins: any) => `${ins?.gestion ?? ''}`.trim() === g);
 	}
 
 	open(): void {
