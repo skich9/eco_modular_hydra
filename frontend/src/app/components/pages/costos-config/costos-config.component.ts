@@ -4,6 +4,7 @@ import { FormBuilder, FormControl, FormGroup, FormsModule, ReactiveFormsModule, 
 import { CobrosService } from '../../../services/cobros.service';
 import { AuthService } from '../../../services/auth.service';
 import { CarreraService } from '../../../services/carrera.service';
+import { parsePositiveInteger, sanitizeIntegerString } from '../../../utils/numeric-amount.util';
 
 @Component({
 	selector: 'app-costos-config',
@@ -75,6 +76,9 @@ export class CostosConfigComponent implements OnInit {
 	private restrictiveKeys = new Set<string>(['instancia','reincorporacion','rezagado']);
 	costosCatalogo: Array<{ key: string; label: string; id: number; nombre_costo?: string }>= [];
 
+	/** Notificación de error (banner rojo); sin textos bajo cada campo. */
+	notificacionCostosError: string | null = null;
+
 	constructor(
 		private fb: FormBuilder,
 		private cobrosService: CobrosService,
@@ -109,6 +113,9 @@ export class CostosConfigComponent implements OnInit {
 			monto_semestre: [''],
 			semestre: [{ value: '', disabled: true }],
 			turno: [{ value: 'MANANA', disabled: true }],
+		});
+		this.editForm.valueChanges.subscribe(() => {
+			this.notificacionCostosError = null;
 		});
 
 		// Formulario del modal de creación (solo UI)
@@ -293,6 +300,13 @@ export class CostosConfigComponent implements OnInit {
 			this.applyCostosMutualExclusion();
 		});
 
+		this.form.valueChanges.subscribe(() => {
+			this.notificacionCostosError = null;
+		});
+
+		this.cuotasGroup.valueChanges.subscribe(() => {
+			this.notificacionCostosError = null;
+		});
 
 		// Al cambiar gestión, recargar la tabla del pensum activo (nueva UI)
 		this.form.get('gestion')?.valueChanges.subscribe(() => {
@@ -507,9 +521,15 @@ export class CostosConfigComponent implements OnInit {
 
 	openEdit(row: any): void {
 		this.editingRow = row;
+		const rawM = row?.monto_semestre;
+		let montoStr = '';
+		if (rawM !== null && rawM !== undefined && `${rawM}`.trim() !== '') {
+			const t = Math.trunc(Number(rawM));
+			montoStr = Number.isFinite(t) && t > 0 ? String(t) : '';
+		}
 		this.editForm.setValue({
 			tipo_costo: row?.tipo_costo || '',
-			monto_semestre: row?.monto_semestre ?? '',
+			monto_semestre: montoStr,
 			semestre: row?.semestre || '',
 			turno: row?.turno || 'MANANA',
 		});
@@ -705,7 +725,13 @@ export class CostosConfigComponent implements OnInit {
 		const id = row?.id_costo_semestral;
 		if (!id) { alert('No se encontró el identificador del registro.'); return; }
 		const v = this.editForm.getRawValue();
-		const payload = { monto_semestre: Number(v.monto_semestre) };
+		const montoOk = parsePositiveInteger(v.monto_semestre);
+		if (montoOk === null) {
+			this.notificacionCostosError = 'Solo se permiten valores enteros mayores a cero.';
+			this.editForm.get('monto_semestre')?.markAsTouched();
+			return;
+		}
+		const payload = { monto_semestre: montoOk };
 		this.cobrosService.updateCostoSemestral(Number(id), payload).subscribe({
 			next: () => {
 				this.editOpen = false;
@@ -727,7 +753,7 @@ export class CostosConfigComponent implements OnInit {
 							cod_pensum: cp,
 							gestion: gs,
 							semestre: row.semestre,
-							monto: Number(v.monto_semestre),
+							monto: montoOk,
 							tipo: (tipoKey === 'costo_mensual' || tipoKey === 'materia') ? tipoKey : undefined,
 							turno: turnoKey || undefined,
 						}).subscribe({
@@ -742,7 +768,7 @@ export class CostosConfigComponent implements OnInit {
 			},
 			error: (err) => {
 				console.error('Error al actualizar costo semestral', err);
-				alert('Error al actualizar costo semestral.');
+				this.notificacionCostosError = 'No se pudo actualizar el costo.';
 			}
 		});
 	}
@@ -820,43 +846,96 @@ export class CostosConfigComponent implements OnInit {
 		}
 	}
 
-	asignarCostos(): void {
-		const cod_pensum: string = this.form.get('pensum')?.value || this.activePensumForTable as string;
-		const gestion: string = this.form.get('gestion')?.value;
-		if (!cod_pensum || !gestion) {
-			alert('Seleccione Gestión y Pensum antes de guardar.');
-			return;
+	/** Estado del formulario de asignación (montos numéricos > 0 en filas activas). */
+	private computeAsignarCostosState(): { ok: true; rows: Array<{ semestre: number; tipo_costo: string; monto_semestre: number; turno: string }> } | { ok: false; message: string } {
+		const cod_pensum: string = (this.form.get('pensum')?.value || this.activePensumForTable || '') as string;
+		const gestion: string = (this.form.get('gestion')?.value || '') as string;
+		if (!cod_pensum?.trim() || !gestion?.trim()) {
+			return { ok: false, message: 'Seleccione gestión y pensum antes de guardar.' };
 		}
 
-		// Semestres marcados
 		const semestres: number[] = [];
-		(['sem1','sem2','sem3','sem4','sem5','sem6'] as const).forEach((k, idx) => {
+		(['sem1', 'sem2', 'sem3', 'sem4', 'sem5', 'sem6'] as const).forEach((k, idx) => {
 			if (this.form.get(k)?.value) semestres.push(idx + 1);
 		});
 		if (semestres.length === 0) {
-			alert('Marque al menos un semestre.');
-			return;
+			return { ok: false, message: 'Marque al menos un semestre.' };
 		}
 
-		// Construir filas por cada costo habilitado y semestre marcado
 		const costosGroup = this.form.get('costos') as FormGroup;
 		const rows: Array<{ semestre: number; tipo_costo: string; monto_semestre: number; turno: string }> = [];
+
 		for (const c of this.costosCatalogo) {
 			const enabled = costosGroup.get(`${c.key}_enabled`)?.value === true;
 			if (!enabled) continue;
-			const monto = parseFloat(String(costosGroup.get(`${c.key}_monto`)?.value || 0));
+
+			const rawMonto = costosGroup.get(`${c.key}_monto`)?.value;
+			const monto = parsePositiveInteger(rawMonto);
+			if (monto === null) {
+				return {
+					ok: false,
+					message: 'Los costos activos requieren valores enteros mayores a cero.',
+				};
+			}
+
 			const turnoSel = String(costosGroup.get(`${c.key}_turno`)?.value || 'TODOS');
-			const turnosToUse = (turnoSel === 'TODOS') ? this.turnos.map(t => t.key) : [turnoSel];
+			const turnosToUse = turnoSel === 'TODOS' ? this.turnos.map(t => t.key) : [turnoSel];
 			for (const s of semestres) {
 				for (const tKey of turnosToUse) {
-					rows.push({ semestre: s, tipo_costo: (c.nombre_costo || '').toString(), monto_semestre: isNaN(monto) ? 0 : monto, turno: tKey });
+					rows.push({
+						semestre: s,
+						tipo_costo: (c.nombre_costo || '').toString(),
+						monto_semestre: monto,
+						turno: tKey,
+					});
 				}
 			}
 		}
+
 		if (rows.length === 0) {
-			alert('Active al menos un costo y establezca su valor.');
+			return { ok: false, message: 'Active al menos un costo con valor entero mayor a cero.' };
+		}
+
+		// Con costos no restrictivos el usuario debe elegir al menos una cuota (las cuotas están habilitadas).
+		if (!this.cuotasDisabled) {
+			const algunaCuota = this.cuotas.some(
+				(c) => this.cuotasGroup.get(`cuota_${c.id_parametro_cuota}`)?.value === true
+			);
+			if (!algunaCuota) {
+				return { ok: false, message: 'Marque al menos una cuota.' };
+			}
+		}
+
+		return { ok: true, rows };
+	}
+
+	get puedeAsignarCostos(): boolean {
+		return this.computeAsignarCostosState().ok;
+	}
+
+	onCostoMontoInput(catalogKey: string, event: Event): void {
+		const el = event.target as HTMLInputElement;
+		const cleaned = sanitizeIntegerString(el.value);
+		if (cleaned !== el.value) {
+			this.costosGroup.get(`${catalogKey}_monto`)?.setValue(cleaned, { emitEvent: true });
+		}
+	}
+
+	asignarCostos(): void {
+		const state = this.computeAsignarCostosState();
+		if (!state.ok) {
+			this.notificacionCostosError = state.message;
 			return;
 		}
+		this.notificacionCostosError = null;
+		const { rows } = state;
+		const cod_pensum: string = (this.form.get('pensum')?.value || this.activePensumForTable || '') as string;
+		const gestion: string = (this.form.get('gestion')?.value || '') as string;
+
+		const semestres: number[] = [];
+		(['sem1', 'sem2', 'sem3', 'sem4', 'sem5', 'sem6'] as const).forEach((k, idx) => {
+			if (this.form.get(k)?.value) semestres.push(idx + 1);
+		});
 
 		const currentUser = this.auth.getCurrentUser();
 		const id_usuario = currentUser?.id_usuario;
@@ -883,8 +962,8 @@ export class CostosConfigComponent implements OnInit {
 						// Normalizar tipo a claves del catálogo
 						const nameKey = (c.nombre_costo || '').toString().toLowerCase();
 						if (nameKey !== 'costo_mensual' && nameKey !== 'materia') continue;
-						const monto = parseFloat(String(costosGroup.get(`${c.key}_monto`)?.value || 0));
-						if (isNaN(monto)) continue;
+						const monto = parsePositiveInteger(costosGroup.get(`${c.key}_monto`)?.value);
+						if (monto === null) continue;
 						const turnoSel = String(costosGroup.get(`${c.key}_turno`)?.value || 'TODOS');
 						selectedCosts.push({ tipo: nameKey, monto, turno: turnoSel });
 					}
@@ -935,6 +1014,7 @@ export class CostosConfigComponent implements OnInit {
 					console.warn('No se pudo procesar creación de cuotas automáticas:', e);
 				}
 
+				this.notificacionCostosError = null;
 				alert('Costos semestrales guardados correctamente.');
 				// Refrescar tabla del pensum activo (nueva UI) o fallback legado
 				const ap = this.activePensumForTable || this.activePensumTab;
@@ -958,7 +1038,7 @@ export class CostosConfigComponent implements OnInit {
 			},
 			error: (err) => {
 				console.error('Error al guardar costo_semestral', err);
-				alert('Error al guardar costo semestral. Revise consola.');
+				this.notificacionCostosError = 'No se pudieron guardar los costos. Revise los datos o intente de nuevo.';
 			}
 		});
 	}
