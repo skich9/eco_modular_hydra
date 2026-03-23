@@ -82,14 +82,15 @@
 					<td>{{ pv.sucursal ?? '0' }}</td>
 					<td><small>{{ pv.codigo_cuis_genera || '—' }}</small></td>
 					<td>
-						<span *ngIf="getUsuarioAsignadoVigente(pv)" class="badge bg-info">
-							{{ getUsuarioAsignadoVigente(pv) }}
+						<span *ngIf="pv.usuario_asignado" class="badge bg-info">
+							{{ pv.usuario_asignado }}
 						</span>
-						<span *ngIf="!getUsuarioAsignadoVigente(pv)" class="text-muted">—</span>
+						<span *ngIf="!pv.usuario_asignado" class="text-muted">—</span>
 					</td>
 					<td>
-						<small *ngIf="getFechaVencimientoVigente(pv)">{{ getFechaVencimientoVigente(pv) | date:'dd/MM/yyyy HH:mm' }}</small>
-						<span *ngIf="!getFechaVencimientoVigente(pv)" class="text-muted">—</span>
+						<small *ngIf="pv.usuario_asignado && pv.vence_en">{{ pv.vence_en | date:'dd/MM/yyyy HH:mm' }}</small>
+						<small *ngIf="pv.usuario_asignado && !pv.vence_en" class="text-success fw-bold">Asignado permanentemente</small>
+						<span *ngIf="!pv.usuario_asignado" class="text-muted">—</span>
 					</td>
 					<td>{{ getTipoNombre(pv.tipo) }}</td>
 					<td>
@@ -102,8 +103,8 @@
 							type="button"
 							class="btn btn-sm btn-outline-primary me-1"
 							(click)="openAddUsersModal(pv)"
-							[attr.title]="getUsuarioAsignadoVigente(pv) ? 'Editar asignación de usuario' : 'Asignar usuario al punto de venta'">
-							<i class="fas" [ngClass]="getUsuarioAsignadoVigente(pv) ? 'fa-user-edit' : 'fa-user-plus'"></i>
+							[attr.title]="pv.usuario_asignado ? 'Editar asignación de usuario' : 'Asignar usuario al punto de venta'">
+							<i class="fas" [ngClass]="pv.usuario_asignado ? 'fa-user-edit' : 'fa-user-plus'"></i>
 						</button>
 						<button
 							type="button"
