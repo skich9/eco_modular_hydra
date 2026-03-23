@@ -6,7 +6,8 @@
 					<i class="fas me-2" [ngClass]="isEditMode ? 'fa-user-cog' : 'fa-user-plus'"></i>
 					{{ isEditMode ? 'Editar Asignación de Usuario' : 'Agregar Usuario al Punto de Venta' }}
 				</h5>
-				<button type="button" class="btn-close btn-close-white" data-bs-dismiss="modal" aria-label="Close"></button>
+				<button type="button" class="btn-close btn-close-white" data-bs-dismiss="modal"
+					aria-label="Close"></button>
 			</div>
 			<div class="modal-body">
 				<!-- Cargando asignación -->
@@ -27,7 +28,8 @@
 					<!-- Información de asignación actual (modo edición) -->
 					<div class="alert alert-warning" *ngIf="isEditMode && asignacionActual">
 						<i class="fas fa-user-check me-2"></i>
-						<strong>Usuario Asignado:</strong> {{ asignacionActual.nickname || asignacionActual.nombre + ' ' + asignacionActual.ap_materno }}
+						<strong>Usuario Asignado:</strong> {{ asignacionActual.nickname || asignacionActual.nombre + ' '
+						+ asignacionActual.ap_materno }}
 					</div>
 
 					<!-- Mensaje de error -->
@@ -58,33 +60,22 @@
 									<span class="input-group-text">
 										<i class="fas fa-search"></i>
 									</span>
-									<input
-										type="text"
-										class="form-control"
-										[(ngModel)]="searchTerm"
-										[ngModelOptions]="{standalone: true}"
-										(ngModelChange)="filterUsuarios()"
+									<input type="text" class="form-control" [(ngModel)]="searchTerm"
+										[ngModelOptions]="{standalone: true}" (ngModelChange)="filterUsuarios()"
 										(focus)="showDropdown = true"
-										[placeholder]="selectedUsuario ? selectedUsuario.nickname || selectedUsuario.nombre : 'Seleccione maqueta'"
+										[placeholder]="selectedUsuario ? selectedUsuario.nickname || selectedUsuario.nombre : 'Seleccione usuario'"
 										[class.is-invalid]="form.get('id_usuario')?.invalid && form.get('id_usuario')?.touched"
 										autocomplete="off">
-									<button
-										type="button"
-										class="btn btn-outline-secondary"
-										(click)="clearSelection()">
+									<button type="button" class="btn btn-outline-secondary" (click)="clearSelection()">
 										<i class="fas fa-times"></i>
 									</button>
 								</div>
 
 								<!-- Dropdown list -->
-								<div
-									class="dropdown-menu w-100"
+								<div class="dropdown-menu w-100"
 									[class.show]="showDropdown && filteredUsuarios.length > 0"
 									style="max-height: 300px; overflow-y: auto;">
-									<button
-										type="button"
-										class="dropdown-item"
-										*ngFor="let usuario of filteredUsuarios"
+									<button type="button" class="dropdown-item" *ngFor="let usuario of filteredUsuarios"
 										(click)="selectUsuario(usuario)"
 										[class.active]="selectedUsuario?.id_usuario === usuario.id_usuario">
 										<i class="fas fa-user me-2 text-muted"></i>
@@ -95,7 +86,8 @@
 									</button>
 								</div>
 
-								<div class="invalid-feedback" *ngIf="form.get('id_usuario')?.invalid && form.get('id_usuario')?.touched">
+								<div class="invalid-feedback"
+									*ngIf="form.get('id_usuario')?.invalid && form.get('id_usuario')?.touched">
 									Debe seleccionar un usuario
 								</div>
 							</div>
@@ -109,16 +101,14 @@
 						<!-- Asignación permanente -->
 						<div class="mb-3">
 							<div class="form-check form-switch">
-								<input
-									class="form-check-input"
-									type="checkbox"
-									id="permanenteCheck"
+								<input class="form-check-input" type="checkbox" id="permanenteCheck"
 									formControlName="permanente">
 								<label class="form-check-label" for="permanenteCheck">
 									Asignación permanente (sin vencimiento)
 								</label>
 							</div>
-							<small class="text-muted">Activa esta opción cuando se quiere asignar el punto de venta de forma permanente (Indefinida)</small>
+							<small class="text-muted">Activa esta opción cuando se quiere asignar el punto de venta de
+								forma permanente (Indefinida)</small>
 						</div>
 
 						<!-- Fecha y Hora de Vencimiento -->
@@ -127,12 +117,10 @@
 								<i class="fas fa-calendar-alt me-1"></i>
 								Fecha y Hora de Vencimiento <span class="text-danger">*</span>
 							</label>
-							<input
-								type="datetime-local"
-								class="form-control"
-								formControlName="vencimiento_asig"
+							<input type="datetime-local" class="form-control" formControlName="vencimiento_asig"
 								[class.is-invalid]="form.get('vencimiento_asig')?.invalid && form.get('vencimiento_asig')?.touched">
-							<div class="invalid-feedback" *ngIf="form.get('vencimiento_asig')?.invalid && form.get('vencimiento_asig')?.touched">
+							<div class="invalid-feedback"
+								*ngIf="form.get('vencimiento_asig')?.invalid && form.get('vencimiento_asig')?.touched">
 								La fecha de vencimiento es requerida
 							</div>
 							<small class="text-muted">
@@ -144,10 +132,7 @@
 						<!-- Estado Activo (solo en modo edición) -->
 						<div class="mb-3" *ngIf="isEditMode">
 							<div class="form-check form-switch">
-								<input
-									class="form-check-input"
-									type="checkbox"
-									id="activoSwitch"
+								<input class="form-check-input" type="checkbox" id="activoSwitch"
 									formControlName="activo">
 								<label class="form-check-label" for="activoSwitch">
 									Asignación Activa
@@ -166,12 +151,8 @@
 					<i class="fas fa-times me-1"></i>
 					Cancelar
 				</button>
-				<button
-					type="button"
-					class="btn"
-					[ngClass]="isEditMode ? 'btn-warning' : 'btn-primary'"
-					(click)="onSave()"
-					[disabled]="isSaving || isLoadingAsignacion">
+				<button type="button" class="btn" [ngClass]="isEditMode ? 'btn-warning' : 'btn-primary'"
+					(click)="onSave()" [disabled]="isSaving || isLoadingAsignacion">
 					<span *ngIf="!isSaving">
 						<i class="fas me-1" [ngClass]="isEditMode ? 'fa-edit' : 'fa-save'"></i>
 						{{ isEditMode ? 'Actualizar Asignación' : 'Asignar Usuario' }}
