@@ -1553,6 +1553,465 @@ class SgaSyncRepository
 		return compact('source','gestion','total','inserted','skipped','errors','skippedSynced','skippedMissingUser','skippedMissingInscripcion','skippedMissingMora');
 	}
 
+	public function syncCobrosRezagadosPorGestion(string $source, string $gestion, int $chunk = 1000, bool $dryRun = false, ?int $codCetaFilter = null, ?string $codPensumFilter = null, bool $trace = false): array
+	{
+		$source = in_array($source, ['sga_elec','sga_mec']) ? $source : 'sga_elec';
+		$gestion = trim((string) $gestion);
+		$total = 0; $inserted = 0; $skipped = 0; $errors = 0;
+		$skippedSynced = 0; $skippedMissingUser = 0; $skippedMissingInscripcion = 0;
+
+		if ($gestion === '') {
+			return compact('source','gestion','total','inserted','skipped','errors','skippedSynced','skippedMissingUser','skippedMissingInscripcion');
+		}
+		if (!Schema::hasTable('cobro') || !Schema::hasTable('sga_sync_cobros') || !Schema::hasTable('rezagados')) {
+			return compact('source','gestion','total','inserted','skipped','errors','skippedSynced','skippedMissingUser','skippedMissingInscripcion');
+		}
+		if (!Schema::connection($source)->hasTable('rezagados')) {
+			return compact('source','gestion','total','inserted','skipped','errors','skippedSynced','skippedMissingUser','skippedMissingInscripcion');
+		}
+
+		$defaultUserId = (int) (env('SYNC_DEFAULT_USER_ID', 1));
+		$carreraLabel = $source === 'sga_elec' ? 'Electricidad y Electrónica Automotriz' : 'Mecánica Automotriz';
+		try {
+			Log::info('SGA sync cobros rezagados: mode', [
+				'source' => $source,
+				'gestion' => $gestion,
+				'dry_run' => $dryRun,
+				'trace' => $trace,
+				'writes_cobro' => !$dryRun,
+				'writes_sga_sync_cobros' => (!$dryRun) || $trace,
+				'default_user_id' => $defaultUserId,
+			]);
+		} catch (\Throwable $e) {}
+
+		$codTipoCobroRezag = $this->resolveCodTipoCobro('REZAGADOS');
+
+		$baseQuery = DB::connection($source)
+			->table('rezagados as rz')
+			->join('registro_inscripcion as ri', function ($join) {
+				$join->on('ri.cod_inscrip', '=', 'rz.cod_inscrip');
+			})
+			->where('ri.gestion', $gestion)
+			->when($codCetaFilter !== null, function ($q) use ($codCetaFilter) {
+				$q->where('rz.cod_ceta', (int) $codCetaFilter);
+			})
+			->when($codPensumFilter !== null && trim((string)$codPensumFilter) !== '', function ($q) use ($codPensumFilter) {
+				$q->where('rz.cod_pensum', (string) $codPensumFilter);
+			});
+
+		$baseQuery
+			->select('rz.*')
+			->orderBy('rz.cod_ceta')
+			->orderBy('rz.cod_pensum')
+			->orderBy('rz.cod_inscrip')
+			->orderBy('rz.num_rezagado')
+			->orderBy('rz.num_pago_rezagado')
+			->chunk($chunk, function ($rows) use (&$total, &$inserted, &$skipped, &$errors, &$skippedSynced, &$skippedMissingUser, &$skippedMissingInscripcion, $dryRun, $trace, $source, $gestion, $defaultUserId, $carreraLabel, $codTipoCobroRezag) {
+				$total += count($rows);
+				if (empty($rows)) { return; }
+
+				$now = now();
+				$sourcePks = [];
+				$nicknames = [];
+				foreach ($rows as $r) {
+					$sourcePk = $this->makeRezagadoSourcePk($r);
+					if ($sourcePk !== '') { $sourcePks[] = $sourcePk; }
+					$userNick = trim((string) ($r->usuario ?? ''));
+					if ($userNick !== '') { $nicknames[] = mb_substr($userNick, 0, 40); }
+				}
+				$sourcePks = array_values(array_unique(array_filter($sourcePks)));
+				$nicknames = array_values(array_unique(array_filter($nicknames)));
+
+				$already = [];
+				if (!empty($sourcePks)) {
+					$syncQuery = DB::table('sga_sync_cobros')
+						->where('source_conn', $source)
+						->where('source_table', 'rezagados')
+						->whereIn('source_pk', $sourcePks);
+					if (!$dryRun) {
+						$syncQuery->where('status', 'OK');
+					}
+					$rowsSynced = $syncQuery->pluck('source_pk')->all();
+					foreach ($rowsSynced as $pk) { $already[(string)$pk] = true; }
+				}
+
+				$userMap = [];
+				if (!empty($nicknames)) {
+					$uRows = DB::table('usuarios')->whereIn('nickname', $nicknames)->select('id_usuario','nickname')->get();
+					foreach ($uRows as $u) { $userMap[(string)$u->nickname] = (int) $u->id_usuario; }
+				}
+
+				foreach ($rows as $r) {
+					try {
+						$sourcePk = $this->makeRezagadoSourcePk($r);
+						if ($sourcePk === '') { $skipped++; continue; }
+						if (isset($already[$sourcePk])) { $skippedSynced++; continue; }
+
+						$codCeta = (int) ($r->cod_ceta ?? 0);
+						$codPensum = trim((string) ($r->cod_pensum ?? ''));
+						if ($codCeta <= 0 || $codPensum === '') { $skipped++; continue; }
+
+						$tipoIns = strtoupper(trim((string) ($r->kardex_economico ?? '')));
+						if ($tipoIns === '') { $tipoIns = 'NORMAL'; }
+
+						$userNick = trim((string) ($r->usuario ?? ''));
+						$idUsuario = $defaultUserId;
+						if ($userNick !== '' && isset($userMap[$userNick])) {
+							$idUsuario = (int) $userMap[$userNick];
+						} else {
+							$skippedMissingUser++;
+						}
+
+						$idFormaCobro = $this->resolveFormaCobro((string) ($r->code_tipo_pago ?? ''));
+						$numRezagado = (int) ($r->num_rezagado ?? 0);
+						$numPagoRezagado = (int) ($r->num_pago_rezagado ?? 0);
+						$monto = (float) ($r->monto ?? 0);
+						$cobroCompleto = (bool) ($r->pago_completo ?? true);
+						$nroRecibo = isset($r->num_comprobante) ? (int) $r->num_comprobante : null;
+						$nroFactura = isset($r->num_factura) ? (int) $r->num_factura : null;
+						$materia = isset($r->materia) ? trim((string) $r->materia) : null;
+						if ($materia === '') { $materia = null; }
+						$parcial = isset($r->parcial) ? trim((string) $r->parcial) : null;
+						if ($parcial === '') { $parcial = null; }
+
+						$razon = null;
+						try {
+							$razon = trim((string) ($r->razon ?? $r->razon_social ?? $r->cliente ?? $r->nombre_cliente ?? $r->nombre ?? ''));
+							if ($razon === '') { $razon = null; }
+						} catch (\Throwable $e) { $razon = null; }
+						$nroDocumentoPago = null;
+						try {
+							$nroDocumentoPago = trim((string) ($r->nro_documento_pago ?? $r->nro_documento ?? $r->nit ?? $r->documento_cliente ?? $r->numero_documento ?? ''));
+							if ($nroDocumentoPago === '') { $nroDocumentoPago = null; }
+						} catch (\Throwable $e) { $nroDocumentoPago = null; }
+
+						$fechaPago = isset($r->fecha_pago) ? $r->fecha_pago : null;
+						$anioCobro = $fechaPago ? (int) date('Y', strtotime((string) $fechaPago)) : (int) date('Y');
+						$fechaCobro = $fechaPago ? date('Y-m-d H:i:s', strtotime((string)$fechaPago)) : date('Y-m-d H:i:s');
+
+						if ($dryRun) {
+							$this->markSyncCobro($source, 'rezagados', $sourcePk, $codCeta, $codPensum, $gestion, $r, null, null, ($dryRun && !$trace), 'DRY_OK', null);
+							$inserted++;
+							continue;
+						}
+
+						$insQ = DB::table('inscripciones')
+							->where('carrera', $carreraLabel)
+							->where('cod_ceta', (int) $codCeta)
+							->where('cod_pensum', (string) $codPensum)
+							->where('gestion', (string) $gestion);
+						if (Schema::hasColumn('inscripciones', 'tipo_inscripcion')) {
+							$insQ->where('tipo_inscripcion', $tipoIns);
+						}
+						$insRow = $insQ->orderByDesc('cod_inscrip')->first(['cod_inscrip']);
+						if (!$insRow || !isset($insRow->cod_inscrip)) {
+							$skippedMissingInscripcion++;
+							$this->markSyncCobro($source, 'rezagados', $sourcePk, $codCeta, $codPensum, $gestion, $r, null, null, ($dryRun && !$trace), 'ERROR', 'No existe inscripcion local para cod_ceta/cod_pensum/gestion/tipo_inscripcion');
+							continue;
+						}
+						$codInsLocal = (int) $insRow->cod_inscrip;
+
+						$nroCobro = $this->nextDocCounter('COBRO:' . $anioCobro);
+						$isEfectivo = ($idFormaCobro === 'E');
+						$isBancario = in_array($idFormaCobro, ['B','C','D','L','O'], true);
+						$nrCorrelativo = null;
+						$nbCorrelativo = null;
+						if ($isEfectivo && Schema::hasTable('nota_reposicion')) {
+							$nrCorrelativo = $this->nextDocCounter('NOTA_REPOSICION');
+						}
+						if ($isBancario && Schema::hasTable('nota_bancaria')) {
+							$nbCorrelativo = $this->nextDocCounter('NOTA_BANCARIA');
+						}
+
+						DB::transaction(function () use ($source, $gestion, $now, $anioCobro, $nroCobro, $fechaCobro, $codCeta, $codPensum, $tipoIns, $codInsLocal, $monto, $cobroCompleto, $idUsuario, $idFormaCobro, $nroFactura, $nroRecibo, $r, $sourcePk, $nrCorrelativo, $nbCorrelativo, $isEfectivo, $isBancario, $razon, $nroDocumentoPago, $numRezagado, $numPagoRezagado, $codTipoCobroRezag, $materia, $parcial, &$inserted) {
+							$cobroData = [
+								'cod_ceta' => $codCeta,
+								'cod_pensum' => $codPensum,
+								'tipo_inscripcion' => $tipoIns,
+								'cod_inscrip' => $codInsLocal,
+								'id_cuota' => null,
+								'gestion' => $gestion,
+								'nro_cobro' => $nroCobro,
+								'anio_cobro' => $anioCobro,
+								'monto' => $monto,
+								'fecha_cobro' => $fechaCobro,
+								'cobro_completo' => $cobroCompleto,
+								'observaciones' => isset($r->observaciones) ? (string) $r->observaciones : null,
+								'concepto' => isset($r->concepto) ? (string) $r->concepto : null,
+								'cod_tipo_cobro' => $codTipoCobroRezag,
+								'id_usuario' => $idUsuario,
+								'id_forma_cobro' => $idFormaCobro,
+								'tipo_documento' => null,
+								'medio_doc' => null,
+								'pu_mensualidad' => 0,
+								'order' => $numRezagado,
+								'descuento' => 0,
+								'id_cuentas_bancarias' => null,
+								'nro_factura' => $nroFactura,
+								'nro_recibo' => $nroRecibo,
+								'id_item' => null,
+								'id_asignacion_costo' => null,
+								'created_at' => $now,
+								'updated_at' => $now,
+							];
+								if (Schema::hasColumn('cobro', 'qr_alias')) {
+									$cobroData['qr_alias'] = null;
+								}
+								if (Schema::hasColumn('cobro', 'reposicion_factura')) {
+									$cobroData['reposicion_factura'] = false;
+								}
+								if (!Schema::hasColumn('cobro', 'id_cuentas_bancarias')) {
+									unset($cobroData['id_cuentas_bancarias']);
+								}
+								DB::table('cobro')->insert($cobroData);
+
+								DB::table('rezagados')->updateOrInsert([
+									'cod_inscrip' => (int) $codInsLocal,
+									'num_rezagado' => (int) $numRezagado,
+									'num_pago_rezagado' => (int) $numPagoRezagado,
+								], [
+									'num_factura' => $nroFactura,
+									'num_recibo' => $nroRecibo,
+									'fecha_pago' => $fechaCobro,
+									'monto' => (float) $monto,
+									'pago_completo' => (bool) $cobroCompleto,
+									'observaciones' => isset($r->observaciones) ? (string) $r->observaciones : null,
+									'usuario' => (int) $idUsuario,
+									'materia' => $materia,
+									'parcial' => $parcial,
+									'updated_at' => $now,
+									'created_at' => DB::raw('COALESCE(created_at, NOW())'),
+								]);
+
+								try {
+									if ($nroRecibo && Schema::hasTable('recibo')) {
+										$recKeys = [
+											'nro_recibo' => (int) $nroRecibo,
+											'anio' => (int) $anioCobro,
+										];
+										$recData = [
+											'id_usuario' => (string) $idUsuario,
+											'id_forma_cobro' => (string) $idFormaCobro,
+											'cod_ceta' => $codCeta ?: null,
+											'monto_total' => (float) $monto,
+											'estado' => 'VIGENTE',
+											'updated_at' => $now,
+											'created_at' => $now,
+										];
+										if (Schema::hasColumn('recibo', 'cliente')) {
+											$recData['cliente'] = $razon;
+										}
+										if (Schema::hasColumn('recibo', 'nro_documento_cobro')) {
+											$recData['nro_documento_cobro'] = $nroDocumentoPago;
+										}
+										if (Schema::hasColumn('recibo', 'periodo_facturado')) {
+											$recData['periodo_facturado'] = $gestion;
+										}
+										if (Schema::hasColumn('recibo', 'cod_tipo_doc_identidad')) {
+											$recData['cod_tipo_doc_identidad'] = null;
+										}
+										DB::table('recibo')->updateOrInsert($recKeys, $recData);
+									}
+								} catch (\Throwable $e) {}
+
+								try {
+									if ($nroFactura && Schema::hasTable('factura')) {
+										$anioFac = (int) $anioCobro;
+										$sucursalFac = $source === 'sga_mec' ? 1 : 0;
+										$pvFac = '0';
+										$factKeys = [
+											'nro_factura' => (int) $nroFactura,
+											'anio' => $anioFac,
+											'codigo_sucursal' => $sucursalFac,
+											'codigo_punto_venta' => (string) $pvFac,
+										];
+										$factData = [
+											'tipo' => 'C',
+											'fecha_emision' => $fechaCobro,
+											'cod_ceta' => $codCeta ?: null,
+											'id_usuario' => (int) $idUsuario,
+											'id_forma_cobro' => (string) $idFormaCobro,
+											'monto_total' => (float) $monto,
+											'estado' => 'VIGENTE',
+											'updated_at' => $now,
+											'created_at' => $now,
+										];
+										if (Schema::hasColumn('factura', 'codigo_cufd')) {
+											$factData['codigo_cufd'] = null;
+										}
+										if (Schema::hasColumn('factura', 'cuf')) {
+											$factData['cuf'] = null;
+										}
+										if (Schema::hasColumn('factura', 'periodo_facturado')) {
+											$factData['periodo_facturado'] = $gestion;
+										}
+										if (Schema::hasColumn('factura', 'cliente')) {
+											$factData['cliente'] = $razon;
+										}
+										if (Schema::hasColumn('factura', 'nro_documento_cobro')) {
+											$factData['nro_documento_cobro'] = $nroDocumentoPago;
+										}
+										if (!Schema::hasColumn('factura', 'cod_ceta')) {
+											unset($factData['cod_ceta']);
+										}
+										DB::table('factura')->updateOrInsert($factKeys, $factData);
+									}
+								} catch (\Throwable $e) {}
+
+								try {
+									$usuarioNick = trim((string) ($r->usuario ?? ''));
+									if ($usuarioNick === '' && Schema::hasTable('usuarios')) {
+										$usuarioNick = (string) (DB::table('usuarios')->where('id_usuario', (int) $idUsuario)->value('nickname') ?? '');
+									}
+									$detalle = isset($r->concepto) ? trim((string) $r->concepto) : '';
+									if ($detalle === '') { $detalle = 'Rezagado'; }
+									$obsOriginal = isset($r->observaciones) ? (string) $r->observaciones : null;
+									$fechaNota = substr((string) $fechaCobro, 0, 10);
+									$anioFull = $anioCobro;
+									$anio2 = (int) date('y', strtotime((string) $fechaCobro));
+									$prefijoCarrera = 'E';
+
+									if ($isEfectivo && $nrCorrelativo && Schema::hasTable('nota_reposicion')) {
+										$nrData = [
+											'correlativo' => (int) $nrCorrelativo,
+											'usuario' => $usuarioNick,
+											'cod_ceta' => $codCeta,
+											'monto' => $monto,
+											'concepto_adm' => $detalle,
+											'fecha_nota' => $fechaNota,
+											'prefijo_carrera' => $prefijoCarrera,
+											'anio_reposicion' => $anio2,
+											'nro_recibo' => $nroRecibo ? (string) $nroRecibo : null,
+											'tipo_ingreso' => null,
+										];
+										if (Schema::hasColumn('nota_reposicion', 'concepto_est')) {
+											$nrData['concepto_est'] = $detalle;
+										}
+										if (Schema::hasColumn('nota_reposicion', 'observaciones')) {
+											$nrData['observaciones'] = $obsOriginal;
+										}
+										if (Schema::hasColumn('nota_reposicion', 'anulado')) {
+											$nrData['anulado'] = false;
+										}
+										if (Schema::hasColumn('nota_reposicion', 'cont')) {
+											$nrData['cont'] = 2;
+										}
+										DB::table('nota_reposicion')->insert($nrData);
+									}
+
+									if ($isBancario && $nbCorrelativo && Schema::hasTable('nota_bancaria')) {
+										$fechaDeposito = '';
+										try {
+											$fechaDeposito = (string) ($r->fecha_deposito ?? $r->fecha_pago ?? '');
+											$fechaDeposito = trim($fechaDeposito);
+											if ($fechaDeposito !== '') {
+												$fechaDeposito = substr((string) date('Y-m-d', strtotime($fechaDeposito)), 0, 10);
+											}
+										} catch (\Throwable $e) { $fechaDeposito = ''; }
+										$nroDeposito = '';
+										try {
+											$nroDeposito = (string) ($r->nro_deposito ?? $r->nro_transaccion ?? $r->num_deposito ?? $r->deposito ?? '');
+											$nroDeposito = trim($nroDeposito);
+										} catch (\Throwable $e) { $nroDeposito = ''; }
+										$nroCuenta = '';
+										try {
+											$nroCuenta = (string) ($r->nro_cuenta ?? $r->numero_cuenta ?? $r->cuenta ?? '');
+											$nroCuenta = trim($nroCuenta);
+										} catch (\Throwable $e) { $nroCuenta = ''; }
+										$idCuenta = null;
+										$bancoDest = '';
+										try {
+											if ($nroCuenta !== '' && Schema::hasTable('cuentas_bancarias')) {
+												$needle = preg_replace('/\s+/', '', $nroCuenta);
+												$cb = DB::table('cuentas_bancarias')
+													->whereRaw("REPLACE(REPLACE(REPLACE(TRIM(numero_cuenta), ' ', ''), '-', ''), '.', '') = ?", [
+														preg_replace('/\s+/', '', str_replace(['-','.',' '], '', $needle)),
+												])
+													->first();
+												if ($cb) {
+													$idCuenta = (int) ($cb->id_cuentas_bancarias ?? 0) ?: null;
+													$bancoDest = trim((string) ($cb->banco ?? '')) . ' - ' . trim((string) ($cb->numero_cuenta ?? ''));
+												}
+											}
+										} catch (\Throwable $e) {}
+
+										if ($idCuenta && Schema::hasColumn('cobro', 'id_cuentas_bancarias')) {
+											DB::table('cobro')->where('nro_cobro', (int) $nroCobro)->update(['id_cuentas_bancarias' => (int) $idCuenta]);
+										}
+
+										$nbData = [
+											'correlativo' => (int) $nbCorrelativo,
+											'usuario' => $usuarioNick,
+											'cod_ceta' => $codCeta,
+											'monto' => $monto,
+											'nro_factura' => $nroFactura ? (string) $nroFactura : '',
+											'nro_recibo' => $nroRecibo ? (string) $nroRecibo : '',
+											'banco' => $bancoDest,
+											'fecha_deposito' => $fechaDeposito,
+											'tipo_nota' => (string) $idFormaCobro,
+										];
+										if (Schema::hasColumn('nota_bancaria', 'anio_deposito')) {
+											$nbData['anio_deposito'] = $anioFull;
+										}
+										if (Schema::hasColumn('nota_bancaria', 'fecha_nota')) {
+											$nbData['fecha_nota'] = $fechaNota;
+										}
+										if (Schema::hasColumn('nota_bancaria', 'concepto')) {
+											$nbData['concepto'] = $detalle;
+										}
+										if (Schema::hasColumn('nota_bancaria', 'nro_transaccion')) {
+											$nbData['nro_transaccion'] = $nroDeposito;
+										}
+										if (Schema::hasColumn('nota_bancaria', 'prefijo_carrera')) {
+											$nbData['prefijo_carrera'] = $prefijoCarrera;
+										}
+										if (Schema::hasColumn('nota_bancaria', 'concepto_est')) {
+											$nbData['concepto_est'] = $detalle;
+										}
+										if (Schema::hasColumn('nota_bancaria', 'observacion')) {
+											$nbData['observacion'] = $obsOriginal;
+										}
+										if (Schema::hasColumn('nota_bancaria', 'anulado')) {
+											$nbData['anulado'] = false;
+										}
+										if (Schema::hasColumn('nota_bancaria', 'banco_origen')) {
+											$nbData['banco_origen'] = '';
+										}
+										if (Schema::hasColumn('nota_bancaria', 'nro_tarjeta')) {
+											$nbData['nro_tarjeta'] = null;
+										}
+										DB::table('nota_bancaria')->insert($nbData);
+									}
+								} catch (\Throwable $e) {}
+
+								$this->markSyncCobro($source, 'rezagados', $sourcePk, $codCeta, $codPensum, $gestion, $r, $nroCobro, $anioCobro, false, 'OK', null);
+								$inserted++;
+						});
+					} catch (\Throwable $e) {
+						$errors++;
+						$codCeta = (int) ($r->cod_ceta ?? 0);
+						$codPensum = trim((string) ($r->cod_pensum ?? ''));
+						$sourcePk = $this->makeRezagadoSourcePk($r);
+						try {
+							Log::error('SGA sync cobros rezagados: insert failed', [
+								'source' => $source,
+								'gestion' => $gestion,
+								'cod_ceta' => $codCeta,
+								'cod_pensum' => $codPensum,
+								'source_pk' => $sourcePk,
+								'error' => $e->getMessage(),
+							]);
+						} catch (\Throwable $e2) {}
+						if ($sourcePk !== '') {
+							$this->markSyncCobro($source, 'rezagados', $sourcePk, $codCeta, $codPensum, $gestion, $r, null, null, ($dryRun && !$trace), ($dryRun ? 'DRY_ERROR' : 'ERROR'), $e->getMessage());
+						}
+					}
+				}
+			});
+
+		return compact('source','gestion','total','inserted','skipped','errors','skippedSynced','skippedMissingUser','skippedMissingInscripcion');
+	}
+
 	private function makePagoSourcePk($r): string
 	{
 		$codCeta = (string) (isset($r->cod_ceta) ? $r->cod_ceta : '');
@@ -1562,6 +2021,18 @@ class SgaSyncRepository
 		$numCuota = (string) (isset($r->num_cuota) ? $r->num_cuota : '');
 		$numPago = (string) (isset($r->num_pago) ? $r->num_pago : '');
 		$pk = trim($codCeta) . '|' . trim($codPensum) . '|' . trim($codIns) . '|' . trim($kardex) . '|' . trim($numCuota) . '|' . trim($numPago);
+		return $pk === '|||||' ? '' : $pk;
+	}
+
+	private function makeRezagadoSourcePk($r): string
+	{
+		$codCeta = (string) (isset($r->cod_ceta) ? $r->cod_ceta : '');
+		$codPensum = (string) (isset($r->cod_pensum) ? $r->cod_pensum : '');
+		$codIns = (string) (isset($r->cod_inscrip) ? $r->cod_inscrip : '');
+		$kardex = (string) (isset($r->kardex_economico) ? $r->kardex_economico : '');
+		$numRz = (string) (isset($r->num_rezagado) ? $r->num_rezagado : '');
+		$numPagoRz = (string) (isset($r->num_pago_rezagado) ? $r->num_pago_rezagado : '');
+		$pk = trim($codCeta) . '|' . trim($codPensum) . '|' . trim($codIns) . '|' . trim($kardex) . '|' . trim($numRz) . '|' . trim($numPagoRz);
 		return $pk === '|||||' ? '' : $pk;
 	}
 
