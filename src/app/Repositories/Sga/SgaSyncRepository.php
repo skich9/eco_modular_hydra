@@ -1079,13 +1079,14 @@ class SgaSyncRepository
 						if (Schema::hasColumn('inscripciones', 'tipo_inscripcion')) {
 							$insQ->where('tipo_inscripcion', $tipoIns);
 						}
-						$insRow = $insQ->orderByDesc('cod_inscrip')->first(['cod_inscrip']);
+						$insRow = $insQ->orderByDesc('cod_inscrip')->first(['cod_inscrip','cod_curso']);
 						if (!$insRow || !isset($insRow->cod_inscrip)) {
 							$skippedMissingInscripcion++;
 							$this->markSyncCobro($source, 'pago_multa', $sourcePk, $codCeta, $codPensum, $gestion, $r, null, null, ($dryRun && !$trace), 'ERROR', 'No existe inscripcion local para cod_ceta/cod_pensum/gestion/tipo_inscripcion');
 							continue;
 						}
 						$codInsLocal = (int) $insRow->cod_inscrip;
+						$codCursoLocal = isset($insRow->cod_curso) ? trim((string) $insRow->cod_curso) : '';
 
 						$nroCobro = $this->nextDocCounter('COBRO:' . $anioCobro);
 						$isEfectivo = ($idFormaCobro === 'E');
@@ -1099,7 +1100,7 @@ class SgaSyncRepository
 							$nbCorrelativo = $this->nextDocCounter('NOTA_BANCARIA');
 						}
 
-						DB::transaction(function () use ($source, $gestion, $now, $anioCobro, $nroCobro, $fechaCobro, $codCeta, $codPensum, $tipoIns, $codInsLocal, $monto, $cobroCompleto, $idUsuario, $idFormaCobro, $puMulta, $diasMulta, $descuento, $nroFactura, $nroRecibo, $r, $sourcePk, $nrCorrelativo, $nbCorrelativo, $isEfectivo, $isBancario, $razon, $nroDocumentoPago, $numeroCuota, $codTipoCobroMora, &$inserted, &$skippedMissingMora) {
+						DB::transaction(function () use ($source, $gestion, $now, $anioCobro, $nroCobro, $fechaCobro, $codCeta, $codPensum, $tipoIns, $codInsLocal, $codCursoLocal, $monto, $cobroCompleto, $idUsuario, $idFormaCobro, $puMulta, $diasMulta, $descuento, $nroFactura, $nroRecibo, $r, $sourcePk, $nrCorrelativo, $nbCorrelativo, $isEfectivo, $isBancario, $razon, $nroDocumentoPago, $numeroCuota, $codTipoCobroMora, $trace, &$inserted, &$skippedMissingMora) {
 							$cobroData = [
 								'cod_ceta' => $codCeta,
 								'cod_pensum' => $codPensum,
@@ -1174,6 +1175,131 @@ class SgaSyncRepository
 										->whereIn('estado', ['PENDIENTE','CONGELADA_PRORROGA','PAUSADA_DUPLICIDAD','CERRADA_SIN_CUOTA','EN_ESPERA'])
 										->orderByDesc('id_asignacion_mora')
 										->first();
+									if (!$moraRow || !isset($moraRow->id_asignacion_mora)) {
+										try {
+											$estadoPago = strtoupper(trim((string) ($asigSnap->estado_pago ?? '')));
+											$fechaPagoCuota = isset($asigSnap->fecha_pago) ? trim((string) $asigSnap->fecha_pago) : '';
+											$fechaVenc = isset($asigSnap->fecha_vencimiento) ? trim((string) $asigSnap->fecha_vencimiento) : '';
+
+											$fechaFinCierre = null;
+											if ($fechaPagoCuota !== '') {
+												$fechaFinCierre = date('Y-m-d', strtotime($fechaPagoCuota));
+											} else {
+												$fechaFinCierre = substr((string) $fechaCobro, 0, 10);
+											}
+
+											if ($estadoPago === 'COBRADO' || $fechaPagoCuota !== '') {
+												$semestre = $this->parseSemestreFromCodCurso($codCursoLocal);
+												if ($semestre === null) {
+													$semestre = $this->resolveSemestreFromSgaRegistroInscripcion($source, $codCeta, $codPensum, $gestion);
+												}
+												if ($trace) {
+													try {
+														Log::info('SGA sync cobros multa: resolve semestre for mora cfg', [
+															'source' => $source,
+															'gestion' => $gestion,
+															'cod_ceta' => $codCeta,
+															'cod_pensum' => $codPensum,
+															'cod_inscrip' => $codInsLocal,
+															'numero_cuota' => $numeroCuota,
+															'cod_curso_local' => $codCursoLocal,
+															'semestre' => $semestre,
+															'fecha_fin_cierre' => $fechaFinCierre,
+														]);
+													} catch (\Throwable $e) {}
+												}
+												$cfg = null;
+												if (Schema::hasTable('datos_mora_detalle') && Schema::hasTable('datos_mora')) {
+													try {
+														$cfg = DB::table('datos_mora_detalle as dmd')
+															->join('datos_mora as dm', 'dm.id_datos_mora', '=', 'dmd.id_datos_mora')
+															->where('dm.gestion', $gestion)
+															->where('dmd.activo', 1)
+															->where('dmd.cuota', (int) $numeroCuota)
+															->when($semestre !== null && Schema::hasColumn('datos_mora_detalle', 'semestre'), function ($q) use ($semestre) {
+																$q->where('dmd.semestre', (string) $semestre);
+															})
+															->where(function ($q) use ($codPensum) {
+																$q->whereNull('dmd.cod_pensum')->orWhere('dmd.cod_pensum', (string) $codPensum);
+															})
+															->where(function ($q) use ($fechaFinCierre) {
+																$q->whereNull('dmd.fecha_inicio')->orWhere('dmd.fecha_inicio', '<=', $fechaFinCierre);
+															})
+															->where(function ($q) use ($fechaFinCierre) {
+																$q->whereNull('dmd.fecha_fin')->orWhere('dmd.fecha_fin', '>=', $fechaFinCierre);
+															})
+															->orderByRaw('dmd.cod_pensum IS NULL asc')
+															->orderByDesc('dmd.id_datos_mora_detalle')
+															->first(['dmd.id_datos_mora_detalle','dmd.monto','dmd.fecha_inicio','dmd.fecha_fin']);
+														if ($trace) {
+															try {
+																Log::info('SGA sync cobros multa: mora cfg selected', [
+																	'source' => $source,
+																	'gestion' => $gestion,
+																	'cod_ceta' => $codCeta,
+																	'cod_pensum' => $codPensum,
+																	'numero_cuota' => $numeroCuota,
+																	'semestre' => $semestre,
+																	'cfg_id_datos_mora_detalle' => $cfg ? ($cfg->id_datos_mora_detalle ?? null) : null,
+																	'cfg_fecha_inicio' => $cfg ? ($cfg->fecha_inicio ?? null) : null,
+																	'cfg_fecha_fin' => $cfg ? ($cfg->fecha_fin ?? null) : null,
+																	'cfg_monto' => $cfg ? ($cfg->monto ?? null) : null,
+																]);
+															} catch (\Throwable $e) {}
+														}
+													} catch (\Throwable $e) {
+														$cfg = null;
+													}
+												}
+
+												$fechaInicio = null;
+												if ($cfg && !empty($cfg->fecha_inicio)) {
+													$fechaInicio = date('Y-m-d', strtotime((string) $cfg->fecha_inicio));
+												} elseif ($fechaVenc !== '') {
+													$fechaInicio = date('Y-m-d', strtotime($fechaVenc . ' +1 day'));
+												} elseif ((int) $diasMulta > 0) {
+													$daysBack = ((int) $diasMulta) - 1;
+													if ($daysBack < 0) { $daysBack = 0; }
+													$fechaInicio = date('Y-m-d', strtotime($fechaFinCierre . ' -' . (string) $daysBack . ' day'));
+												}
+												if ($fechaInicio && $fechaInicio > $fechaFinCierre) {
+													$fechaInicio = null;
+												}
+
+												$useFallback = (!$cfg || !isset($cfg->id_datos_mora_detalle));
+												if ($fechaInicio && (!$useFallback || ((float) $puMulta > 0 && (int) $diasMulta > 0))) {
+													$dias = (int) (floor((strtotime($fechaFinCierre) - strtotime($fechaInicio)) / 86400) + 1);
+													if ($dias < 1) { $dias = 1; }
+													$montoBaseDia = $useFallback ? (float) $puMulta : (float) ($cfg->monto ?? 0);
+													$montoMoraCalc = (float) $montoBaseDia * (int) $dias;
+
+													DB::table('asignacion_mora')->insert([
+														'id_asignacion_costo' => (int) $idAsign,
+														'id_datos_mora_detalle' => $useFallback ? null : (int) ($cfg->id_datos_mora_detalle ?? 0),
+														'fecha_inicio_mora' => $fechaInicio,
+														'fecha_fin_mora' => $fechaFinCierre,
+														'monto_base' => $montoBaseDia,
+														'monto_mora' => $montoMoraCalc,
+														'monto_descuento' => 0,
+														'monto_pagado' => 0,
+														'estado' => 'CERRADA_SIN_CUOTA',
+														'observaciones' => 'Mora generada por sync (cuota pagada) hasta ' . $fechaFinCierre,
+														'created_at' => $now,
+														'updated_at' => $now,
+													]);
+
+													$moraRow = DB::table('asignacion_mora')
+														->where('id_asignacion_costo', (int) $idAsign)
+														->where('estado', 'CERRADA_SIN_CUOTA')
+														->orderByDesc('id_asignacion_mora')
+														->first();
+												}
+											}
+										} catch (\Throwable $e) {
+											// no bloquear
+										}
+									}
+
 									if ($moraRow && isset($moraRow->id_asignacion_mora)) {
 										$moraId = (int) $moraRow->id_asignacion_mora;
 										$montoMora = (float) ($moraRow->monto_mora ?? 0);
@@ -1471,6 +1597,41 @@ class SgaSyncRepository
 		$numPago = (string) (isset($r->num_pago) ? $r->num_pago : '');
 		$pk = trim($codCeta) . '|' . trim($codPensum) . '|' . trim($gestion) . '|' . trim($kardex) . '|' . trim($numCuota) . '|' . trim($numPago);
 		return $pk === '|||||' ? '' : $pk;
+	}
+
+	private function parseSemestreFromCodCurso(?string $codCurso): ?string
+	{
+		$raw = trim((string) $codCurso);
+		if ($raw === '') { return null; }
+
+		$parts = explode('-', $raw);
+		$suffix = trim((string) end($parts));
+		if ($suffix === '') { return null; }
+
+		$first = substr($suffix, 0, 1);
+		if ($first === false || $first === '') { return null; }
+		if (!preg_match('/^[1-9]$/', $first)) { return null; }
+		return (string) $first;
+	}
+
+	private function resolveSemestreFromSgaRegistroInscripcion(string $source, int $codCeta, string $codPensum, string $gestion): ?string
+	{
+		$codPensum = trim((string) $codPensum);
+		$gestion = trim((string) $gestion);
+		if ($codCeta <= 0 || $codPensum === '' || $gestion === '') { return null; }
+		try {
+			if (!Schema::connection($source)->hasTable('registro_inscripcion')) { return null; }
+			$codCurso = DB::connection($source)
+				->table('registro_inscripcion')
+				->where('cod_ceta', (int) $codCeta)
+				->where('cod_pensum', (string) $codPensum)
+				->where('gestion', (string) $gestion)
+				->orderByDesc('cod_inscrip')
+				->value('cod_curso');
+			return $this->parseSemestreFromCodCurso(is_string($codCurso) ? $codCurso : null);
+		} catch (\Throwable $e) {
+			return null;
+		}
 	}
 
 	private function resolveFormaCobro(string $codeTipoPago): string
