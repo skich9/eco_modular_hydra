@@ -1892,6 +1892,19 @@ export class CobrosComponent implements OnInit {
       if (v) ctrl?.enable(); else ctrl?.disable();
     });
 
+    // Detectar cambios en la tabla de pagos para bloquear/desbloquear el Tipo de Cobro
+    this.pagos.valueChanges.subscribe(() => {
+      const hasItems = this.pagos.length > 0;
+      this.metodoPagoLocked = hasItems;
+      const ctrl = this.batchForm.get('cabecera.codigo_sin');
+
+      if (hasItems) {
+        if (!ctrl?.disabled) ctrl?.disable({ emitEvent: false });
+      } else {
+        if (ctrl?.disabled) ctrl?.enable({ emitEvent: false });
+      }
+    });
+
     this.cargarSucursalesUsuario();
     this.loadGestiones();
     // Documentos de identidad desde SIN
@@ -2425,8 +2438,6 @@ export class CobrosComponent implements OnInit {
     // Recalcular opciones para el modal (filtradas por selección actual)
     this.computeModalFormasFromSelection();
     if (this.isQrMetodoSeleccionado()) { this.checkQrPendiente(); }
-    this.metodoPagoLocked = true;
-    try { cab.get('codigo_sin')?.disable({ emitEvent: false }); } catch { }
   }
 
   isQrMetodoSeleccionado(): boolean {
