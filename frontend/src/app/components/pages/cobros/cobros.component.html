@@ -597,7 +597,8 @@
 		(perPageChange)="onBusquedaPerPageChange($event)"></app-busqueda-estudiante-modal>
 
 	<!-- Modal: Kardex económico -->
-	<app-kardex-modal #kardexDlg [resumen]="resumen" [gestion]="getCurrentGestion()"></app-kardex-modal>
+	<app-kardex-modal #kardexDlg [resumen]="resumen" [gestion]="getCurrentGestion()"
+		[filtrarInscripcionesPorGestion]="!mostrarBotonDescuento"></app-kardex-modal>
 
 	<!-- Modal: Formulario Descuento -->
 	<app-descuento-form-modal #descuentoDlg [turnoOptions]="['Mañana','Tarde','Noche']" [resumen]="resumen"

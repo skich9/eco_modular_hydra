@@ -22,61 +22,60 @@
 		<div style="display: grid; grid-template-columns: 1fr 1fr; gap: 1.25rem; align-items: start;">
 			<!-- Columna izquierda: datos del estudiante -->
 			<div class="search-card">
-			<h3 class="search-title">
-				<i class="fas fa-search"></i>
-				Datos del estudiante
-			</h3>
-			<div class="search-form">
-				<div class="search-input-group" style="flex-direction: column; gap: 0.5rem;">
-					<label class="form-label">Código CETA</label>
-					<div style="display: flex; gap: 0.5rem;">
-						<input type="text" class="search-input" [(ngModel)]="searchCodCeta" placeholder="Ingrese código CETA" (keyup.enter)="buscarPorCodCeta()" appSoloNumeros />
-						<button class="btn btn-primary" (click)="buscarPorCodCeta()" [disabled]="loading">
-							<i class="fas fa-search"></i>
-						</button>
-						<button class="btn btn-secondary" (click)="limpiarBusqueda()" *ngIf="estudianteEncontrado">
-							<i class="fas fa-times"></i>
-						</button>
+				<h3 class="search-title">
+					<i class="fas fa-search"></i>
+					Datos del estudiante
+				</h3>
+				<div class="search-form">
+					<div class="search-input-group" style="flex-direction: column; gap: 0.5rem;">
+						<label class="form-label">Código CETA</label>
+						<div style="display: flex; gap: 0.5rem;">
+							<<<<<<< HEAD <input type="text" class="search-input" [(ngModel)]="searchCodCeta"
+								placeholder="Ingrese código CETA" (keyup.enter)="buscarPorCodCeta()" appSoloNumeros />
+							=======
+							<input type="text" class="search-input" [(ngModel)]="searchCodCeta"
+								placeholder="Ingrese código CETA" inputmode="numeric" autocomplete="off"
+								(keydown)="onCodCetaKeydown($event)" (input)="onCodCetaInput($event)" />
+							>>>>>>> main
+							<button class="btn btn-primary" (click)="buscarPorCodCeta()" [disabled]="loading">
+								<i class="fas fa-search"></i>
+							</button>
+							<button class="btn btn-secondary" (click)="limpiarBusqueda()" *ngIf="estudianteEncontrado">
+								<i class="fas fa-times"></i>
+							</button>
+						</div>
+					</div>
+					<div class="search-input-group" style="flex-direction: column; gap: 0.5rem; margin-top: 1rem;">
+						<label class="form-label">Gestión</label>
+						<select class="search-input" [(ngModel)]="gestionSeleccionada"
+							(ngModelChange)="onGestionChange()" [disabled]="!estudianteEncontrado || loading">
+							<option value="">Seleccione gestión</option>
+							<option *ngFor="let g of gestionesDisponibles" [value]="g">{{ g }}</option>
+						</select>
+					</div>
+					<div class="search-input-group" style="flex-direction: column; gap: 0.5rem; margin-top: 1rem;">
+						<label class="form-label">Pensum</label>
+						<select class="search-input" [(ngModel)]="codPensumSeleccionado"
+							(ngModelChange)="onPensumChange()" [disabled]="!estudianteEncontrado || loading">
+							<option value="">Seleccione pensum</option>
+							<option *ngFor="let p of pensumsDisponibles" [value]="p.cod_pensum">{{ p.nombre }}</option>
+						</select>
+					</div>
+					<div class="search-input-group" style="flex-direction: column; gap: 0.5rem; margin-top: 1rem;">
+						<label class="form-label">Estudiante</label>
+						<input type="text" class="search-input" [value]="studentDisplayName" disabled />
+					</div>
+					<div class="search-input-group" style="flex-direction: column; gap: 0.5rem; margin-top: 1rem;">
+						<label class="form-label">Grupos</label>
+						<div *ngIf="(grupos && grupos.length) > 0; else noGrupos">
+							<span *ngFor="let g of grupos" class="badge badge-success" style="margin-right: 0.5rem;">{{
+								g }}</span>
+						</div>
+						<ng-template #noGrupos>
+							<span class="info-value">Sin grupos</span>
+						</ng-template>
 					</div>
 				</div>
-				<div class="search-input-group" style="flex-direction: column; gap: 0.5rem; margin-top: 1rem;">
-					<label class="form-label">Gestión</label>
-					<select
-						class="search-input"
-						[(ngModel)]="gestionSeleccionada"
-						(ngModelChange)="onGestionChange()"
-						[disabled]="!estudianteEncontrado || loading"
-					>
-						<option value="">Seleccione gestión</option>
-						<option *ngFor="let g of gestionesDisponibles" [value]="g">{{ g }}</option>
-					</select>
-				</div>
-				<div class="search-input-group" style="flex-direction: column; gap: 0.5rem; margin-top: 1rem;">
-					<label class="form-label">Pensum</label>
-					<select
-						class="search-input"
-						[(ngModel)]="codPensumSeleccionado"
-						(ngModelChange)="onPensumChange()"
-						[disabled]="!estudianteEncontrado || loading"
-					>
-						<option value="">Seleccione pensum</option>
-						<option *ngFor="let p of pensumsDisponibles" [value]="p.cod_pensum">{{ p.nombre }}</option>
-					</select>
-				</div>
-				<div class="search-input-group" style="flex-direction: column; gap: 0.5rem; margin-top: 1rem;">
-					<label class="form-label">Estudiante</label>
-					<input type="text" class="search-input" [value]="studentDisplayName" disabled />
-				</div>
-				<div class="search-input-group" style="flex-direction: column; gap: 0.5rem; margin-top: 1rem;">
-					<label class="form-label">Grupos</label>
-					<div *ngIf="(grupos && grupos.length) > 0; else noGrupos">
-						<span *ngFor="let g of grupos" class="badge badge-success" style="margin-right: 0.5rem;">{{ g }}</span>
-					</div>
-					<ng-template #noGrupos>
-						<span class="info-value">Sin grupos</span>
-					</ng-template>
-				</div>
-			</div>
 			</div>
 
 			<!-- Columna derecha: formulario de prórroga -->
@@ -88,24 +87,29 @@
 				<div class="search-form">
 					<div class="search-input-group" style="flex-direction: column; gap: 0.75rem;">
 						<label class="form-label">Fecha inicio de prórroga</label>
-						<input type="date" class="search-input" [ngModelOptions]="{standalone: true}" [(ngModel)]="fechaInicioProrrogaTmp" />
+						<input type="date" class="search-input" [ngModelOptions]="{standalone: true}"
+							[(ngModel)]="fechaInicioProrrogaTmp" />
 					</div>
 					<div class="search-input-group" style="flex-direction: column; gap: 0.75rem; margin-top: 0.5rem;">
 						<label class="form-label">Fecha fin de prórroga</label>
-						<input type="date" class="search-input" [ngModelOptions]="{standalone: true}" [(ngModel)]="fechaFinProrrogaTmp" />
+						<input type="date" class="search-input" [ngModelOptions]="{standalone: true}"
+							[(ngModel)]="fechaFinProrrogaTmp" />
 					</div>
 					<div class="search-input-group" style="flex-direction: column; gap: 0.5rem; margin-top: 0.5rem;">
 						<label class="form-label">Cuotas</label>
 						<div style="display: grid; grid-template-columns: repeat(5, minmax(70px, 1fr)); gap: 0.5rem;">
 							<label *ngFor="let n of [1,2,3,4,5]" style="display:flex; align-items:center; gap:0.4rem;">
-								<input type="radio" name="cuotaSel" [value]="n" [(ngModel)]="selectedCuota" [ngModelOptions]="{standalone: true}" />
+								<input type="radio" name="cuotaSel" [value]="n" [(ngModel)]="selectedCuota"
+									[ngModelOptions]="{standalone: true}" />
 								<span>Cuota {{ n }}</span>
 							</label>
 						</div>
 					</div>
 					<div class="search-input-group" style="flex-direction: column; gap: 0.5rem; margin-top: 0.5rem;">
 						<label class="form-label">Motivo</label>
-						<textarea class="search-input" rows="4" [(ngModel)]="motivo" [ngModelOptions]="{standalone: true}" placeholder="Ingrese el motivo de la prórroga..."></textarea>
+						<textarea class="search-input" rows="4" [(ngModel)]="motivo"
+							[ngModelOptions]="{standalone: true}"
+							placeholder="Ingrese el motivo de la prórroga..."></textarea>
 					</div>
 					<div class="search-input-group" style="gap: 0.5rem; margin-top: 1rem;">
 						<button class="btn btn-primary" (click)="saveProrroga()" [disabled]="loading">
@@ -139,7 +143,7 @@
 				<thead>
 					<tr>
 						<th>Gestión</th>
-            <th>Código Estudiante</th>
+						<th>Código Estudiante</th>
 						<th>Estudiante</th>
 						<th>Pensum</th>
 						<th>Tipo Inscripción</th>
@@ -154,9 +158,10 @@
 				<tbody>
 					<tr *ngFor="let prorroga of prorrogas">
 						<td>{{ prorroga.asignacion_costo?.inscripcion?.gestion || 'N/A' }}</td>
-            <td>{{ prorroga.cod_ceta }}</td>
+						<td>{{ prorroga.cod_ceta }}</td>
 						<td>{{ getNombreCompleto(prorroga.estudiante) }}</td>
-						<td>{{ prorroga.asignacion_costo?.pensum?.nombre || prorroga.asignacion_costo?.cod_pensum || 'N/A' }}</td>
+						<td>{{ prorroga.asignacion_costo?.pensum?.nombre || prorroga.asignacion_costo?.cod_pensum ||
+							'N/A' }}</td>
 						<td>
 							<span class="badge" [ngClass]="getTipoInscripcionClass(prorroga)">
 								{{ getTipoInscripcion(prorroga) }}
@@ -172,12 +177,8 @@
 							</span>
 						</td>
 						<td>
-							<button
-								class="btn btn-sm"
-								[ngClass]="prorroga.activo ? 'btn-danger' : 'btn-success'"
-								(click)="toggleStatus(prorroga)"
-								[disabled]="loading"
-							>
+							<button class="btn btn-sm" [ngClass]="prorroga.activo ? 'btn-danger' : 'btn-success'"
+								(click)="toggleStatus(prorroga)" [disabled]="loading">
 								<i class="fas" [ngClass]="prorroga.activo ? 'fa-ban' : 'fa-check'"></i>
 								{{ prorroga.activo ? 'Desactivar' : 'Activar' }}
 							</button>
@@ -208,19 +209,11 @@
 			<div class="modal-body">
 				<div class="form-group">
 					<label class="form-label">Fecha Inicio Prórroga *</label>
-					<input
-						type="date"
-						class="form-control"
-						formControlName="fecha_inicio_prorroga"
-					/>
+					<input type="date" class="form-control" formControlName="fecha_inicio_prorroga" />
 				</div>
 				<div class="form-group">
 					<label class="form-label">Fecha Fin Prórroga *</label>
-					<input
-						type="date"
-						class="form-control"
-						formControlName="fecha_fin_prorroga"
-					/>
+					<input type="date" class="form-control" formControlName="fecha_fin_prorroga" />
 				</div>
 			</div>
 			<div class="modal-footer">
