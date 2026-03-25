@@ -27,7 +27,7 @@ import { SoloNumerosDirective } from '../../../directives/solo-numeros.directive
 @Component({
   selector: 'app-cobros-page',
   standalone: true,
-  imports: [CommonModule, ReactiveFormsModule, FormsModule, MensualidadModalComponent, ItemsModalComponent, RezagadoModalComponent, RecuperacionModalComponent, ReincorporacionModalComponent, BusquedaEstudianteModalComponent, DescuentoFormModalComponent, MoraModalComponent, KardexModalComponent, QrPanelComponent, ClickLockDirective, SoloNumerosDirective],
+  imports: [CommonModule, ReactiveFormsModule, FormsModule, MensualidadModalComponent, ItemsModalComponent, RezagadoModalComponent, RecuperacionModalComponent, ReincorporacionModalComponent, BusquedaEstudianteModalComponent, DescuentoFormModalComponent, KardexModalComponent, QrPanelComponent, ClickLockDirective, SoloNumerosDirective],
   templateUrl: './cobros.component.html',
   styleUrls: ['./cobros.component.scss']
 })
@@ -3748,11 +3748,15 @@ export class CobrosComponent implements OnInit {
             this.openSuccessModal();
             const seen = new Set<string>();
             for (const it of items) {
-              // Recibo computarizado
+              // Recibo computarizado — descargar solo una vez aunque haya varios items con el mismo nro_recibo
               if ((it?.tipo_documento === 'R') && (it?.medio_doc === 'C') && it?.nro_recibo) {
                 const fecha = it?.cobro?.fecha_cobro || hoy;
                 const anio = new Date(fecha).getFullYear();
-                this.downloadReciboPdfWithFallback(anio, it.nro_recibo);
+                const keyR = `R:${anio}:${it.nro_recibo}`;
+                if (!seen.has(keyR)) {
+                  seen.add(keyR);
+                  this.downloadReciboPdfWithFallback(anio, it.nro_recibo);
+                }
               }
               // Factura computarizada - NO descargar si fue rechazada
               if ((it?.tipo_documento === 'F') && (it?.medio_doc === 'C') && it?.nro_factura) {

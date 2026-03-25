@@ -115,13 +115,14 @@ services:
       - "4200:4200"
     environment:
       - NODE_ENV=development
+      - NODE_OPTIONS=--max-old-space-size=3072
 
     command: sh -c "npm install --legacy-peer-deps && npx ng serve --host 0.0.0.0 --port 4200 --live-reload --poll 500"
 
     networks:
       - angular_laravel_network
-    mem_limit: 2g
-    mem_reservation: 1g
+    mem_limit: 4g
+    mem_reservation: 2g
 
   # Angular para build (ejecutar manualmente)
   angular_laravel_angular-builder:
