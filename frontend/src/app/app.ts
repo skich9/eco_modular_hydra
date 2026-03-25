@@ -15,27 +15,29 @@ import { LoadingOverlayComponent } from './components/shared/loading-overlay/loa
     </div>
   `,
   styles: `
+    :host {
+      display: block;
+      height: 100%;
+    }
     .app-container {
       font-family: Arial, sans-serif;
+      min-height: 100vh;
+      height: 100%;
+      display: flex;
+      flex-direction: column;
     }
-    header {
-      background: #3f51b5;
-      color: white;
-      padding: 1rem;
-      text-align: center;
+    .app-container > main {
+      flex: 1;
+      padding: 0;
+      min-height: 0;
+      display: flex;
+      flex-direction: column;
     }
-    main {
-      padding: 0rem;
-    }
-    footer {
-      background: #f5f5f5;
-      padding: 1rem;
-      text-align: center;
-      font-size: 0.9rem;
-      color: #666;
-      position: fixed;
-      bottom: 0;
-      width: 100%;
+    .app-container > main > app-layout {
+      flex: 1;
+      display: flex;
+      flex-direction: column;
+      min-height: 0;
     }
   `
 })

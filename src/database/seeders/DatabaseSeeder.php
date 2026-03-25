@@ -49,7 +49,7 @@ class DatabaseSeeder extends Seeder
             SinFormaCobroSeeder::class,
             // SinListLeyendaFacturaSeeder::class,  // Problemas de estructura
             SinMotivoAnulacionFacturaSeeder::class,
-            // CuentasBancariasSeeder::class,  // Problemas de estructura
+            CuentasBancariasSeeder::class,
             // CuotasSeeder::class,  // Problemas de estructura
 
             // Catálogos y parametrizaciones adicionales

@@ -36,7 +36,7 @@ class CostoSemestralController extends Controller
 			'rows' => 'required|array|min:1',
 			'rows.*.semestre' => 'required|integer',
 			'rows.*.tipo_costo' => 'required|string',
-			'rows.*.monto_semestre' => 'required|numeric',
+			'rows.*.monto_semestre' => 'required|integer|min:1',
 			'rows.*.turno' => 'required|string',
 		]);
 
@@ -77,7 +77,7 @@ class CostoSemestralController extends Controller
 	public function update(Request $request, int $id)
 	{
 		$validated = $request->validate([
-			'monto_semestre' => 'required|numeric',
+			'monto_semestre' => 'required|integer|min:1',
 			'tipo_costo' => 'nullable|string',
 			'turno' => 'nullable|string',
 		]);

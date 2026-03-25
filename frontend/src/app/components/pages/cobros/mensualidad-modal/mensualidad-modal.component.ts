@@ -4,6 +4,7 @@ import { FormBuilder, FormGroup, ReactiveFormsModule, Validators, FormsModule } 
 import { ClickLockDirective } from '../../../../directives/click-lock.directive';
 import { ParametrosEconomicosService } from '../../../../services/parametros-economicos.service';
 import { DefDescuentosService } from '../../../../services/def-descuentos.service';
+import { isOnOrBeforeDeadlineLocal } from '../../../../utils/date-only.util';
 
 @Component({
   selector: 'app-mensualidad-modal',
@@ -1920,11 +1921,7 @@ export class MensualidadModalComponent implements OnInit, OnChanges {
       if (this.descuentoSemestreActivar) {
         let dentroFecha = true;
         if (this.descuentoSemestreFechaLimite) {
-          const hoy = new Date();
-          const limite = new Date(this.descuentoSemestreFechaLimite);
-          hoy.setHours(0, 0, 0, 0);
-          limite.setHours(0, 0, 0, 0);
-          dentroFecha = hoy <= limite;
+          dentroFecha = isOnOrBeforeDeadlineLocal(this.descuentoSemestreFechaLimite);
         }
 
         if (dentroFecha) {
@@ -3078,11 +3075,7 @@ export class MensualidadModalComponent implements OnInit, OnChanges {
       if (!this.descuentoSemestreActivar) return 0;
 
       if (this.descuentoSemestreFechaLimite) {
-        const hoy = new Date();
-        const limite = new Date(this.descuentoSemestreFechaLimite);
-        hoy.setHours(0, 0, 0, 0);
-        limite.setHours(0, 0, 0, 0);
-        if (hoy > limite) return 0;
+        if (!isOnOrBeforeDeadlineLocal(this.descuentoSemestreFechaLimite)) return 0;
       }
 
       if (!this.descuentoSemestreIdDefDescuento || this.descuentoSemestreIdDefDescuento <= 0) return 0;

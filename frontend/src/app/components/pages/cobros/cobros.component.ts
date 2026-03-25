@@ -13,11 +13,11 @@ import { ItemsModalComponent } from './items-modal/items-modal.component';
 import { KardexModalComponent } from './kardex-modal/kardex-modal.component';
 import { BusquedaEstudianteModalComponent } from './busqueda-estudiante-modal/busqueda-estudiante-modal.component';
 import { DescuentoFormModalComponent } from './descuento-form-modal/descuento-form-modal.component';
-import { MoraModalComponent } from './mora-modal/mora-modal.component';
 import { QrPanelComponent } from './qr-panel/qr-panel.component';
 import { ClickLockDirective } from '../../../directives/click-lock.directive';
 import { environment } from '../../../../environments/environment';
 import { saveBlobAsFile, generateQuickReciboPdf, generateQuickFacturaPdf } from '../../../utils/pdf.helpers';
+import { isOnOrBeforeDeadlineLocal } from '../../../utils/date-only.util';
 import * as QRCode from 'qrcode';
 import { ActivatedRoute } from '@angular/router';
 import { forkJoin } from 'rxjs';
@@ -26,7 +26,7 @@ import { PuntoVentaService, MiSucursalAsignacion } from '../../../services/punto
 @Component({
   selector: 'app-cobros-page',
   standalone: true,
-  imports: [CommonModule, ReactiveFormsModule, FormsModule, MensualidadModalComponent, ItemsModalComponent, RezagadoModalComponent, RecuperacionModalComponent, ReincorporacionModalComponent, BusquedaEstudianteModalComponent, DescuentoFormModalComponent, MoraModalComponent, KardexModalComponent, QrPanelComponent, ClickLockDirective],
+  imports: [CommonModule, ReactiveFormsModule, FormsModule, MensualidadModalComponent, ItemsModalComponent, RezagadoModalComponent, RecuperacionModalComponent, ReincorporacionModalComponent, BusquedaEstudianteModalComponent, DescuentoFormModalComponent, KardexModalComponent, QrPanelComponent, ClickLockDirective],
   templateUrl: './cobros.component.html',
   styleUrls: ['./cobros.component.scss']
 })
@@ -4233,23 +4233,10 @@ export class CobrosComponent implements OnInit {
 
   get mostrarBotonDescuento(): boolean {
     if (!this.descuentoInstitucionalFechaLimite) {
-      console.log('[Cobros] No hay fecha límite configurada, mostrando botón');
       return true;
     }
     try {
-      const fechaLimite = new Date(this.descuentoInstitucionalFechaLimite);
-      const hoy = new Date();
-      hoy.setHours(0, 0, 0, 0);
-      fechaLimite.setHours(0, 0, 0, 0);
-      const mostrar = hoy <= fechaLimite;
-      console.log('[Cobros] Comparación de fechas:', {
-        fechaLimiteStr: this.descuentoInstitucionalFechaLimite,
-        fechaLimite: fechaLimite.toISOString(),
-        hoy: hoy.toISOString(),
-        mostrar,
-        diferenciaDias: Math.floor((fechaLimite.getTime() - hoy.getTime()) / (1000 * 60 * 60 * 24))
-      });
-      return mostrar;
+      return isOnOrBeforeDeadlineLocal(this.descuentoInstitucionalFechaLimite);
     } catch (error) {
       console.error('[Cobros] Error al comparar fechas:', error);
       return true;

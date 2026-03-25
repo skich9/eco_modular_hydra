@@ -17,8 +17,18 @@
   --dark-color: #1f2937; /* gray-800 */
 }
 
-/* Estilos generales */
+/* Estilos generales - body entre header y footer */
+html {
+  height: 100%;
+}
+
 body {
+  margin: 0;
+  padding: 0;
+  min-height: 100%;
+  font-family: 'Inter', sans-serif;
+  color: #374151;
+  background-color: #f3f4f6;
   font-family: 'Inter', sans-serif;
   color: #374151;
   background-color: #f3f4f6;
