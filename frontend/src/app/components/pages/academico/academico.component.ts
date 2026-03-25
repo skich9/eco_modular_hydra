@@ -50,7 +50,7 @@ export class AcademicoComponent implements OnInit, OnDestroy {
     private fb: FormBuilder,
     private gestionService: GestionService,
     private costoMateriaService: CostoMateriaService,
-  ) {}
+  ) { }
 
   ngOnInit(): void {
     this.sub = this.route.params.subscribe((params: { [key: string]: string }) => {
@@ -59,6 +59,10 @@ export class AcademicoComponent implements OnInit, OnDestroy {
         this.router.navigate(['/dashboard']);
         return;
       }
+
+      this.pensumFilter = '';
+      this.materiaFilter = '';
+
       this.loadPensums();
       this.loadGestionYCostos();
       // Ya no es necesario cargar parámetros económicos para el formulario de materia

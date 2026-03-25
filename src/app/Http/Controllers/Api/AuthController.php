@@ -33,14 +33,21 @@ class AuthController extends Controller
 				], 422);
 			}
 
-			// Buscar usuario por nickname o CI
-			$usuario = Usuario::with('rol')
-				->where(function($query) use ($request) {
-					$query->where('nickname', $request->nickname)
-						  ->orWhere('ci', $request->nickname);
-				})
+			// Buscar usuario activo por nickname o CI (case sensitive: debe coincidir exactamente)
+			$inputLogin = trim((string) $request->nickname);
+
+			$candidatos = Usuario::with('rol')
 				->where('estado', true)
-				->first();
+				->where(function ($query) use ($inputLogin) {
+					$query->where('nickname', $inputLogin)
+						->orWhere('ci', $inputLogin);
+				})
+				->get();
+
+			$usuario = $candidatos->first(function ($u) use ($inputLogin) {
+				return (string) $u->nickname === $inputLogin
+					|| (string) ($u->ci ?? '') === $inputLogin;
+			});
 
 			if (!$usuario) {
 				return response()->json([

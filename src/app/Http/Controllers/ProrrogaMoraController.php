@@ -132,11 +132,13 @@ class ProrrogaMoraController extends Controller
 		try {
 			$validator = Validator::make($request->all(), [
 				'id_usuario' => 'required|exists:usuarios,id_usuario',
-				'cod_ceta' => 'required|exists:estudiantes,cod_ceta',
+				'cod_ceta' => ['required', 'regex:/^[0-9]+$/', 'exists:estudiantes,cod_ceta'],
 				'id_asignacion_costo' => 'required|exists:asignacion_costos,id_asignacion_costo',
 				'fecha_inicio_prorroga' => 'required|date',
 				'fecha_fin_prorroga' => 'required|date|after:fecha_inicio_prorroga',
 				'motivo' => 'required|string|min:5',
+			], [
+				'cod_ceta.regex' => 'El Código CETA solo puede contener números (0-9).',
 			]);
 
 			if ($validator->fails()) {
@@ -152,6 +154,7 @@ class ProrrogaMoraController extends Controller
 			}
 
 			$input = $request->all();
+			$input['cod_ceta'] = (int) $input['cod_ceta'];
 			if (!isset($input['activo'])) {
 				$input['activo'] = true;
 			}
@@ -329,12 +332,14 @@ class ProrrogaMoraController extends Controller
 					// Validar cada prórroga
 					$validator = Validator::make($prorrogaData, [
 						'id_usuario' => 'required|exists:usuarios,id_usuario',
-						'cod_ceta' => 'required|exists:estudiantes,cod_ceta',
+						'cod_ceta' => ['required', 'regex:/^[0-9]+$/', 'exists:estudiantes,cod_ceta'],
 						'id_asignacion_costo' => 'required|exists:asignacion_costos,id_asignacion_costo',
 						'fecha_inicio_prorroga' => 'required|date',
 						'fecha_fin_prorroga' => 'required|date|after:fecha_inicio_prorroga',
 						'activo' => 'boolean',
 						'motivo' => 'required|string|min:5',
+					], [
+						'cod_ceta.regex' => 'El Código CETA solo puede contener números (0-9).',
 					]);
 
 					if ($validator->fails()) {
@@ -353,6 +358,7 @@ class ProrrogaMoraController extends Controller
 					}
 
 					$input = $validator->validated();
+					$input['cod_ceta'] = (int) $input['cod_ceta'];
 					if (!isset($input['activo'])) {
 						$input['activo'] = true;
 					}
@@ -671,7 +677,16 @@ class ProrrogaMoraController extends Controller
 	public function porEstudiante($codCeta)
 	{
 		try {
-			$prorrogas = ProrrogaMora::where('cod_ceta', $codCeta)
+			$codRaw = (string) $codCeta;
+			if ($codRaw === '' || ! ctype_digit($codRaw)) {
+				return response()->json([
+					'success' => false,
+					'message' => 'El Código CETA debe contener solo dígitos numéricos (0-9).',
+				], Response::HTTP_UNPROCESSABLE_ENTITY);
+			}
+			$codCetaInt = (int) $codRaw;
+
+			$prorrogas = ProrrogaMora::where('cod_ceta', $codCetaInt)
 				->with(['estudiante', 'asignacionCosto', 'usuario'])
 				->orderBy('created_at', 'desc')
 				->get();

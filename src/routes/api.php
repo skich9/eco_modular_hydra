@@ -37,6 +37,7 @@ use App\Http\Controllers\Api\FacturaEstadoController;
 use App\Http\Controllers\Api\FacturaAnulacionController;
 use App\Http\Controllers\Api\FacturaPdfController;
 use App\Http\Controllers\Api\SgaSyncController;
+use App\Http\Controllers\Api\ReporteLibroDiarioController;
 
 // Búsqueda de estudiantes
 Route::get('/estudiantes/search', [EstudianteController::class, 'search']);
@@ -174,6 +175,10 @@ Route::get('cobros/resumen', [CobroController::class, 'resumen']);
 Route::post('cobros/batch', [CobroController::class, 'batchStore']);
 Route::post('cobros/validar-impuestos', [CobroController::class, 'validarImpuestos']);
 Route::post('cobros/marcar-recibo-repuesto', [CobroController::class, 'marcarReciboRepuesto']);
+Route::post('cobros/cerrar-caja', [CobroController::class, 'cerrarCaja']);
+
+// Reportes: Libro Diario
+Route::post('reportes/libro-diario/imprimir', [ReporteLibroDiarioController::class, 'imprimir']);
 Route::get('cobros/{cod_ceta}/{cod_pensum}/{tipo_inscripcion}/{nro_cobro}', [CobroController::class, 'show']);
 Route::put('cobros/{cod_ceta}/{cod_pensum}/{tipo_inscripcion}/{nro_cobro}', [CobroController::class, 'update']);
 Route::delete('cobros/{cod_ceta}/{cod_pensum}/{tipo_inscripcion}/{nro_cobro}', [CobroController::class, 'destroy']);
@@ -199,8 +204,8 @@ Route::get('facturas', [FacturaEstadoController::class, 'lista']);
 Route::get('facturas/sucursales', [FacturaEstadoController::class, 'sucursales']);
 
 // Facturas: verificación de estado en SIN
-Route::get('facturas/{anio}/{nro}/estado', [FacturaEstadoController::class, 'estado'])
-    ->where(['anio' => '\\d{4}', 'nro' => '\\d+']);
+Route::get('facturas/{anio}/{nro}/{sucursal}/estado', [FacturaEstadoController::class, 'estado'])
+    ->where(['anio' => '\\d{4}', 'nro' => '\\d+', 'sucursal' => '\\d+']);
 
 // Facturas: anulación (verifica estado y luego anula)
 Route::post('facturas/{anio}/{nro}/anular', [FacturaAnulacionController::class, 'anular'])

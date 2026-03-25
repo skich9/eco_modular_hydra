@@ -425,7 +425,7 @@ class SinAdminController extends Controller
 				'ambiente' => $codigoAmbiente
 			]);
 
-			// Verificar si ya existe la asignación
+			// Verificar si ya existe la asignación exacta
 			$existente = DB::table('sin_punto_venta_usuario')
 				->where('id_usuario', $idUsuario)
 				->where('codigo_punto_venta', $codigoPuntoVenta)
@@ -438,6 +438,42 @@ class SinAdminController extends Controller
 				return response()->json([
 					'success' => false,
 					'message' => 'El usuario ya está asignado a este punto de venta'
+				], Response::HTTP_BAD_REQUEST);
+			}
+
+			$todasLasAsignaciones = DB::table('sin_punto_venta_usuario')
+				->where('id_usuario', $idUsuario)
+				->where('codigo_ambiente', $codigoAmbiente)
+				->where('activo', 1)
+				->get();
+
+			$totalVigentesGlobales = 0;
+			$tieneVigenteEnEstaSucursal = false;
+			$fechaHoy = now()->format('Y-m-d H:i:s');
+
+			foreach ($todasLasAsignaciones as $asignacion) {
+				$esVigente = ($asignacion->vencimiento_asig == null) || ($asignacion->vencimiento_asig >= $fechaHoy);
+				
+				if ($esVigente) {
+					$totalVigentesGlobales = $totalVigentesGlobales + 1;
+					
+					if ($asignacion->codigo_sucursal == $codigoSucursal) {
+						$tieneVigenteEnEstaSucursal = true;
+					}
+				}
+			}
+
+			if ($totalVigentesGlobales >= 2) {
+				return response()->json([
+					'success' => false,
+					'message' => 'Límite máximo de 2 puntos de venta asignados simultáneamente.'
+				], Response::HTTP_BAD_REQUEST);
+			}
+
+			if ($tieneVigenteEnEstaSucursal == true) {
+				return response()->json([
+					'success' => false,
+					'message' => 'Ya tiene asignado un punto de venta vigente en esta misma sucursal.'
 				], Response::HTTP_BAD_REQUEST);
 			}
 

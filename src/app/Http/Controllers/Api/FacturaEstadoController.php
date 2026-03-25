@@ -156,13 +156,14 @@ class FacturaEstadoController extends Controller
             return response()->json([ 'success' => false, 'message' => $e->getMessage() ], 500);
         }
     }
-    public function estado($anio, $nro, EstadoFacturaService $estadoSvc)
+    public function estado($anio, $nro, $sucursal, EstadoFacturaService $estadoSvc)
     {
         try {
             $row = DB::table('factura')
                 ->select('anio','nro_factura','codigo_sucursal','codigo_punto_venta','cuf','codigo_recepcion','estado')
                 ->where('anio', (int)$anio)
                 ->where('nro_factura', (int)$nro)
+                ->where('codigo_sucursal', (int)$sucursal)
                 ->first();
             if (!$row) {
                 return response()->json([ 'success' => false, 'message' => 'Factura no encontrada' ], 404);
@@ -281,6 +282,7 @@ class FacturaEstadoController extends Controller
                 DB::table('factura')
                     ->where('anio', (int)$anio)
                     ->where('nro_factura', (int)$nro)
+                    ->where('codigo_sucursal', (int)$sucursal)
                     ->update([
                         'estado' => $nuevoEstadoFactura,
                         'updated_at' => now(),
@@ -289,13 +291,24 @@ class FacturaEstadoController extends Controller
             } else if($codigoEstado == 902) {
                 $nuevoEstadoFactura = "RECHAZADA";
                 $mensajesList = is_array($resp) && isset($resp['mensajesList']) ? $resp['mensajesList'] : null;
+                
+                $codExcepcion = null;
+                if (is_array($mensajesList)) {
+                    if (isset($mensajesList['codigo'])) {
+                        $codExcepcion = (int)$mensajesList['codigo'];
+                    } else if (isset($mensajesList[0]) && isset($mensajesList[0]['codigo'])) {
+                        $codExcepcion = (int)$mensajesList[0]['codigo'];
+                    }
+                }
+                
                 DB::table('factura')
                     ->where('anio', (int)$anio)
                     ->where('nro_factura', (int)$nro)
+                    ->where('codigo_sucursal', (int)$sucursal)
                     ->update([
                         'estado' => $nuevoEstadoFactura,
                         'updated_at' => now(),
-                        'codigo_excepcion' => json_encode($mensajesList)
+                        'codigo_excepcion' => $codExcepcion
                     ]);
 
             } else if($codigoEstado == 691) {
@@ -303,6 +316,7 @@ class FacturaEstadoController extends Controller
                 DB::table('factura')
                     ->where('anio', (int)$anio)
                     ->where('nro_factura', (int)$nro)
+                    ->where('codigo_sucursal', (int)$sucursal)
                     ->update([
                         'estado' => $nuevoEstadoFactura,
                         'updated_at' => now(),
@@ -313,10 +327,11 @@ class FacturaEstadoController extends Controller
                 DB::table('factura')
                     ->where('anio', (int)$anio)
                     ->where('nro_factura', (int)$nro)
+                    ->where('codigo_sucursal', (int)$sucursal)
                     ->update([
                         'estado' => $nuevoEstadoFactura,
                         'updated_at' => now(),
-                        'codigo_excepcion' => json_encode($resp)
+                        'codigo_excepcion' => $codigoEstado ? (int)$codigoEstado : null
                     ]);
             }
             Log::debug('FacturaEstadoController.estado Paso la ejecucion de todos los ifs');

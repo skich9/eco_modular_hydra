@@ -3,7 +3,8 @@
 		<h2 class="mb-0">Cobros</h2>
 		<div *ngIf="esUsuarioApoyo && sucursalSeleccionada !== null" class="d-flex align-items-center gap-2">
 			<span class="badge bg-info text-dark fs-6">Sucursal {{ sucursalSeleccionada }}</span>
-			<button type="button" class="btn btn-sm btn-outline-secondary" (click)="cambiarSucursal()">Cambiar sucursal</button>
+			<button type="button" class="btn btn-sm btn-outline-secondary" (click)="cambiarSucursal()">Cambiar
+				sucursal</button>
 		</div>
 	</div>
 
@@ -17,10 +18,8 @@
 				<div class="modal-body">
 					<p class="text-muted">Selecciona la sucursal donde realizarás los cobros.</p>
 					<div class="d-grid gap-2">
-						<button *ngFor="let s of sucursalesDisponibles"
-							type="button"
-							class="btn btn-outline-primary btn-lg"
-							(click)="confirmarSucursal(s.codigo_sucursal)">
+						<button *ngFor="let s of sucursalesDisponibles" type="button"
+							class="btn btn-outline-primary btn-lg" (click)="confirmarSucursal(s.codigo_sucursal)">
 							Sucursal {{ s.codigo_sucursal }}
 							<small class="d-block text-muted">{{ s.nombre_punto_venta }}</small>
 						</button>
@@ -40,271 +39,300 @@
 	<!-- Resumen -->
 	<div class="row g-3">
 		<div class="col-12 col-lg-8">
-            <form [formGroup]="batchForm" (ngSubmit)="submitBatch()">
-			<!-- Batch -->
-			<div class="card mb-4 shadow-sm">
-				<div class="card-header d-flex justify-content-between align-items-center">
-					<strong>Datos del estudiante</strong>
-					<div class="d-flex gap-2">
-						<button type="button" class="btn btn-sm btn-success" (click)="openBusquedaModal()">Búsqueda por nombre</button>
-						<button *ngIf="mostrarBotonDescuento" type="button" class="btn btn-sm btn-primary" (click)="openDescuentoModal()">Formulario descuento</button>
-					</div>
-				</div>
-
-				<div class="card-body">
-					<div class="row g-3 cobros-cabecera" formGroupName="cabecera">
-						<!-- Mantener en el modelo pero oculto en UI -->
-						<input type="hidden" formControlName="tipo_inscripcion" />
-
-						<!-- Columna izquierda -->
-						<div class="col-md-6">
-							<div class="mb-2">
-								<label class="form-label">Código CETA</label>
-								<div class="input-group">
-									<input class="form-control" formControlName="cod_ceta" (keydown.enter)="$event.preventDefault(); buscarPorCodCetaCabecera()" />
-									<button type="button" class="btn btn-outline-secondary" (click)="buscarPorCodCetaCabecera()">
-                    <i class="fas fa-search"></i>
-									</button>
-								</div>
-							</div>
-
-							<div [formGroup]="identidadForm" class="row g-3">
-								<div class="col-12">
-									<label class="form-label">Estudiante</label>
-									<input class="form-control" formControlName="nombre_completo" [readonly]="true" />
-								</div>
-								<div class="col-12">
-									<label class="form-label">Razón Social</label>
-									<input class="form-control" formControlName="razon_social" [readonly]="true" (click)="openRazonSocialModal()" style="cursor: pointer;" />
-								</div>
-								<div class="col-12">
-									<label class="form-label">Nro Tipo Documento</label>
-									<input class="form-control" formControlName="ci" [readonly]="true" (click)="openRazonSocialModal()" style="cursor: pointer;" />
-								</div>
-								<div class="col-12">
-									<label class="form-label">Documento de Identidad</label>
-									<select class="form-select" formControlName="tipo_identidad" [disabled]="true">
-										<option *ngFor="let d of sinDocsIdentidad" [ngValue]="d.codigo">{{ d.descripcion }}</option>
-									</select>
-								</div>
-							</div>
+			<form [formGroup]="batchForm" (ngSubmit)="submitBatch()">
+				<!-- Batch -->
+				<div class="card mb-4 shadow-sm">
+					<div class="card-header d-flex justify-content-between align-items-center">
+						<strong>Datos del estudiante</strong>
+						<div class="d-flex gap-2">
+							<button type="button" class="btn btn-sm btn-success" (click)="openBusquedaModal()">Búsqueda
+								por nombre</button>
+							<button *ngIf="mostrarBotonDescuento" type="button" class="btn btn-sm btn-primary"
+								(click)="openDescuentoModal()">Formulario descuento</button>
 						</div>
+					</div>
 
-						<!-- Columna derecha -->
-						<div class="col-md-6">
-							<div class="row g-3">
-								<div class="col-12">
-									<label class="form-label">Pensum</label>
-									<select *ngIf="multiplePensums" class="form-select" formControlName="cod_pensum" (change)="onPensumChange()">
-										<option value="">-- Seleccione pensum --</option>
-										<option *ngFor="let p of pensumsDisponibles" [ngValue]="p?.cod_pensum">
-											{{ p?.cod_pensum }} - {{ p?.nombre || 'Sin nombre' }}
-										</option>
-									</select>
-									<input *ngIf="!multiplePensums" class="form-control" formControlName="cod_pensum" [readonly]="true" />
+					<div class="card-body">
+						<div class="row g-3 cobros-cabecera" formGroupName="cabecera">
+							<!-- Mantener en el modelo pero oculto en UI -->
+							<input type="hidden" formControlName="tipo_inscripcion" />
+
+							<!-- Columna izquierda -->
+							<div class="col-md-6">
+								<div class="mb-2">
+									<label class="form-label">Código CETA</label>
+									<div class="input-group">
+										<input class="form-control" formControlName="cod_ceta"
+											(keydown.enter)="$event.preventDefault(); buscarPorCodCetaCabecera()"
+											appSoloNumeros />
+										<button type="button" class="btn btn-outline-secondary"
+											(click)="buscarPorCodCetaCabecera()">
+											<i class="fas fa-search"></i>
+										</button>
+									</div>
 								</div>
-								<div class="col-12">
-									<label class="form-label">Gestión</label>
-									<select class="form-select" formControlName="gestion">
-										<option value="">-- Seleccione gestión --</option>
-										<option *ngFor="let g of gestiones" [ngValue]="g?.gestion">{{ g?.gestion }}</option>
-									</select>
+
+								<div [formGroup]="identidadForm" class="row g-3">
+									<div class="col-12">
+										<label class="form-label">Estudiante</label>
+										<input class="form-control" formControlName="nombre_completo"
+											[readonly]="true" />
+									</div>
+									<div class="col-12">
+										<label class="form-label">Razón Social</label>
+										<input class="form-control" formControlName="razon_social" [readonly]="true"
+											(click)="openRazonSocialModal()" style="cursor: pointer;" />
+									</div>
+									<div class="col-12">
+										<label class="form-label">Nro Tipo Documento</label>
+										<input class="form-control" formControlName="ci" [readonly]="true"
+											(click)="openRazonSocialModal()" style="cursor: pointer;" />
+									</div>
+									<div class="col-12">
+										<label class="form-label">Documento de Identidad</label>
+										<select class="form-select" formControlName="tipo_identidad" [disabled]="true">
+											<option *ngFor="let d of sinDocsIdentidad" [ngValue]="d.codigo">{{
+												d.descripcion }}</option>
+										</select>
+									</div>
 								</div>
-								<div class="col-12">
-								</div>
-								<div class="col-12">
-									<label class="form-label">Grupos</label>
-									<div class="form-control-plaintext border rounded px-2 py-2">
-										<ng-container *ngIf="(inscripcionesParaGrupos?.length || 0) > 0; else noInscripciones">
-											<div class="d-flex flex-column gap-2">
-												<div class="d-flex align-items-center gap-2" *ngFor="let ins of inscripcionesParaGrupos">
-													<span class="badge rounded-pill bg-primary">{{ ins?.cod_curso || '-' }}</span>
-													<span class="badge rounded-pill" [ngClass]="{'bg-warning text-dark': true}">{{ (ins?.tipo_inscripcion || '-').toUpperCase() }}</span>
+							</div>
+
+							<!-- Columna derecha -->
+							<div class="col-md-6">
+								<div class="row g-3">
+									<div class="col-12">
+										<label class="form-label">Pensum</label>
+										<select *ngIf="multiplePensums" class="form-select" formControlName="cod_pensum"
+											(change)="onPensumChange()">
+											<option value="">-- Seleccione pensum --</option>
+											<option *ngFor="let p of pensumsDisponibles" [ngValue]="p?.cod_pensum">
+												{{ p?.cod_pensum }} - {{ p?.nombre || 'Sin nombre' }}
+											</option>
+										</select>
+										<input *ngIf="!multiplePensums" class="form-control"
+											formControlName="cod_pensum" [readonly]="true" />
+									</div>
+									<div class="col-12">
+										<label class="form-label">Gestión</label>
+										<select class="form-select" formControlName="gestion">
+											<option value="">-- Seleccione gestión --</option>
+											<option *ngFor="let g of gestiones" [ngValue]="g?.gestion">{{ g?.gestion }}
+											</option>
+										</select>
+									</div>
+									<div class="col-12">
+									</div>
+									<div class="col-12">
+										<label class="form-label">Grupos</label>
+										<div class="form-control-plaintext border rounded px-2 py-2">
+											<ng-container
+												*ngIf="(inscripcionesParaGrupos?.length || 0) > 0; else noInscripciones">
+												<div class="d-flex flex-column gap-2">
+													<div class="d-flex align-items-center gap-2"
+														*ngFor="let ins of inscripcionesParaGrupos">
+														<span class="badge rounded-pill bg-primary">{{ ins?.cod_curso ||
+															'-' }}</span>
+														<span class="badge rounded-pill"
+															[ngClass]="{'bg-warning text-dark': true}">{{
+															(ins?.tipo_inscripcion || '-').toUpperCase() }}</span>
+													</div>
 												</div>
-											</div>
-										</ng-container>
-										<ng-template #noInscripciones>
-											<span class="text-muted">{{ resumen?.inscripcion?.cod_curso ? (resumen?.inscripcion?.cod_curso + ' - ' + (resumen?.inscripcion?.tipo_inscripcion || '-')) : '-' }}</span>
-											<!-- Mostrar arrastre si no hay inscripciones regulares pero sí hay arrastre -->
-											<div class="d-flex align-items-center gap-2 mt-2" *ngIf="resumen?.arrastre?.has">
-												<span class="badge rounded-pill bg-info">{{ resumen?.arrastre?.inscripcion?.cod_curso || '-' }}</span>
-												<span class="badge rounded-pill bg-secondary">{{ (resumen?.arrastre?.inscripcion?.tipo_inscripcion || 'ARRASTRE').toUpperCase() }}</span>
-											</div>
-										</ng-template>
+											</ng-container>
+											<ng-template #noInscripciones>
+												<span class="text-muted">{{ resumen?.inscripcion?.cod_curso ?
+													(resumen?.inscripcion?.cod_curso + ' - ' +
+													(resumen?.inscripcion?.tipo_inscripcion || '-')) : '-' }}</span>
+												<!-- Mostrar arrastre si no hay inscripciones regulares pero sí hay arrastre -->
+												<div class="d-flex align-items-center gap-2 mt-2"
+													*ngIf="resumen?.arrastre?.has">
+													<span class="badge rounded-pill bg-info">{{
+														resumen?.arrastre?.inscripcion?.cod_curso || '-' }}</span>
+													<span class="badge rounded-pill bg-secondary">{{
+														(resumen?.arrastre?.inscripcion?.tipo_inscripcion ||
+														'ARRASTRE').toUpperCase() }}</span>
+												</div>
+											</ng-template>
+										</div>
+									</div>
+									<div class="col-12" [formGroup]="identidadForm">
+										<label class="form-label">Email</label>
+										<input type="email" class="form-control" formControlName="email"
+											placeholder="correo@dominio.com" />
+										<div class="form-check form-switch mt-1">
+											<input class="form-check-input" type="checkbox" id="switchEmail"
+												formControlName="email_habilitado" />
+											<label class="form-check-label" for="switchEmail">Habilitar edición de
+												email</label>
+										</div>
+									</div>
+									<div class="col-12">
+										<label class="form-label">Método de Pago</label>
+										<select class="form-select" formControlName="codigo_sin"
+											[ngClass]="{'is-invalid': isFormaCobroInvalid}"
+											(change)="onMetodoPagoChange($event)">
+											<option value="">-- Seleccione --</option>
+											<option *ngFor="let f of formasCobro"
+												[value]="f.codigo_sin || f.id_forma_cobro"
+												[attr.id_forma_cobro]="f.id_forma_cobro">{{ f.descripcion_sin ||
+												f.nombre }}</option>
+										</select>
+										<div class="invalid-feedback">Seleccione un método de pago.</div>
 									</div>
 								</div>
-								<div class="col-12" [formGroup]="identidadForm">
-									<label class="form-label">Email</label>
-									<input type="email" class="form-control" formControlName="email" placeholder="correo@dominio.com" />
-									<div class="form-check form-switch mt-1">
-										<input class="form-check-input" type="checkbox" id="switchEmail" formControlName="email_habilitado" />
-										<label class="form-check-label" for="switchEmail">Habilitar edición de email</label>
-									</div>
-								</div>
-								<div class="col-12">
-									<label class="form-label">Método de Pago</label>
-							<select class="form-select" formControlName="codigo_sin" [ngClass]="{'is-invalid': isFormaCobroInvalid}" (change)="onMetodoPagoChange($event)">
-								<option value="">-- Seleccione --</option>
-								<option *ngFor="let f of formasCobro" [value]="f.codigo_sin || f.id_forma_cobro" [attr.id_forma_cobro]="f.id_forma_cobro">{{ f.descripcion_sin || f.nombre }}</option>
-							</select>
-							<div class="invalid-feedback">Seleccione un método de pago.</div>
-						</div>
-					</div>
-						</div>
+							</div>
 
-						<!-- Fin columnas -->
-					</div>
+							<!-- Fin columnas -->
+						</div>
 
 						<hr />
 
 
+					</div>
 				</div>
-			</div>
 
-			<!-- Card: Estado y generación QR (exclusivo) -->
-			<div class="card mb-3" *ngIf="isQrMetodoSeleccionado()">
-				<div class="card-header d-flex justify-content-between align-items-center">
-					<strong>Pago QR</strong>
+				<!-- Card: Estado y generación QR (exclusivo) -->
+				<div class="card mb-3" *ngIf="isQrMetodoSeleccionado()">
+					<div class="card-header d-flex justify-content-between align-items-center">
+						<strong>Pago QR</strong>
+					</div>
+					<div class="card-body">
+						<app-qr-panel #qrPanel [cabecera]="batchForm.get('cabecera')" [pagos]="pagos"
+							[totalCobro]="totalCobro" [isSelected]="true" [cuentasBancarias]="cuentasBancarias"
+							[formasCobro]="formasCobro" [identidad]="identidadForm"
+							(statusChange)="onQrStatusChange($event)" (savedWaiting)="onQrSavedWaiting()">
+						</app-qr-panel>
+					</div>
 				</div>
-				<div class="card-body">
-					<app-qr-panel
-						#qrPanel
-						[cabecera]="batchForm.get('cabecera')"
-						[pagos]="pagos"
-						[totalCobro]="totalCobro"
-						[isSelected]="true"
-						[cuentasBancarias]="cuentasBancarias"
-						[formasCobro]="formasCobro"
-						[identidad]="identidadForm"
-						(statusChange)="onQrStatusChange($event)"
-						(savedWaiting)="onQrSavedWaiting()">
-					</app-qr-panel>
-				</div>
-			</div>
 
-			<!-- Card: Detalle factura (hermano del card principal) -->
-			<div class="card mb-4 shadow-sm mt-3">
-				<div class="card-header d-flex justify-content-between align-items-center">
-					<strong>Detalle factura</strong>
-				</div>
-				<div class="card-body">
-					<div formArrayName="pagos">
-						<div class="table-responsive">
-							<table class="table table-sm table-bordered align-middle">
-								<thead class="table-light">
-									<tr>
-										<th>Cant.</th>
-										<th>Detalle</th>
-										<th>P/U</th>
-										<th>Descuento</th>
-										<th>Sub total</th>
-										<th>M</th>
-										<th>D</th>
-										<th>Obs.</th>
-										<th></th>
-									</tr>
-								</thead>
-								<tbody>
-									<tr *ngFor="let pg of pagos.controls; let i = index" [formGroupName]="i">
-										<!-- Cantidad -->
-										<td class="text-end">
-											<span class="d-block">{{ pg.get('cantidad')?.value }}</span>
-										</td>
+				<!-- Card: Detalle factura (hermano del card principal) -->
+				<div class="card mb-4 shadow-sm mt-3">
+					<div class="card-header d-flex justify-content-between align-items-center">
+						<strong>Detalle factura</strong>
+					</div>
+					<div class="card-body">
+						<div formArrayName="pagos">
+							<div class="table-responsive">
+								<table class="table table-sm table-bordered align-middle">
+									<thead class="table-light">
+										<tr>
+											<th>Cant.</th>
+											<th>Detalle</th>
+											<th>P/U</th>
+											<th>Descuento</th>
+											<th>Sub total</th>
+											<th>M</th>
+											<th>D</th>
+											<th>Obs.</th>
+											<th></th>
+										</tr>
+									</thead>
+									<tbody>
+										<tr *ngFor="let pg of pagos.controls; let i = index" [formGroupName]="i">
+											<!-- Cantidad -->
+											<td class="text-end">
+												<span class="d-block">{{ pg.get('cantidad')?.value }}</span>
+											</td>
 
-										<!-- Detalle -->
-										<td>
-											<span class="d-block">{{ pg.get('detalle')?.value }}</span>
-										</td>
+											<!-- Detalle -->
+											<td>
+												<span class="d-block">{{ pg.get('detalle')?.value }}</span>
+											</td>
 
-										<!-- P/U -->
-										<td class="text-end">
-											<span class="d-block">{{ getRowDisplayPU(i) | number:'1.2-2' }}</span>
-										</td>
+											<!-- P/U -->
+											<td class="text-end">
+												<span class="d-block">{{ getRowDisplayPU(i) | number:'1.2-2' }}</span>
+											</td>
 
-										<!-- Descuento -->
-										<td class="text-end">
-											<span class="d-block">{{ getRowDisplayDescuento(i) | number:'1.2-2' }}</span>
-										</td>
+											<!-- Descuento -->
+											<td class="text-end">
+												<span class="d-block">{{ getRowDisplayDescuento(i) | number:'1.2-2'
+													}}</span>
+											</td>
 
-										<!-- Sub total (solo lectura) -->
-										<td class="text-end">
-											<strong>{{ calcRowSubtotal(i) | number:'1.2-2' }}</strong>
-										</td>
+											<!-- Sub total (solo lectura) -->
+											<td class="text-end">
+												<strong>{{ calcRowSubtotal(i) | number:'1.2-2' }}</strong>
+											</td>
 
-										<!-- M (Computarizada/Manual) -->
-										<td class="text-center">
-											<span>{{ pg.get('medio_doc')?.value || '' }}</span>
-										</td>
+											<!-- M (Computarizada/Manual) -->
+											<td class="text-center">
+												<span>{{ pg.get('medio_doc')?.value || '' }}</span>
+											</td>
 
-										<!-- D (Factura/Recibo) -->
-										<td class="text-center">
-											<span>{{ pg.get('tipo_documento')?.value || '' }}</span>
-										</td>
+											<!-- D (Factura/Recibo) -->
+											<td class="text-center">
+												<span>{{ pg.get('tipo_documento')?.value || '' }}</span>
+											</td>
 
-										<!-- Obs. -->
-										<td>
-											<ng-container *ngIf="pg.get('observaciones')?.value as obs; else _obsVacias">
-												<div class="obs-cell">
-													<span class="obs-icon" aria-label="Observaciones"><i class="fa-regular fa-eye"></i></span>
-													<div class="obs-popover">
-														<div class="obs-title">Observaciones</div>
-														<div class="obs-content">{{ obs }}</div>
+											<!-- Obs. -->
+											<td>
+												<ng-container
+													*ngIf="pg.get('observaciones')?.value as obs; else _obsVacias">
+													<div class="obs-cell">
+														<span class="obs-icon" aria-label="Observaciones"><i
+																class="fa-regular fa-eye"></i></span>
+														<div class="obs-popover">
+															<div class="obs-title">Observaciones</div>
+															<div class="obs-content">{{ obs }}</div>
+														</div>
 													</div>
-												</div>
-											</ng-container>
-											<ng-template #_obsVacias>
-												<span class="text-muted">—</span>
-											</ng-template>
-										</td>
+												</ng-container>
+												<ng-template #_obsVacias>
+													<span class="text-muted">—</span>
+												</ng-template>
+											</td>
 
-										<!-- Acciones -->
-										<td class="text-center">
-											<button
-												type="button"
-												class="btn btn-sm btn-outline-danger"
-												(click)="removePago(i)"
-												[disabled]="i !== (pagos.length - 1)">
-												<i class="fa fa-regular fa-trash-can"></i>
-											</button>
-										</td>
-									</tr>
-								</tbody>
-								<tfoot>
-									<tr class="table-success">
-										<!-- Etiqueta sólo hasta 'Detalle' (Cant. + Detalle) -->
-										<th colspan="2" class="text-end">Subtotales:</th>
-										<!-- Columnas P/U y Descuento vacías para mantener estructura -->
-										<th></th>
-										<th></th>
-										<!-- Total bajo 'Sub total' -->
-										<th class="text-end">{{ totalSubtotal | number:'1.2-2' }}</th>
-										<!-- Resto de columnas: M, D, Obs., Acciones -->
-										<th colspan="4"></th>
-									</tr>
-									<tr class="table-success">
-										<th colspan="4" class="text-end">Total Cobro:</th>
-										<th class="text-end">{{ totalCobro | number:'1.2-2' }}</th>
-										<th colspan="4"></th>
-									</tr>
-								</tfoot>
-							</table>
+											<!-- Acciones -->
+											<td class="text-center">
+												<button type="button" class="btn btn-sm btn-outline-danger"
+													(click)="removePago(i)" [disabled]="i !== (pagos.length - 1)">
+													<i class="fa fa-regular fa-trash-can"></i>
+												</button>
+											</td>
+										</tr>
+									</tbody>
+									<tfoot>
+										<tr class="table-success">
+											<!-- Etiqueta sólo hasta 'Detalle' (Cant. + Detalle) -->
+											<th colspan="2" class="text-end">Subtotales:</th>
+											<!-- Columnas P/U y Descuento vacías para mantener estructura -->
+											<th></th>
+											<th></th>
+											<!-- Total bajo 'Sub total' -->
+											<th class="text-end">{{ totalSubtotal | number:'1.2-2' }}</th>
+											<!-- Resto de columnas: M, D, Obs., Acciones -->
+											<th colspan="4"></th>
+										</tr>
+										<tr class="table-success">
+											<th colspan="4" class="text-end">Total Cobro:</th>
+											<th class="text-end">{{ totalCobro | number:'1.2-2' }}</th>
+											<th colspan="4"></th>
+										</tr>
+									</tfoot>
+								</table>
+							</div>
 						</div>
 					</div>
 				</div>
-			</div>
 
-			<div class="d-flex justify-content-end gap-2 mb-1">
-				<button class="btn btn-success" *ngIf="!isQrMetodoSeleccionado()" [disabled]="loading || qrSaveBlocked" [appClickLock]="true" [lockDuration]="4000" type="submit">
-					<i class="bi bi-save me-1"></i> Registrar Cobro
-				</button>
-				<button *ngIf="qrSaveBlocked" type="button" class="btn btn-outline-primary" [disabled]="loading || pagos.length===0 || isQrCancelled" [appClickLock]="true" [lockDuration]="2500" (click)="guardarEnEspera()">
-					<i class="bi bi-cloud-arrow-down me-1"></i> Guardar en espera (QR)
-				</button>
-			</div>
-			<div *ngIf="isSavedWaiting" class="alert alert-info py-2 mb-3">
-				Se guardó el lote en modo espera. Por favor, consulte con administración para la impresión del Recibo o Factura seleccionada cuando el pago QR sea confirmado.
-			</div>
-			<div *ngIf="qrSaveBlocked" class="text-danger small text-end mb-4">QR pendiente. Use "Guardar en espera (QR)" para conservar el lote. Se procesará al confirmar el pago QR.</div>
+				<div class="d-flex justify-content-end gap-2 mb-1">
+					<button class="btn btn-success" *ngIf="!isQrMetodoSeleccionado()"
+						[disabled]="loading || qrSaveBlocked" [appClickLock]="true" [lockDuration]="4000" type="submit">
+						<i class="bi bi-save me-1"></i> Registrar Cobro
+					</button>
+					<button *ngIf="qrSaveBlocked" type="button" class="btn btn-outline-primary"
+						[disabled]="loading || pagos.length===0 || isQrCancelled" [appClickLock]="true"
+						[lockDuration]="2500" (click)="guardarEnEspera()">
+						<i class="bi bi-cloud-arrow-down me-1"></i> Guardar en espera (QR)
+					</button>
+				</div>
+				<div *ngIf="isSavedWaiting" class="alert alert-info py-2 mb-3">
+					Se guardó el lote en modo espera. Por favor, consulte con administración para la impresión del
+					Recibo o Factura seleccionada cuando el pago QR sea confirmado.
+				</div>
+				<div *ngIf="qrSaveBlocked" class="text-danger small text-end mb-4">QR pendiente. Use "Guardar en espera
+					(QR)" para conservar el lote. Se procesará al confirmar el pago QR.</div>
 
 			</form>
 		</div>
@@ -328,56 +356,61 @@
 								<tbody>
 									<tr>
 										<td>Mensualidad</td>
-										<td>{{ (resumen?.mensualidad_next?.next_cuota?.monto ?? resumen?.totales?.pu_mensual) | number:'1.2-2' }}</td>
+										<td>{{ (resumen?.mensualidad_next?.next_cuota?.monto ??
+											resumen?.totales?.pu_mensual) | number:'1.2-2' }}</td>
 										<td class="text-center">
-											<button type="button" class="btn btn-sm btn-success" (click)="openMensualidadModal()"><i class="fa fa-plus"></i></button>
+											<button type="button" class="btn btn-sm btn-success"
+												(click)="openMensualidadModal()"><i class="fa fa-plus"></i></button>
 										</td>
 									</tr>
 									<tr>
 										<td>Rezagado</td>
 										<td>{{ rezagadoCosto != null ? (rezagadoCosto | number:'1.2-2') : '-' }}</td>
 										<td class="text-center">
-											<button type="button" class="btn btn-sm btn-success" (click)="openRezagadoModal()"><i class="fa fa-plus"></i></button>
+											<button type="button" class="btn btn-sm btn-success"
+												(click)="openRezagadoModal()"><i class="fa fa-plus"></i></button>
 										</td>
 									</tr>
-									<tr *ngIf="reincorporacion?.debe_reincorporacion && reincorporacionCosto && reincorporacionCosto > 0">
+									<tr
+										*ngIf="reincorporacion?.debe_reincorporacion && reincorporacionCosto && reincorporacionCosto > 0">
 										<td>Reincorporación</td>
 										<td>{{ reincorporacionCosto | number:'1.2-2' }}</td>
 										<td class="text-center">
-											<button type="button" class="btn btn-sm btn-success" (click)="openReincorporacionModal()"><i class="fa fa-plus"></i></button>
+											<button type="button" class="btn btn-sm btn-success"
+												(click)="openReincorporacionModal()"><i class="fa fa-plus"></i></button>
 										</td>
 									</tr>
 									<tr>
 										<td>Prueba de Recuperación</td>
 										<td>
-											<ng-container *ngIf="(resumen?.recuperacion?.monto ?? resumen?.recuperacion_pendiente?.monto) as recMonto; else recNoMonto">
+											<ng-container
+												*ngIf="(resumen?.recuperacion?.monto ?? resumen?.recuperacion_pendiente?.monto) as recMonto; else recNoMonto">
 												{{ recMonto | number:'1.2-2' }}
 											</ng-container>
 											<ng-template #recNoMonto>-</ng-template>
 										</td>
 										<td class="text-center">
-											<button type="button" class="btn btn-sm btn-success" (click)="openRecuperacionModal()"><i class="fa fa-plus"></i></button>
+											<button type="button" class="btn btn-sm btn-success"
+												(click)="openRecuperacionModal()"><i class="fa fa-plus"></i></button>
 										</td>
 									</tr>
 									<tr *ngIf="resumen?.arrastre?.has">
 										<td>Arrastre</td>
 										<td>{{ resumen?.arrastre?.next_cuota?.monto | number:'1.2-2' }}</td>
 										<td class="text-center">
-										  <button
-											type="button"
-											class="btn btn-sm btn-success"
-											(click)="openArrastreModal()"
-											[disabled]="(resumen?.arrastre?.pending_count || 0) === 0 || !resumen?.arrastre?.next_cuota">
-											<i class="bi bi-plus"></i>
-										  </button>
+											<button type="button" class="btn btn-sm btn-success"
+												(click)="openArrastreModal()"
+												[disabled]="(resumen?.arrastre?.pending_count || 0) === 0 || !resumen?.arrastre?.next_cuota">
+												<i class="bi bi-plus"></i>
+											</button>
 										</td>
 									</tr>
 									<tr>
 										<td colspan="3" class="p-0 border-0"></td>
-								    </tr>
-							</tbody>
-						</table>
-					</div>
+									</tr>
+								</tbody>
+							</table>
+						</div>
 						<div class="d-grid mt-2">
 							<button type="button" class="btn btn-success py-2" (click)="openMaterialAcademicoModal()">
 								<i class="bi bi-book me-2"></i>
@@ -395,7 +428,8 @@
 			<div class="card mb-4 shadow-sm">
 				<div class="card-header d-flex justify-content-between align-items-center">
 					<strong>Resumen economico</strong>
-					<button type="button" class="btn btn-sm btn-primary" [disabled]="!resumen" (click)="kardexDlg.open()">
+					<button type="button" class="btn btn-sm btn-primary" [disabled]="!resumen"
+						(click)="kardexDlg.open()">
 						<i class="bi bi-journal-text me-1"></i>Kardex económico
 					</button>
 				</div>
@@ -413,7 +447,8 @@
 						</div>
 						<div class="mb-3 d-flex justify-content-between">
 							<span>Saldo Mensualidad:</span>
-							<strong class="text-danger">{{ (r?.totales?.monto_semestral - r?.totales?.total_pagado_v2) | number: '1.2-2' }}</strong>
+							<strong class="text-danger">{{ (r?.totales?.monto_semestral - r?.totales?.total_pagado_v2) |
+								number: '1.2-2' }}</strong>
 						</div>
 
 						<div class="mt-3">
@@ -439,180 +474,152 @@
 		</div>
 	</div>
 
-    <!-- Modal: Razón social / Documento -->
-    <div class="modal fade" id="razonSocialModal" tabindex="-1" aria-labelledby="razonSocialModalLabel" aria-hidden="true">
-      <div class="modal-dialog modal-lg">
-        <div class="modal-content">
-          <div class="modal-header">
-            <h5 class="modal-title" id="razonSocialModalLabel">Razón social</h5>
-            <button type="button" class="btn-close" data-bs-dismiss="modal" aria-label="Close"></button>
-          </div>
-          <div class="modal-body">
-            <!-- Alertas del modal -->
-            <div *ngIf="modalAlertMessage" class="alert mb-3" [ngClass]="{
+	<!-- Modal: Razón social / Documento -->
+	<div class="modal fade" id="razonSocialModal" tabindex="-1" aria-labelledby="razonSocialModalLabel"
+		aria-hidden="true">
+		<div class="modal-dialog modal-lg">
+			<div class="modal-content">
+				<div class="modal-header">
+					<h5 class="modal-title" id="razonSocialModalLabel">Razón social</h5>
+					<button type="button" class="btn-close" data-bs-dismiss="modal" aria-label="Close"></button>
+				</div>
+				<div class="modal-body">
+					<!-- Alertas del modal -->
+					<div *ngIf="modalAlertMessage" class="alert mb-3" [ngClass]="{
               'alert-success': modalAlertType === 'success',
               'alert-danger': modalAlertType === 'error',
               'alert-warning': modalAlertType === 'warning'
             }">{{ modalAlertMessage }}</div>
 
-            <!-- Panel verde con cabecera azul -->
-            <div class="p-3 bg-success bg-opacity-10 rounded">
-              <div class="border rounded">
-                <div class="bg-primary text-white px-3 py-2 rounded-top">
-                  <strong>Búsqueda de NIT y Razón Social:</strong>
-                </div>
-                <div class="p-3">
-                  <form [formGroup]="modalIdentidadForm" class="row g-3 align-items-center">
-                    <div class="col-md-6">
-                      <label class="form-label fw-semibold text-success">Tipo de Identidad</label>
-                      <select class="form-select" formControlName="tipo_identidad">
-                        <option *ngFor="let d of sinDocsIdentidad" [ngValue]="d.codigo">{{ d.descripcion }}</option>
-                      </select>
-                    </div>
-                    <div class="col-md-6">
-                      <label class="form-label fw-semibold text-success">{{ docLabel }}</label>
-                      <div class="input-group">
-                        <input class="form-control" formControlName="ci" [placeholder]="docPlaceholder" />
-                        <button class="btn btn-outline-primary" type="button" (click)="buscarPorCI()">
-                          <i class="bi bi-search"></i>
-                        </button>
-                      </div>
-                    </div>
+					<!-- Panel verde con cabecera azul -->
+					<div class="p-3 bg-success bg-opacity-10 rounded">
+						<div class="border rounded">
+							<div class="bg-primary text-white px-3 py-2 rounded-top">
+								<strong>Búsqueda de NIT y Razón Social:</strong>
+							</div>
+							<div class="p-3">
+								<form [formGroup]="modalIdentidadForm" class="row g-3 align-items-center">
+									<div class="col-md-6">
+										<label class="form-label fw-semibold text-success">Tipo de Identidad</label>
+										<select class="form-select" formControlName="tipo_identidad">
+											<option *ngFor="let d of sinDocsIdentidad" [ngValue]="d.codigo">{{
+												d.descripcion }}</option>
+										</select>
+									</div>
+									<div class="col-md-6">
+										<label class="form-label fw-semibold text-success">{{ docLabel }}</label>
+										<div class="input-group">
+											<input class="form-control" formControlName="ci"
+												[placeholder]="docPlaceholder" />
+											<button class="btn btn-outline-primary" type="button"
+												(click)="buscarPorCI()">
+												<i class="bi bi-search"></i>
+											</button>
+										</div>
+									</div>
 
-                    <!-- Complemento solo para CI -->
-                    <div class="col-md-6" *ngIf="showComplemento">
-                      <div class="form-check mb-1">
-                        <input class="form-check-input" type="checkbox" id="chkComp" formControlName="complemento_habilitado" />
-                        <label class="form-check-label" for="chkComp">Complemento ci</label>
-                      </div>
-                      <input class="form-control" formControlName="complemento_ci" placeholder="Ej: 1A" />
-                    </div>
+									<!-- Complemento solo para CI -->
+									<div class="col-md-6" *ngIf="showComplemento">
+										<div class="form-check mb-1">
+											<input class="form-check-input" type="checkbox" id="chkComp"
+												formControlName="complemento_habilitado" />
+											<label class="form-check-label" for="chkComp">Complemento ci</label>
+										</div>
+										<input class="form-control" formControlName="complemento_ci"
+											placeholder="Ej: 1A" />
+									</div>
 
-                    <div class="col-md-6">
-                      <label class="form-label fw-semibold text-success">Razón Social</label>
-                      <div class="input-group">
-                        <input class="form-control" formControlName="razon_social" [readonly]="!razonSocialEditable" />
-                        <button class="btn btn-outline-secondary" type="button" (click)="editRazonSocial()" [disabled]="razonSocialEditable">
-                          <i class="bi bi-pencil"></i>
-                        </button>
-                      </div>
-                    </div>
-                  </form>
-                </div>
-              </div>
-            </div>
-          </div>
-          <div class="modal-footer">
-            <button type="button" class="btn btn-primary" (click)="guardarRazonSocial()" [disabled]="loading">
-              <i class="bi bi-check2 me-1"></i> Grabar y Salir
-            </button>
-            <button type="button" class="btn btn-secondary" data-bs-dismiss="modal">Cerrar</button>
-          </div>
-        </div>
-      </div>
-    </div>
+									<div class="col-md-6">
+										<label class="form-label fw-semibold text-success">Razón Social</label>
+										<div class="input-group">
+											<input class="form-control" formControlName="razon_social"
+												[readonly]="!razonSocialEditable" />
+											<button class="btn btn-outline-secondary" type="button"
+												(click)="editRazonSocial()" [disabled]="razonSocialEditable">
+												<i class="bi bi-pencil"></i>
+											</button>
+										</div>
+									</div>
+								</form>
+							</div>
+						</div>
+					</div>
+				</div>
+				<div class="modal-footer">
+					<button type="button" class="btn btn-primary" (click)="guardarRazonSocial()" [disabled]="loading">
+						<i class="bi bi-check2 me-1"></i> Grabar y Salir
+					</button>
+					<button type="button" class="btn btn-secondary" data-bs-dismiss="modal">Cerrar</button>
+				</div>
+			</div>
+		</div>
+	</div>
 
 
 
-    <!-- Modal: Mensualidades / Rezagado / Recuperación (componente) -->
-    <app-mensualidad-modal
-      [resumen]="resumen"
-      [formasCobro]="modalFormasCobro"
-      [cuentasBancarias]="cuentasBancarias"
-      [morasPendientes]="morasPendientes"
-      [tipo]="modalTipo"
-      [pendientes]="mensualidadesPendientes"
-      [pu]="modalTipo === 'arrastre' ? mensualidadPU : getMensualidadPuForModal()"
-      [baseNro]="getNextMensualidadNro()"
-      [defaultMetodoPago]="modalFormasCobro[0]?.id_forma_cobro || selectedFormaCobroId"
-      [startCuotaOverride]="modalTipo === 'arrastre' ? null : getNextMensualidadStartCuota()"
-      [frontSaldos]="getFrontSaldos()"
-      [detalleFactura]="pagos.value"
-      (addPagos)="onAddPagosFromModal($event)"
-    ></app-mensualidad-modal>
+	<!-- Modal: Mensualidades / Rezagado / Recuperación (componente) -->
+	<app-mensualidad-modal [resumen]="resumen" [formasCobro]="modalFormasCobro" [cuentasBancarias]="cuentasBancarias"
+		[morasPendientes]="morasPendientes" [tipo]="modalTipo" [pendientes]="mensualidadesPendientes"
+		[pu]="modalTipo === 'arrastre' ? mensualidadPU : getMensualidadPuForModal()" [baseNro]="getNextMensualidadNro()"
+		[defaultMetodoPago]="modalFormasCobro[0]?.id_forma_cobro || selectedFormaCobroId"
+		[startCuotaOverride]="modalTipo === 'arrastre' ? null : getNextMensualidadStartCuota()"
+		[frontSaldos]="getFrontSaldos()" [detalleFactura]="pagos.value"
+		(addPagos)="onAddPagosFromModal($event)"></app-mensualidad-modal>
 
-    <!-- Modal: Items de Cobro (Libros/Textos/Material) -->
-    <app-items-modal
-      #itemsDlg
-      [resumen]="resumen"
-      [formasCobro]="modalFormasCobro"
-      [cuentasBancarias]="cuentasBancarias"
-      [baseNro]="getNextCobroNro()"
-      [defaultMetodoPago]="modalFormasCobro[0]?.id_forma_cobro || selectedFormaCobroId"
-      (addItem)="onAddItem($event)"
-    ></app-items-modal>
+	<!-- Modal: Items de Cobro (Libros/Textos/Material) -->
+	<app-items-modal #itemsDlg [resumen]="resumen" [formasCobro]="modalFormasCobro"
+		[cuentasBancarias]="cuentasBancarias" [baseNro]="getNextCobroNro()"
+		[defaultMetodoPago]="modalFormasCobro[0]?.id_forma_cobro || selectedFormaCobroId"
+		(addItem)="onAddItem($event)"></app-items-modal>
 
-    <!-- Modal: Rezagado -->
-    <app-rezagado-modal
-      [resumen]="resumen"
-      [formasCobro]="modalFormasCobro"
-      [cuentasBancarias]="cuentasBancarias"
-      [baseNro]="getNextCobroNro()"
-      [defaultMetodoPago]="modalFormasCobro[0]?.id_forma_cobro || selectedFormaCobroId"
-      [costoRezagado]="rezagadoCosto"
-      (addRezagados)="onAddPagosFromModal($event)"
-    ></app-rezagado-modal>
+	<!-- Modal: Rezagado -->
+	<app-rezagado-modal [resumen]="resumen" [formasCobro]="modalFormasCobro" [cuentasBancarias]="cuentasBancarias"
+		[baseNro]="getNextCobroNro()" [defaultMetodoPago]="modalFormasCobro[0]?.id_forma_cobro || selectedFormaCobroId"
+		[costoRezagado]="rezagadoCosto" (addRezagados)="onAddPagosFromModal($event)"></app-rezagado-modal>
 
-    <!-- Modal: Prueba de Recuperación -->
-    <app-recuperacion-modal
-      [resumen]="resumen"
-      [formasCobro]="modalFormasCobro"
-      [cuentasBancarias]="cuentasBancarias"
-      [baseNro]="getNextCobroNro()"
-      [defaultMetodoPago]="modalFormasCobro[0]?.id_forma_cobro || selectedFormaCobroId"
-      [costoRecuperacion]="(resumen?.recuperacion?.monto ?? resumen?.recuperacion_pendiente?.monto)"
-      (addRecuperacion)="onAddPagosFromModal($event)"
-    ></app-recuperacion-modal>
+	<!-- Modal: Prueba de Recuperación -->
+	<app-recuperacion-modal [resumen]="resumen" [formasCobro]="modalFormasCobro" [cuentasBancarias]="cuentasBancarias"
+		[baseNro]="getNextCobroNro()" [defaultMetodoPago]="modalFormasCobro[0]?.id_forma_cobro || selectedFormaCobroId"
+		[costoRecuperacion]="(resumen?.recuperacion?.monto ?? resumen?.recuperacion_pendiente?.monto)"
+		(addRecuperacion)="onAddPagosFromModal($event)"></app-recuperacion-modal>
 
-    <!-- Modal: Reincorporación -->
-    <app-reincorporacion-modal
-      [resumen]="resumen"
-      [formasCobro]="modalFormasCobro"
-      [cuentasBancarias]="cuentasBancarias"
-      [baseNro]="getNextCobroNro()"
-      [defaultMetodoPago]="modalFormasCobro[0]?.id_forma_cobro || selectedFormaCobroId"
-      [costoReincorporacion]="reincorporacionCosto || 0"
-      (addReincorporacion)="onAddPagosFromModal($event)"
-    ></app-reincorporacion-modal>
+	<!-- Modal: Reincorporación -->
+	<app-reincorporacion-modal [resumen]="resumen" [formasCobro]="modalFormasCobro"
+		[cuentasBancarias]="cuentasBancarias" [baseNro]="getNextCobroNro()"
+		[defaultMetodoPago]="modalFormasCobro[0]?.id_forma_cobro || selectedFormaCobroId"
+		[costoReincorporacion]="reincorporacionCosto || 0"
+		(addReincorporacion)="onAddPagosFromModal($event)"></app-reincorporacion-modal>
 
-    <!-- Modal: Búsqueda de Estudiante -->
-    <app-busqueda-estudiante-modal
-      [loading]="busquedaLoading"
-      [results]="busquedaResults"
-      [meta]="busquedaMeta"
-      [page]="busquedaPage"
-      [perPage]="busquedaPerPage"
-      (buscar)="onBuscarEstudiantes($event)"
-      (seleccionar)="onSeleccionarEstudiante($event)"
-      (pageChange)="onBusquedaPageChange($event)"
-      (perPageChange)="onBusquedaPerPageChange($event)"
-    ></app-busqueda-estudiante-modal>
+	<!-- Modal: Búsqueda de Estudiante -->
+	<app-busqueda-estudiante-modal [loading]="busquedaLoading" [results]="busquedaResults" [meta]="busquedaMeta"
+		[page]="busquedaPage" [perPage]="busquedaPerPage" (buscar)="onBuscarEstudiantes($event)"
+		(seleccionar)="onSeleccionarEstudiante($event)" (pageChange)="onBusquedaPageChange($event)"
+		(perPageChange)="onBusquedaPerPageChange($event)"></app-busqueda-estudiante-modal>
 
-    <!-- Modal: Kardex económico -->
-    <app-kardex-modal #kardexDlg [resumen]="resumen" [gestion]="getCurrentGestion()"></app-kardex-modal>
+	<!-- Modal: Kardex económico -->
+	<app-kardex-modal #kardexDlg [resumen]="resumen" [gestion]="getCurrentGestion()"
+		[filtrarInscripcionesPorGestion]="!mostrarBotonDescuento"></app-kardex-modal>
 
-    <!-- Modal: Formulario Descuento -->
-    <app-descuento-form-modal
-      #descuentoDlg
-      [turnoOptions]="['Mañana','Tarde','Noche']"
-      [resumen]="resumen"
-      (guardar)="onGuardarDescuento($event)"
-    ></app-descuento-form-modal>
+	<!-- Modal: Formulario Descuento -->
+	<app-descuento-form-modal #descuentoDlg [turnoOptions]="['Mañana','Tarde','Noche']" [resumen]="resumen"
+		(guardar)="onGuardarDescuento($event)"></app-descuento-form-modal>
 
-    <div class="modal fade" id="qrSavedWaitingConfirmModal" tabindex="-1" aria-hidden="true">
-      <div class="modal-dialog">
-        <div class="modal-content">
-          <div class="modal-header">
-            <h5 class="modal-title">Confirmación</h5>
-            <button type="button" class="btn-close" data-bs-dismiss="modal" aria-label="Close"></button>
-          </div>
-          <div class="modal-body">
-            <p class="mb-0">El lote fue guardado en espera. Luego podrá reimprimir los Recibos o Facturas correspondientes. ¿Desea refrescar la página ahora?</p>
-          </div>
-          <div class="modal-footer">
-            <button type="button" class="btn btn-secondary" data-bs-dismiss="modal">Cancelar</button>
-            <button type="button" class="btn btn-primary" (click)="confirmQrSavedWaitingRefresh()">Confirmar</button>
-          </div>
-        </div>
-      </div>
-    </div>
+	<div class="modal fade" id="qrSavedWaitingConfirmModal" tabindex="-1" aria-hidden="true">
+		<div class="modal-dialog">
+			<div class="modal-content">
+				<div class="modal-header">
+					<h5 class="modal-title">Confirmación</h5>
+					<button type="button" class="btn-close" data-bs-dismiss="modal" aria-label="Close"></button>
+				</div>
+				<div class="modal-body">
+					<p class="mb-0">El lote fue guardado en espera. Luego podrá reimprimir los Recibos o Facturas
+						correspondientes. ¿Desea refrescar la página ahora?</p>
+				</div>
+				<div class="modal-footer">
+					<button type="button" class="btn btn-secondary" data-bs-dismiss="modal">Cancelar</button>
+					<button type="button" class="btn btn-primary"
+						(click)="confirmQrSavedWaitingRefresh()">Confirmar</button>
+				</div>
+			</div>
+		</div>
+	</div>

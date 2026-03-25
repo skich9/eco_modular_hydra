@@ -4,11 +4,12 @@ import { FormsModule } from '@angular/forms';
 import { CobrosService } from '../../../services/cobros.service';
 import { AuthService } from '../../../services/auth.service';
 import { DescuentoMoraService } from '../../../services/descuento-mora.service';
+import { SoloNumerosDirective } from '../../../directives/solo-numeros.directive';
 
 @Component({
 	selector: 'app-descuento-mora',
 	standalone: true,
-	imports: [CommonModule, FormsModule],
+	imports: [CommonModule, FormsModule, SoloNumerosDirective],
 	templateUrl: './descuento-mora.component.html',
 	styleUrls: ['./descuento-mora.component.scss']
 })
@@ -38,7 +39,7 @@ export class DescuentoMoraComponent implements OnInit {
 		private cobrosService: CobrosService,
 		private authService: AuthService,
 		private descuentoMoraService: DescuentoMoraService
-	) {}
+	) { }
 
 	ngOnInit(): void {
 		this.authService.currentUser$.subscribe(user => {
@@ -49,6 +50,32 @@ export class DescuentoMoraComponent implements OnInit {
 
 	toggleDescuento(d: any): void {
 		if (!d || !d.id_descuento_mora) return;
+
+		if (d.activo != 1 && d.activo !== true) {
+
+			let existeOtroActivo = false;
+			const tabla = this.descuentosTabla || [];
+
+			for (let i = 0; i < tabla.length; i++) {
+				let fila = tabla[i];
+
+				if (fila.id_asignacion_mora === d.id_asignacion_mora && fila.id_descuento_mora !== d.id_descuento_mora) {
+
+					if (fila.activo === true) {
+						existeOtroActivo = true;
+						break;
+					}
+				}
+			}
+
+			if (existeOtroActivo) {
+				const confirmar = window.confirm('Ya existe un descuento activo en esta cuota. ¿Desea reemplazarlo?');
+				if (!confirmar) {
+					return;
+				}
+			}
+		}
+
 
 		this.loading = true;
 		this.descuentoMoraService.toggleStatus(d.id_descuento_mora).subscribe({
@@ -270,6 +297,20 @@ export class DescuentoMoraComponent implements OnInit {
 		if (!motivo) {
 			this.displayAlert('Ingrese el motivo del descuento', 'warning');
 			return;
+		}
+
+		// Validar que el valor no supere el monto de la mora usando un bucle 'for' básico
+		const listaDescuentos = this.descuentosMora || [];
+		
+		for (let i = 0; i < listaDescuentos.length; i++) {
+			const fila = listaDescuentos[i];
+			const descuentoIngresado = Number(fila.monto_descuento || 0);
+			const limiteMora = Number(fila.monto_mora || 0);
+			
+			if (descuentoIngresado > limiteMora) {
+				this.displayAlert(`El descuento para la Cuota ${fila.numero_cuota} (Bs. ${descuentoIngresado}) no puede ser mayor a la mora actual (Bs. ${limiteMora}).`, 'warning');
+				return;
+			}
 		}
 
 		const rows = (this.descuentosMora || [])

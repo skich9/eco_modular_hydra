@@ -1,6 +1,10 @@
 <div class="container py-3">
 	<h2 class="mb-3">Configuración de Costos</h2>
 
+	<div *ngIf="notificacionCostosError" class="alert alert-danger mb-3" role="alert">
+		{{ notificacionCostosError }}
+	</div>
+
 	<form [formGroup]="form" (ngSubmit)="asignarCostos()">
 		<div class="row g-3 align-items-stretch">
 	
@@ -76,7 +80,15 @@
 										</td>
 										<td>{{ c.label }}</td>
 										<td>
-											<input type="number" class="form-control" step="0.01" [formControlName]="c.key+'_monto'" placeholder="Costo" />
+											<input
+												type="text"
+												inputmode="numeric"
+												pattern="[0-9]*"
+												class="form-control"
+												[formControlName]="c.key+'_monto'"
+												autocomplete="off"
+												(input)="onCostoMontoInput(c.key, $event)"
+											/>
 										</td>
                                         <td>
 											<select class="form-select" [formControlName]="c.key+'_turno'">
@@ -149,7 +161,7 @@
 
 		<!-- Botón Asignar Costos centrado al final de los dos cards -->
 		<div class="d-flex justify-content-center mt-3">
-			<button type="submit" class="btn btn-primary px-5">
+			<button type="submit" class="btn btn-primary px-5" [disabled]="!puedeAsignarCostos">
 				<i class="bi bi-chevron-left me-2"></i> Asignar Costos <i class="bi bi-chevron-right ms-2"></i>
 			</button>
 		</div>
@@ -333,7 +345,7 @@
 						</div>
 						<div class="mb-3">
 							<label class="form-label">Valor</label>
-							<input type="number" step="0.01" class="form-control" formControlName="monto_semestre">
+							<input type="text" inputmode="numeric" pattern="[0-9]*" class="form-control" formControlName="monto_semestre" autocomplete="off">
 						</div>
 						<div class="mb-3">
 							<label class="form-label">Semestre</label>

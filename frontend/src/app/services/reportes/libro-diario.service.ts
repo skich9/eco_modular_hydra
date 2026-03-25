@@ -8,7 +8,27 @@ import { CobrosService } from '../cobros.service';
 
 export interface LibroDiarioRequest {
 	usuario: string;
-	fecha: string;
+	/** Código de carrera para filtrar (ej: EEA, MEA). Requerido para mostrar solo una carrera. */
+	codigo_carrera?: string;
+	/**
+	 * Fecha única en formato d/m/Y (compatibilidad hacia atrás).
+	 * Si se especifica un rango, se priorizan fecha_inicio/fecha_fin.
+	 */
+	fecha?: string;
+	/**
+	 * Inicio de rango de fechas (d/m/Y).
+	 */
+	fecha_inicio?: string;
+	/**
+	 * Fin de rango de fechas (d/m/Y).
+	 */
+	fecha_fin?: string;
+}
+
+export interface Carrera {
+	codigo_carrera: string;
+	nombre: string;
+	descripcion?: string;
 }
 
 export interface LibroDiarioItem {
@@ -47,6 +67,7 @@ export interface LibroDiarioResponse {
 export interface Usuario {
 	id_usuario: string;
 	nombre?: string;
+	nickname?: string;
 }
 
 @Injectable({
@@ -71,6 +92,19 @@ export class LibroDiarioService {
 	}
 
 	/**
+	 * Obtiene la lista de carreras (Electrónica Automotriz, Mecánica Automotriz, etc.)
+	 */
+	getCarreras(): Observable<{ success: boolean; data: Carrera[]; message?: string }> {
+		return this.http.get<any>(`${this.apiUrl}/carreras`).pipe(
+			map((res: any) => ({
+				success: true,
+				data: res?.data || res || []
+			})),
+			catchError(() => of({ success: false, data: [] }))
+		);
+	}
+
+	/**
 	 * Obtiene la lista de usuarios activos del sistema local de cobros
 	 */
 	getUsuarios(): Observable<{ success: boolean; data: Usuario[]; message?: string }> {
@@ -85,8 +119,9 @@ export class LibroDiarioService {
 				return {
 					success: true,
 					data: usuariosArray.map((user: any) => ({
-						id_usuario: user.id_usuario || user,
-						nombre: user.nombre || user.id_usuario || user
+						id_usuario: String(user.id_usuario ?? user),
+						nombre: user.nombre || user.id_usuario || user,
+						nickname: user.nickname || user.nombre || user.id_usuario || ''
 					}))
 				};
 			}),
@@ -95,8 +130,8 @@ export class LibroDiarioService {
 				return of({
 					success: true,
 					data: [
-						{ id_usuario: '1', nombre: 'Administrador' },
-						{ id_usuario: '2', nombre: 'Cajero' }
+						{ id_usuario: '1', nombre: 'Administrador', nickname: 'Admin' },
+						{ id_usuario: '2', nombre: 'Cajero', nickname: 'Cajero' }
 					]
 				});
 			})
@@ -104,21 +139,13 @@ export class LibroDiarioService {
 	}
 
 	/**
-	 * Obtiene los datos del libro diario para un usuario y fecha específicos (usando BD local de cobros)
+	 * Obtiene los datos del libro diario para un usuario.
+	 * Soporta tanto una sola fecha como un rango de fechas.
 	 */
 	getLibroDiario(request: LibroDiarioRequest): Observable<LibroDiarioResponse> {
-		// Convertir fecha del formato d/m/Y a Y-m-d para la API local
-		let fechaFormateada = '';
-		if (typeof request.fecha === 'string') {
-			const fechaArray = request.fecha.split('/');
-			if (fechaArray.length === 3) {
-				fechaFormateada = `${fechaArray[2]}-${fechaArray[1]}-${fechaArray[0]}`;
-			} else {
-				fechaFormateada = request.fecha;
-			}
-		} else {
-			fechaFormateada = String(request.fecha);
-		}
+		// Normalizar rango de fechas al formato Y-m-d (inclusive)
+		const { fechaDesde, fechaHasta } = this.normalizarRangoFechas(request);
+		const codigoCarrera = request.codigo_carrera || '';
 
 		// Primero obtener el id_usuario del nombre de usuario seleccionado
 		return this.obtenerIdUsuario(request.usuario).pipe(
@@ -135,47 +162,53 @@ export class LibroDiarioService {
 					} as LibroDiarioResponse);
 				}
 
-				// Obtener datos de los endpoints que existen
+				const baseParams: any = {
+					id_usuario: idUsuario,
+					fecha: fechaDesde || fechaHasta || ''
+				};
+				if (codigoCarrera) baseParams.codigo_carrera = codigoCarrera;
+
+				// Obtener datos en paralelo (solo endpoints necesarios, sin toda la BD)
 				return forkJoin({
 					cobro: this.http.get<any>(`${this.apiUrl}/cobros`, {
-						params: { id_usuario: idUsuario, fecha: fechaFormateada }
+						params: baseParams
 					}),
 					facturas: this.http.get<any>(`${this.apiUrl}/facturas`, {
-						params: { id_usuario: idUsuario, fecha: fechaFormateada }
+						params: {
+							...baseParams,
+							per_page: 100,
+							anio: fechaDesde ? fechaDesde.substring(0, 4) : new Date().getFullYear()
+						}
 					}),
 					transactions: this.http.get<any>(`${this.apiUrl}/qr/transactions`, {
-						params: { id_usuario: idUsuario, fecha: fechaFormateada }
+						params: {
+							id_usuario: idUsuario,
+							desde: fechaDesde || fechaHasta || '',
+							hasta: fechaHasta || fechaDesde || fechaHasta || '',
+							...(codigoCarrera ? { codigo_carrera: codigoCarrera } : {})
+						}
 					}),
-					todasFacturas: this.http.get<any>(`${this.apiUrl}/facturas`), // Obtener todas las facturas para buscar clientes
 					recibos: this.http.get<any>(`${this.apiUrl}/recibos`).pipe(
-						catchError(() => {
-							console.log('Endpoint no disponible');
-							// Intentar endpoint singular
-							return this.http.get<any>(`${this.apiUrl}/recibo`).pipe(
-								catchError(() => {
-									console.log('Endpoint no disponible');
-									// Intentar otro nombre posible
-									return this.http.get<any>(`${this.apiUrl}/voucher`).pipe(
-										catchError(() => {
-											console.log('Endpoint no disponible');
-											return of([]); // Devolver array vacío si ningún endpoint funciona
-										})
-									);
-								})
-							);
-						})
+						catchError(() =>
+							this.http.get<any>(`${this.apiUrl}/recibo`).pipe(
+								catchError(() =>
+									this.http.get<any>(`${this.apiUrl}/voucher`).pipe(
+										catchError(() => of([]))
+									)
+								)
+							)
+						)
 					)
 				}).pipe(
-					map(({ cobro, facturas, transactions, todasFacturas, recibos }) => {
+					map(({ cobro, facturas, transactions, recibos }) => {
 						const datosCobro = cobro?.data || cobro || [];
 						const datosFacturas = facturas?.data || facturas || [];
 						const datosTransactions = transactions?.data?.items || transactions?.items || [];
-						const todasLasFacturas = todasFacturas?.data || todasFacturas || [];
 						const todosLosRecibos = recibos?.data || recibos || [];
 
-						// Crear mapa de facturas para buscar clientes por número de factura
+						// Mapa de facturas (usamos facturas filtradas por fecha - evita cargar toda la BD)
 						const mapaFacturas = new Map();
-						todasLasFacturas.forEach((factura: any) => {
+						(datosFacturas || []).forEach((factura: any) => {
 							if (factura.nro_factura && factura.cliente) {
 								mapaFacturas.set(String(factura.nro_factura), {
 									razon_social: factura.cliente, // Razón social desde factura
@@ -195,10 +228,6 @@ export class LibroDiarioService {
 							}
 						});
 
-						console.log('Mapa de facturas creado:', mapaFacturas);
-						console.log('Mapa de recibos creado:', mapaRecibos);
-						console.log('Datos de recibos recibidos:', todosLosRecibos);
-
 						const datosFacturasFiltrados = datosFacturas.filter((factura: any) => {
 							const fechaFactura = factura.fecha_emision ? factura.fecha_emision.split(' ')[0] : '';
 							const nroFactura = factura.nro_factura ? String(factura.nro_factura) : '';
@@ -206,7 +235,8 @@ export class LibroDiarioService {
 							if (!nroFactura || nroFactura === '0') {
 								return false;
 							}
-							return fechaFactura === fechaFormateada;
+							// Filtrar por rango de fechas si está disponible
+							return this.estaEnRango(fechaFactura, fechaDesde, fechaHasta);
 						});
 
 						const datosCobroFiltrados = datosCobro.filter((cobro: any) => {
@@ -214,7 +244,7 @@ export class LibroDiarioService {
 							if (cobro.fecha_cobro) {
 								fechaCobro = cobro.fecha_cobro.substring(0, 10);
 							}
-							return fechaCobro === fechaFormateada;
+							return this.estaEnRango(fechaCobro, fechaDesde, fechaHasta);
 						});
 
 						// Evitar duplicados: si una factura ya tiene un cobro asociado con el mismo nro_factura,
@@ -237,7 +267,7 @@ export class LibroDiarioService {
 
 						const datosTransactionsFiltrados = datosTransactions.filter((transaction: any) => {
 							const fechaTransaction = transaction.fecha_generacion ? transaction.fecha_generacion.split(' ')[0] : '';
-							return fechaTransaction === fechaFormateada;
+							return this.estaEnRango(fechaTransaction, fechaDesde, fechaHasta);
 						});
 
 						const todasLasTransacciones = [
@@ -247,83 +277,14 @@ export class LibroDiarioService {
 							...datosCobroFiltrados.map((item: any) => ({ ...item, fuente: 'cobro' }))
 						];
 
-						console.log('Transacciones combinadas:', todasLasTransacciones.length);
-						console.log('=== DATOS CRUDOS DE BACKEND ===');
-						console.log('Facturas completas:', facturas);
-						console.log('Cobros completos:', cobro);
-						console.log('Transactions completas:', transactions);
-						console.log('=== DATOS FILTRADOS ===');
-						console.log('Datos de facturas:', datosFacturasFiltrados);
-						console.log('Datos de cobros:', datosCobroFiltrados);
-						console.log('Datos de transactions:', datosTransactionsFiltrados);
-
-						// Mostrar estructura del primer elemento de cada tipo para depuración
-						if (datosFacturasFiltrados.length > 0) {
-							console.log('Estructura primera factura:', Object.keys(datosFacturasFiltrados[0]));
-							console.log('Datos primera factura:', datosFacturasFiltrados[0]);
-							// Buscar específicamente campos de cliente
-							console.log('¿Tiene campo cliente?', 'cliente' in datosFacturasFiltrados[0]);
-							console.log('¿Tiene campo nro_documento_cobro?', 'nro_documento_cobro' in datosFacturasFiltrados[0]);
-						}
-						if (datosCobroFiltrados.length > 0) {
-							console.log('Estructura primer cobro:', Object.keys(datosCobroFiltrados[0]));
-							console.log('Datos primer cobro:', datosCobroFiltrados[0]);
-							// Buscar específicamente campos de cliente
-							console.log('¿Tiene campo cliente?', 'cliente' in datosCobroFiltrados[0]);
-							console.log('¿Tiene campo nro_documento_cobro?', 'nro_documento_cobro' in datosCobroFiltrados[0]);
-
-							// Mostrar datos anidados que podrían tener el cliente
-							const primerCobro = datosCobroFiltrados[0];
-							console.log('Datos de usuario en cobro:', primerCobro.usuario);
-							console.log('Datos de item_cobro en cobro:', primerCobro.item_cobro);
-							console.log('Datos de cuota en cobro:', primerCobro.cuota);
-
-							// Buscar campos posibles en objetos anidados
-							if (primerCobro.usuario) {
-								console.log('Campos en usuario:', Object.keys(primerCobro.usuario));
-							}
-							if (primerCobro.item_cobro) {
-								console.log('Campos en item_cobro:', Object.keys(primerCobro.item_cobro));
-							}
-						}
-						if (datosTransactionsFiltrados.length > 0) {
-							console.log('Estructura primera transaction:', Object.keys(datosTransactionsFiltrados[0]));
-							console.log('Datos primera transaction:', datosTransactionsFiltrados[0]);
-							// Buscar específicamente campos de cliente
-							console.log('¿Tiene campo cliente?', 'cliente' in datosTransactionsFiltrados[0]);
-							console.log('¿Tiene campo nro_documento_cobro?', 'nro_documento_cobro' in datosTransactionsFiltrados[0]);
-						}
-
-						// Si no hay datos de facturas, mostrar la estructura cruda para ver qué hay
-						if (todasLasFacturas && todasLasFacturas.length > 0) {
-							console.log('Estructura primera factura cruda:', Object.keys(todasLasFacturas[0]));
-							console.log('Datos primera factura cruda:', todasLasFacturas[0]);
-							// Buscar específicamente campos de cliente en todas las facturas
-							console.log('¿Tiene campo cliente en todas las facturas?', 'cliente' in todasLasFacturas[0]);
-							console.log('¿Tiene campo nro_documento_cobro en todas las facturas?', 'nro_documento_cobro' in todasLasFacturas[0]);
-
-							// Buscar otros campos posibles para el documento
-							const posiblesCamposDocumento = ['nro_documento_cobro', 'nit', 'ci', 'documento', 'nro_documento'];
-							posiblesCamposDocumento.forEach(campo => {
-								if (campo in todasLasFacturas[0]) {
-									console.log(`Campo encontrado: ${campo} =`, todasLasFacturas[0][campo]);
-								}
-							});
-						}
-
 						// Transformar al formato del libro diario
 						const items: LibroDiarioItem[] = todasLasTransacciones.map((trans: any, index: number): LibroDiarioItem => {
 							// Mapeo específico según la fuente de datos
 							if (trans.fuente === 'factura') {
-								console.log('=== PROCESANDO FACTURA ===');
-								console.log('Factura:', trans);
-								console.log('nro_factura:', trans.nro_factura);
-
 								// Buscar datos del cliente en el mapa de facturas
 								let datosCliente = null;
 								if (trans.nro_factura && trans.nro_factura !== '0') {
 									datosCliente = mapaFacturas.get(String(trans.nro_factura));
-									console.log('Buscando en mapa de facturas:', trans.nro_factura, '→', datosCliente);
 								}
 
 								// Si no encuentra, usar datos directos de la factura
@@ -332,12 +293,7 @@ export class LibroDiarioService {
 										razon_social: trans.cliente || trans.nombre_cliente || 'SIN DATOS',
 										nit: trans.nro_documento_cobro || trans.nit || '0'
 									};
-									console.log('Usando datos directos de la factura:', datosCliente);
 								}
-
-								console.log('Datos finales de cliente para factura:', datosCliente);
-								console.log('Razón social final:', datosCliente?.razon_social || 'SIN DATOS');
-								console.log('NIT final:', datosCliente?.nit || 'SIN DATOS');
 
 								// Determinar tipo_pago para la factura según su método de pago
 								// Usar los mismos códigos que en cobros: D Deposito, E Efectivo, T Traspaso, C Cheque, L Tarjeta, B Transferencia, O Otro
@@ -397,95 +353,42 @@ export class LibroDiarioService {
 									observaciones: trans.metodo_pago || 'Efectivo'
 								} as LibroDiarioItem;
 							} else if (trans.fuente === 'cobro') {
-								console.log('Cobro:', trans);
-								console.log('id_forma_cobro:', trans.id_forma_cobro);
-								console.log('forma_cobro:', trans.forma_cobro);
-								console.log('forma_cobro.nombre:', trans.forma_cobro?.nombre);
-
 								// Lógica mejorada: usar datos directos del cobro como lo hace el kardex
 								let datosCliente = null;
 
-								console.log('=== PROCESANDO TRANSACCIÓN (METODO KARDEX) ===');
-								console.log('Transacción:', trans);
-								console.log('nro_factura:', trans.nro_factura);
-								console.log('nro_recibo:', trans.nro_recibo);
-								console.log('cod_ceta:', trans.cod_ceta);
-
 								// PRIORIDAD 1: Si tiene nro_factura, buscar en tabla factura
 								if (trans.nro_factura && trans.nro_factura !== '0') {
-									console.log('Buscando en factura por nro_factura:', trans.nro_factura);
 									datosCliente = mapaFacturas.get(String(trans.nro_factura));
-									console.log('Datos encontrados en factura:', datosCliente);
 								}
 								// PRIORIDAD 2: Si tiene nro_recibo, buscar en tabla recibo
 								else if (trans.nro_recibo && trans.nro_recibo !== '0') {
-									console.log('Buscando en recibo por nro_recibo:', trans.nro_recibo);
-
 									// Buscar en el mapa de recibos desde la base de datos
 									datosCliente = mapaRecibos.get(String(trans.nro_recibo));
-									console.log('Datos encontrados en recibo (desde BD):', datosCliente);
 
 									// Si no encuentra, intentar búsqueda en cobros
 									if (!datosCliente) {
-										console.log('No se encontró en mapa de recibos, buscando en cobros...');
-										console.log('nro_recibo a buscar:', trans.nro_recibo);
-										console.log('Total cobros filtrados del día:', datosCobroFiltrados.length);
-										console.log('Total cobros globales:', datosCobro.length);
-
-										// Mostrar todos los nro_recibo de los cobros filtrados
-										console.log('Nros de recibo en cobros filtrados:', datosCobroFiltrados.map((c: any) => c.nro_recibo));
-
 										// Primero buscar en cobros filtrados del mismo día
-										const cobroConRecibo = datosCobroFiltrados.find((cobro: any) => {
-											console.log('Comparando:', cobro.nro_recibo, 'con', trans.nro_recibo, 'son iguales?', cobro.nro_recibo == trans.nro_recibo);
-											return cobro.nro_recibo == trans.nro_recibo;
-										});
-
-										console.log('Resultado búsqueda en cobros del día:', cobroConRecibo);
+										const cobroConRecibo = datosCobroFiltrados.find((cobro: any) => cobro.nro_recibo == trans.nro_recibo);
 
 										// Si no encuentra en cobros del día, buscar en todos los cobros
 										let cobroGlobal = null;
 										if (!cobroConRecibo) {
-											console.log('Buscando en TODOS los cobros con nro_recibo:', trans.nro_recibo);
-
-											// Mostrar algunos nro_recibo de todos los cobros para debugging
-											console.log('Primeros 10 nro_recibo de todos los cobros:', datosCobro.slice(0, 10).map((c: any) => ({ nro_cobro: c.nro_cobro, nro_recibo: c.nro_recibo })));
-
-											cobroGlobal = datosCobro.find((cobro: any) => {
-												console.log('Comparando global:', cobro.nro_recibo, 'con', trans.nro_recibo, 'son iguales?', cobro.nro_recibo == trans.nro_recibo);
-												return cobro.nro_recibo == trans.nro_recibo;
-											});
-
-											console.log('Resultado búsqueda en todos los cobros:', cobroGlobal);
+											cobroGlobal = datosCobro.find((cobro: any) => cobro.nro_recibo == trans.nro_recibo);
 										}
 
 										const cobroEncontrado = cobroConRecibo || cobroGlobal;
-										if (cobroEncontrado) {
-											console.log('Cobro encontrado:', cobroEncontrado);
-
-											// El cobro encontrado puede tener nro_factura, usarlo para buscar en facturas
-											if (cobroEncontrado.nro_factura && cobroEncontrado.nro_factura !== '0') {
-												console.log('Cobro encontrado tiene nro_factura:', cobroEncontrado.nro_factura);
-												datosCliente = mapaFacturas.get(String(cobroEncontrado.nro_factura));
-												console.log('Datos de cliente desde factura vinculada al cobro:', datosCliente);
-											} else {
-												console.log('Cobro encontrado no tiene nro_factura:', cobroEncontrado.nro_factura);
-											}
-										} else {
-											console.log('No se encontró ningún cobro con nro_recibo:', trans.nro_recibo);
+										if (cobroEncontrado && cobroEncontrado.nro_factura && cobroEncontrado.nro_factura !== '0') {
+											datosCliente = mapaFacturas.get(String(cobroEncontrado.nro_factura));
 										}
 									}
 								}
 								// PRIORIDAD 3: Usar datos directos del cobro (como lo hace el kardex)
 								else if (trans.cliente || trans.nro_documento_cobro) {
 									datosCliente = this.getRazonSocialNIT(trans);
-									console.log('Usando datos directos del cobro (método kardex):', datosCliente);
 								}
 
 								// Si no encuentra en ninguna tabla, intentar obtener datos del estudiante
 								if (!datosCliente && trans.cod_ceta && trans.cod_ceta !== '0') {
-									console.log('Intentando obtener datos del estudiante para cod_ceta:', trans.cod_ceta);
-
 									// Usar el servicio de cobros para obtener datos del estudiante
 									// NOTA: Esto debe ser síncrono para el procesamiento actual
 									// Por ahora, usaremos datos básicos del estudiante
@@ -493,21 +396,15 @@ export class LibroDiarioService {
 										razon_social: `Estudiante ${trans.cod_ceta}`,
 										nit: trans.cod_ceta || '0'
 									};
-									console.log('Usando datos de estudiante como fallback (síncrono):', datosCliente);
 								}
 
 								// Si no encuentra en ninguna tabla, dejar campos vacíos
 								if (!datosCliente) {
-									console.log('No se encontró cliente ni en cobro ni en factura ni en recibo. Campos quedarán vacíos.');
 									datosCliente = {
 										razon_social: '', // Campo vacío
 										nit: '' // Campo vacío
 									};
 								}
-
-								console.log('Datos finales de cliente:', datosCliente);
-								console.log('Razón social final:', datosCliente?.razon_social || 'SIN DATOS');
-								console.log('NIT final:', datosCliente?.nit || 'SIN DATOS');
 
 								// Determinar tipo_pago basado en id_forma_cobro
 								// Códigos oficiales:
@@ -539,8 +436,6 @@ export class LibroDiarioService {
 									}
 								}
 
-								console.log('Forma de cobro detectada:', trans.id_forma_cobro, '→ tipo_pago:', tipoPago);
-
 								// Construir observaciones extendidas similares al kardex
 								const observacionesExt = this.getObservacionesExtendidasLibroDiario(trans);
 
@@ -567,15 +462,10 @@ export class LibroDiarioService {
 									observaciones: observacionesExt || (trans.forma_cobro?.nombre || trans.id_forma_cobro || 'Efectivo')
 								} as LibroDiarioItem;
 							} else if (trans.fuente === 'transaction') {
-								console.log('=== PROCESANDO TRANSACTION QR ===');
-								console.log('Transaction:', trans);
-								console.log('nro_factura:', trans.nro_factura);
-
 								// Buscar datos del cliente en el mapa de facturas primero
 								let datosCliente = null;
 								if (trans.nro_factura && trans.nro_factura !== '0') {
 									datosCliente = mapaFacturas.get(String(trans.nro_factura));
-									console.log('Buscando en mapa de facturas:', trans.nro_factura, '→', datosCliente);
 								}
 
 								// Si no encuentra en factura, usar datos directos de la transaction
@@ -584,12 +474,7 @@ export class LibroDiarioService {
 										razon_social: trans.cliente || trans.nombre_cliente || 'SIN DATOS',
 										nit: trans.nro_documento_cobro || trans.nit || '0'
 									};
-									console.log('Usando datos directos de la transaction:', datosCliente);
 								}
-
-								console.log('Datos finales de cliente para transaction:', datosCliente);
-								console.log('Razón social final:', datosCliente?.razon_social || 'SIN DATOS');
-								console.log('NIT final:', datosCliente?.nit || 'SIN DATOS');
 
 								return {
 									numero: index + 1,
@@ -625,15 +510,20 @@ export class LibroDiarioService {
 							}
 						}).filter(item => item !== undefined);
 
-						console.log('Items transformados:', items);
-
 						// Calcular totales
 						const totales = items.reduce((acc, item) => ({
 							ingresos: acc.ingresos + item.ingreso,
 							egresos: acc.egresos + item.egreso
 						}), { ingresos: 0, egresos: 0 });
 
-						console.log('Totales calculados:', totales);
+						// Hora apertura: primera transacción del día (hora más temprana); fallback 08:00:00
+						const horasConValor = items.filter(i => i.hora && i.hora.trim() !== '').map(i => i.hora.trim());
+						let horaApertura = horasConValor.length > 0
+							? horasConValor.reduce((min, h) => (h < min ? h : min), horasConValor[0])
+							: '08:00:00';
+						if (horaApertura.length === 5 && horaApertura.match(/^\d{1,2}:\d{2}$/)) {
+							horaApertura += ':00';
+						}
 
 						const result = {
 							success: true,
@@ -642,13 +532,12 @@ export class LibroDiarioService {
 								totales: totales,
 								usuario_info: {
 									nombre: request.usuario,
-									hora_apertura: '08:00:00',
+									hora_apertura: horaApertura,
 									hora_cierre: ''
 								}
 							}
 						} as LibroDiarioResponse;
 
-						console.log('Resultado final:', result);
 						return result;
 					}),
 					catchError(() => {
@@ -756,6 +645,14 @@ export class LibroDiarioService {
 					egresos: acc.egresos + item.egreso
 				}), { ingresos: 0, egresos: 0 });
 
+				const horasConValor = items.filter((i: LibroDiarioItem) => i.hora && i.hora.trim() !== '').map((i: LibroDiarioItem) => i.hora.trim());
+				let horaApertura = horasConValor.length > 0
+					? horasConValor.reduce((min: string, h: string) => (h < min ? h : min), horasConValor[0])
+					: '08:00:00';
+				if (horaApertura.length === 5 && /^\d{1,2}:\d{2}$/.test(horaApertura)) {
+					horaApertura += ':00';
+				}
+
 				return {
 					success: true,
 					data: {
@@ -763,7 +660,7 @@ export class LibroDiarioService {
 						totales: totales,
 						usuario_info: {
 							nombre: nombreUsuario,
-							hora_apertura: '08:00:00',
+							hora_apertura: horaApertura,
 							hora_cierre: ''
 						}
 					}
@@ -783,6 +680,66 @@ export class LibroDiarioService {
 		} catch {
 			return '';
 		}
+	}
+
+	/**
+	 * Normaliza un rango de fechas del request al formato ISO (Y-m-d).
+	 * Si solo se recibe una fecha, se usa como inicio y fin.
+	 */
+	private normalizarRangoFechas(request: LibroDiarioRequest): { fechaDesde: string; fechaHasta: string } {
+		const parseFecha = (valor?: string): string => {
+			if (!valor) return '';
+			// d/m/Y
+			if (valor.includes('/')) {
+				const partes = valor.split('/');
+				if (partes.length === 3) {
+					return `${partes[2]}-${partes[1]}-${partes[0]}`;
+				}
+				return valor;
+			}
+			// Y-m-d u otros formatos compatibles con Date
+			if (valor.includes('-')) {
+				const partes = valor.split('-');
+				if (partes.length === 3 && partes[0].length === 4) {
+					return valor;
+				}
+			}
+			const d = new Date(valor);
+			if (!isNaN(d.getTime())) {
+				const day = d.getDate().toString().padStart(2, '0');
+				const month = (d.getMonth() + 1).toString().padStart(2, '0');
+				const year = d.getFullYear();
+				return `${year}-${month}-${day}`;
+			}
+			return '';
+		};
+
+		let fechaDesde = parseFecha(request.fecha_inicio || request.fecha);
+		let fechaHasta = parseFecha(request.fecha_fin || request.fecha);
+
+		// Si sólo hay una fecha válida, usarla como inicio y fin
+		if (fechaDesde && !fechaHasta) {
+			fechaHasta = fechaDesde;
+		}
+		if (!fechaDesde && fechaHasta) {
+			fechaDesde = fechaHasta;
+		}
+
+		return { fechaDesde, fechaHasta };
+	}
+
+	/**
+	 * Verifica si una fecha (Y-m-d) está dentro del rango [desde, hasta].
+	 * Si el rango no está definido, siempre devuelve true.
+	 */
+	private estaEnRango(fecha: string, desde: string, hasta: string): boolean {
+		if (!fecha) return false;
+		if (!desde || !hasta) {
+			// Si no hay rango definido, no filtrar por fecha
+			return true;
+		}
+		// Asumimos que fecha, desde y hasta están en formato Y-m-d
+		return fecha >= desde && fecha <= hasta;
 	}
 
 	// Obtener observaciones extendidas para libro diario según el método de pago (igual que kardex)
@@ -949,11 +906,6 @@ export class LibroDiarioService {
 		const cliente = cobro?.cliente || 'SIN DATOS';
 		const nroDoc = cobro?.nro_documento_cobro || '0';
 
-		// Debug temporal para verificar que lleguen los datos
-		if (cobro?.cliente || cobro?.nro_documento_cobro) {
-			console.log('Razón Social/NIT encontrado (método kardex):', { cliente, nroDoc });
-		}
-
 		return {
 			razon_social: cliente,
 			nit: nroDoc
@@ -961,45 +913,117 @@ export class LibroDiarioService {
 	}
 
 	/**
-	 * Cierra la caja del usuario (usando BD local de cobros)
+	 * Cierra la caja del usuario (usando BD local de cobros).
+	 * Retorna orden_cierre e id_libro_diario_cierre (correlativo único en BD) para el código RD-{carrera}-{mes}-{id}.
 	 */
-	cerrarCaja(request: LibroDiarioRequest): Observable<{ success: boolean; message?: string }> {
+	cerrarCaja(request: LibroDiarioRequest): Observable<{
+		success: boolean;
+		message?: string;
+		orden_cierre?: number;
+		id_libro_diario_cierre?: number;
+		correlativo?: number;
+		correlativo_padded?: string;
+		codigo_rd?: string;
+		hora_cierre?: string;
+	}> {
 		// Usar endpoint local para cerrar caja
 		const url = `${this.apiUrl}/cobros/cerrar-caja`;
 
-		const body = {
+		const body: Record<string, unknown> = {
 			usuario: request.usuario,
 			fecha: request.fecha
 		};
+		if (request.codigo_carrera) {
+			body['codigo_carrera'] = request.codigo_carrera;
+		}
 
 		return this.http.post<any>(url, body).pipe(
 			map((res: any) => ({
 				success: res === 'exito' || res?.success,
-				message: res === 'exito' ? 'Caja cerrada exitosamente' : res?.message || 'Error al cerrar caja'
-			}))
+				message: res === 'exito' ? 'Caja cerrada exitosamente' : res?.message || 'Error al cerrar caja',
+				orden_cierre: typeof res?.orden_cierre === 'number' ? res.orden_cierre : undefined,
+				id_libro_diario_cierre:
+					typeof res?.id_libro_diario_cierre === 'number' ? res.id_libro_diario_cierre : undefined,
+				correlativo:
+					typeof res?.correlativo === 'number'
+						? res.correlativo
+						: typeof res?.correlativo === 'string' && /^\d+$/.test(res.correlativo)
+							? parseInt(res.correlativo, 10)
+							: undefined,
+				correlativo_padded:
+					typeof res?.correlativo_padded === 'string' && res.correlativo_padded.trim() !== ''
+						? res.correlativo_padded.trim()
+						: undefined,
+				codigo_rd:
+					typeof res?.codigo_rd === 'string' && res.codigo_rd.trim() !== '' ? res.codigo_rd.trim() : undefined,
+				hora_cierre: typeof res?.hora_cierre === 'string' && res.hora_cierre.trim() !== '' ? res.hora_cierre.trim() : undefined
+			})),
+			catchError((err: any) => {
+				const status = err?.status;
+				const backendMsg =
+					err?.error?.message ||
+					(typeof err?.error === 'string' ? err.error : '') ||
+					err?.message ||
+					'Error desconocido';
+				return of({
+					success: false,
+					message: `Error HTTP${status ? ' ' + status : ''} al cerrar caja (${url}). ${backendMsg}`,
+					orden_cierre: undefined,
+					id_libro_diario_cierre: undefined,
+					correlativo: undefined,
+					correlativo_padded: undefined,
+					codigo_rd: undefined,
+					hora_cierre: undefined
+				});
+			})
 		);
 	}
 
 	/**
 	 * Genera el PDF del libro diario (usando BD local de cobros)
+	 * request.resumen: totales Factura/Recibo por método para plantilla SGA
 	 */
 	imprimirLibroDiario(request: {
 		contenido: string;
+		datos?: LibroDiarioItem[];
 		usuario: string;
+		usuario_display?: string;
 		fecha: string;
 		t_ingresos: string;
 		t_egresos: string;
 		totales: string;
+		resumen?: Record<string, unknown>;
 	}): Observable<{ success: boolean; url: string; message?: string }> {
 		// Usar endpoint local para generar PDF
 		const url = `${this.apiUrl}/reportes/libro-diario/imprimir`;
 
 		return this.http.post<any>(url, request).pipe(
-			map((res: any) => ({
-				success: !!res,
-				url: res || '',
-				message: res ? 'PDF generado exitosamente' : 'Error al generar PDF'
-			}))
+			map((res: any) => {
+				// Soportar diferentes formatos de respuesta:
+				// - string con URL directa
+				// - { success: bool, url: string, message?: string }
+				// - { url: string }
+				if (typeof res === 'string') {
+					return {
+						success: !!res,
+						url: res,
+						message: res ? 'PDF generado exitosamente' : 'Error al generar PDF'
+					};
+				}
+				if (res && typeof res === 'object') {
+					const success = res.success !== undefined ? !!res.success : !!res.url;
+					return {
+						success,
+						url: res.url || '',
+						message: res.message || (success ? 'PDF generado exitosamente' : 'Error al generar PDF')
+					};
+				}
+				return {
+					success: false,
+					url: '',
+					message: 'Respuesta vacía o no válida al generar PDF'
+				};
+			})
 		);
 	}
 }

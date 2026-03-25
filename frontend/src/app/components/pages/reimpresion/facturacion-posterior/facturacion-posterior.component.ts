@@ -3,11 +3,12 @@ import { CommonModule } from '@angular/common';
 import { FormsModule, ReactiveFormsModule, FormBuilder, FormGroup, Validators } from '@angular/forms';
 import { RouterModule } from '@angular/router';
 import { CobrosService } from '../../../../services/cobros.service';
+import { SoloNumerosDirective } from '../../../../directives/solo-numeros.directive';
 
 @Component({
 	selector: 'app-facturacion-posterior',
 	standalone: true,
-	imports: [CommonModule, FormsModule, ReactiveFormsModule, RouterModule],
+	imports: [CommonModule, FormsModule, ReactiveFormsModule, RouterModule, SoloNumerosDirective],
 	templateUrl: './facturacion-posterior.component.html',
 	styleUrls: ['./facturacion-posterior.component.scss']
 })
@@ -16,7 +17,7 @@ export class FacturacionPosteriorComponent implements OnInit {
 	identidadForm: FormGroup;
 	modalIdentidadForm: FormGroup;
 	observaciones: string = '';
-	
+
 	// Estado UI para modal de Razón Social
 	razonSocialEditable = false;
 	modalAlertMessage = '';
@@ -25,7 +26,7 @@ export class FacturacionPosteriorComponent implements OnInit {
 	docPlaceholder = 'Introduzca CI';
 	showComplemento = true;
 	loading = false;
-	
+
 	// Catálogo de tipos de documento de identidad
 	sinDocsIdentidad: Array<{ codigo: number; descripcion: string }> = [
 		{ codigo: 1, descripcion: 'CI - CEDULA DE IDENTIDAD' },
@@ -80,7 +81,7 @@ export class FacturacionPosteriorComponent implements OnInit {
 
 	constructor(private fb: FormBuilder, private cobrosService: CobrosService) {
 		this.searchForm = this.fb.group({ cod_ceta: [''], gestion: [''] });
-		
+
 		// Formulario de identidad (readonly, se abre modal al hacer clic)
 		this.identidadForm = this.fb.group({
 			nombre_completo: [''],
@@ -90,7 +91,7 @@ export class FacturacionPosteriorComponent implements OnInit {
 			complemento_ci: [{ value: '', disabled: true }],
 			razon_social: ['']
 		});
-		
+
 		// Formulario del modal (separado para no sincronizar hasta guardar)
 		this.modalIdentidadForm = this.fb.group({
 			tipo_identidad: [5, Validators.required],
@@ -117,7 +118,7 @@ export class FacturacionPosteriorComponent implements OnInit {
 			this.updateModalTipoUI(Number(v || 5));
 		});
 		this.updateModalTipoUI(Number(this.modalIdentidadForm.get('tipo_identidad')?.value || 5));
-		
+
 		// Habilitar/deshabilitar complemento CI en el modal
 		this.modalIdentidadForm.get('complemento_habilitado')?.valueChanges.subscribe((v: boolean) => {
 			const ctrl = this.modalIdentidadForm.get('complemento_ci');
@@ -171,15 +172,15 @@ export class FacturacionPosteriorComponent implements OnInit {
 		this.ctxTipoInscripcion = String(insc?.tipo_inscripcion || '');
 		this.ctxCodInscrip = insc?.cod_inscrip ? Number(insc.cod_inscrip) : null;
 		this.ctxGestion = String(res?.data?.gestion || '');
-		
+
 		// Guardar datos del cliente para facturación
 		const codCeta = String(est?.cod_ceta || this.searchForm.value?.cod_ceta || '');
 		const nombreCompleto = `${est?.ap_paterno || ''} ${est?.ap_materno || ''} ${est?.nombres || ''}`.trim() || 'S/N';
-		
+
 		// Obtener CI del estudiante (igual que en Cobros)
 		let ciEstudiante = String(est?.ci || '');
 		let tipoIdentidad = 1; // Por defecto CI
-		
+
 		// Autocompletar desde documento_identidad si existe en el resumen
 		const docId = res?.data?.documento_identidad || null;
 		if (docId) {
@@ -188,14 +189,14 @@ export class FacturacionPosteriorComponent implements OnInit {
 		} else if (!ciEstudiante) {
 			ciEstudiante = 'SIN INFORMACIÓN';
 		}
-		
+
 		// clienteData ya no se usa para facturación, se obtiene de identidadForm
 		this.clienteData = {
 			numero: ciEstudiante,  // CI del estudiante, no cod_ceta
 			razon: nombreCompleto,
 			tipo_identidad: tipoIdentidad
 		};
-		
+
 		// Actualizar formulario de identidad
 		this.identidadForm.patchValue({
 			nombre_completo: nombreCompleto,
@@ -212,21 +213,21 @@ export class FacturacionPosteriorComponent implements OnInit {
 
 		// Mapear cobros previos: usar SOLO mensualidad.items (ya incluye todo)
 		const listMens = Array.isArray(res?.data?.cobros?.mensualidad?.items) ? res.data.cobros.mensualidad.items : [];
-		
+
 		// Agrupar por nro_recibo
 		const byRecibo = new Map<string | number, {
 			glosa: string; gestion: string; fecha: string; factura: number | null; recibo: number | null; importe: number; usuario: string; selected: boolean; rawItems: any[];
 		}>();
-		
+
 		for (const r of (listMens || [])) {
 			// Filtrar solo RECIBOS (tipo_documento='R') con reposicion_factura = 1
 			const tipoDoc = String(r?.tipo_documento || '').toUpperCase();
 			if (tipoDoc === 'R' && (r?.reposicion_factura == 1 || r?.reposicion_factura === true)) {
 				continue;
 			}
-			
+
 			const fechaRaw = String(r?.fecha_cobro || r?.created_at || '');
-			
+
 			// Extraer nickname del usuario correctamente
 			let usuario = '';
 			if (r?.usuario) {
@@ -239,12 +240,12 @@ export class FacturacionPosteriorComponent implements OnInit {
 			if (!usuario && r?.id_usuario) {
 				usuario = String(r.id_usuario);
 			}
-			
+
 			const factura = r?.nro_factura != null ? Number(r.nro_factura) : null;
 			const recibo = r?.nro_recibo != null ? Number(r.nro_recibo) : null;
 			const key = recibo ?? `sin-recibo-${Math.random()}`;
 			const existing = byRecibo.get(key);
-			
+
 			if (!existing) {
 				const conceptoVal = (r?.concepto ?? '').toString().trim();
 				const glosa = conceptoVal
@@ -340,7 +341,7 @@ export class FacturacionPosteriorComponent implements OnInit {
 			// Obtener nro_recibo del primer item
 			const anyIt: any = raw[0] || {};
 			const nroRecibo = anyIt?.nro_recibo ? Number(anyIt.nro_recibo) : null;
-			
+
 			if (!nroRecibo) {
 				alert('No se pudo identificar el número de recibo.');
 				return;
@@ -375,7 +376,7 @@ export class FacturacionPosteriorComponent implements OnInit {
 			const razonSocial = String(this.identidadForm.get('razon_social')?.value || '');
 			const complementoHab = !!this.identidadForm.get('complemento_habilitado')?.value;
 			const complemento = complementoHab ? String(this.identidadForm.get('complemento_ci')?.value || '') : '';
-			
+
 			// Construir número de documento completo (CI + complemento si aplica)
 			const numeroDocumento = complemento ? `${ci}${complemento}` : ci;
 
@@ -422,19 +423,19 @@ export class FacturacionPosteriorComponent implements OnInit {
 							next: (res2: any) => {
 								if (res2?.success) {
 									alert('Reposición registrada correctamente.');
-									
+
 									// Descargar la factura generada
 									const items = res2?.data?.items || [];
 									if (items.length > 0) {
 										// Buscar el primer item que sea factura (tipo_documento='F')
 										const facturaItem = items.find((it: any) => String(it?.tipo_documento || '').toUpperCase() === 'F');
-										
+
 										if (facturaItem && facturaItem.nro_factura) {
 											const nroFactura = facturaItem.nro_factura;
 											// Obtener año de la fecha de cobro o usar año actual
 											const fechaCobro = facturaItem?.cobro?.fecha_cobro || facturaItem?.cobro?.created_at;
 											const anio = fechaCobro ? new Date(fechaCobro).getFullYear() : new Date().getFullYear();
-											
+
 											this.cobrosService.downloadFacturaPdf(anio, nroFactura).subscribe({
 												next: (blob: Blob) => {
 													const url = window.URL.createObjectURL(blob);
@@ -452,7 +453,7 @@ export class FacturacionPosteriorComponent implements OnInit {
 											});
 										}
 									}
-									
+
 									this.detalleFacturaVisible = false;
 									this.locked = false;
 									this.buscarPorCodCeta();
@@ -623,14 +624,14 @@ export class FacturacionPosteriorComponent implements OnInit {
 						complemento_ci: complemento || '',
 						razon_social: razon || (res?.data?.razon_social || '')
 					}, { emitEvent: false });
-					
+
 					// Actualizar clienteData con los nuevos valores
 					this.clienteData = {
 						numero: ci,
 						razon: razon,
 						tipo_identidad: tipoId
 					};
-					
+
 					const modalEl = document.getElementById('razonSocialModal');
 					if (modalEl && (window as any).bootstrap?.Modal) {
 						const modal = (window as any).bootstrap.Modal.getInstance(modalEl);
