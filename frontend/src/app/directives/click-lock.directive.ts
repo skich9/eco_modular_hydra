@@ -82,12 +82,14 @@ export class ClickLockDirective implements OnDestroy {
 			native.disabled = false;
 		} else {
 			native.removeAttribute('aria-disabled');
-			try { native.style.pointerEvents = ''; native.style.opacity = ''; } catch {}
 		}
+		// Siempre limpiar estilos, independientemente del tipo de elemento
+		try { native.style.pointerEvents = ''; native.style.opacity = ''; } catch {}
 		if (this.sub) { this.sub.unsubscribe(); this.sub = undefined; }
 		if (this.timerId) { clearTimeout(this.timerId); this.timerId = null; }
 		if (this.disableDelayId) { clearTimeout(this.disableDelayId); this.disableDelayId = null; }
 	}
+
 
 	ngOnDestroy(): void {
 		if (this.sub) { this.sub.unsubscribe(); }

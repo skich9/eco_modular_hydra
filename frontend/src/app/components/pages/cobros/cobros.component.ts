@@ -1620,15 +1620,17 @@ export class CobrosComponent implements OnInit {
         const btnPrint = document.getElementById('btnSuccessPrint');
         const btnClose = document.getElementById('btnSuccessClose');
         btnPrint?.addEventListener('click', () => this.onSuccessPrint());
-        // Refrescar sólo con el botón Cerrar
-        btnClose?.addEventListener('click', () => this.onSuccessClose());
-        // Auto-clean DOM when closed
-        const bs = (window as any).bootstrap;
-        if (bs?.Modal) {
-          modalEl?.addEventListener('hidden.bs.modal', () => {
-            try { modalEl?.remove(); } catch { }
-          });
-        }
+        // El botón Cerrar solo llama hide(); el cleanup ocurre en hidden.bs.modal
+        btnClose?.addEventListener('click', () => {
+          const bs2 = (window as any).bootstrap;
+          const inst = bs2?.Modal?.getInstance(modalEl!) || (bs2?.Modal ? new bs2.Modal(modalEl!) : null);
+          inst?.hide();
+        });
+        // Cleanup SIEMPRE al cerrar (X, Cerrar, Escape, backdrop)
+        modalEl?.addEventListener('hidden.bs.modal', () => {
+          this.limpiarTodo();
+          try { modalEl?.remove(); } catch { }
+        }, { once: true });
       }, 0);
     } else {
       // Update content if already exists
@@ -1636,7 +1638,15 @@ export class CobrosComponent implements OnInit {
       const btnPrint = document.getElementById('btnSuccessPrint');
       const btnClose = document.getElementById('btnSuccessClose');
       btnPrint?.addEventListener('click', () => this.onSuccessPrint());
-      btnClose?.addEventListener('click', () => this.onSuccessClose());
+      btnClose?.addEventListener('click', () => {
+        const bs2 = (window as any).bootstrap;
+        const inst = bs2?.Modal?.getInstance(modalEl!) || (bs2?.Modal ? new bs2.Modal(modalEl!) : null);
+        inst?.hide();
+      });
+      modalEl?.addEventListener('hidden.bs.modal', () => {
+        this.limpiarTodo();
+        try { modalEl?.remove(); } catch { }
+      }, { once: true });
     }
     const bs = (window as any).bootstrap;
     if (modalEl && bs?.Modal) {
@@ -1714,56 +1724,48 @@ export class CobrosComponent implements OnInit {
   }
 
   onSuccessClose(): void {
-    // Recargar datos del resumen antes de limpiar para mostrar actualizados
-    const cod = (this.searchForm.get('cod_ceta')?.value || '').toString().trim();
-    const gestion = (this.searchForm.get('gestion')?.value || '').toString().trim();
-
-    if (cod) {
-      this.cobrosService.getResumen(cod, gestion).subscribe({
-        next: (res) => {
-          if (res?.success) {
-            this.resumen = res.data;
-            this.showOpciones = true;
-            // Limpiar solo el formulario de cobros, pero mantener el resumen actualizado
-            this.limpiarFormularioCobros();
-            this.showAlert('Datos actualizados. Puede ver los nuevos pagos en el Kardex económico.', 'success');
-          } else {
-            // Si falla la recarga, limpiar todo como antes
-            this.limpiarTodo();
-          }
-        },
-        error: () => {
-          // Si falla la recarga, limpiar todo como antes
-          this.limpiarTodo();
-        }
-      });
-    } else {
-      // Si no hay código, limpiar todo
-      this.limpiarTodo();
-    }
-
-    // Cerrar modal
+    // Solo cierra el modal; el cleanup lo maneja hidden.bs.modal
     const modalEl = document.getElementById('successModal');
     const bs = (window as any).bootstrap;
     if (modalEl && bs?.Modal) {
       const instance = bs.Modal.getInstance(modalEl) || new bs.Modal(modalEl);
       instance.hide();
+    } else {
+      // Si por alguna razón no hay modal, limpiar de todas formas
+      this.limpiarTodo();
     }
   }
 
+
   private limpiarFormularioCobros(): void {
     try {
+      // Limpiar el detalle de pagos
       (this.batchForm.get('pagos') as FormArray).clear();
-      this.batchForm.reset({ cabecera: { id_forma_cobro: '', id_cuentas_bancarias: '' }, pagos: [] });
+      // NO hacer batchForm.reset() porque borra id_usuario (Validators.required) y deja el form inválido.
+      // Solo limpiar los campos transaccionales de cabecera con patchValue:
+      const cabecera = this.batchForm.get('cabecera') as FormGroup;
+      if (cabecera) {
+        cabecera.patchValue({
+          id_forma_cobro: '',
+          id_cuentas_bancarias: '',
+          codigo_sin: '',
+          nro_recibo: null
+        }, { emitEvent: false });
+      }
       this.identidadForm.reset({ nombre_completo: '', tipo_identidad: 1, ci: '', complemento_habilitado: false, complemento_ci: '', razon_social: '', email_habilitado: false, email: '', turno: '' });
       this.modalIdentidadForm.reset({ tipo_identidad: 1, ci: '', complemento_habilitado: false, complemento_ci: '', razon_social: '' });
       this.mensualidadModalForm.reset({ metodo_pago: '', cantidad: 1, costo_total: 0, observaciones: '' });
       this.alertMessage = '';
       this.metodoPagoLocked = false;
       this.successSummary = null;
+      // Resetear estado QR para evitar bloqueo heredado en cobros consecutivos
+      this.qrPanelActive = false;
+      this.qrPanelStatus = null;
       try { (this.batchForm.get('cabecera.codigo_sin') as any)?.enable?.({ emitEvent: false }); } catch { }
     } catch { }
   }
+
+
 
   private limpiarTodo(): void {
     try {
