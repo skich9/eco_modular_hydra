@@ -24,6 +24,7 @@ export interface Pensum {
 	orden?: number;
 	nivel?: string;
 	estado?: boolean;
+	activo?: boolean | number;
 }
 
 // ParametroEconomico eliminado de Materia: ya no se usa asociación directa
