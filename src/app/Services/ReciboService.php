@@ -31,8 +31,25 @@ class ReciboService
 				[$scope]
 			);
 			$row = DB::selectOne('SELECT LAST_INSERT_ID() AS id');
+			$candidate = (int) ($row->id ?? 0);
+
+			// Asegurar que el contador no genere un número menor o igual al ya existente (sync SGA / cargas manuales)
+			$max = DB::table('recibo')
+				->where('anio', $anio)
+				->max('nro_recibo');
+			$maxNro = (int) $max;
+			if ($candidate <= $maxNro) {
+				$candidate = $maxNro + 1;
+				DB::table('doc_counter')
+					->where('scope', $scope)
+					->update([
+						'last' => $candidate,
+						'updated_at' => now(),
+					]);
+			}
+
 			DB::commit();
-			$next = (int) ($row->id ?? 0);
+			$next = $candidate;
 			Log::info('ReciboService.nextReciboAtomic', [ 'anio' => $anio, 'next' => $next ]);
 			return $next;
 		} catch (\Throwable $e) {

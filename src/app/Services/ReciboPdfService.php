@@ -111,6 +111,31 @@ class ReciboPdfService
 		return null;
 	}
 
+	private function resolveCarreraNombre(?string $codPensum): string
+	{
+		$codPensum = trim((string) $codPensum);
+		if ($codPensum === '') { return ''; }
+		try {
+			$row = DB::table('pensums')
+				->leftJoin('carrera', 'carrera.codigo_carrera', '=', 'pensums.codigo_carrera')
+				->where('pensums.cod_pensum', $codPensum)
+				->select([
+					'carrera.nombre as carrera_nombre',
+					'pensums.nombre as pensum_nombre'
+				])
+				->first();
+			if ($row) {
+				$nom = trim((string) ($row->carrera_nombre ?? ''));
+				if ($nom !== '') { return $nom; }
+				$nom = trim((string) ($row->pensum_nombre ?? ''));
+				if ($nom !== '') { return $nom; }
+			}
+		} catch (\Throwable $e) {
+			return '';
+		}
+		return '';
+	}
+
 	private function buildDetalleConMontos(array $cobros): string
 	{
 		$lines = [];
@@ -254,20 +279,38 @@ class ReciboPdfService
 			$est = null;
 		}
 
+		$formaId = '';
 		$formaNombre = '';
 		try {
-			$idForma = null;
+			$raw = '';
 			if (isset($recibo->id_forma_cobro) && $recibo->id_forma_cobro) {
-				$idForma = (int) $recibo->id_forma_cobro;
+				$raw = (string) $recibo->id_forma_cobro;
 			} elseif (!empty($cobros) && isset($cobros[0]->id_forma_cobro)) {
-				$idForma = (int) $cobros[0]->id_forma_cobro;
+				$raw = (string) $cobros[0]->id_forma_cobro;
 			}
-			if ($idForma) {
-				$forma = DB::table('formas_cobro')->where('id_forma_cobro', $idForma)->first();
+			$formaId = strtoupper(trim($raw));
+			if ($formaId !== '') {
+				$forma = DB::table('formas_cobro')->where('id_forma_cobro', $formaId)->first();
 				$formaNombre = strtoupper(trim((string) ($forma->nombre ?? $forma->descripcion ?? $forma->label ?? '')));
+				if ($formaNombre === '') {
+					$formaNombre = $formaId;
+				}
 			}
 		} catch (\Throwable $e) {
+			$formaId = '';
 			$formaNombre = '';
+		}
+
+		$formaCode = $formaId;
+		$isEfectivo = ($formaCode === 'E');
+		$isBancario = in_array($formaCode, ['B','C','D','L','O'], true);
+		if (!$isEfectivo && !$isBancario && $formaNombre !== '') {
+			if (strpos($formaNombre, 'EFECTIVO') !== false) { $isEfectivo = true; }
+			elseif (strpos($formaNombre, 'TARJETA') !== false) { $isBancario = true; $formaCode = 'L'; }
+			elseif (strpos($formaNombre, 'DEPOS') !== false) { $isBancario = true; $formaCode = 'D'; }
+			elseif (strpos($formaNombre, 'TRANSFER') !== false) { $isBancario = true; $formaCode = 'B'; }
+			elseif (strpos($formaNombre, 'CHEQUE') !== false) { $isBancario = true; $formaCode = 'C'; }
+			else { $isBancario = true; }
 		}
 
 		$extras = [];
@@ -275,6 +318,19 @@ class ReciboPdfService
 			$extras['fecha_dt'] = new \DateTime((string) ($recibo->created_at ?? 'now'), new \DateTimeZone('America/La_Paz'));
 		} catch (\Throwable $e) {
 			$extras['fecha_dt'] = new \DateTime('now', new \DateTimeZone('America/La_Paz'));
+		}
+		try {
+			$codPensum = '';
+			if (!empty($cobros) && isset($cobros[0]) && isset($cobros[0]->cod_pensum)) {
+				$codPensum = (string) $cobros[0]->cod_pensum;
+			} elseif (isset($recibo->cod_pensum)) {
+				$codPensum = (string) $recibo->cod_pensum;
+			} elseif ($est && isset($est->cod_pensum)) {
+				$codPensum = (string) $est->cod_pensum;
+			}
+			$extras['carrera'] = $this->resolveCarreraNombre($codPensum);
+		} catch (\Throwable $e) {
+			$extras['carrera'] = '';
 		}
 		try {
 			$logoPath = public_path('img/logo.png');
@@ -301,6 +357,57 @@ class ReciboPdfService
 			$isReposicion = false;
 		}
 
+		// Correlativo de notas (para N° E-<correlativo>)
+		try {
+			$extras['e_numero'] = (string) ($recibo->nro_recibo ?? '');
+			if ($isEfectivo) {
+				$nr = DB::table('nota_reposicion')
+					->where('nro_recibo', (int) $nroRecibo)
+					->orderByDesc('fecha_nota')
+					->orderByDesc('correlativo')
+					->first();
+				if ($nr && isset($nr->correlativo)) {
+					$extras['nota_reposicion'] = $nr;
+					$extras['e_numero'] = (string) $nr->correlativo;
+				}
+			} elseif ($isBancario) {
+				$nb = DB::table('nota_bancaria')
+					->where('nro_recibo', (int) $nroRecibo)
+					->orderByDesc('fecha_nota')
+					->orderByDesc('correlativo')
+					->first();
+				if ($nb && isset($nb->correlativo)) {
+					$extras['nota'] = $nb;
+					$extras['e_numero'] = (string) $nb->correlativo;
+				}
+			}
+		} catch (\Throwable $e) {
+			$extras['e_numero'] = (string) ($recibo->nro_recibo ?? '');
+		}
+
+		// Banco destino (cuentas_bancarias.banco) para notas bancarias
+		try {
+			if ($isBancario) {
+				$idCuenta = null;
+				if (!empty($cobros) && isset($cobros[0]) && isset($cobros[0]->id_cuentas_bancarias) && $cobros[0]->id_cuentas_bancarias) {
+					$idCuenta = (int) $cobros[0]->id_cuentas_bancarias;
+				}
+				if ($idCuenta) {
+					$cb = DB::table('cuentas_bancarias')->where('id_cuentas_bancarias', $idCuenta)->first();
+					if ($cb && isset($cb->banco)) {
+						$extras['dest'] = (object) [ 'banco' => (string) $cb->banco ];
+					}
+				}
+				if (!isset($extras['dest']) && isset($extras['nota']) && is_object($extras['nota']) && isset($extras['nota']->banco) && (string) $extras['nota']->banco !== '') {
+					$b = trim((string) $extras['nota']->banco);
+					$pos = strpos($b, ' - ');
+					if ($pos !== false) { $b = trim(substr($b, 0, $pos)); }
+					$extras['dest'] = (object) [ 'banco' => $b ];
+				}
+			}
+		} catch (\Throwable $e) {
+		}
+
 		$html = '';
 		if ($isReposicion) {
 			$html = $this->renderHtml($recibo, $cobros, $est, $extras);
@@ -308,18 +415,177 @@ class ReciboPdfService
 			return (string) ((is_object($x) && isset($x->id_forma_cobro)) ? $x->id_forma_cobro : '');
 		}, $cobros))) > 1) {
 			$html = $this->renderHtmlCombinado($recibo, $cobros, $est, $extras);
-		} elseif (strpos($formaNombre, 'TARJETA') !== false) {
+		} elseif (strpos($formaNombre, 'TARJETA') !== false || $formaCode === 'L') {
 			$html = $this->renderHtmlTarjeta($recibo, $cobros, $est, $extras);
-		} elseif (strpos($formaNombre, 'TRANSFER') !== false) {
+		} elseif (strpos($formaNombre, 'TRANSFER') !== false || $formaCode === 'B') {
 			$html = $this->renderHtmlTransferencia($recibo, $cobros, $est, $extras);
-		} elseif (strpos($formaNombre, 'DEPOS') !== false) {
+		} elseif (strpos($formaNombre, 'DEPOS') !== false || $formaCode === 'D') {
 			$html = $this->renderHtmlDeposito($recibo, $cobros, $est, $extras);
-		} elseif (strpos($formaNombre, 'CHEQUE') !== false) {
+		} elseif (strpos($formaNombre, 'CHEQUE') !== false || $formaCode === 'C') {
 			$html = $this->renderHtmlCheque($recibo, $cobros, $est, $extras);
-		} elseif ($formaNombre !== '' && strpos($formaNombre, 'EFECTIVO') === false) {
+		} elseif ($isBancario) {
 			$html = $this->renderHtmlOtro($recibo, $cobros, $est, $extras);
 		} else {
 			$html = $this->renderHtml($recibo, $cobros, $est, $extras);
+		}
+
+		$dompdf = new Dompdf([
+			'isRemoteEnabled' => true,
+			'isHtml5ParserEnabled' => true,
+			'isPhpEnabled' => true,
+		]);
+		$dompdf->loadHtml($html, 'UTF-8');
+		$dompdf->setPaper([8.5 * 72, 5.5 * 72]);
+		$dompdf->render();
+		$pdf = $dompdf->output();
+		if (empty($pdf)) {
+			throw new \RuntimeException('PDF generado está vacío');
+		}
+		return $pdf;
+	}
+
+	public function buildNotaBancariaPdfByFactura(int $anio, int $nroFactura): string
+	{
+		$nb = DB::table('nota_bancaria')
+			->where('anio_deposito', (int) $anio)
+			->where('nro_factura', (string) $nroFactura)
+			->orderByDesc('fecha_nota')
+			->orderByDesc('correlativo')
+			->first();
+		if (!$nb) {
+			$nb = DB::table('nota_bancaria')
+				->where('nro_factura', (string) $nroFactura)
+				->orderByDesc('fecha_nota')
+				->orderByDesc('correlativo')
+				->first();
+		}
+		if (!$nb) {
+			throw new \RuntimeException('Nota bancaria no encontrada');
+		}
+
+		$factura = DB::table('factura')
+			->where('anio', (int) $anio)
+			->where('nro_factura', (int) $nroFactura)
+			->orderByDesc('created_at')
+			->first();
+		if (!$factura) {
+			throw new \RuntimeException('Factura no encontrada');
+		}
+
+		$cobros = [];
+		try {
+			$cobros = DB::table('cobro')
+				->where('anio_cobro', (int) $anio)
+				->where('nro_factura', (int) $nroFactura)
+				->orderBy('nro_cobro')
+				->get()
+				->all();
+		} catch (\Throwable $e) {
+			$cobros = [];
+		}
+		if (!$cobros) {
+			try {
+				$cobros = DB::table('cobro')
+					->where('nro_factura', (int) $nroFactura)
+					->orderByDesc('anio_cobro')
+					->orderBy('nro_cobro')
+					->get()
+					->all();
+			} catch (\Throwable $e) {
+				$cobros = [];
+			}
+		}
+
+		$reciboVirtual = (object) [
+			'anio' => (int) $anio,
+			'nro_recibo' => 0,
+			'nro_factura' => (int) $nroFactura,
+			'cod_ceta' => (int) ($factura->cod_ceta ?? 0),
+			'id_usuario' => (int) ($factura->id_usuario ?? 0),
+			'id_forma_cobro' => (string) ($factura->id_forma_cobro ?? ''),
+			'monto_total' => (float) ($factura->monto_total ?? 0),
+			'created_at' => (string) ($factura->created_at ?? (string) ($nb->fecha_nota ?? 'now')),
+		];
+
+		$est = null;
+		try {
+			$codCeta = (int) ($reciboVirtual->cod_ceta ?? 0);
+			if ($codCeta > 0) {
+				$est = DB::table('estudiantes')->where('cod_ceta', $codCeta)->first();
+			}
+		} catch (\Throwable $e) {
+			$est = null;
+		}
+
+		$formaId = strtoupper(trim((string) ($reciboVirtual->id_forma_cobro ?? '')));
+		$formaNombre = '';
+		try {
+			if ($formaId !== '') {
+				$forma = DB::table('formas_cobro')->where('id_forma_cobro', $formaId)->first();
+				$formaNombre = strtoupper(trim((string) ($forma->nombre ?? $forma->descripcion ?? $forma->label ?? '')));
+				if ($formaNombre === '') {
+					$formaNombre = $formaId;
+				}
+			}
+		} catch (\Throwable $e) {
+			$formaNombre = $formaId;
+		}
+
+		$extras = [];
+		try {
+			$extras['fecha_dt'] = new \DateTime((string) ($nb->fecha_nota ?? $reciboVirtual->created_at ?? 'now'), new \DateTimeZone('America/La_Paz'));
+		} catch (\Throwable $e) {
+			$extras['fecha_dt'] = new \DateTime('now', new \DateTimeZone('America/La_Paz'));
+		}
+		try {
+			$codPensum = '';
+			if (!empty($cobros) && isset($cobros[0]) && isset($cobros[0]->cod_pensum)) {
+				$codPensum = (string) $cobros[0]->cod_pensum;
+			} elseif ($est && isset($est->cod_pensum)) {
+				$codPensum = (string) $est->cod_pensum;
+			}
+			$extras['carrera'] = $this->resolveCarreraNombre($codPensum);
+		} catch (\Throwable $e) {
+			$extras['carrera'] = '';
+		}
+		try {
+			$logoPath = public_path('img/logo.png');
+			if (is_string($logoPath) && $logoPath !== '' && file_exists($logoPath)) {
+				$raw = null;
+				try { $raw = file_get_contents($logoPath); } catch (\Throwable $e) { $raw = null; }
+				if (is_string($raw) && $raw !== '') {
+					$extras['logo'] = 'data:image/png;base64,' . base64_encode($raw);
+				}
+			}
+		} catch (\Throwable $e) {}
+
+		$extras['nota'] = $nb;
+		$extras['e_numero'] = (string) ($nb->correlativo ?? $nroFactura);
+		try {
+			$b = trim((string) ($nb->banco ?? ''));
+			if ($b !== '') {
+				$pos = strpos($b, ' - ');
+				if ($pos !== false) { $b = trim(substr($b, 0, $pos)); }
+				$extras['dest'] = (object) [ 'banco' => $b ];
+			}
+		} catch (\Throwable $e) {}
+
+		$html = '';
+		$formaCode = $formaId;
+		if ($formaNombre === 'COMBINADO' || count(array_unique(array_map(function ($x) {
+			return (string) ((is_object($x) && isset($x->id_forma_cobro)) ? $x->id_forma_cobro : '');
+		}, $cobros))) > 1) {
+			$html = $this->renderHtmlCombinado($reciboVirtual, $cobros, $est, $extras);
+		} elseif (strpos($formaNombre, 'TARJETA') !== false || $formaCode === 'L') {
+			$html = $this->renderHtmlTarjeta($reciboVirtual, $cobros, $est, $extras);
+		} elseif (strpos($formaNombre, 'TRANSFER') !== false || $formaCode === 'B') {
+			$html = $this->renderHtmlTransferencia($reciboVirtual, $cobros, $est, $extras);
+		} elseif (strpos($formaNombre, 'DEPOS') !== false || $formaCode === 'D') {
+			$html = $this->renderHtmlDeposito($reciboVirtual, $cobros, $est, $extras);
+		} elseif (strpos($formaNombre, 'CHEQUE') !== false || $formaCode === 'C') {
+			$html = $this->renderHtmlCheque($reciboVirtual, $cobros, $est, $extras);
+		} else {
+			$html = $this->renderHtmlOtro($reciboVirtual, $cobros, $est, $extras);
 		}
 
 		$dompdf = new Dompdf([
@@ -402,7 +668,7 @@ class ReciboPdfService
         $bancoDest = $dest ? ((string)($dest->banco ?? '')) : '';
         $fechaDep = $nb ? ((string)($nb->fecha_deposito ?? '')) : '';
         $codCobro = (string)($extras['cod_cobro'] ?? '');
-        $docLine = 'Doc.: F- ' . ((string)($recibo->nro_factura ?? '0')) . ', R- ' . ((string)($recibo->nro_recibo ?? ''));
+        $docLine = 'F- ' . ((string)($recibo->nro_factura ?? '0')) . ', R- ' . ((string)((int)($recibo->nro_recibo ?? 0)));
 
         $html = <<<HTML
 <!DOCTYPE html>
@@ -437,7 +703,7 @@ class ReciboPdfService
             <tr>
                 <td style="width:60%"></td>
                 <td class="right" style="width:40%">
-                    N° E-{$recibo->nro_recibo}<br>
+                    N° E-{$extras['e_numero']}<br>
                     {$fechaLiteral}
                 </td>
             </tr>
@@ -483,15 +749,16 @@ class ReciboPdfService
                     <div><span style="font-weight:bold">Detalle:</span> {$detalle}</div>
                 </td>
                 <td class="right" style="width:40%">
-                    N° E-{$recibo->nro_recibo}<br>
+                    N° E-{$extras['e_numero']}<br>
                     {$fechaLiteral}
                     <div><span style="font-weight:bold">Banco Dest:</span> {$bancoDest}</div>
                 </td>
             </tr>
         </table>
+        <div class="right" style="margin-top:6px; font-weight:bold">Bs. {$totalFmt}</div>
         <table class="sinborde" style="width:100%; margin-top:3px">
             <tr>
-                <td class="small" style="border-top:1px solid #000; padding-top:3px">Solo para fines informativos</td>
+                <td class="small" style="border-top:1px solid #000; padding-top:3px">&nbsp;</td>
                 <td class="small right" style="border-top:1px solid #000; padding-top:3px">usuario: {$usuarioNombre}</td>
             </tr>
         </table>
@@ -594,7 +861,7 @@ HTML;
             }
         } catch (\Throwable $e) {}
         $fechaTransFmt = $fechaTrans !== '' ? $fechaTrans : $fechaDT->format('d/m/Y');
-        $docLine = 'Doc.: F- ' . ((string)($recibo->nro_factura ?? '0')) . ', R- ' . ((string)($recibo->nro_recibo ?? ''));
+        $docLine = 'F- ' . ((string)($recibo->nro_factura ?? '0')) . ', R- ' . ((string)($recibo->nro_recibo ?? ''));
 
         $html = <<<HTML
 <!DOCTYPE html>
@@ -629,7 +896,7 @@ HTML;
             <tr>
                 <td style="width:60%"></td>
                 <td class="right" style="width:40%">
-                    N° E-{$recibo->nro_recibo}<br>
+                    N° E-{$extras['e_numero']}<br>
                     {$fechaLiteral}
                 </td>
             </tr>
@@ -664,7 +931,7 @@ HTML;
                     <div><span style="font-weight:bold">MONTO:</span></div>
                     <div><span style="font-weight:bold">Literal:</span>{$literal}</div>
                     <div><span style="font-weight:bold">Detalle:</span>{$detalle}</div>
-                    <div><span style="font-weight:bold">Obs.:</span></div>
+                    <div><span style="font-weight:bold">Obs.:</span> {$obsLinea}</div>
                     <div><span style="font-weight:bold">Doc.:</span>{$docLine}</div>
                 </td>
                 <td class="right" style="width:30%; vertical-align:top"><div style="font-weight:bold">{$totalFmt}</div></td>
@@ -682,13 +949,13 @@ HTML;
             <tr>
                 <td style="width:60%; vertical-align:top">
                     <div><span style="font-weight:bold">Estudiante:</span> {$nombre}</div>
-                    <div><span style="font-weight:bold">Código</span><br/>CETA:<br/>{$recibo->cod_ceta}</div>
+                    <div><span style="font-weight:bold">Código CETA:</span> {$recibo->cod_ceta}</div>
                     <div><span style="font-weight:bold">MONTO:</span></div>
                     <div><span style="font-weight:bold">Detalle:</span>{$detalle}</div>
                 </td>
                 <td class="right" style="width:40%">
                     <div style="font-weight:bold">TRANSFERENCIA</div>
-                    N° E-{$recibo->nro_recibo}<br>
+                    N° E-{$extras['e_numero']}<br>
                     {$fechaLiteral}
                     <div><span style="font-weight:bold">Banco Dest:</span> {$bancoDest}</div>
                     <div><span style="font-weight:bold">Fecha Trans.:</span> {$fechaTransFmt}</div>
@@ -696,13 +963,13 @@ HTML;
                 </td>
             </tr>
         </table>
+        <div class="right" style="margin-top:6px; font-weight:bold">Bs. {$totalFmt}</div>
         <table class="sinborde" style="width:100%; margin-top:8px">
             <tr>
-                <td class="small" style="border-top:1px solid #000; padding-top:3px">Solo para fines informativos</td>
+                <td class="small" style="border-top:1px solid #000; padding-top:3px">&nbsp;</td>
                 <td class="small right" style="border-top:1px solid #000; padding-top:3px">usuario: {$usuarioNombre}</td>
             </tr>
         </table>
-        <div class="right" style="margin-top:6px; font-weight:bold">Bs. {$totalFmt}</div>
     </body>
     </html>
 HTML;
@@ -771,7 +1038,7 @@ HTML;
         $fechaDep = $nb ? ((string)($nb->fecha_deposito ?? '')) : '';
         $nroTrans = $nb ? ((string)($nb->nro_transaccion ?? '')) : '';
         $fechaDepFmt = $fechaDep !== '' ? $fechaDep : $fechaDT->format('d/m/Y');
-        $docLine = 'Doc.: F- ' . ((string)($recibo->nro_factura ?? '0')) . ', R- ' . ((string)($recibo->nro_recibo ?? ''));
+        $docLine = 'F- ' . ((string)($recibo->nro_factura ?? '0')) . ', R- ' . ((string)($recibo->nro_recibo ?? ''));
 
         $html = <<<HTML
 <!DOCTYPE html>
@@ -806,7 +1073,7 @@ HTML;
             <tr>
                 <td style="width:60%"></td>
                 <td class="right" style="width:40%">
-                    N° E-{$recibo->nro_recibo}<br>
+                    N° E-{$extras['e_numero']}<br>
                     {$fechaLiteral}
                 </td>
             </tr>
@@ -841,19 +1108,46 @@ HTML;
                     <div><span style="font-weight:bold">MONTO:</span></div>
                     <div><span style="font-weight:bold">Literal:</span>{$literal}</div>
                     <div><span style="font-weight:bold">Detalle:</span>{$detalle}</div>
-                    <div><span style="font-weight:bold">Obs.:</span></div>
+                    <div><span style="font-weight:bold">Obs.:</span>{$obsLinea}</div>
                     <div><span style="font-weight:bold">Doc.:</span>{$docLine}</div>
                 </td>
                 <td class="right" style="width:30%; vertical-align:top"><div style="font-weight:bold">{$totalFmt}</div></td>
             </tr>
         </table>
-        <table class="sinborde" style="width:100%; margin-top:8px">
-            <tr>
-                <td class="small" style="border-top:1px solid #000; padding-top:3px">Solo para fines informativos</td>
-                <td class="small right" style="border-top:1px solid #000; padding-top:3px">usuario: {$usuarioNombre}</td>
-            </tr>
-        </table>
-        <div class="right" style="margin-top:6px; font-weight:bold">Bs. {$totalFmt}</div>
+
+		<table class="sinborde" style="width:100%; margin-top:8px">
+			<tr>
+				<td style="width:60%"></td>
+				<td style="width:40%" class="small">{$usuarioNombre} - Firma:</td>
+			</tr>
+		</table>
+		<div class="separador" style="margin-top:6px"></div>
+		<div style="text-align:center; margin-top:6px">Carrera: {$carrera}</div>
+		<table class="sinborde" style="width:100%; margin-top:10px">
+			<tr>
+				<td style="width:60%; vertical-align:top">
+					<div><span style="font-weight:bold">Estudiante:</span> {$nombre}</div>
+					<div><span style="font-weight:bold">Código CETA:</span> {$recibo->cod_ceta}</div>
+					<div><span style="font-weight:bold">MONTO:</span></div>
+					<div><span style="font-weight:bold">Detalle:</span>{$detalle}</div>
+				</td>
+				<td class="right" style="width:40%">
+					<div style="font-weight:bold">DEPÓSITO EN CUENTA</div>
+					N° E-{$extras['e_numero']}<br>
+					{$fechaLiteral}
+					<div><span style="font-weight:bold">Banco:</span> {$bancoDest}</div>
+					<div><span style="font-weight:bold">Fecha Depósito:</span> {$fechaDepFmt}</div>
+					<div><span style="font-weight:bold">N° Trans.:</span> {$nroTrans}</div>
+				</td>
+			</tr>
+		</table>
+		<div class="right" style="margin-top:6px; font-weight:bold">Bs. {$totalFmt}</div>
+		<table class="sinborde" style="width:100%; margin-top:8px">
+			<tr>
+				<td class="small" style="border-top:1px solid #000; padding-top:3px">&nbsp;</td>
+				<td class="small right" style="border-top:1px solid #000; padding-top:3px">usuario: {$usuarioNombre}</td>
+			</tr>
+		</table>
     </body>
     </html>
 HTML;
@@ -884,7 +1178,9 @@ HTML;
             $c = (object)$c;
             $obs = trim((string)($c->observaciones ?? ''));
             $isArr = stripos($obs, 'ARRASTRE') !== false;
-            $obsClean = $obs !== '' ? trim(preg_replace('/\|?\s*\[\s*REZAGADO\s*\]\s*.+$/i', '', preg_replace('/\[\s*ARRASTRE\s*\]/i', '', $obs))) : '';
+            $obsClean = $obs !== ''
+                ? trim(preg_replace('/\|?\s*\[\s*REZAGADO\s*\]\s*.+$/i', '', preg_replace('/\[\s*ARRASTRE\s*\]/i', '', $obs)))
+                : '';
             if ($obsClean !== '') $observaciones[] = $obsClean;
             if ($obs !== '' && preg_match('/\[\s*REZAGADO\s*\]\s*(.+)$/i', $obs, $m)) {
                 $detalles[] = trim($m[1]);
@@ -918,7 +1214,7 @@ HTML;
         $dest = isset($extras['dest']) ? $extras['dest'] : null;
         $bancoDest = $dest ? ((string)($dest->banco ?? '')) : '';
         $nroCheque = $nb ? ((string)($nb->nro_transaccion ?? '')) : '';
-        $docLine = 'Doc.: F- ' . ((string)($recibo->nro_factura ?? '0')) . ', R- ' . ((string)($recibo->nro_recibo ?? ''));
+        $docLine = 'F- ' . ((string)($recibo->nro_factura ?? '0')) . ', R- ' . ((string)($recibo->nro_recibo ?? ''));
 
         $html = <<<HTML
 <!DOCTYPE html>
@@ -953,7 +1249,7 @@ HTML;
             <tr>
                 <td style="width:60%"></td>
                 <td class="right" style="width:40%">
-                    N° E-{$recibo->nro_recibo}<br>
+                    N° E-{$extras['e_numero']}<br>
                     {$fechaLiteral}
                 </td>
             </tr>
@@ -1004,7 +1300,7 @@ HTML;
                 </td>
                 <td class="right" style="width:40%">
                     <div style="font-weight:bold">PAGO CON CHEQUE</div>
-                    N° E-{$recibo->nro_recibo}<br>
+                    N° E-{$extras['e_numero']}<br>
                     {$fechaLiteral}
                     <div><span style="font-weight:bold">Banco:</span> {$bancoDest}</div>
                     <div><span style="font-weight:bold">Fecha Cobro:</span> {$fechaDT->format('d/m/Y')}</div>
@@ -1012,9 +1308,10 @@ HTML;
                 </td>
             </tr>
         </table>
+        <div class="right" style="margin-top:6px; font-weight:bold">Bs. {$totalFmt}</div>
         <table class="sinborde" style="width:100%; margin-top:3px">
             <tr>
-                <td class="small" style="border-top:1px solid #000; padding-top:3px">Solo para fines informativos</td>
+                <td class="small" style="border-top:1px solid #000; padding-top:3px">&nbsp;</td>
                 <td class="small right" style="border-top:1px solid #000; padding-top:3px">usuario: {$usuarioNombre}</td>
             </tr>
         </table>
@@ -1082,7 +1379,7 @@ HTML;
         $carrera = (string)($extras['carrera'] ?? '');
         $logo = (string)($extras['logo'] ?? '');
         $logoHtml = $logo ? ('<img src="' . $logo . '" width="60" height="60" />') : '';
-        $docLine = 'Doc.: F- ' . ((string)($recibo->nro_factura ?? '0')) . ', R- ' . ((string)($recibo->nro_recibo ?? ''));
+        $docLine = 'F- ' . ((string)($recibo->nro_factura ?? '0')) . ', R- ' . ((string)($recibo->nro_recibo ?? ''));
 
         $html = <<<HTML
 <!DOCTYPE html>
@@ -1117,7 +1414,7 @@ HTML;
             <tr>
                 <td style="width:60%"></td>
                 <td class="right" style="width:40%">
-                    N° E-{$recibo->nro_recibo}<br>
+                    N° E-{$extras['e_numero']}<br>
                     {$fechaLiteral}
                 </td>
             </tr>
@@ -1162,14 +1459,15 @@ HTML;
                     <div><span style="font-weight:bold">Detalle:</span> {$detalle}</div>
                 </td>
                 <td class="right" style="width:40%">
-                    N° E-{$recibo->nro_recibo}<br>
+                    N° E-{$extras['e_numero']}<br>
                     {$fechaLiteral}
                 </td>
             </tr>
         </table>
+        <div class="right" style="margin-top:6px; font-weight:bold">Bs. {$totalFmt}</div>
         <table class="sinborde" style="width:100%; margin-top:3px">
             <tr>
-                <td class="small" style="border-top:1px solid #000; padding-top:3px">Solo para fines informativos</td>
+                <td class="small" style="border-top:1px solid #000; padding-top:3px">&nbsp;</td>
                 <td class="small right" style="border-top:1px solid #000; padding-top:3px">usuario: {$usuarioNombre}</td>
             </tr>
         </table>
@@ -1295,7 +1593,7 @@ HTML;
             <tr>
                 <td style="width:60%"></td>
                 <td class="right" style="width:40%">
-                    N° E-{$recibo->nro_recibo}<br>
+                    N° E-{$extras['e_numero']}<br>
                     {$fechaLiteral}
                 </td>
             </tr>
@@ -1330,6 +1628,13 @@ HTML;
             <tbody>
                 {$rows}
             </tbody>
+        </table>
+        <div class="right" style="margin-top:6px; font-weight:bold">Bs. {$totalFmt}</div>
+        <table class="sinborde" style="width:100%; margin-top:3px">
+            <tr>
+                <td class="small" style="border-top:1px solid #000; padding-top:3px">&nbsp;</td>
+                <td class="small right" style="border-top:1px solid #000; padding-top:3px">usuario: {$usuarioNombre}</td>
+            </tr>
         </table>
     </body>
     </html>
@@ -1421,7 +1726,7 @@ HTML;
                 <td style="width:60%"></td>
                 <td class="right" style="width:40%">
                     ING-1<br>
-                    N° E-{$recibo->nro_recibo}<br>
+                    N° E-{$extras['e_numero']}<br>
                     {$fechaLiteral}
                 </td>
             </tr>
@@ -1459,7 +1764,9 @@ HTML;
         </table>
         <div class="separador"></div>
 
-        <table class="sinborde" style="width:100%; margin-top:2px">
+        <div class="right" style="margin-top:6px; font-weight:bold">Bs. {$totalFmt}</div>
+
+        <table class="sinborde" style="width:100%; margin-top:3px">
             <tr>
                 <td style="width:60%; vertical-align:top">
                     <div><span style="font-weight:bold">Estudiante:</span> {$nombre}</div>
@@ -1468,7 +1775,7 @@ HTML;
                     <div><span style="font-weight:bold">Observación:</span> {$obsLinea}</div>
                 </td>
                 <td class="right" style="width:40%">
-                    N° E-{$recibo->nro_recibo}<br>
+                    N° E-{$extras['e_numero']}<br>
                     {$fechaLiteral}
                 </td>
             </tr>
@@ -1476,7 +1783,7 @@ HTML;
 
         <table class="sinborde" style="width:100%; margin-top:3px">
             <tr>
-                <td class="small" style="border-top:1px solid #000; padding-top:3px">Solo para fines informativos</td>
+                <td class="small" style="border-top:1px solid #000; padding-top:3px">&nbsp;</td>
                 <td class="small right" style="border-top:1px solid #000; padding-top:3px">usuario: {$usuarioNombre}</td>
             </tr>
         </table>

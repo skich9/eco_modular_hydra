@@ -9,10 +9,9 @@ class FacturaService
 {
 	public function nextFactura(int $anio, int $sucursal, string $puntoVenta): int
 	{
-		// Secuencia por año y sucursal (ignorando punto de venta)
+		// Secuencia global por año (ignorando sucursal/punto de venta)
 		$max = DB::table('factura')
 			->where('anio', $anio)
-			->where('codigo_sucursal', $sucursal)
 			->max('nro_factura');
 		$next = ((int) $max) + 1;
 		Log::info('FacturaService.nextFactura', [ 'anio' => $anio, 'sucursal' => $sucursal, 'pv' => $puntoVenta, 'next' => $next ]);
@@ -59,7 +58,7 @@ class FacturaService
 	 */
 	public function nextFacturaAtomic(int $anio, int $sucursal, string $puntoVenta): int
 	{
-		$scope = 'FACTURA:' . $anio . ':' . $sucursal;
+		$scope = 'FACTURA:' . $anio;
 		DB::beginTransaction();
 		try {
 			DB::statement(
@@ -72,7 +71,6 @@ class FacturaService
 			// Asegurar que el contador no genere un número menor o igual al ya existente
 			$max = DB::table('factura')
 				->where('anio', $anio)
-				->where('codigo_sucursal', $sucursal)
 				->max('nro_factura');
 			$maxNro = (int) $max;
 			if ($candidate <= $maxNro) {

@@ -84,13 +84,22 @@ class FacturaPdfService
 	 * Genera el PDF de la factura. Si $anulado=true, aplica marca/etiqueta ANULADO.
 	 * Retorna la ruta absoluta del PDF generado.
 	 */
-	public function generate($anio, $nro, $anulado = false)
+	public function generate($anio, $nro, $anulado = false, $cufFilter = null, $sucursalFilter = null, $puntoVentaFilter = null)
 	{
 		$anio = (int) $anio;
 		$nro = (int) $nro;
 		$query = DB::table('factura')
 			->where('anio', $anio)
 			->where('nro_factura', $nro)
+			->when($sucursalFilter !== null, function ($q) use ($sucursalFilter) {
+				$q->where('codigo_sucursal', (int)$sucursalFilter);
+			})
+			->when($puntoVentaFilter !== null && trim((string)$puntoVentaFilter) !== '', function ($q) use ($puntoVentaFilter) {
+				$q->where('codigo_punto_venta', trim((string)$puntoVentaFilter));
+			})
+			->when($cufFilter !== null && trim((string)$cufFilter) !== '', function ($q) use ($cufFilter) {
+				$q->where('cuf', trim((string)$cufFilter));
+			})
 			->orderByDesc('created_at')
 			->orderByDesc('codigo_sucursal')
 			->orderByDesc('codigo_punto_venta');
@@ -759,7 +768,15 @@ class FacturaPdfService
 			}
 
 			$suffix = $anulado ? '_ANULADO' : '';
-			$path = $dir . DIRECTORY_SEPARATOR . $anio . '_' . $nro . $suffix . '.pdf';
+			$cacheSuffix = '';
+			if ($sucursalFilter !== null || ($puntoVentaFilter !== null && trim((string)$puntoVentaFilter) !== '')) {
+				$cacheSuffix = '_S' . (string)((int)($sucursalFilter ?? 0)) . '_PV' . (string)($puntoVentaFilter ?? '0');
+			}
+			$path = $dir . DIRECTORY_SEPARATOR . $anio . '_' . $nro . $cacheSuffix . $suffix . '.pdf';
+			// Si se filtra por CUF, evitar colisiones entre sucursal/pv con mismo anio+nro
+			if ($cufFilter !== null && trim((string)$cufFilter) !== '') {
+				$path = $dir . DIRECTORY_SEPARATOR . trim((string)$cufFilter) . $suffix . '.pdf';
+			}
 
 			$written = @file_put_contents($path, $pdf);
 			if ($written === false) {

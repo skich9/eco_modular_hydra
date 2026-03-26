@@ -435,8 +435,9 @@ export class FacturacionPosteriorComponent implements OnInit {
 											// Obtener año de la fecha de cobro o usar año actual
 											const fechaCobro = facturaItem?.cobro?.fecha_cobro || facturaItem?.cobro?.created_at;
 											const anio = fechaCobro ? new Date(fechaCobro).getFullYear() : new Date().getFullYear();
-
-											this.cobrosService.downloadFacturaPdf(anio, nroFactura).subscribe({
+											const sucursalCtx = facturaItem?.codigo_sucursal ?? null;
+											const pvCtx = facturaItem?.codigo_punto_venta ?? null;
+											this.cobrosService.downloadFacturaPdf(anio, nroFactura, { codigo_sucursal: sucursalCtx, codigo_punto_venta: pvCtx }).subscribe({
 												next: (blob: Blob) => {
 													const url = window.URL.createObjectURL(blob);
 													const a = document.createElement('a');
