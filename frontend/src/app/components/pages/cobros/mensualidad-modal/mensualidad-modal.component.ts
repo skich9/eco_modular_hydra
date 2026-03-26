@@ -1040,7 +1040,7 @@ export class MensualidadModalComponent implements OnInit, OnChanges {
         }
         // Mostrar siempre el descuento aplicado a la cuota seleccionada
         this.form.get('descuento')?.setValue(d || 0, { emitEvent: false });
-      } catch {}
+      } catch { }
       this.recalcTotal();
       // Si el parcial está activo, actualizar tope y valor sugerido del monto parcial con el PU efectivo
       if (this.tipo === 'mensualidad' && this.form.get('pago_parcial')?.value) {
@@ -1159,7 +1159,7 @@ export class MensualidadModalComponent implements OnInit, OnChanges {
                 }
               }
             }
-          } catch {}
+          } catch { }
         } else if (!this.tieneArrastrePendiente()) {
           // No hay arrastre en detalle ni pendiente: sumar mora de la cuota de mensualidad
           try {
@@ -1172,7 +1172,7 @@ export class MensualidadModalComponent implements OnInit, OnChanges {
             if (mora && this.shouldCobrarMoraForPago(total, numero_cuota, id_asignacion_costo)) {
               total += this.recalcularMoraConFechaDeposito(mora);
             }
-          } catch {}
+          } catch { }
         }
       } else {
         const cant = Math.max(0, Number(this.form.get('cantidad')?.value || 0));
@@ -1224,7 +1224,7 @@ export class MensualidadModalComponent implements OnInit, OnChanges {
                   if (moraNormal) total += this.recalcularMoraConFechaDeposito(moraNormal);
                 }
               }
-            } catch {}
+            } catch { }
           } else if (!this.tieneArrastrePendiente()) {
             // No hay arrastre en detalle ni pendiente: sumar mora de las cuotas de mensualidad
             try {
@@ -1235,7 +1235,7 @@ export class MensualidadModalComponent implements OnInit, OnChanges {
                 if (mora) moraAcc += this.recalcularMoraConFechaDeposito(mora);
               }
               total += moraAcc;
-            } catch {}
+            } catch { }
           }
         } else {
           // Fallback si no hay datos de asignaciones
@@ -1262,7 +1262,7 @@ export class MensualidadModalComponent implements OnInit, OnChanges {
           const mora = this.getMoraPendienteByAsign(idAsign);
           if (mora) total += this.recalcularMoraConFechaDeposito(mora);
         }
-      } catch {}
+      } catch { }
     } else if (this.tipo === 'reincorporacion') {
       // Total = monto parcial si aplica, caso contrario = PU (monto de reincorporación)
       if (this.form.get('pago_parcial')?.value) {
@@ -1378,14 +1378,14 @@ export class MensualidadModalComponent implements OnInit, OnChanges {
   private getGestionMonths(gestion: string): number[] {
     try {
       const sem = parseInt((gestion || '').split('/')[0] || '0', 10);
-      if (sem === 1) return [2,3,4,5,6];
-      if (sem === 2) return [7,8,9,10,11];
+      if (sem === 1) return [2, 3, 4, 5, 6];
+      if (sem === 2) return [7, 8, 9, 10, 11];
       return [];
     } catch { return []; }
   }
 
   private monthName(n: number): string {
-    const names = ['','Enero','Febrero','Marzo','Abril','Mayo','Junio','Julio','Agosto','Septiembre','Octubre','Noviembre','Diciembre'];
+    const names = ['', 'Enero', 'Febrero', 'Marzo', 'Abril', 'Mayo', 'Junio', 'Julio', 'Agosto', 'Septiembre', 'Octubre', 'Noviembre', 'Diciembre'];
     return names[n] || String(n);
   }
 
@@ -1399,10 +1399,10 @@ export class MensualidadModalComponent implements OnInit, OnChanges {
   }
 
   // Devuelve lista ordenada por numero_cuota con {numero, restante} usando monto neto (monto - descuento)
-  private getOrderedCuotasRestantes(): Array<{ numero: number; restante: number; id_cuota_template: number|null; id_asignacion_costo: number|null; }> {
+  private getOrderedCuotasRestantes(): Array<{ numero: number; restante: number; id_cuota_template: number | null; id_asignacion_costo: number | null; }> {
     const src: any[] = ((this.resumen?.asignacion_costos?.items || this.resumen?.asignaciones || []) as any[]);
     const ord = (src || []).slice().sort((a: any, b: any) => Number(a?.numero_cuota || 0) - Number(b?.numero_cuota || 0));
-    const out: Array<{ numero: number; restante: number; id_cuota_template: number|null; id_asignacion_costo: number|null; }> = [];
+    const out: Array<{ numero: number; restante: number; id_cuota_template: number | null; id_asignacion_costo: number | null; }> = [];
     for (const a of ord) {
       const bruto = this.toNumberLoose(a?.monto);
       const desc = this.toNumberLoose(a?.descuento);
@@ -2141,9 +2141,9 @@ export class MensualidadModalComponent implements OnInit, OnChanges {
     } catch { return false; }
   }
 
-	get isTransferenciaBancaria(): boolean {
-		return this.isTransferencia && !this.isQR;
-	}
+  get isTransferenciaBancaria(): boolean {
+    return this.isTransferencia && !this.isQR;
+  }
 
   get isOtro(): boolean {
     try {
@@ -2164,7 +2164,7 @@ export class MensualidadModalComponent implements OnInit, OnChanges {
   }
 
   get showBancarioBlock(): boolean {
-		return this.isCheque || this.isDeposito || this.isTransferenciaBancaria;
+    return this.isCheque || this.isDeposito || this.isTransferenciaBancaria;
   }
 
   private updateTarjetaValidators(): void {
@@ -2214,8 +2214,8 @@ export class MensualidadModalComponent implements OnInit, OnChanges {
         return;
       }
       if (this.isQR) {
-			// QR no requiere cuenta destino ni datos bancarios (se gestiona en el flujo QR)
-			setReq('id_cuentas_bancarias', false);
+        // QR no requiere cuenta destino ni datos bancarios (se gestiona en el flujo QR)
+        setReq('id_cuentas_bancarias', false);
         return;
       }
     } catch {
@@ -2423,7 +2423,7 @@ export class MensualidadModalComponent implements OnInit, OnChanges {
               pagos.push(moraItem);
             }
           }
-        } catch {}
+        } catch { }
       }
     } else if (this.tipo === 'mensualidad') {
       const esParcial = !!this.form.get('pago_parcial')?.value;
@@ -2486,7 +2486,7 @@ export class MensualidadModalComponent implements OnInit, OnChanges {
               moraItem.nro_cobro = (this.baseNro || 1) + 1;
               pagos.push(moraItem);
             }
-          } catch {}
+          } catch { }
         }
       } else {
         console.log('[MensualidadModal] INICIO bloque pago completo mensualidad');
@@ -2661,7 +2661,7 @@ export class MensualidadModalComponent implements OnInit, OnChanges {
                     }
                   }
                 }
-              } catch {}
+              } catch { }
             } else if (!hayArrastreEnDetalle && !this.tieneArrastrePendiente()) {
               // No hay arrastre en detalle ni pendiente: agregar mora de cada cuota de mensualidad
               try {
@@ -2671,7 +2671,7 @@ export class MensualidadModalComponent implements OnInit, OnChanges {
                   moraItem.nro_cobro = nro++;
                   pagos.push(moraItem);
                 }
-              } catch {}
+              } catch { }
             }
           }
         } else {
@@ -2931,7 +2931,7 @@ export class MensualidadModalComponent implements OnInit, OnChanges {
       const v = (c.value ?? '').toString().trim();
       const invalid = !v || c.invalid;
       if (invalid) {
-        try { c.markAsTouched(); } catch {}
+        try { c.markAsTouched(); } catch { }
         out.push(this.getFieldLabel(n));
       }
     };
@@ -2948,17 +2948,17 @@ export class MensualidadModalComponent implements OnInit, OnChanges {
       }
     }
     if (this.isTarjeta) {
-      ['id_cuentas_bancarias','fecha_deposito','nro_deposito','banco_origen','tarjeta_first4','tarjeta_last4'].forEach(addIfMissing);
+      ['id_cuentas_bancarias', 'fecha_deposito', 'nro_deposito', 'banco_origen', 'tarjeta_first4', 'tarjeta_last4'].forEach(addIfMissing);
     } else if (this.isTransferenciaBancaria) {
-      ['id_cuentas_bancarias','fecha_deposito','nro_deposito','banco_origen'].forEach(addIfMissing);
+      ['id_cuentas_bancarias', 'fecha_deposito', 'nro_deposito', 'banco_origen'].forEach(addIfMissing);
     } else if (this.isCheque || this.isDeposito) {
-      ['id_cuentas_bancarias','fecha_deposito','nro_deposito'].forEach(addIfMissing);
+      ['id_cuentas_bancarias', 'fecha_deposito', 'nro_deposito'].forEach(addIfMissing);
     }
     return out;
   }
 
   private resetTarjetaFields(): void {
-    const names = ['banco_origen','tarjeta_first4','tarjeta_last4','id_cuentas_bancarias','fecha_deposito','nro_deposito'];
+    const names = ['banco_origen', 'tarjeta_first4', 'tarjeta_last4', 'id_cuentas_bancarias', 'fecha_deposito', 'nro_deposito'];
     for (const n of names) {
       const c = this.form.get(n);
       if (!c) continue;

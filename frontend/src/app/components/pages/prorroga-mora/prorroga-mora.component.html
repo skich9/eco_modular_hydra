@@ -30,13 +30,10 @@
 					<div class="search-input-group" style="flex-direction: column; gap: 0.5rem;">
 						<label class="form-label">Código CETA</label>
 						<div style="display: flex; gap: 0.5rem;">
-							<<<<<<< HEAD <input type="text" class="search-input" [(ngModel)]="searchCodCeta"
-								placeholder="Ingrese código CETA" (keyup.enter)="buscarPorCodCeta()" appSoloNumeros />
-							=======
 							<input type="text" class="search-input" [(ngModel)]="searchCodCeta"
 								placeholder="Ingrese código CETA" inputmode="numeric" autocomplete="off"
-								(keydown)="onCodCetaKeydown($event)" (input)="onCodCetaInput($event)" />
-							>>>>>>> main
+								(keydown)="onCodCetaKeydown($event)" (input)="onCodCetaInput($event)"
+								(keyup.enter)="buscarPorCodCeta()" />
 							<button class="btn btn-primary" (click)="buscarPorCodCeta()" [disabled]="loading">
 								<i class="fas fa-search"></i>
 							</button>

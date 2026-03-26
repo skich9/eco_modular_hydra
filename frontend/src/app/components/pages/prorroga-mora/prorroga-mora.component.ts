@@ -5,12 +5,12 @@ import { ProrrogaMoraService } from '../../../services/prorroga-mora.service';
 import { CobrosService } from '../../../services/cobros.service';
 import { AuthService } from '../../../services/auth.service';
 import { ProrrogaMora } from '../../../models/prorroga-mora.model';
-import { SoloNumerosDirective } from '../../../directives/solo-numeros.directive';
+
 
 @Component({
 	selector: 'app-prorroga-mora',
 	standalone: true,
-	imports: [CommonModule, FormsModule, ReactiveFormsModule, SoloNumerosDirective],
+	imports: [CommonModule, FormsModule, ReactiveFormsModule],
 	templateUrl: './prorroga-mora.component.html',
 	styleUrls: ['./prorroga-mora.component.scss']
 })
@@ -380,6 +380,36 @@ export class ProrrogaMoraComponent implements OnInit {
 			return;
 		}
 
+		// Validar que no exista ya una prórroga ACTIVA para el mismo estudiante, gestión y cuota
+		// Triple Validación: Código CETA, Gestión y Número de Cuota
+		for (const cuota of cuotasSeleccionadas) {
+			const numCuotaTarget = cuota.numero_cuota || this.selectedCuota;
+			const gestionTarget = cuota.gestion || cuota.inscripcion?.gestion || this.gestionSeleccionada;
+
+			const prorrogaExistente = this.prorrogas.find(p => {
+				// No comparamos si ya está inactiva
+				if (!p.activo) return false;
+
+				const pAny = p as any;
+				const esMismoEstudiante = p.cod_ceta === (this.estudianteEncontrado?.cod_ceta || payloads[0].cod_ceta);
+				const esMismaGestion = (pAny.asignacion_costo?.inscripcion?.gestion === gestionTarget) || (pAny.asignacion_costo?.gestion === gestionTarget);
+				const esMismaCuota = Number(pAny.asignacion_costo?.numero_cuota) === Number(numCuotaTarget);
+
+				return esMismoEstudiante && esMismaGestion && esMismaCuota;
+			});
+
+			if (prorrogaExistente) {
+				const nombreEst = this.studentDisplayName || this.getNombreCompleto(this.estudianteEncontrado);
+				const codCeta = this.estudianteEncontrado?.cod_ceta || (prorrogaExistente as any).cod_ceta;
+				const msj = `Ya existe una prórroga activa para la cuota ${numCuotaTarget} en la gestión ${gestionTarget} para el estudiante: "${nombreEst}" con código ceta ${codCeta}. ¿Desea crear una nueva de todas formas?`;
+				if (!window.confirm(msj)) {
+					return;
+				}
+				// Si acepta una vez, permitimos la creación del lote completo (batch)
+				break;
+			}
+		}
+
 		// Crear array de payloads para todas las asignaciones de la cuota (NORMAL y ARRASTRE)
 		const codCetaInt = parseInt(rawCod, 10);
 		const payloads = cuotasSeleccionadas.map((cuota: any) => ({
@@ -424,16 +454,72 @@ export class ProrrogaMoraComponent implements OnInit {
 	toggleStatus(prorroga: ProrrogaMora): void {
 		if (!prorroga.id_prorroga_mora) return;
 
-		this.prorrogaService.toggleStatus(prorroga.id_prorroga_mora).subscribe({
+		// Si se va a ACTIVAR (!prorroga.activo), verificar si hay conflicto con otra activa
+		if (!prorroga.activo) {
+			const pReq = prorroga as any;
+			const gestionActual = pReq.asignacion_costo?.inscripcion?.gestion || pReq.asignacion_costo?.gestion;
+			const cuotaActual = pReq.asignacion_costo?.numero_cuota;
+
+			const prorrogaConflictiva = this.prorrogas.find(p => {
+				// Buscar otra (distinto ID) que sea activa para el mismo estudiante, gestion y cuota
+				if (p.id_prorroga_mora === prorroga.id_prorroga_mora) return false;
+				if (!p.activo) return false;
+
+				const pAny = p as any;
+				const esMismoEst = p.cod_ceta === prorroga.cod_ceta;
+				const esMismaGest = (pAny.asignacion_costo?.inscripcion?.gestion === gestionActual) || (pAny.asignacion_costo?.gestion === gestionActual);
+				const esMismaCuota = Number(pAny.asignacion_costo?.numero_cuota) === Number(cuotaActual);
+
+				return esMismoEst && esMismaGest && esMismaCuota;
+			});
+
+			if (prorrogaConflictiva) {
+				const nombreEst = this.getNombreCompleto(prorrogaConflictiva.estudiante);
+				const codCeta = prorrogaConflictiva.cod_ceta;
+				const msg = `Ya existe una prórroga activa para esta cuota del estudiante: "${nombreEst}" con código ceta ${codCeta}. ¿Desea desactivar la anterior y activar esta?`;
+				if (window.confirm(msg)) {
+					this.loading = true;
+					// 1. Desactivar la anterior
+					this.prorrogaService.update(prorrogaConflictiva.id_prorroga_mora, { activo: false }).subscribe({
+						next: () => {
+							// 2. Activar la deseada tras desactivar la otra
+							this.ejecutarToggle(prorroga.id_prorroga_mora!);
+						},
+						error: (err: any) => {
+							console.error('Error al desactivar prórroga previa:', err);
+							this.displayAlert('No se pudo desactivar la prórroga previa', 'error');
+							this.loading = false;
+						}
+					});
+					return;
+				} else {
+					// Usuario canceló el intercambio
+					return;
+				}
+			}
+		}
+
+		// Proceder normal si no hay conflicto o se está desactivando
+		this.ejecutarToggle(prorroga.id_prorroga_mora);
+	}
+
+	/** Método auxiliar para ejecutar el cambio de estado final */
+	private ejecutarToggle(id: number): void {
+		this.loading = true;
+		this.prorrogaService.toggleStatus(id).subscribe({
 			next: (res: any) => {
 				if (res.success) {
 					this.displayAlert('Estado actualizado exitosamente', 'success');
-					this.loadProrrogas();
+					this.loadProrrogas(); // Recargar lista completa
+				} else {
+					this.displayAlert(res.message || 'Error al actualizar estado', 'error');
 				}
+				this.loading = false;
 			},
 			error: (err: any) => {
 				console.error('Error al cambiar estado:', err);
-				this.displayAlert('Error al cambiar estado', 'error');
+				this.displayAlert('Error al comunicarse con el servidor', 'error');
+				this.loading = false;
 			}
 		});
 	}
