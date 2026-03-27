@@ -36,7 +36,7 @@ return new class extends Migration
 			$table->integer('id_item')->nullable();
 			$table->integer('id_asignacion_costo')->nullable();
 			$table->string('qr_alias', 100)->nullable();
-			$table->boolean('reposicion_factura')->default(false);
+			$table->boolean('reposicion_factura')->nullable()->default(false);
 			$table->timestamps();
 
 			$table->primary(['cod_ceta', 'cod_pensum', 'tipo_inscripcion', 'nro_cobro']);
