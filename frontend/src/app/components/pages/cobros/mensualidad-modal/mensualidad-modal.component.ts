@@ -1,4 +1,4 @@
-import { Component, EventEmitter, Input, OnChanges, OnInit, Output, SimpleChanges } from '@angular/core';
+import { Component, EventEmitter, Input, OnChanges, OnInit, AfterViewInit, Output, SimpleChanges } from '@angular/core';
 import { CommonModule } from '@angular/common';
 import { FormBuilder, FormGroup, ReactiveFormsModule, Validators, FormsModule } from '@angular/forms';
 import { ClickLockDirective } from '../../../../directives/click-lock.directive';
@@ -13,7 +13,7 @@ import { isOnOrBeforeDeadlineLocal } from '../../../../utils/date-only.util';
   templateUrl: './mensualidad-modal.component.html',
   styleUrls: ['./mensualidad-modal.component.scss']
 })
-export class MensualidadModalComponent implements OnInit, OnChanges {
+export class MensualidadModalComponent implements OnInit, OnChanges, AfterViewInit {
   private _resumen: any = null;
 
   @Input()
@@ -46,6 +46,7 @@ export class MensualidadModalComponent implements OnInit, OnChanges {
   ordenPagoInfoMessage = '';
   moraPendienteDetectada: any = null;
   private lastMorasLen: number = -1;
+  botonDeshabilitado = false; // Se actualiza cuando cambia detalleFactura
 
   private isMoraEstadoPendiente(estadoRaw: any): boolean {
     try {
@@ -873,17 +874,15 @@ export class MensualidadModalComponent implements OnInit, OnChanges {
       if (!c.valid) return false;
       const v = (c.value ?? '').toString().trim();
       if (!v) return false;
-      if ((name === 'tarjeta_first4' || name === 'tarjeta_last4') && !/^\d{4}$/.test(v)) return false;
     }
     return true;
   }
 
   ngOnInit(): void {
     console.log('[MensualidadModal] ngOnInit ejecutado');
-    this.cargarParametrosDescuentoSemestre();
-    this.cargarDefinicionesDescuentos();
-    console.log('[MensualidadModal] Cache inicial:', this.defDescuentosCache.length);
-    this.recalcTotal();
+
+    // Inicializar estado del botón
+    this.actualizarEstadoBoton();
 
     // Recalcular total al cambiar cantidad, descuento o monto_manual
     this.form.get('cantidad')?.valueChanges.subscribe(() => {
@@ -962,7 +961,29 @@ export class MensualidadModalComponent implements OnInit, OnChanges {
     });
   }
 
+  private actualizarEstadoBoton(): void {
+    const opciones = this.getCantidadOptions();
+    this.botonDeshabilitado = opciones.length === 0;
+    console.log('[MensualidadModal] actualizarEstadoBoton - opciones.length:', opciones.length, 'botonDeshabilitado:', this.botonDeshabilitado);
+  }
+
+  ngAfterViewInit(): void {
+    console.log('[MensualidadModal] ngAfterViewInit ejecutado');
+    // Actualizar el estado del botón después de que la vista se haya inicializado completamente
+    // Usar setTimeout para asegurar que Angular haya completado la detección de cambios
+    setTimeout(() => {
+      this.actualizarEstadoBoton();
+    }, 0);
+  }
+
   ngOnChanges(changes: SimpleChanges): void {
+    console.log('[MensualidadModal] ngOnChanges ejecutado', changes);
+
+    // Actualizar estado del botón cuando cambian inputs relevantes
+    if (changes['detalleFactura'] || changes['pendientes'] || changes['tipo'] || changes['resumen'] || changes['startCuotaOverride']) {
+      this.actualizarEstadoBoton();
+    }
+
     if (changes['defaultMetodoPago']) {
       const v = (this.defaultMetodoPago || '').toString();
       if (v) {
@@ -1290,12 +1311,20 @@ export class MensualidadModalComponent implements OnInit, OnChanges {
     if (this.tipo === 'mensualidad' || this.tipo === 'arrastre') {
       const cuotasDisponibles = this.getOrderedCuotasRestantes();
       const maxDisponible = cuotasDisponibles.length;
-      if (maxDisponible === 0) return [];
-      return Array.from({ length: maxDisponible }, (_, i) => i + 1);
+      console.log('[MensualidadModal] getCantidadOptions - cuotasDisponibles.length:', maxDisponible);
+      if (maxDisponible === 0) {
+        console.log('[MensualidadModal] getCantidadOptions RETORNA: [] (vacío)');
+        return [];
+      }
+      const opciones = Array.from({ length: maxDisponible }, (_, i) => i + 1);
+      console.log('[MensualidadModal] getCantidadOptions RETORNA:', opciones);
+      return opciones;
     }
     // Para otros tipos (mora, rezagado, etc.), usar pendientes como antes
     const p = Math.max(0, Number(this.pendientes || 0));
-    return Array.from({ length: p }, (_, i) => i + 1);
+    const opciones = Array.from({ length: p }, (_, i) => i + 1);
+    console.log('[MensualidadModal] getCantidadOptions (otros tipos) RETORNA:', opciones, 'pendientes:', this.pendientes);
+    return opciones;
   }
 
   getCantidadLabel(n: number): string {
@@ -1426,6 +1455,7 @@ export class MensualidadModalComponent implements OnInit, OnChanges {
     const out: Array<{ numero: number; restante: number; id_cuota_template: number|null; id_asignacion_costo: number|null; }> = [];
 
     console.log('[MensualidadModal] getOrderedCuotasRestantes - tipo:', this.tipo, 'detalleFactura:', this.detalleFactura);
+    console.log('[MensualidadModal] Total asignaciones en resumen:', src.length, 'pendientes (prop):', this.pendientes);
 
     // Obtener números de cuota ya agregados al detalle de factura para este tipo (mensualidad o arrastre)
     const cuotasYaAgregadas = new Set<number>();
@@ -1459,6 +1489,7 @@ export class MensualidadModalComponent implements OnInit, OnChanges {
 
       // Saltar cuotas ya agregadas al detalle de factura
       if (cuotasYaAgregadas.has(numero)) {
+        console.log('[MensualidadModal] Cuota FILTRADA (ya en detalle):', numero);
         continue;
       }
 
@@ -1467,13 +1498,20 @@ export class MensualidadModalComponent implements OnInit, OnChanges {
         const r = Number(this.frontSaldos[numero]);
         if (isFinite(r)) restante = Math.max(0, r);
       }
-      if (restante > 0) out.push({
-        numero,
-        restante,
-        id_cuota_template: (a?.id_cuota_template !== undefined && a?.id_cuota_template !== null) ? Number(a?.id_cuota_template) : null,
-        id_asignacion_costo: (a?.id_asignacion_costo !== undefined && a?.id_asignacion_costo !== null) ? Number(a?.id_asignacion_costo) : null,
-      });
+      if (restante > 0) {
+        console.log('[MensualidadModal] Cuota AGREGADA a out:', numero, 'restante:', restante);
+        out.push({
+          numero,
+          restante,
+          id_cuota_template: (a?.id_cuota_template !== undefined && a?.id_cuota_template !== null) ? Number(a?.id_cuota_template) : null,
+          id_asignacion_costo: (a?.id_asignacion_costo !== undefined && a?.id_asignacion_costo !== null) ? Number(a?.id_asignacion_costo) : null,
+        });
+      } else {
+        console.log('[MensualidadModal] Cuota NO agregada (restante <= 0):', numero, 'restante:', restante);
+      }
     }
+
+    console.log('[MensualidadModal] Array out ANTES de filtro override:', out.length, 'cuotas:', out.map(c => c.numero));
     // Si el padre indica una cuota inicial distinta (p.ej. porque ya se cobró el saldo en el front), filtrar
     // EXCEPTO cuando:
     // - Es mensualidad y hay arrastre en el detalle (el override viene del modal de arrastre)
@@ -1492,8 +1530,11 @@ export class MensualidadModalComponent implements OnInit, OnChanges {
 
     if (this.startCuotaOverride && this.startCuotaOverride > 0 && !ignorarOverride) {
       const start = Number(this.startCuotaOverride);
-      return out.filter(it => Number(it.numero) >= start);
+      const filtered = out.filter(it => Number(it.numero) >= start);
+      console.log('[MensualidadModal] Aplicando filtro override - startCuotaOverride:', start, 'resultado:', filtered.length, 'cuotas:', filtered.map(c => c.numero));
+      return filtered;
     }
+    console.log('[MensualidadModal] getOrderedCuotasRestantes RETORNA:', out.length, 'cuotas:', out.map(c => c.numero));
     return out;
   }
 
@@ -2344,6 +2385,19 @@ export class MensualidadModalComponent implements OnInit, OnChanges {
 
   addAndClose(): void {
     console.log('[MensualidadModal] ===== INICIO addAndClose() =====');
+
+    // Validar que haya opciones disponibles para mensualidad y arrastre
+    if (this.tipo === 'mensualidad' || this.tipo === 'arrastre') {
+      const opciones = this.getCantidadOptions();
+      console.log('[MensualidadModal] addAndClose - Validando opciones disponibles. opciones.length:', opciones.length);
+      if (opciones.length === 0) {
+        this.modalAlertMessage = 'No hay cuotas disponibles para agregar. Todas las cuotas pendientes ya han sido agregadas al detalle.';
+        this.modalAlertType = 'warning';
+        console.log('[MensualidadModal] addAndClose - BLOQUEADO: No hay opciones disponibles');
+        return;
+      }
+    }
+
     // Validación explícita de TARJETA: 4 dígitos exactos en ambos campos
     if (this.isTarjeta) {
       const f4 = (this.form.get('tarjeta_first4')?.value || '').toString().trim();
