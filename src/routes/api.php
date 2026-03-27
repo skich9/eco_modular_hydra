@@ -195,6 +195,10 @@ Route::get('recibo/{anio}/{nro_recibo}', [ReciboController::class, 'show'])
 Route::get('recibos/{anio}/{nro_recibo}/pdf', [ReciboController::class, 'pdf'])
     ->where(['anio' => '\\d{4}', 'nro_recibo' => '\\d+']);
 
+// Nota bancaria (por FACTURA): PDF
+Route::get('notas-bancarias/{anio}/{nro_factura}/pdf', [ReciboController::class, 'notaBancariaPdfByFactura'])
+	->where(['anio' => '\\d{4}', 'nro_factura' => '\\d+']);
+
 // Facturas: meta (incluye CUF) para fallback del frontend
 Route::get('facturas/{anio}/{nro}/meta', [CobroController::class, 'facturaMeta'])
     ->where(['anio' => '\\d{4}', 'nro' => '\\d+']);

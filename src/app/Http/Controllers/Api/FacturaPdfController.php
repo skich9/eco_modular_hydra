@@ -76,12 +76,12 @@ class FacturaPdfController extends Controller
 
 			$svc = new FacturaPdfService();
 			$dir = storage_path('siat_xml' . DIRECTORY_SEPARATOR . 'facturas');
-			$candidateAnulado = $dir . DIRECTORY_SEPARATOR . $anio . '_' . $nro . '_ANULADO.pdf';
-			if ($anulado && is_file($candidateAnulado)) {
-				$path = $candidateAnulado;
+			$suffix = $anulado ? '_ANULADO' : '';
+			$candidate = $dir . DIRECTORY_SEPARATOR . $cuf . $suffix . '.pdf';
+			if (is_file($candidate)) {
+				$path = $candidate;
 			} else {
-				$path = $anulado ? $svc->generateAnuladaStrict($anio, $nro)
-					: $svc->generate($anio, $nro, false);
+				$path = $svc->generate($anio, $nro, $anulado, $cuf);
 			}
 
 			if (!is_file($path)) {
@@ -150,10 +150,21 @@ class FacturaPdfController extends Controller
 	{
 		try {
 			$anio = (int) $anio; $nro = (int) $nro;
+			$sucursalQ = request()->query('codigo_sucursal');
+			$pvQ = request()->query('codigo_punto_venta');
+			$sucursalFilter = ($sucursalQ !== null && $sucursalQ !== '') ? (int) $sucursalQ : null;
+			$pvFilter = ($pvQ !== null && $pvQ !== '') ? (string) $pvQ : null;
+
 			$row = DB::table('factura')
 				->select('estado')
 				->where('anio', $anio)
 				->where('nro_factura', $nro)
+				->when($sucursalFilter !== null, function ($q) use ($sucursalFilter) {
+					$q->where('codigo_sucursal', $sucursalFilter);
+				})
+				->when($pvFilter !== null && trim($pvFilter) !== '', function ($q) use ($pvFilter) {
+					$q->where('codigo_punto_venta', trim((string)$pvFilter));
+				})
 				->orderByDesc('created_at')
 				->orderByDesc('codigo_sucursal')
 				->orderByDesc('codigo_punto_venta')
@@ -165,16 +176,20 @@ class FacturaPdfController extends Controller
 			$estado = isset($row->estado) ? (string)$row->estado : '';
 			$anulado = ($estado === 'ANULADA');
 
-			Log::info('FacturaPdfController.pdf.start', [ 'anio' => $anio, 'nro' => $nro, 'estado' => $estado, 'anulado' => $anulado ]);
+			Log::info('FacturaPdfController.pdf.start', [ 'anio' => $anio, 'nro' => $nro, 'estado' => $estado, 'anulado' => $anulado, 'codigo_sucursal' => $sucursalFilter, 'codigo_punto_venta' => $pvFilter ]);
 
 			$svc = new FacturaPdfService();
 			$dir = storage_path('siat_xml' . DIRECTORY_SEPARATOR . 'facturas');
-			$candidateAnulado = $dir . DIRECTORY_SEPARATOR . $anio . '_' . $nro . '_ANULADO.pdf';
-			if (is_file($candidateAnulado)) {
-				$path = $candidateAnulado;
+			$cacheSuffix = '';
+			if ($sucursalFilter !== null || ($pvFilter !== null && trim((string)$pvFilter) !== '')) {
+				$cacheSuffix = '_S' . (string)($sucursalFilter ?? 0) . '_PV' . (string)($pvFilter ?? '0');
+			}
+			$suffix = $anulado ? '_ANULADO' : '';
+			$candidate = $dir . DIRECTORY_SEPARATOR . $anio . '_' . $nro . $cacheSuffix . $suffix . '.pdf';
+			if (is_file($candidate)) {
+				$path = $candidate;
 			} else {
-				$path = $anulado ? $svc->generateAnuladaStrict($anio, $nro)
-					: $svc->generate($anio, $nro, false);
+				$path = $svc->generate($anio, $nro, $anulado, null, $sucursalFilter, $pvFilter);
 			}
 
 			if (!is_file($path)) {

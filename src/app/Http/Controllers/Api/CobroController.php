@@ -2199,6 +2199,8 @@ class CobroController extends Controller
 
 				// Control para agrupar Recibos computarizados en un único nro_recibo por transacción
 				$nroReciboBatch = null; $anioReciboBatch = null;
+				// Control para agrupar Recibo/Nota bancaria cuando se emite FACTURA con forma de cobro bancario
+				$nroReciboFacturaBatch = null; $anioReciboFacturaBatch = null;
 				foreach ($items as $idx => $item) {
 					// Asignar SIEMPRE un correlativo atómico global para garantizar unicidad
 					$anioItem = (int) date('Y', strtotime((string)(isset($item['fecha_cobro']) ? $item['fecha_cobro'] : date('Y-m-d'))));
@@ -2298,6 +2300,11 @@ class CobroController extends Controller
 					} elseif ($tipoDoc === 'F') {
 						$anio = (int) date('Y', strtotime($item['fecha_cobro']));
 						if ($medioDoc === 'C') {
+							// Si la forma de cobro es bancaria, la NOTA BANCARIA se asocia al nro_factura (sin insertar recibo).
+							$isFormaBancaria = in_array($formaCode, ['B','C','D','L','O'], true);
+							if ($isFormaBancaria) {
+								$nroRecibo = 0;
+							}
 							if ($hasFacturaGroup) {
 								// Reusar la factura del grupo
 								$nroFactura = (int)$nroFacturaGroup;
@@ -2852,8 +2859,8 @@ class CobroController extends Controller
                             'cod_ceta' => $codCeta,
                             'monto' => $monto,
                             'concepto' => $detalle,
-                            'nro_factura' => $nroFactura ? (string)$nroFactura : '',
-                            'nro_recibo' => $nroRecibo ? (string)$nroRecibo : '',
+                            'nro_factura' => $nroFactura ? (string)$nroFactura : '0',
+                            'nro_recibo' => ($nroRecibo !== null) ? (string)((int)$nroRecibo) : '0',
                             'banco' => $bancoDest,
                             'fecha_deposito' => (string)(isset($item['fecha_deposito']) ? $item['fecha_deposito'] : ''),
                             'nro_transaccion' => (string)(isset($item['nro_deposito']) ? $item['nro_deposito'] : ''),
@@ -3313,6 +3320,8 @@ class CobroController extends Controller
                     'nro_recibo' => $nroRecibo,
                     'nro_factura' => $nroFactura,
                     'cobro' => $created,
+                    'codigo_sucursal' => (int)$sucursal,
+                    'codigo_punto_venta' => (string)$pv,
                     'codigo_recepcion' => $codigoRecepcionLocal,
                     'estado_factura' => $estadoFacturaLocal,
                     'mensaje' => $mensajeLocal,

@@ -315,7 +315,15 @@ export class CobrosComponent implements OnInit {
   }
 
   private downloadFacturaPdfWithFallback(anio: number, nro: number, item?: any): void {
-    this.cobrosService.downloadFacturaPdf(anio, nro).subscribe({
+    let sucursalCtx: number | null = null;
+    let pvCtx: number | string | null = null;
+    try {
+      // Preferir el contexto del cobro si viene en la respuesta; si no, usar el seleccionado en el formulario
+      sucursalCtx = (item?.codigo_sucursal ?? this.batchForm.get('cabecera.codigo_sucursal')?.value ?? null) as any;
+      pvCtx = (item?.codigo_punto_venta ?? this.batchForm.get('cabecera.codigo_punto_venta')?.value ?? null) as any;
+      if (sucursalCtx !== null && sucursalCtx !== undefined) sucursalCtx = Number(sucursalCtx) as any;
+    } catch { }
+    this.cobrosService.downloadFacturaPdf(anio, nro, { codigo_sucursal: sucursalCtx, codigo_punto_venta: pvCtx }).subscribe({
       next: (blob) => saveBlobAsFile(blob, `factura_${anio}_${nro}.pdf`),
       error: () => {
         // Construir PDF rápido con datos disponibles
@@ -3726,45 +3734,42 @@ export class CobrosComponent implements OnInit {
       (payload as any).descuentos = this.descuentosFromModal;
       console.log('[Cobros] Agregando descuentos al payload:', { count: this.descuentosFromModal.length, descuentos: this.descuentosFromModal });
     }
+
     this.cobrosService.batchStore(payload).subscribe({
       next: (res) => {
         if (res.success) {
           try {
             const items = (res?.data?.items || []) as Array<any>;
             // Aviso si alguna factura computarizada fue rechazada por SIN
-            let hasFacturaError = false;
             try {
               const rechazadas = items.filter((it: any) => (it?.tipo_documento === 'F') && (it?.medio_doc === 'C') && (it?.estado_factura === 'RECHAZADA'));
               if (rechazadas.length > 0) {
-                hasFacturaError = true;
                 const det = rechazadas.map((r: any) => `#${r?.nro_factura || '?'}${r?.mensaje ? ' - ' + r.mensaje : ''}`).join(' | ');
                 this.showAlert(`⚠️ Ups! Hubo un problema con la facturación.\n\nEl cobro se registró correctamente pero la factura fue rechazada por el SIN.\n\nPor favor revise más tarde o notifique al administrador.\n\nDetalles: ${det}`, 'warning', 15000);
               }
             } catch { }
-            // Construir resumen de éxito ANTES de cualquier limpieza
+
             this.successSummary = this.buildSuccessSummary(items);
-            // Limpiar descuentos del modal para evitar duplicados en el siguiente cobro
             this.descuentosFromModal = [];
-            // Mostrar modal de éxito
             this.openSuccessModal();
             const seen = new Set<string>();
+            const isFormaBancaria = (raw: any): boolean => {
+              const v = (raw ?? '').toString().trim().toUpperCase();
+              return ['B', 'C', 'D', 'L', 'O'].includes(v);
+            };
             for (const it of items) {
-              // Recibo computarizado — descargar solo una vez aunque haya varios items con el mismo nro_recibo
               if ((it?.tipo_documento === 'R') && (it?.medio_doc === 'C') && it?.nro_recibo) {
                 const fecha = it?.cobro?.fecha_cobro || hoy;
                 const anio = new Date(fecha).getFullYear();
-                const keyR = `R:${anio}:${it.nro_recibo}`;
-                if (!seen.has(keyR)) {
-                  seen.add(keyR);
-                  this.downloadReciboPdfWithFallback(anio, it.nro_recibo);
-                }
+                const keyR = `${anio}:${it.nro_recibo}`;
+                if (seen.has(keyR)) continue;
+                seen.add(keyR);
+                this.downloadReciboPdfWithFallback(anio, it.nro_recibo);
               }
-              // Factura computarizada - NO descargar si fue rechazada
               if ((it?.tipo_documento === 'F') && (it?.medio_doc === 'C') && it?.nro_factura) {
-                // Verificar si la factura fue rechazada
                 if (it?.estado_factura === 'RECHAZADA' || it?.factura_error) {
                   console.warn('Factura rechazada, no se descarga PDF:', it);
-                  continue; // Saltar descarga de PDF
+                  continue;
                 }
                 const fechaF = it?.cobro?.fecha_cobro || hoy;
                 const anioF = new Date(fechaF).getFullYear();
@@ -3772,11 +3777,26 @@ export class CobrosComponent implements OnInit {
                 if (seen.has(key)) continue;
                 seen.add(key);
                 this.downloadFacturaPdfWithFallback(anioF, it.nro_factura, it);
+
+                // Si es FACTURA y el método de pago es bancario, también descargar la NOTA BANCARIA.
+                // En este caso la nota se asocia al nro_factura (no existe recibo).
+                try {
+                  const forma = it?.cobro?.id_forma_cobro ?? it?.cobro?.forma_cobro ?? it?.id_forma_cobro;
+                  if (isFormaBancaria(forma)) {
+                    const keyNota = `NB:${anioF}:${it.nro_factura}`;
+                    if (!seen.has(keyNota)) {
+                      seen.add(keyNota);
+                      this.cobrosService.downloadNotaBancariaPdfByFactura(anioF, it.nro_factura).subscribe({
+                        next: (blob: Blob) => saveBlobAsFile(blob, `nota_bancaria_${anioF}_${it.nro_factura}.pdf`),
+                        error: () => {}
+                      });
+                    }
+                  }
+                } catch { }
               }
             }
           } catch { }
           this.showAlert('Cobros registrados', 'success');
-          // No limpiar aún; se limpia al cerrar el modal de éxito
         } else {
           this.showAlert(res.message || 'No se pudo registrar', 'warning');
         }
@@ -3805,7 +3825,6 @@ export class CobrosComponent implements OnInit {
           }
           if (parts.length) msg += ` | Detalles: ${parts.join(' | ')}`;
         }
-        // Errores de backend (incluidos los de asignación de punto de venta) deben ser muy visibles
         this.showAlert(msg, 'error', 8000);
         this.loading = false;
       }

@@ -167,8 +167,28 @@ export class CobrosService {
 	}
 
 	// Descarga de factura computarizada (si backend expone el endpoint)
-	downloadFacturaPdf(anio: number, nroFactura: number): Observable<Blob> {
+	downloadFacturaPdf(anio: number, nroFactura: number, ctx?: { codigo_sucursal?: number|null; codigo_punto_venta?: number|string|null }): Observable<Blob> {
 		const url = `${this.apiUrl}/facturas/${anio}/${nroFactura}/pdf`;
+		let params = new HttpParams();
+		if (ctx && ctx.codigo_sucursal !== undefined && ctx.codigo_sucursal !== null) {
+			params = params.set('codigo_sucursal', String(ctx.codigo_sucursal));
+		}
+		if (ctx && ctx.codigo_punto_venta !== undefined && ctx.codigo_punto_venta !== null && String(ctx.codigo_punto_venta) !== '') {
+			params = params.set('codigo_punto_venta', String(ctx.codigo_punto_venta));
+		}
+		return this.http.get(url, { responseType: 'blob', params });
+	}
+
+	// Descarga de factura por CUF (identificador único). Preferir este método cuando se tenga CUF.
+	downloadFacturaPdfByCuf(cuf: string): Observable<Blob> {
+		const safe = encodeURIComponent(String(cuf || '').trim());
+		const url = `${this.apiUrl}/facturas/cuf/${safe}/pdf`;
+		return this.http.get(url, { responseType: 'blob' });
+	}
+
+	// Nota bancaria asociada a FACTURA (cuando no existe recibo): PDF
+	downloadNotaBancariaPdfByFactura(anio: number, nroFactura: number): Observable<Blob> {
+		const url = `${this.apiUrl}/notas-bancarias/${anio}/${nroFactura}/pdf`;
 		return this.http.get(url, { responseType: 'blob' });
 	}
 

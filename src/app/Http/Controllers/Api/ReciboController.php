@@ -90,4 +90,24 @@ class ReciboController extends Controller
 			], 500);
 		}
 	}
+
+	public function notaBancariaPdfByFactura($anio, $nro_factura, ReciboPdfService $pdfService)
+	{
+		try {
+			$anio = (int) $anio;
+			$nroFactura = (int) $nro_factura;
+			$content = $pdfService->buildNotaBancariaPdfByFactura($anio, $nroFactura);
+			$filename = sprintf('nota_bancaria_factura_%d_%d.pdf', $anio, $nroFactura);
+			return response($content, 200, [
+				'Content-Type' => 'application/pdf',
+				'Content-Disposition' => 'attachment; filename="' . $filename . '"'
+			]);
+		} catch (\Throwable $e) {
+			Log::error('ReciboController.notaBancariaPdfByFactura error', [ 'error' => $e->getMessage() ]);
+			return response()->json([
+				'success' => false,
+				'message' => 'No se pudo generar el PDF de la nota bancaria: ' . $e->getMessage(),
+			], 500);
+		}
+	}
 }
