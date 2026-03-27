@@ -29,14 +29,45 @@
 		El cálculo será por monto fijo.
 	</div>
 
+	<!-- Filtros Adicionales -->
+	<div class="card mb-3 p-3 bg-light border-0 shadow-sm">
+		<div class="row g-2 align-items-center">
+			<div class="col-md-3">
+				<label class="small fw-bold text-muted">Pensum</label>
+				<input type="text" class="form-control form-control-sm" placeholder="Buscar por pensum..."
+					[(ngModel)]="filterPensum">
+			</div>
+			<div class="col-md-3">
+				<label class="small fw-bold text-muted">Semestre</label>
+				<select class="form-select form-select-sm" [(ngModel)]="filterSemestre">
+					<option value="">Todos</option>
+					<option *ngFor="let s of [1,2,3,4,5,6]" [value]="s">{{ s }}º Semestre</option>
+				</select>
+			</div>
+			<div class="col-md-3">
+				<label class="small fw-bold text-muted">Cuota</label>
+				<select class="form-select form-select-sm" [(ngModel)]="filterCuota">
+					<option value="">Todas</option>
+					<option *ngFor="let c of [1,2,3,4,5]" [value]="c">Cuota {{ c }}</option>
+				</select>
+			</div>
+			<div class="col-md-3 d-flex align-items-end h-100 pt-3">
+				<button class="btn btn-sm btn-outline-secondary w-100" (click)="resetFilters()"
+					[disabled]="!filterCuota && !filterSemestre && !filterPensum && !searchText">
+					<i class="fas fa-undo me-1"></i> Limpiar Filtros
+				</button>
+			</div>
+		</div>
+	</div>
+
 	<!-- Tabla de Configuraciones -->
 	<div class="table-responsive">
 		<table class="table align-middle">
 			<thead class="table-light">
 				<tr>
 					<th>Pensum</th>
-					<th>Cuota</th>
 					<th>Semestre</th>
+					<th>Cuota</th>
 					<th>Fecha Inicio</th>
 					<th>Fecha Fin</th>
 					<th>Importe/día (Bs)</th>
@@ -46,9 +77,9 @@
 			</thead>
 			<tbody>
 				<tr *ngFor="let config of filteredConfiguraciones">
-					<td>{{ config.cod_pensum || '-' }}</td>
+					<td><span class="badge bg-light text-dark border">{{ config.cod_pensum }}</span></td>
+					<td>{{ config.semestre }}º</td>
 					<td><strong>Cuota {{ config.cuota }}</strong></td>
-					<td>{{ config.semestre }}</td>
 					<td>{{ config.fecha_inicio | date:'dd/MM/yyyy' }}</td>
 					<td>{{ config.fecha_fin | date:'dd/MM/yyyy' }}</td>
 					<td>{{ config.monto !== null ? (config.monto | number:'1.2-2') : '-' }}</td>
@@ -82,7 +113,7 @@
 	<div class="modal" *ngIf="showMoraModal">
 		<div class="modal-content modal-lg">
 			<div class="modal-header">
-				<h2 class="modal-title">{{ editingMora ? 'Editar Configuración' : 'Nueva Configuración' }}</h2>
+				<h2 class="modal-title">{{ editingMora ? 'Editar Configuración' : 'Nueva Configuración de Moras' }}</h2>
 				<button class="modal-close" (click)="closeModals()">×</button>
 			</div>
 			<div class="modal-body">
@@ -93,7 +124,7 @@
 
 				<form [formGroup]="moraForm">
 					<div class="row g-3">
-						<!-- Primera fila: Gestión, Carrera, Pensum -->
+						<!-- Primera fila: Gestión y Carrera -->
 						<div class="col-md-4">
 							<label>Gestión <span class="text-danger" *ngIf="!editingMora">*</span></label>
 							<select *ngIf="!editingMora" class="form-control" formControlName="gestion">
@@ -108,13 +139,13 @@
 							</small>
 						</div>
 
-						<div class="col-md-4">
+						<div class="col-md-8">
 							<label>Carrera <span class="text-danger" *ngIf="!editingMora">*</span></label>
 							<select *ngIf="!editingMora" class="form-control" formControlName="carrera"
 								(change)="onCarreraChange()">
 								<option value="">-- Seleccione --</option>
 								<option *ngFor="let c of carreras" [value]="c.codigo_carrera">
-									{{ c.nombre || c.descripcion || c.codigo_carrera }}
+									{{ c.nombre || c.descripcion || c.codigo_carrera }} ({{ c.codigo_carrera }})
 								</option>
 							</select>
 							<input *ngIf="editingMora" type="text" class="form-control"
@@ -126,68 +157,11 @@
 							</small>
 						</div>
 
-						<div class="col-md-4">
-							<label>Pensum <span class="text-danger" *ngIf="!editingMora">*</span></label>
-							<select *ngIf="!editingMora" class="form-control" formControlName="pensum">
-								<option value="">-- Seleccione --</option>
-								<option *ngFor="let p of pensums" [value]="p.cod_pensum">
-									{{ p.nombre || p.descripcion || p.cod_pensum }}
-								</option>
-							</select>
-							<input *ngIf="editingMora" type="text" class="form-control"
-								[value]="editingMora.pensum?.nombre || editingMora.cod_pensum || '-'" readonly />
-							<small class="error"
-								*ngIf="!editingMora && moraForm.get('pensum')?.touched && moraForm.get('pensum')?.hasError('required')">
-								Debe seleccionar un pensum.
-							</small>
-						</div>
-
-						<!-- Segunda fila: Cuotas y Semestres lado a lado -->
-						<div class="col-md-6" *ngIf="!editingMora">
+						<!-- Segunda fila: Semestres y Cuotas lado a lado -->
+						<div class="col-md-4" *ngIf="!editingMora">
 							<div class="card h-100">
-								<div class="card-header"><strong>Cuotas <span class="text-danger">*</span></strong>
-								</div>
-								<div class="card-body" [formGroup]="cuotasGroup">
-									<div class="form-check mb-2">
-										<input class="form-check-input" type="checkbox" id="chkAllCuotas"
-											formControlName="marcarTodasCuotas" />
-										<label class="form-check-label" for="chkAllCuotas"><strong>Marcar
-												Todas</strong></label>
-									</div>
-									<div class="d-flex flex-column gap-1">
-										<div class="form-check">
-											<input class="form-check-input" type="checkbox" id="cuota_1"
-												formControlName="cuota_1" />
-											<label class="form-check-label" for="cuota_1">Cuota 1</label>
-										</div>
-										<div class="form-check">
-											<input class="form-check-input" type="checkbox" id="cuota_2"
-												formControlName="cuota_2" />
-											<label class="form-check-label" for="cuota_2">Cuota 2</label>
-										</div>
-										<div class="form-check">
-											<input class="form-check-input" type="checkbox" id="cuota_3"
-												formControlName="cuota_3" />
-											<label class="form-check-label" for="cuota_3">Cuota 3</label>
-										</div>
-										<div class="form-check">
-											<input class="form-check-input" type="checkbox" id="cuota_4"
-												formControlName="cuota_4" />
-											<label class="form-check-label" for="cuota_4">Cuota 4</label>
-										</div>
-										<div class="form-check">
-											<input class="form-check-input" type="checkbox" id="cuota_5"
-												formControlName="cuota_5" />
-											<label class="form-check-label" for="cuota_5">Cuota 5</label>
-										</div>
-									</div>
-								</div>
-							</div>
-						</div>
-
-						<div class="col-md-6" *ngIf="!editingMora">
-							<div class="card h-100">
-								<div class="card-header"><strong>Semestres <span class="text-danger">*</span></strong>
+								<div class="card-header d-flex justify-content-between align-items-center">
+									<strong>Semestres <span class="text-danger">*</span></strong>
 								</div>
 								<div class="card-body" [formGroup]="semestresGroup">
 									<div class="form-check mb-2">
@@ -197,99 +171,85 @@
 												Todos</strong></label>
 									</div>
 									<div class="d-flex flex-column gap-1">
-										<div class="form-check">
-											<input class="form-check-input" type="checkbox" id="sem1"
-												formControlName="sem1" />
-											<label class="form-check-label" for="sem1">1er Semestre</label>
-										</div>
-										<div class="form-check">
-											<input class="form-check-input" type="checkbox" id="sem2"
-												formControlName="sem2" />
-											<label class="form-check-label" for="sem2">2do Semestre</label>
-										</div>
-										<div class="form-check">
-											<input class="form-check-input" type="checkbox" id="sem3"
-												formControlName="sem3" />
-											<label class="form-check-label" for="sem3">3er Semestre</label>
-										</div>
-										<div class="form-check">
-											<input class="form-check-input" type="checkbox" id="sem4"
-												formControlName="sem4" />
-											<label class="form-check-label" for="sem4">4to Semestre</label>
-										</div>
-										<div class="form-check">
-											<input class="form-check-input" type="checkbox" id="sem5"
-												formControlName="sem5" />
-											<label class="form-check-label" for="sem5">5to Semestre</label>
-										</div>
-										<div class="form-check">
-											<input class="form-check-input" type="checkbox" id="sem6"
-												formControlName="sem6" />
-											<label class="form-check-label" for="sem6">6to Semestre</label>
+										<div class="form-check" *ngFor="let s of [1,2,3,4,5,6]">
+											<input class="form-check-input" type="checkbox" [id]="'sem_' + s"
+												[formControlName]="'sem' + s" />
+											<label class="form-check-label" [for]="'sem_' + s">Semestre {{ s }}</label>
 										</div>
 									</div>
-								</div> <!-- Agregado cierre de div card-body -->
+								</div>
+							</div>
+						</div>
+
+						<div class="col-md-8" *ngIf="!editingMora">
+							<div class="card h-100">
+								<div class="card-header d-flex justify-content-between align-items-center">
+									<strong>Cuotas <span class="text-danger">*</span></strong>
+								</div>
+								<div class="card-body" [formGroup]="cuotasGroup">
+									<div class="d-flex justify-content-between align-items-center mb-2 px-1">
+										<div class="form-check">
+											<input class="form-check-input" type="checkbox" id="chkAllCuotas"
+												formControlName="marcarTodasCuotas" />
+											<label class="form-check-label text-nowrap"
+												for="chkAllCuotas"><strong>Marcar Todas</strong></label>
+										</div>
+										<div class="text-center" style="width: 140px;">
+											<strong class="form-check-label">Fecha Inicio</strong>
+										</div>
+									</div>
+									<div class="d-flex flex-column gap-2">
+										<div class="d-flex align-items-center justify-content-between p-1 rounded hover-bg-light"
+											*ngFor="let c of [1,2,3,4,5]">
+											<div class="form-check">
+												<input class="form-check-input" type="checkbox" [id]="'cuota_' + c"
+													[formControlName]="'cuota_' + c" />
+												<label class="form-check-label" [for]="'cuota_' + c">Cuota {{ c
+													}}</label>
+											</div>
+											<input type="date" class="form-control form-control-sm mora-date-input"
+												[formControlName]="'fecha_' + c">
+										</div>
+									</div>
+								</div>
 							</div>
 						</div>
 
 						<!-- Tercera fila: Fechas y Monto -->
-						<div class="col-md-4" *ngIf="!editingMora">
-							<label>Fecha de Inicio <span class="text-danger">*</span></label>
-							<input class="form-control" type="date" formControlName="fecha_inicio" />
-							<small class="text-muted">Desde cuándo comenzará a aplicarse la mora</small>
-							<small class="error"
-								*ngIf="moraForm.get('fecha_inicio')?.touched && moraForm.get('fecha_inicio')?.hasError('required')">
-								Este campo es requerido.
-							</small>
-						</div>
-
-						<!-- Modo edición: Mostrar datos de solo lectura -->
-						<div class="col-md-4" *ngIf="editingMora">
-							<label>Cuota</label>
-							<input type="text" class="form-control" [value]="'Cuota ' + editingMora.cuota" readonly />
-						</div>
-
-						<div class="col-md-4" *ngIf="editingMora">
-							<label>Semestre</label>
-							<input type="text" class="form-control" [value]="editingMora.semestre" readonly />
-						</div>
-
-						<div class="col-md-4" *ngIf="editingMora">
-							<label>Fecha de Inicio</label>
-							<input type="text" class="form-control"
-								[value]="editingMora.fecha_inicio | date:'dd/MM/yyyy'" readonly />
-						</div>
-
 						<div class="col-md-4">
-							<label>Fecha de Fin <span class="text-success" *ngIf="editingMora">(Editable)</span></label>
-							<input class="form-control" type="date" formControlName="fecha_fin" />
-							<small class="text-muted">Opcional - Dejar vacío si no tiene fin</small>
+							<div class="mb-3">
+								<label>Fecha de Fin <span class="text-success"
+										*ngIf="editingMora">(Editable)</span></label>
+								<input class="form-control" type="date" formControlName="fecha_fin" />
+								<small class="text-muted">Opcional - Dejar vacío si no tiene fin</small>
+							</div>
 						</div>
 
-						<div class="col-md-4">
-							<label>Importe mora por día <span class="text-danger" *ngIf="!editingMora">*</span><span
-									class="text-success" *ngIf="editingMora">(Editable)</span></label>
-							<input class="form-control" type="number" formControlName="monto" placeholder="Ej: 5.00"
-								step="0.01" min="0" />
-							<small class="text-muted">Monto de mora diaria en bolivianos</small>
-							<small class="error"
-								*ngIf="moraForm.get('monto')?.touched && moraForm.get('monto')?.hasError('required')">
-								Este campo es requerido.
-							</small>
+						<div class="col-md-8">
+							<div class="mb-3">
+								<div class="d-flex justify-content-between align-items-center mb-1">
+									<label class="mb-0">Importe de mora por día (Bs) <span
+											class="text-danger">*</span></label>
+									<div class="form-check form-switch mb-0">
+										<input class="form-check-input" type="checkbox" formControlName="activo"
+											id="chkActivo" />
+										<label class="form-check-label fw-bold"
+											[ngClass]="moraForm.get('activo')?.value ? 'text-primary' : 'text-muted'"
+											for="chkActivo" style="font-size: 0.85rem;">
+											{{ moraForm.get('activo')?.value ? 'Activa' : 'Inactiva' }}
+										</label>
+									</div>
+								</div>
+								<input class="form-control" type="number" formControlName="monto" step="0.01"
+									placeholder="Ej: 0.50" />
+								<small class="error"
+									*ngIf="moraForm.get('monto')?.touched && moraForm.get('monto')?.hasError('required')">
+									El importe es obligatorio.
+								</small>
+							</div>
 							<small class="error" *ngIf="moraForm.get('monto')?.hasError('min')">
 								El monto debe ser mayor o igual a 0.
 							</small>
-						</div>
-
-						<div class="col-12" *ngIf="!editingMora">
-							<div class="form-check">
-								<input class="form-check-input" type="checkbox" id="activo" formControlName="activo" />
-								<label class="form-check-label" for="activo">
-									<strong>Activo</strong>
-									<small class="text-muted d-block">Solo las configuraciones activas se
-										aplicarán</small>
-								</label>
-							</div>
 						</div>
 					</div>
 				</form>

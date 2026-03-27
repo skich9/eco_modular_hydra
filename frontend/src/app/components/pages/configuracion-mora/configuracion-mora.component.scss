@@ -74,6 +74,21 @@
 	box-shadow: 0 4px 6px rgba(0, 0, 0, 0.1);
 }
 
+.mora-date-input {
+	width: 140px !important;
+}
+
+.hover-bg-light {
+	transition: background-color 0.2s;
+	&:hover {
+		background-color: #f8f9fa;
+	}
+}
+
+.card-body {
+	padding: 1rem;
+}
+
 .modal-content.modal-lg {
 	max-width: 800px;
 }

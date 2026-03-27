@@ -57,7 +57,7 @@ class CarreraController extends Controller
 
             // Consulta directa tolerante a columnas opcionales
             $allCols = DB::getSchemaBuilder()->getColumnListing('pensums');
-            $want = ['cod_pensum','codigo_carrera','nombre','descripcion','cantidad_semestres','orden','nivel','estado','created_at','updated_at'];
+            $want = ['cod_pensum','codigo_carrera','nombre','descripcion','cantidad_semestres','orden','nivel','estado','activo','created_at','updated_at'];
             $selectCols = array_values(array_intersect($want, $allCols));
             if (empty($selectCols)) { $selectCols = ['cod_pensum']; }
 
