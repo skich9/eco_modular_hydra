@@ -783,8 +783,8 @@ export class MensualidadModalComponent implements OnInit, OnChanges {
         return brutoNext > 0 ? brutoNext : Number(this.pu || 0);
       }
       if (this.tipo !== 'mensualidad') return Number(this.pu || 0);
-      const cant = Math.max(1, Number(this.form?.get('cantidad')?.value || 1));
-      return this.sumBrutoMenosPagadoNextK(cant);
+      // Mostrar el precio unitario (para 1 sola cuota) independientemente de la cantidad seleccionada
+      return this.sumBrutoMenosPagadoNextK(1);
     } catch { return Number(this.pu || 0); }
   }
 
