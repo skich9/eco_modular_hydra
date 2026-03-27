@@ -2110,6 +2110,7 @@ class CobroController extends Controller
 						'monto_pagado_previo' => 0.0,
 						'saldo_restante' => 0.0,
 					];
+                    // Log::info('batchStore: calculando descuentos prorrateados', ['idx' => $idx, 'item' => $item]);
 
 					$asignSnap = null;
 					$montoAPagar = (float)$item['monto'];
@@ -3014,7 +3015,7 @@ class CobroController extends Controller
                     'cod_inscrip' => $primaryInscripcion ? (int)$primaryInscripcion->cod_inscrip : null,
                     'cod_tipo_cobro' => $codTipoCobroItem,
                     'concepto' => $conceptoOut,
-                    'reposicion_factura' => $isReposicionFactura ? 1 : null,
+                    'reposicion_factura' => $isReposicionFactura,
                 ]);
                 $created = Cobro::create($payload)->load(['usuario', 'cuota', 'formaCobro', 'cuentaBancaria', 'itemCobro']);
 
