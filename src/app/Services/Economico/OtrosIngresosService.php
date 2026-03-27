@@ -16,9 +16,28 @@ use Illuminate\Validation\ValidationException;
 
 class OtrosIngresosService
 {
+	/** Zona horaria de negocio (Bolivia, UTC−4); alinea `fecha`/`hora` con el reloj local aunque `APP_TIMEZONE` falle. */
+	private const TZ_NEGOCIO = 'America/La_Paz';
+
 	public function __construct(
 		private readonly NotaOtrosIngresosPdfService $notaOtrosIngresosPdfService,
 	) {
+	}
+
+	/** Evita guardar en UTC cuando el negocio es en Bolivia (desfase típico +4 h). */
+	private function timezoneNegocio(): string
+	{
+		$tz = config('app.timezone', self::TZ_NEGOCIO);
+		if (!is_string($tz) || $tz === '' || $tz === 'UTC') {
+			return self::TZ_NEGOCIO;
+		}
+
+		return $tz;
+	}
+
+	private function ahoraNegocio(): Carbon
+	{
+		return Carbon::now($this->timezoneNegocio());
 	}
 
 	public function getGestionCobroValor(): ?string
@@ -642,7 +661,7 @@ class OtrosIngresosService
 		if ($fechaStr !== '') {
 			$this->assertDmyNoFutura($fechaStr, 'fecha');
 		}
-		$hora = now()->format('H:i:s');
+		$hora = $this->ahoraNegocio()->format('H:i:s');
 		$fecha = $this->parseFechaSolo($data['fecha'] ?? null);
 		if ($fecha) {
 			$fecha = $fecha . ' ' . $hora;
@@ -688,11 +707,13 @@ class OtrosIngresosService
 	private function parseFechaHora(?string $dmy): Carbon
 	{
 		if (!$dmy) {
-			return now();
+			return $this->ahoraNegocio();
 		}
 		$dmy = trim($dmy);
-		$ts = Carbon::createFromFormat('d/m/Y', $dmy);
-		return $ts->setTimeFromTimeString(now()->format('H:i:s'));
+		$tzUse = $this->timezoneNegocio();
+		$ts = Carbon::createFromFormat('d/m/Y', $dmy, $tzUse);
+
+		return $ts->setTimeFromTimeString($this->ahoraNegocio()->format('H:i:s'));
 	}
 
 	private function parseFechaSolo(?string $dmy): ?string
@@ -726,14 +747,15 @@ class OtrosIngresosService
 		if ($dmy === '') {
 			return;
 		}
+		$tzUse = $this->timezoneNegocio();
 		try {
-			$c = Carbon::createFromFormat('d/m/Y', $dmy)->startOfDay();
+			$c = Carbon::createFromFormat('d/m/Y', $dmy, $tzUse)->startOfDay();
 		} catch (\Throwable) {
 			throw ValidationException::withMessages([
 				$attribute => ['Formato de fecha inválido (día/mes/año).'],
 			]);
 		}
-		$tope = Carbon::today()->startOfDay();
+		$tope = Carbon::now($tzUse)->startOfDay();
 		if ($c->gt($tope)) {
 			throw ValidationException::withMessages([
 				$attribute => ['No se permiten fechas futuras. La fecha más tardía permitida es '.$tope->format('d/m/Y').'.'],
