@@ -1284,8 +1284,16 @@ export class MensualidadModalComponent implements OnInit, OnChanges {
     this.form.get('costo_total')?.setValue(total, { emitEvent: false });
   }
 
-  // Opciones para el selector de cantidad (1..pendientes)
+  // Opciones para el selector de cantidad (1..cuotas_disponibles_reales)
   getCantidadOptions(): number[] {
+    // Para mensualidad y arrastre, usar el número real de cuotas disponibles después del filtrado
+    if (this.tipo === 'mensualidad' || this.tipo === 'arrastre') {
+      const cuotasDisponibles = this.getOrderedCuotasRestantes();
+      const maxDisponible = cuotasDisponibles.length;
+      if (maxDisponible === 0) return [];
+      return Array.from({ length: maxDisponible }, (_, i) => i + 1);
+    }
+    // Para otros tipos (mora, rezagado, etc.), usar pendientes como antes
     const p = Math.max(0, Number(this.pendientes || 0));
     return Array.from({ length: p }, (_, i) => i + 1);
   }
@@ -1295,6 +1303,19 @@ export class MensualidadModalComponent implements OnInit, OnChanges {
     const cuota = start + Math.max(0, Number(n || 0)) - 1;
     const mes = this.getMesNombreByCuota(cuota);
     return mes ? `${n} - ${mes}` : `${n}`;
+  }
+
+  // Verifica si hay opciones disponibles para agregar (para deshabilitar el botón cuando el select está vacío)
+  get tieneOpcionesDisponibles(): boolean {
+    if (this.tipo === 'mensualidad' || this.tipo === 'arrastre') {
+      const opciones = this.getCantidadOptions();
+      console.log('[MensualidadModal] tieneOpcionesDisponibles - tipo:', this.tipo, 'opciones.length:', opciones.length, 'opciones:', opciones);
+      return opciones.length > 0;
+    }
+    // Para otros tipos, verificar pendientes
+    const resultado = (this.pendientes || 0) > 0;
+    console.log('[MensualidadModal] tieneOpcionesDisponibles - tipo:', this.tipo, 'pendientes:', this.pendientes, 'resultado:', resultado);
+    return resultado;
   }
 
   private getStartCuotaFromResumen(): number {
@@ -1403,12 +1424,44 @@ export class MensualidadModalComponent implements OnInit, OnChanges {
     const src: any[] = ((this.resumen?.asignacion_costos?.items || this.resumen?.asignaciones || []) as any[]);
     const ord = (src || []).slice().sort((a: any, b: any) => Number(a?.numero_cuota || 0) - Number(b?.numero_cuota || 0));
     const out: Array<{ numero: number; restante: number; id_cuota_template: number|null; id_asignacion_costo: number|null; }> = [];
+
+    console.log('[MensualidadModal] getOrderedCuotasRestantes - tipo:', this.tipo, 'detalleFactura:', this.detalleFactura);
+
+    // Obtener números de cuota ya agregados al detalle de factura para este tipo (mensualidad o arrastre)
+    const cuotasYaAgregadas = new Set<number>();
+    if (this.detalleFactura && Array.isArray(this.detalleFactura)) {
+      for (const item of this.detalleFactura) {
+        const tipoPago = (item?.tipo_pago || item?.cod_tipo_cobro || '').toString().toUpperCase();
+        const numeroCuota = Number(item?.numero_cuota || 0);
+
+        console.log('[MensualidadModal] Revisando item detalle - tipoPago:', tipoPago, 'numeroCuota:', numeroCuota);
+
+        // Para mensualidad, filtrar items de MENSUALIDAD
+        // Para arrastre, filtrar items de ARRASTRE
+        if (this.tipo === 'mensualidad' && tipoPago === 'MENSUALIDAD' && numeroCuota > 0) {
+          cuotasYaAgregadas.add(numeroCuota);
+          console.log('[MensualidadModal] Cuota agregada al set:', numeroCuota);
+        } else if (this.tipo === 'arrastre' && tipoPago === 'ARRASTRE' && numeroCuota > 0) {
+          cuotasYaAgregadas.add(numeroCuota);
+          console.log('[MensualidadModal] Cuota arrastre agregada al set:', numeroCuota);
+        }
+      }
+    }
+
+    console.log('[MensualidadModal] cuotasYaAgregadas:', Array.from(cuotasYaAgregadas));
+
     for (const a of ord) {
       const bruto = this.toNumberLoose(a?.monto);
       const desc = this.toNumberLoose(a?.descuento);
       const montoNeto = (a?.monto_neto !== undefined && a?.monto_neto !== null) ? this.toNumberLoose(a?.monto_neto) : Math.max(0, bruto - desc);
       const pagado = this.toNumberLoose(a?.monto_pagado);
       const numero = Number(a?.numero_cuota || 0);
+
+      // Saltar cuotas ya agregadas al detalle de factura
+      if (cuotasYaAgregadas.has(numero)) {
+        continue;
+      }
+
       let restante = Math.max(0, montoNeto - pagado);
       if (this.frontSaldos && Object.prototype.hasOwnProperty.call(this.frontSaldos, numero)) {
         const r = Number(this.frontSaldos[numero]);
