@@ -41,21 +41,12 @@ export class AuthService {
 		if (typeof localStorage !== 'undefined') {
 			const storedUser = localStorage.getItem(this.userKey);
 			const storedToken = localStorage.getItem(this.tokenKey);
-			const expiresAt = localStorage.getItem(this.expiresAtKey);
-
-			console.log('[AuthService] Cargando usuario desde localStorage:', {
-				hasUser: !!storedUser,
-				hasToken: !!storedToken,
-				expiresAt: expiresAt
-			});
 
 			if (storedUser && storedToken) {
-				// Verificar si el token ha expirado
 				if (this.isTokenExpired()) {
 					console.warn('[AuthService] Token expirado al cargar. Limpiando sesión.');
 					this.clearSession();
 				} else {
-					console.log('[AuthService] Usuario cargado correctamente');
 					this.currentUserSubject.next(JSON.parse(storedUser));
 				}
 			}
@@ -63,42 +54,22 @@ export class AuthService {
 	}
 
 	login(credentials: LoginRequest): Observable<AuthResponse> {
-		console.log('Enviando petición de login a:', `${this.apiUrl}/login`);
-		console.log('Credenciales:', credentials);
-
 		return this.http.post<AuthResponse>(`${this.apiUrl}/login`, credentials)
 			.pipe(
 				tap((response: AuthResponse) => {
-					console.log('Respuesta del servidor:', response);
-
 					if (response.success && response.token && response.usuario) {
-						console.log('Login exitoso, guardando datos de sesión');
-						console.log('Token recibido:', response.token);
-						// Guardar token, expiración y usuario
 						if (typeof localStorage !== 'undefined') {
 							localStorage.setItem(this.tokenKey, response.token);
-							console.log('Token guardado en localStorage');
 							if (response.expires_at) {
 								localStorage.setItem(this.expiresAtKey, response.expires_at);
-								console.log('Expiración guardada:', response.expires_at);
 							}
 							localStorage.setItem(this.userKey, JSON.stringify(response.usuario));
-							console.log('Usuario guardado en localStorage');
-
-							// Verificar que se guardó correctamente
-							const savedToken = localStorage.getItem(this.tokenKey);
-							console.log('Token verificado en localStorage:', savedToken);
 						}
 						this.currentUserSubject.next(response.usuario);
-
-						// Reiniciar la verificación periódica con los nuevos datos
-						console.log('[AuthService] Reiniciando verificación periódica después del login');
 						if (this.expirationCheckInterval) {
 							clearInterval(this.expirationCheckInterval);
 						}
 						this.startExpirationCheck();
-					} else {
-						console.log('Respuesta no válida o login fallido');
 					}
 				})
 			);
@@ -119,10 +90,8 @@ export class AuthService {
 			.pipe(
 				tap((response: any) => {
 					if (response.success && response.expires_at) {
-						// Actualizar la fecha de expiración en localStorage
 						if (typeof localStorage !== 'undefined') {
 							localStorage.setItem(this.expiresAtKey, response.expires_at);
-							console.log('[AuthService] Token actualizado. Nueva expiración:', response.expires_at);
 						}
 					}
 				})
@@ -130,16 +99,13 @@ export class AuthService {
 	}
 
 	clearSession(): void {
-		console.log('[AuthService] Limpiando sesión...');
 		if (typeof localStorage !== 'undefined') {
 			localStorage.removeItem(this.tokenKey);
 			localStorage.removeItem(this.userKey);
 			localStorage.removeItem(this.expiresAtKey);
-			console.log('[AuthService] localStorage limpiado');
 		}
 		this.currentUserSubject.next(null);
 		if (this.expirationCheckInterval) {
-			console.log('[AuthService] Deteniendo verificación periódica');
 			clearInterval(this.expirationCheckInterval);
 			this.expirationCheckInterval = null;
 		}
@@ -203,8 +169,7 @@ export class AuthService {
 
 		const expiresAt = localStorage.getItem(this.expiresAtKey);
 		if (!expiresAt) {
-			console.warn('[AuthService] No hay fecha de expiración en localStorage');
-			return false; // Si no hay fecha de expiración, asumir que no expira
+			return false;
 		}
 
 		const expirationDate = new Date(expiresAt);
@@ -220,20 +185,10 @@ export class AuthService {
 	}
 
 	private startExpirationCheck(): void {
-		console.log('[AuthService] Iniciando verificación periódica de expiración de token (cada 10 segundos)');
-
-		// Verificar cada 10 segundos si el token ha expirado
 		this.expirationCheckInterval = setInterval(() => {
 			const isExpired = this.isTokenExpired();
 			const currentUser = this.getCurrentUser();
 			const token = this.getToken();
-
-			console.log('[AuthService] Verificación periódica:', {
-				hasToken: !!token,
-				hasUser: !!currentUser,
-				isExpired: isExpired,
-				expiresAt: localStorage.getItem(this.expiresAtKey)
-			});
 
 			if (isExpired && currentUser && token) {
 				console.warn('[AuthService] ⚠️ Token expirado detectado. Cerrando sesión automáticamente...');

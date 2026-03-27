@@ -47,6 +47,24 @@ class FuncionesMenuSeeder extends Seeder
 				'created_at' => $now,
 				'updated_at' => $now
 			],
+			[
+				'codigo' => 'economico_otros_ingresos',
+				'nombre' => 'Otros ingresos (ventas)',
+				'descripcion' => 'Registro de otros ingresos no académicos',
+				'modulo' => 'Económico',
+				'activo' => true,
+				'created_at' => $now,
+				'updated_at' => $now
+			],
+			[
+				'codigo' => 'economico_mod_otros_ingresos',
+				'nombre' => 'Modificar / eliminar otros ingresos',
+				'descripcion' => 'Búsqueda, edición y eliminación de otros ingresos',
+				'modulo' => 'Económico',
+				'activo' => true,
+				'created_at' => $now,
+				'updated_at' => $now
+			],
 
 			// Reportes
 			[

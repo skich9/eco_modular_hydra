@@ -38,6 +38,8 @@ use App\Http\Controllers\Api\FacturaAnulacionController;
 use App\Http\Controllers\Api\FacturaPdfController;
 use App\Http\Controllers\Api\SgaSyncController;
 use App\Http\Controllers\Api\ReporteLibroDiarioController;
+use App\Http\Controllers\Api\Economico\OtrosIngresosController;
+use App\Http\Controllers\Api\Economico\ModOtrosIngresosController;
 
 // Búsqueda de estudiantes
 Route::get('/estudiantes/search', [EstudianteController::class, 'search']);
@@ -114,6 +116,12 @@ Route::match(['get','post'], 'sga/eco_hydra/Reincorporacion/estado', function (R
 // Rutas de autenticación
 Route::post('/login', [\App\Http\Controllers\Api\AuthController::class, 'login']);
 
+// PDF notas otros ingresos (URL firmada; no depende de /storage ni del symlink — evita 403 del servidor web)
+Route::get('/economico/otros-ingresos/nota-pdf/{filename}', [OtrosIngresosController::class, 'descargarNotaPdf'])
+	->middleware('signed')
+	->where('filename', '[A-Za-z0-9_\-\.]+\.pdf')
+	->name('economico.otros-ingresos.nota-pdf');
+
 // Rutas protegidas con Sanctum
 Route::middleware('auth:sanctum')->group(function () {
 	Route::post('/logout', [\App\Http\Controllers\Api\AuthController::class, 'logout']);
@@ -121,6 +129,24 @@ Route::middleware('auth:sanctum')->group(function () {
 	Route::post('/refresh-token', [\App\Http\Controllers\Api\AuthController::class, 'refreshToken']);
 	Route::post('/change-password', [\App\Http\Controllers\Api\AuthController::class, 'changePassword']);
 	Route::get('sin/mis-sucursales', [\App\Http\Controllers\Api\SinAdminController::class, 'misSucursales']);
+
+	// Económico — Otros ingresos (ventas)
+	Route::prefix('economico/otros-ingresos')->group(function () {
+		Route::get('initial', [OtrosIngresosController::class, 'initialData']);
+		Route::get('siguiente-num-recibo', [OtrosIngresosController::class, 'siguienteNumRecibo']);
+		Route::get('siguiente-num-factura', [OtrosIngresosController::class, 'siguienteNumFactura']);
+		Route::post('get-autorizaciones', [OtrosIngresosController::class, 'getAutorizaciones']);
+		Route::post('get-directivas', [OtrosIngresosController::class, 'getDirectivas']);
+		Route::post('pertenece-directiva', [OtrosIngresosController::class, 'perteneceDirectiva']);
+		Route::post('factura-existe', [OtrosIngresosController::class, 'facturaExiste']);
+		Route::post('registrar', [OtrosIngresosController::class, 'registrar']);
+	});
+	Route::prefix('economico/mod-otros-ingresos')->group(function () {
+		Route::get('initial', [ModOtrosIngresosController::class, 'initialData']);
+		Route::post('buscar', [ModOtrosIngresosController::class, 'buscar']);
+		Route::post('eliminar', [ModOtrosIngresosController::class, 'eliminar']);
+		Route::post('registrar-mod', [ModOtrosIngresosController::class, 'registrarMod']);
+	});
 });
 
 // Ruta de prueba

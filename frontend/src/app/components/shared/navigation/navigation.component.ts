@@ -92,7 +92,9 @@ export class NavigationComponent implements OnInit {
 			modulo: 'Económico',
 			submenu: [
 				{ name: 'Prórroga Mora', icon: 'fa-calendar-times', route: '/prorroga-mora', permissionCode: 'economico_prorroga_mora' },
-				{ name: 'Descuento Mora', icon: 'fa-percent', route: '/descuento-mora', permissionCode: 'economico_descuento_mora' }
+				{ name: 'Descuento Mora', icon: 'fa-percent', route: '/descuento-mora', permissionCode: 'economico_descuento_mora' },
+				{ name: 'Otros ingresos (ventas)', icon: 'fa-coins', route: '/economico/otros-ingresos', permissionCode: 'economico_otros_ingresos' },
+				{ name: 'Modificar otros ingresos', icon: 'fa-edit', route: '/economico/mod-otros-ingresos', permissionCode: 'economico_mod_otros_ingresos' }
 			]
 		},
 		{

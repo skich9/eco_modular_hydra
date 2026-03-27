@@ -1,0 +1,46 @@
+@import '../otros-ingresos/otros-ingresos.component.scss';
+
+.table-wrap {
+	overflow-x: auto;
+	margin-top: 1rem;
+}
+
+table.data {
+	width: 100%;
+	border-collapse: collapse;
+	font-size: 0.82rem;
+}
+
+table.data th,
+table.data td {
+	border: 1px solid #e5e7eb;
+	padding: 0.35rem 0.45rem;
+	text-align: left;
+	vertical-align: top;
+}
+
+table.data th {
+	background: #f3f4f6;
+	font-weight: 600;
+}
+
+table.data tr:nth-child(even) {
+	background: #fafafa;
+}
+
+.btn-sm {
+	padding: 0.25rem 0.5rem;
+	font-size: 0.8rem;
+	margin-right: 0.25rem;
+}
+
+.grupo-carrera {
+	margin-bottom: 1.5rem;
+}
+
+.grupo-carrera-titulo {
+	margin: 0 0 0.5rem;
+	font-size: 1rem;
+	font-weight: 600;
+	color: #374151;
+}

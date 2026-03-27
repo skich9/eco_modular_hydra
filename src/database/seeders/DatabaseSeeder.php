@@ -56,6 +56,8 @@ class DatabaseSeeder extends Seeder
             ItemsCobroSeeder::class,
             // Materia depende de pensums
             MateriaSeeder::class,
+            // Otros ingresos (catálogo y directivas de demostración)
+            OtrosIngresosCatalogosSeeder::class,
         ]);
     }
 }

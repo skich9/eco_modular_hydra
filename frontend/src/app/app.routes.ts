@@ -184,6 +184,18 @@ export const routes: Routes = [
 				canActivate: [permissionGuard],
 				data: { requiredPermission: 'economico_descuento_mora' }
 			},
+			{
+				path: 'economico/otros-ingresos',
+				loadComponent: () => import('./components/pages/economico/otros-ingresos/otros-ingresos.component').then(m => m.OtrosIngresosComponent),
+				canActivate: [permissionGuard],
+				data: { requiredPermission: 'economico_otros_ingresos' }
+			},
+			{
+				path: 'economico/mod-otros-ingresos',
+				loadComponent: () => import('./components/pages/economico/mod-otros-ingresos/mod-otros-ingresos.component').then(m => m.ModOtrosIngresosComponent),
+				canActivate: [permissionGuard],
+				data: { requiredPermission: 'economico_mod_otros_ingresos' }
+			},
 
             // SIN: Estado de Factura / Anulación
             {

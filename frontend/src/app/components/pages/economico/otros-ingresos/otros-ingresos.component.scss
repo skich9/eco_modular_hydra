@@ -1,0 +1,498 @@
+.page-wrap {
+	max-width: 1100px;
+	margin: 0 auto;
+	padding: 1rem 1.25rem 2rem;
+}
+
+.page-header h1 {
+	font-size: 1.35rem;
+	margin-bottom: 1rem;
+	font-weight: 600;
+}
+
+.card-panel {
+	background: #fff;
+	border: 1px solid #e5e7eb;
+	border-radius: 8px;
+	padding: 1.25rem;
+	margin-bottom: 1.25rem;
+	box-shadow: 0 1px 2px rgba(0, 0, 0, 0.04);
+}
+
+.card-panel h2 {
+	font-size: 1rem;
+	margin: 0 0 1rem;
+	color: #1e3a5f;
+	border-bottom: 1px solid #e5e7eb;
+	padding-bottom: 0.5rem;
+}
+
+:host {
+	--oi-field-label-width: 180px;
+	--oi-field-label-gap: 8px;
+}
+
+.form-grid {
+	display: grid;
+	grid-template-columns: repeat(2, 1fr);
+	gap: 1rem 1.5rem;
+}
+
+/**
+ * Fila: label (ancho fijo, derecha) + control (flex 1 / resto).
+ */
+.card-panel--inline-fields .field:not(.field--stack):not(.field--checkbox-only):not(.field--empty):not(.field--textarea) {
+	display: grid;
+	grid-template-columns: var(--oi-field-label-width) minmax(0, 1fr);
+	align-items: center;
+	column-gap: var(--oi-field-label-gap);
+	row-gap: 0.25rem;
+}
+
+.card-panel--inline-fields .field:not(.field--stack):not(.field--checkbox-only):not(.field--empty):not(.field--textarea) > label {
+	margin-bottom: 0;
+	text-align: right;
+	font-weight: 500;
+	align-self: center;
+	flex-shrink: 0;
+}
+
+.card-panel--inline-fields .field .field__control {
+	display: flex;
+	flex-direction: column;
+	gap: 0.25rem;
+	min-width: 0;
+}
+
+.card-panel--inline-fields .field .field__control--row {
+	flex-direction: row;
+	align-items: center;
+	flex-wrap: wrap;
+	gap: 0.5rem;
+}
+
+.card-panel--inline-fields .field .field__control--row > input {
+	flex: 1 1 8rem;
+	min-width: 0;
+	width: auto;
+}
+
+.card-panel--inline-fields .field:not(.field--stack) > .field-error {
+	grid-column: 2;
+}
+
+.card-panel--inline-fields .field.field--stack {
+	display: block;
+}
+
+/** Rango Del–Al: título + Del + fecha + Al + fecha en una sola fila */
+.card-panel--inline-fields .field.field--stack.rango-fechas-sga {
+	display: block;
+	width: 100%;
+	min-width: 0;
+}
+
+.rango-fechas-sga__line {
+	display: flex;
+	flex-wrap: nowrap;
+	align-items: center;
+	gap: var(--oi-field-label-gap);
+	width: 100%;
+	min-width: 0;
+}
+
+.card-panel--inline-fields .rango-fechas-sga__line .rango-fechas-sga__titulo {
+	flex: 0 0 var(--oi-field-label-width);
+	text-align: right;
+	padding-top: 0;
+	margin-bottom: 0;
+	font-weight: 500;
+	align-self: center;
+}
+
+.card-panel--inline-fields .field.field--stack.rango-fechas-sga .rango-fechas-sga__row {
+	flex: 1 1 auto;
+	min-width: 0;
+	display: flex;
+	flex-wrap: nowrap;
+	align-items: center;
+	gap: 0.35rem 0.5rem;
+}
+
+.card-panel--inline-fields .field.field--checkbox-only {
+	display: grid;
+	grid-template-columns: var(--oi-field-label-width) minmax(0, 1fr);
+	column-gap: var(--oi-field-label-gap);
+	align-items: center;
+}
+
+.card-panel--inline-fields .field.field--checkbox-only label {
+	display: flex;
+	align-items: center;
+	gap: 0.35rem;
+	margin-bottom: 0;
+	cursor: pointer;
+	grid-column: 2;
+	min-width: 0;
+}
+
+.card-panel--inline-fields .field.field--checkbox-only label input {
+	width: auto;
+	margin: 0;
+}
+
+.card-panel--inline-fields .field.field--empty {
+	display: none;
+}
+
+.card-panel--inline-fields .field.field--textarea {
+	display: grid;
+	grid-template-columns: var(--oi-field-label-width) minmax(0, 1fr);
+	align-items: start;
+	column-gap: var(--oi-field-label-gap);
+	row-gap: 0.25rem;
+}
+
+.card-panel--inline-fields .field.field--textarea > label {
+	margin-bottom: 0;
+	padding-top: 0.45rem;
+	text-align: right;
+	font-weight: 500;
+}
+
+@media (max-width: 640px) {
+	.card-panel--inline-fields .field:not(.field--stack):not(.field--checkbox-only):not(.field--empty):not(.field--textarea),
+	.card-panel--inline-fields .field.field--textarea {
+		grid-template-columns: 1fr;
+	}
+
+	.card-panel--inline-fields .field:not(.field--stack) > .field-error {
+		grid-column: 1;
+	}
+
+	.card-panel--inline-fields .field:not(.field--stack):not(.field--checkbox-only):not(.field--empty):not(.field--textarea) > label,
+	.card-panel--inline-fields .field.field--textarea > label {
+		text-align: left;
+		padding-top: 0;
+	}
+
+	.card-panel--inline-fields .rango-fechas-sga__line {
+		flex-wrap: wrap;
+		align-items: flex-start;
+	}
+
+	.card-panel--inline-fields .rango-fechas-sga__line .rango-fechas-sga__titulo {
+		flex: 1 1 100%;
+		text-align: left;
+		padding-top: 0;
+	}
+
+	.card-panel--inline-fields .field.field--stack.rango-fechas-sga .rango-fechas-sga__row {
+		flex: 1 1 100%;
+		min-width: 0;
+	}
+
+	.card-panel--inline-fields .field.field--checkbox-only {
+		grid-template-columns: 1fr;
+	}
+
+	.card-panel--inline-fields .field.field--checkbox-only label {
+		grid-column: 1;
+	}
+}
+
+/** Bloque estilo SGA: columna izquierda (cliente / pago) y derecha (factura / montos / fecha). */
+.otros-ingresos__dual {
+	display: grid;
+	grid-template-columns: 1fr 1fr;
+	gap: 1rem 1.5rem;
+	align-items: start;
+	margin-top: 0;
+}
+
+.otros-ingresos__col {
+	display: flex;
+	flex-direction: column;
+	gap: 1rem;
+	min-width: 0;
+}
+
+.form-section-below {
+	display: flex;
+	flex-direction: column;
+	gap: 1rem;
+	margin-top: 1rem;
+}
+
+@media (max-width: 900px) {
+	.form-grid {
+		grid-template-columns: 1fr;
+	}
+
+	.otros-ingresos__dual {
+		grid-template-columns: 1fr;
+	}
+}
+
+.field label {
+	display: block;
+	font-size: 0.8rem;
+	color: #4b5563;
+	margin-bottom: 0.25rem;
+}
+
+/** Radios (Documento / Medio): etiquetas internas alineadas a la izquierda */
+.card-panel--inline-fields .field .radio-row {
+	min-width: 0;
+	width: 100%;
+}
+
+.card-panel--inline-fields .field .radio-row label {
+	display: inline-flex;
+	align-items: center;
+	gap: 0.35rem;
+	text-align: left;
+	font-weight: 400;
+	margin-bottom: 0;
+	font-size: 0.85rem;
+	color: #374151;
+}
+
+.field input,
+.field select,
+.field textarea {
+	width: 100%;
+	padding: 0.45rem 0.55rem;
+	border: 1px solid #d1d5db;
+	border-radius: 6px;
+	font-size: 0.9rem;
+}
+
+.field input:disabled,
+.field select:disabled {
+	background: #f3f4f6;
+}
+
+.field input[readOnly]:not(.fecha-dmy-field__visible),
+.field input.input-readonly-sga {
+	background: #f3f4f6;
+	cursor: default;
+}
+
+.input-readonly-sga {
+	width: 100%;
+	padding: 0.45rem 0.55rem;
+	border: 1px solid #d1d5db;
+	border-radius: 6px;
+	font-size: 0.9rem;
+	box-sizing: border-box;
+}
+
+.field-hint {
+	display: block;
+	margin-top: 0.25rem;
+	font-size: 0.72rem;
+	color: #6b7280;
+	line-height: 1.3;
+}
+
+.field-req {
+	color: #dc2626;
+	font-weight: 600;
+}
+
+.field-error {
+	display: block;
+	margin-top: 0.35rem;
+	font-size: 0.78rem;
+	color: #dc2626;
+	line-height: 1.3;
+}
+
+.field input.input-invalid:not(:disabled) {
+	border-color: #dc2626;
+	box-shadow: 0 0 0 1px #fecaca;
+}
+
+/* Rango Del / Al (estilo SGA) */
+.rango-fechas-sga__titulo {
+	display: block;
+	font-size: 0.8rem;
+	color: #4b5563;
+	margin-bottom: 0;
+	font-weight: 600;
+}
+
+.rango-fechas-sga__row {
+	display: flex;
+	flex-wrap: nowrap;
+	align-items: center;
+	gap: 0.35rem 0.5rem;
+	min-width: 0;
+}
+
+.rango-fechas-sga__del {
+	font-weight: 400;
+	font-size: 0.8rem;
+	color: #4b5563;
+	margin: 0;
+	white-space: nowrap;
+}
+
+.rango-fechas-sga__al {
+	font-size: 0.82rem;
+	color: #4b5563;
+	margin: 0;
+	white-space: nowrap;
+}
+
+/* Fecha: vista dd/mm/aaaa + datepicker nativo encima (como SGA) */
+.fecha-dmy-field {
+	position: relative;
+	display: block;
+	width: 100%;
+}
+
+.fecha-dmy-field--compact {
+	width: auto;
+	min-width: 9.75rem;
+	max-width: 11.5rem;
+}
+
+/** Dentro del rango en una fila: comparte espacio con el otro datepicker */
+.fecha-dmy-field--rango {
+	flex: 1 1 0;
+	min-width: 0;
+	width: auto;
+	max-width: none;
+}
+
+.fecha-dmy-field__visible {
+	width: 100%;
+	box-sizing: border-box;
+	padding: 0.45rem 0.55rem;
+	border: 1px solid #d1d5db;
+	border-radius: 6px;
+	font-size: 0.9rem;
+	background: #f3f4f6;
+	color: #111827;
+	pointer-events: none;
+}
+
+.fecha-dmy-field__overlay {
+	position: absolute;
+	left: 0;
+	top: 0;
+	z-index: 2;
+	width: 100%;
+	min-height: 2.5rem;
+	height: 100%;
+	margin: 0;
+	padding: 0;
+	border: none;
+	opacity: 0;
+	cursor: pointer;
+	font-size: 1rem;
+}
+
+/** Datepicker nativo visible (p. ej. Fecha con efectivo): evita fallos del overlay transparente. */
+.fecha-input-native {
+	width: 100%;
+	box-sizing: border-box;
+	padding: 0.45rem 0.55rem;
+	border: 1px solid #d1d5db;
+	border-radius: 6px;
+	font-size: 0.9rem;
+	min-height: 2.5rem;
+}
+
+.fecha-input-native--compact {
+	flex: 0 1 11rem;
+	min-width: 9rem;
+	max-width: 12rem;
+}
+
+/** Inputs type=date en fila única con rango: se reparten el ancho disponible */
+.fecha-input-native--rango {
+	flex: 1 1 0;
+	min-width: 7.5rem;
+	max-width: 100%;
+	width: auto;
+}
+
+.rango-fechas-sga__row--native {
+	align-items: center;
+}
+
+.radio-row {
+	display: flex;
+	gap: 1.25rem;
+	flex-wrap: wrap;
+	align-items: center;
+}
+
+.actions {
+	display: flex;
+	gap: 0.75rem;
+	flex-wrap: wrap;
+	margin-top: 1.25rem;
+}
+
+.btn {
+	padding: 0.5rem 1rem;
+	border-radius: 6px;
+	border: none;
+	cursor: pointer;
+	font-size: 0.9rem;
+}
+
+.btn-primary {
+	background: #2563eb;
+	color: #fff;
+}
+
+.btn-secondary {
+	background: #e5e7eb;
+	color: #111827;
+}
+
+.btn-danger {
+	background: #dc2626;
+	color: #fff;
+}
+
+.alert {
+	padding: 0.65rem 0.85rem;
+	border-radius: 6px;
+	margin-bottom: 1rem;
+	font-size: 0.875rem;
+}
+
+.alert-success {
+	background: #d1fae5;
+	color: #065f46;
+}
+
+.alert-error {
+	background: #fee2e2;
+	color: #991b1b;
+}
+
+.modal-backdrop {
+	position: fixed;
+	inset: 0;
+	background: rgba(0, 0, 0, 0.45);
+	display: flex;
+	align-items: center;
+	justify-content: center;
+	z-index: 1000;
+	padding: 1rem;
+}
+
+.modal-box {
+	background: #fff;
+	border-radius: 8px;
+	max-width: 520px;
+	width: 100%;
+	padding: 1.25rem;
+}

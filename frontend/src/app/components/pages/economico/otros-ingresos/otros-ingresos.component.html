@@ -1,0 +1,296 @@
+<div class="page-wrap">
+	<div class="page-header">
+		<h1>Registro de ingresos (ventas)</h1>
+	</div>
+
+	<div *ngIf="alertMsg" class="alert" [ngClass]="alertOk ? 'alert-success' : 'alert-error'">{{ alertMsg }}</div>
+
+	<div class="card-panel card-panel--inline-fields">
+		<h2>Datos del registro</h2>
+		<div class="form-grid">
+			<div class="field">
+				<label>Documento</label>
+				<div class="radio-row">
+					<label><input type="radio" name="fr" value="F" [(ngModel)]="facturaRecibo" (ngModelChange)="onFacturaReciboMedioChange()" /> Factura</label>
+					<label><input type="radio" name="fr" value="R" [(ngModel)]="facturaRecibo" (ngModelChange)="onFacturaReciboMedioChange()" /> Recibo</label>
+				</div>
+			</div>
+			<div class="field">
+				<label>Medio</label>
+				<div class="radio-row">
+					<label><input type="radio" name="med" value="E" [(ngModel)]="medioDoc" (ngModelChange)="onFacturaReciboMedioChange()" /> Computarizado</label>
+					<label><input type="radio" name="med" value="M" [(ngModel)]="medioDoc" (ngModelChange)="onFacturaReciboMedioChange()" /> Manual</label>
+				</div>
+			</div>
+
+			<div class="field">
+				<label>Carrera</label>
+				<select [(ngModel)]="codigoCarrera" (ngModelChange)="onCarreraChange()">
+					<option value="">Seleccione…</option>
+					<option *ngFor="let c of carreras" [value]="c.codigo_carrera">{{ c.nombre }}</option>
+				</select>
+			</div>
+			<div class="field">
+				<label>Gestión</label>
+				<div class="field__control">
+					<select [(ngModel)]="gestionSel">
+						<option *ngFor="let g of gestiones" [value]="g.gestion">{{ g.gestion }}</option>
+					</select>
+				</div>
+			</div>
+
+			<div class="field field--checkbox-only">
+				<label><input type="checkbox" [(ngModel)]="anular" (ngModelChange)="onAnularChange()" /> Marque para anular</label>
+			</div>
+			<div class="field field--empty" aria-hidden="true"></div>
+		</div>
+
+		<div class="otros-ingresos__dual">
+			<div class="otros-ingresos__col">
+				<div class="field">
+					<label>Razón social</label>
+					<input type="text" [(ngModel)]="razonSocial" placeholder="Introduzca razón social del cliente" [disabled]="nitRazonBloqueados" />
+				</div>
+				<div class="field">
+					<label>NIT / documento</label>
+					<div class="field__control field__control--row">
+						<input type="text" [(ngModel)]="nit" placeholder="NIT cliente" [disabled]="nitRazonBloqueados" />
+						<button type="button" class="btn btn-secondary" (click)="buscarRazonSocial()" [disabled]="nitRazonBloqueados">Buscar</button>
+					</div>
+				</div>
+				<div class="field">
+					<label>Tipo de pago</label>
+					<select [(ngModel)]="codeTipoPago" (ngModelChange)="onTipoPagoChange()" [disabled]="anular">
+						<option value="">Seleccione…</option>
+						<option *ngFor="let t of tiposPagoOtrosIngresos" [value]="t.code">{{ t.label }}</option>
+					</select>
+				</div>
+				<div class="field" *ngIf="!showFlujoDepositoTarjeta">
+					<label>Tipo ingreso</label>
+					<select [(ngModel)]="codTipoIngreso" (ngModelChange)="onTipoIngresoChange()" [disabled]="anular">
+						<option value="">Seleccione…</option>
+						<option *ngFor="let t of tiposIngresoVisibles" [value]="t.cod_tipo_ingreso">{{ t.nom_tipo_ingreso }}</option>
+					</select>
+				</div>
+				<div class="field" *ngIf="showAlquiler && !showFlujoDepositoTarjeta">
+					<label>Periodo (mes)</label>
+					<select [(ngModel)]="periodoAlq" [disabled]="!tipoFlujoNormalActivo">
+						<option *ngFor="let m of meses" [value]="m">{{ m }}</option>
+					</select>
+				</div>
+				<div class="field" *ngIf="showOt && !showFlujoDepositoTarjeta">
+					<label>Nº orden de trabajo <span class="field-req" aria-hidden="true">*</span></label>
+					<input
+						type="number"
+						min="1"
+						step="1"
+						inputmode="numeric"
+						placeholder="0"
+						[(ngModel)]="nroOrden"
+						(ngModelChange)="onNroOrdenInput()"
+						(blur)="onNroOrdenBlur()"
+						[class.input-invalid]="nroOrdenError"
+						[disabled]="!tipoFlujoNormalActivo"
+						[attr.aria-invalid]="!!nroOrdenError"
+					/>
+					<small *ngIf="nroOrdenError" class="field-error" role="alert">{{ nroOrdenError }}</small>
+				</div>
+				<div class="field" *ngIf="!esPagoEfectivo">
+					<label>Banco / cuenta</label>
+					<select [(ngModel)]="ctaBanco" [disabled]="camposPagoSecundariosBloqueados">
+						<option value="">Seleccione…</option>
+						<option *ngFor="let c of cuentas" [value]="cuentaValor(c)">{{ c.banco }} — {{ c.numero_cuenta }}</option>
+					</select>
+				</div>
+				<div class="field" *ngIf="showFlujoDepositoTarjeta">
+					<label>Nº depósito</label>
+					<input type="text" [(ngModel)]="numDeposito" [disabled]="camposPagoSecundariosBloqueados" />
+				</div>
+				<div class="field" *ngIf="showFlujoDepositoTarjeta">
+					<label>Fecha depósito (día/mes/año)</label>
+					<input
+						type="date"
+						class="fecha-input-native"
+						[(ngModel)]="fechaDepositoIso"
+						[min]="minFechaIso"
+						[attr.max]="maxFechaIso"
+						(ngModelChange)="clampTodasLasFechas()"
+						autocomplete="off"
+					/>
+				</div>
+				<div class="field" *ngIf="showFlujoDepositoTarjeta">
+					<label>Tipo ingreso</label>
+					<select [(ngModel)]="codTipoIngreso" (ngModelChange)="onTipoIngresoChange()" [disabled]="anular">
+						<option value="">Seleccione…</option>
+						<option *ngFor="let t of tiposIngresoDeposito" [value]="t.cod">{{ t.nom }}</option>
+					</select>
+				</div>
+				<div class="field" *ngIf="showOt && showFlujoDepositoTarjeta">
+					<label>Nº orden de trabajo <span class="field-req" aria-hidden="true">*</span></label>
+					<input
+						type="number"
+						min="1"
+						step="1"
+						inputmode="numeric"
+						placeholder="0"
+						[(ngModel)]="nroOrden"
+						(ngModelChange)="onNroOrdenInput()"
+						(blur)="onNroOrdenBlur()"
+						[class.input-invalid]="nroOrdenError"
+						[disabled]="!tipoFlujoNormalActivo"
+						[attr.aria-invalid]="!!nroOrdenError"
+					/>
+					<small *ngIf="nroOrdenError" class="field-error" role="alert">{{ nroOrdenError }}</small>
+				</div>
+				<div class="field" *ngIf="showAlquiler && showFlujoDepositoTarjeta">
+					<label>Periodo (mes)</label>
+					<select [(ngModel)]="periodoAlq" [disabled]="!tipoFlujoNormalActivo">
+						<option *ngFor="let m of meses" [value]="m">{{ m }}</option>
+					</select>
+				</div>
+				<div class="field field--stack rango-fechas-sga" *ngIf="mostrarRangoFechas">
+					<div class="rango-fechas-sga__line">
+						<label class="rango-fechas-sga__titulo">Rango de fechas (día/mes/año)</label>
+						<ng-container *ngIf="esRangoFechasNativoRow; else rangoFechasOverlay">
+							<div class="rango-fechas-sga__row rango-fechas-sga__row--native">
+								<span class="rango-fechas-sga__del">Del:</span>
+								<input
+									type="date"
+									class="fecha-input-native fecha-input-native--rango"
+									[(ngModel)]="fechaIniIso"
+									[min]="minFechaIso"
+									[attr.max]="fechaRangoDelMaxIso"
+									[disabled]="!fechaRangoEditable"
+									(ngModelChange)="clampTodasLasFechas()"
+									autocomplete="off"
+								/>
+								<span class="rango-fechas-sga__al">Al</span>
+								<input
+									type="date"
+									class="fecha-input-native fecha-input-native--rango"
+									[(ngModel)]="fechaFinIso"
+									[min]="fechaRangoAlMinIso"
+									[attr.max]="maxFechaIso"
+									[disabled]="!fechaRangoEditable"
+									(ngModelChange)="clampTodasLasFechas()"
+									autocomplete="off"
+								/>
+							</div>
+						</ng-container>
+						<ng-template #rangoFechasOverlay>
+							<div class="rango-fechas-sga__row rango-fechas-sga__row--overlay">
+								<span class="rango-fechas-sga__del">Del:</span>
+								<div class="fecha-dmy-field fecha-dmy-field--rango">
+									<input
+										type="text"
+										readonly
+										class="fecha-dmy-field__visible"
+										[value]="fechaIniDmyVisible"
+										placeholder="dd/mm/aaaa"
+										tabindex="-1"
+									/>
+									<input
+										type="date"
+										class="fecha-dmy-field__overlay"
+										[(ngModel)]="fechaIniIso"
+										[min]="minFechaIso"
+										[attr.max]="fechaRangoDelMaxIso"
+										[disabled]="!fechaRangoEditable"
+										(ngModelChange)="clampTodasLasFechas()"
+										autocomplete="off"
+									/>
+								</div>
+								<span class="rango-fechas-sga__al">Al</span>
+								<div class="fecha-dmy-field fecha-dmy-field--rango">
+									<input
+										type="text"
+										readonly
+										class="fecha-dmy-field__visible"
+										[value]="fechaFinDmyVisible"
+										placeholder="dd/mm/aaaa"
+										tabindex="-1"
+									/>
+									<input
+										type="date"
+										class="fecha-dmy-field__overlay"
+										[(ngModel)]="fechaFinIso"
+										[min]="fechaRangoAlMinIso"
+										[attr.max]="maxFechaIso"
+										[disabled]="!fechaRangoEditable"
+										(ngModelChange)="clampTodasLasFechas()"
+										autocomplete="off"
+									/>
+								</div>
+							</div>
+						</ng-template>
+					</div>
+				</div>
+			</div>
+
+			<div class="otros-ingresos__col">
+				<div class="field">
+					<label>Nº factura</label>
+					<input type="number" [(ngModel)]="numFactura" [readOnly]="facturaInputReadonly" />
+				</div>
+				<div class="field">
+					<label>Nº recibo</label>
+					<input type="number" [(ngModel)]="numRecibo" [readOnly]="reciboInputReadonly" />
+				</div>
+				<div class="field">
+					<label>Importe</label>
+					<input type="number" step="0.01" [(ngModel)]="importe" (ngModelChange)="calcNeto()" [readOnly]="importeDescuentoBloqueados" />
+				</div>
+				<div class="field">
+					<label>Descuento</label>
+					<input type="number" step="0.01" [(ngModel)]="descuento" (ngModelChange)="calcNeto()" [readOnly]="importeDescuentoBloqueados" />
+				</div>
+				<div class="field">
+					<label>Importe neto</label>
+					<input type="text" [value]="importeNeto | number:'1.2-2'" disabled />
+				</div>
+				<div class="field" *ngIf="esPagoEfectivo">
+					<label>Fecha (día/mes/año)</label>
+					<input
+						type="date"
+						class="fecha-input-native"
+						[(ngModel)]="fechaFinIso"
+						[min]="minFechaIso"
+						[attr.max]="maxFechaIso"
+						(ngModelChange)="clampTodasLasFechas()"
+						autocomplete="off"
+					/>
+				</div>
+			</div>
+		</div>
+
+		<div class="form-section-below">
+			<div class="field field--textarea">
+				<label>Detalle / observaciones</label>
+				<textarea rows="3" [(ngModel)]="observacion"></textarea>
+			</div>
+		</div>
+
+		<div class="actions">
+			<button type="button" class="btn btn-primary" (click)="registrar()" [disabled]="loading">{{ loading ? 'Guardando…' : 'Registrar' }}</button>
+			<button type="button" class="btn btn-secondary" (click)="limpiar()">Limpiar</button>
+			<button type="button" class="btn btn-danger" (click)="cancelar()">Cancelar</button>
+		</div>
+	</div>
+</div>
+
+<div class="modal-backdrop" *ngIf="showResumen" (click)="cerrarResumen()">
+	<div class="modal-box" (click)="$event.stopPropagation()">
+		<h3 style="margin-top:0;">Ingreso registrado</h3>
+		<p><strong>Carrera:</strong> {{ resumenCarrera }}</p>
+		<p><strong>Gestión:</strong> {{ resumenGestion }}</p>
+		<p><strong>Cliente:</strong> {{ resumenCliente }}</p>
+		<p><strong>NIT:</strong> {{ resumenNit }}</p>
+		<p><strong>Importe neto:</strong> {{ resumenMonto | number:'1.2-2' }}</p>
+		<p *ngIf="resumenNumRecibo != null && resumenNumRecibo > 0">
+			<strong>{{ facturaRecibo === 'R' ? 'Nº recibo' : 'Nº factura' }}:</strong> {{ resumenNumRecibo }}
+		</p>
+		<div class="actions">
+			<button type="button" class="btn btn-secondary" (click)="cerrarResumen()">Cerrar</button>
+		</div>
+	</div>
+</div>
