@@ -661,10 +661,11 @@ class CobroController extends Controller
 				->get();
 			$totalMensualidadCompletas = $cobrosMensualidadCompletas->sum('monto');
 
-			// Calcular total de mensualidades con pagos parciales para mostrar en UI (COBRADO + PARCIAL)
+			// Calcular total de mensualidades con pagos parciales (ESTRICTO: con id_asignacion_costo)
 			$cobrosMensualidadConParciales = clone $cobrosBase;
 			$cobrosMensualidadConParciales = $cobrosMensualidadConParciales
-				->whereNull('id_item') // Capturar todos los cobros que no son de items adicionales
+				->whereNotNull('id_asignacion_costo') // Solo mensualidades y arrastres vinculados
+				->whereNotIn('cod_tipo_cobro', ['MORA', 'RECARGO', 'INTERES', 'PENALIDAD', 'NIVELACION'])
 				->with(['recibo', 'factura'])
 				->get();
 			// Este total incluye todos los cobros de mensualidad (completos y parciales)
@@ -875,8 +876,32 @@ class CobroController extends Controller
 				: (($asignacionesPrimarias->count() > 0 ? (float) $asignacionesPrimarias->sum('monto') : null)
 					?: (optional($costoSemestral)->monto_semestre
 						?: ($paramMonto ? (float) $paramMonto->valor : null)));
-			$totalDescuentos = 0.0;
-			if (!empty($descuentosPorAsign)) { foreach ($descuentosPorAsign as $v) { $totalDescuentos += (float)$v; } }
+			// Sumar descuentos reales desde la tabla 'descuento_detalle' vinculada a las cuotas
+			$totalDescuentos = (float) DB::table('descuento_detalle')
+				->whereIn('id_cuota', $asignacionesPrimarias->pluck('id_asignacion_costo')->all())
+				->sum('monto_descuento');
+
+			// Si no hay descuentos registrados aún (ej. beca recién asignada), proyectar desde las becas activas
+			if ($totalDescuentos <= 0 && $primaryInscripcion) {
+				try {
+					$becasActivas = DB::table('descuentos')
+						->where('cod_ceta', $codCeta)
+						->where('cod_pensum', $codPensumToUse)
+						->where('cod_inscrip', $primaryInscripcion->cod_inscrip)
+						->where('estado', true)
+						->get();
+					foreach ($becasActivas as $ba) {
+						$def = DB::table('def_descuentos_beca')->where('cod_beca', $ba->cod_beca)->first();
+						if ($def) {
+							if (($def->porcentaje ?? 0) > 0) {
+								$totalDescuentos += (float) ($montoSemestre * ($def->porcentaje / 100));
+							} elseif (($def->monto ?? 0) > 0) {
+								$totalDescuentos += (float) ($def->monto * $nroCuotas);
+							}
+						}
+					}
+				} catch (\Throwable $e) {}
+			}
 			$montoSemestreNeto = isset($montoSemestre) ? max(0, (float)$montoSemestre - (float)$totalDescuentos) : null;
 			// Corrección: el saldo debe considerar todos los cobros de mensualidad (completos y parciales)
 			// para coincidir con la suma de la tabla de cobros del kardex.
@@ -1650,14 +1675,24 @@ class CobroController extends Controller
 				$asigNormal = $getAsignaciones($insNormal);
 				$asigArrastre = $getAsignaciones($insArrastre);
 
-				$descuentoByAsign = function($asigRow) {
+				$descuentoByAsign = function($asigRow) use ($descuentosFromFrontend) {
 					try {
+						$idAsignItem = (int) ($asigRow->id_asignacion_costo ?? 0);
+						// Priorizar descuentos enviados en la petición actual (pago de semestre completo, etc.)
+						if (!empty($descuentosFromFrontend)) {
+							foreach ($descuentosFromFrontend as $df) {
+								if (isset($df['id_asignacion_costo']) && (int)$df['id_asignacion_costo'] === $idAsignItem) {
+									return (float) ($df['monto_descuento'] ?? 0);
+								}
+							}
+						}
+						// Fallback a base de datos para descuentos previos
 						$idDet = (int) ($asigRow->id_descuentoDetalle ?? 0);
 						if ($idDet) {
 							$dr = DB::table('descuento_detalle')->where('id_descuento_detalle', $idDet)->first(['monto_descuento']);
 							return $dr ? (float) ($dr->monto_descuento ?? 0) : 0.0;
 						}
-						$dr = DB::table('descuento_detalle')->where('id_cuota', (int) ($asigRow->id_asignacion_costo ?? 0))->first(['monto_descuento']);
+						$dr = DB::table('descuento_detalle')->where('id_cuota', $idAsignItem)->first(['monto_descuento']);
 						return $dr ? (float) ($dr->monto_descuento ?? 0) : 0.0;
 					} catch (\Throwable $e) {
 						return 0.0;
@@ -1946,7 +1981,25 @@ class CobroController extends Controller
 
 				// PROCESAR DESCUENTOS ENVIADOS DESDE EL FRONTEND
 				if (is_array($descuentosFromFrontend) && count($descuentosFromFrontend) > 0 && $primaryInscripcion) {
-					Log::info('batchStore: procesando descuentos del frontend', ['count' => count($descuentosFromFrontend)]);
+					// Solo aplicar descuento 'Semestre Completo' si realmente se paga TODO el semestre
+					$totalCuotasSemestre = $asignPrimarias->count();
+					$pagadasAnteriormente = $asignPrimarias->filter(function($a){ return $a->estado_pago === 'COBRADO'; })->count();
+					$pagandoAhora = collect($items)->filter(function($it) use ($asignPrimarias) {
+						$idAsign = (int)($it['id_asignacion_costo'] ?? 0);
+						return $idAsign > 0 && $asignPrimarias->pluck('id_asignacion_costo')->contains($idAsign);
+					})->count();
+
+					if (($pagadasAnteriormente + $pagandoAhora) < $totalCuotasSemestre) {
+						Log::warning('batchStore: Intento de descuento Semestre Completo sin pagar todas las cuotas', [
+							'cod_ceta' => $codCetaCtx,
+							'total_esperado' => $totalCuotasSemestre,
+							'pagadas_anteriormente' => $pagadasAnteriormente,
+							'pagando_ahora' => $pagandoAhora
+						]);
+						// No lanzar excepción para no romper el flujo, pero NO aplicar el descuento de semestre completo
+						// a menos que el frontend sea explícito en otro tipo de descuento.
+					} else {
+						Log::info('batchStore: procesando descuentos del frontend', ['count' => count($descuentosFromFrontend)]);
 					try {
 						// Obtener cod_beca del primer descuento
 						$codBeca = isset($descuentosFromFrontend[0]['cod_beca']) ? (int)$descuentosFromFrontend[0]['cod_beca'] : null;
@@ -2014,6 +2067,7 @@ class CobroController extends Controller
 							'error' => $e->getMessage(),
 							'line' => $e->getLine(),
 						]);
+					}
 					}
 				}
 
