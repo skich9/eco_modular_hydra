@@ -1707,32 +1707,6 @@ class CobroController extends Controller
 				}
 
 				// Bloquear pago de cuotas futuras: ningún item puede apuntar a numero_cuota > gateNumero
-				$findNumeroByAsign = function($idAsign) use ($asigNormal, $asigArrastre) {
-					$idAsign = (int) $idAsign;
-					if ($idAsign <= 0) return null;
-					$hitN = $asigNormal->firstWhere('id_asignacion_costo', $idAsign);
-					if ($hitN) return (int) ($hitN->numero_cuota ?? 0);
-					$hitA = $asigArrastre->firstWhere('id_asignacion_costo', $idAsign);
-					if ($hitA) return (int) ($hitA->numero_cuota ?? 0);
-					return null;
-				};
-
-				if ($gateNumero !== null) {
-					foreach ($itemsList as $it) {
-						$tipoCobro = strtoupper((string)($it['cod_tipo_cobro'] ?? ''));
-						if ($tipoCobro === 'MORA') continue;
-						$idAsign = isset($it['id_asignacion_costo']) ? (int) $it['id_asignacion_costo'] : 0;
-						if ($idAsign <= 0) continue;
-						$numero = $findNumeroByAsign($idAsign);
-						if ($numero !== null && $numero > (int)$gateNumero) {
-							return response()->json([
-								'success' => false,
-								'message' => 'No puede pagar mensualidades de meses posteriores si tiene cuotas pendientes anteriores (incluyendo arrastre/mora).',
-							], 422);
-						}
-					}
-				}
-
 				// Exigir mora solo cuando el lote completa la(s) cuota(s) del mes
 				$completaCuota = function($asigs, $numero) use ($batchByAsign, $descuentoByAsign) {
 					if ($numero === null) return false;

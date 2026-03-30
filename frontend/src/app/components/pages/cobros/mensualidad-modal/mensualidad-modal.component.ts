@@ -91,8 +91,9 @@ export class MensualidadModalComponent implements OnInit, OnChanges, AfterViewIn
         const next: any = this.resumen?.arrastre?.next_cuota || null;
         if (!next) return [];
         const numeroCuotaArrastre = Number(next?.numero_cuota || 0);
-        const { mensualidadPagada } = this.esCuotaPagadaOEnDetalle(numeroCuotaArrastre);
-        if (!mensualidadPagada) return [];
+        const { mensualidadPagada, mensualidadEnDetalle } = this.esCuotaPagadaOEnDetalle(numeroCuotaArrastre);
+        // Mostrar tabla si la mensualidad está pagada O en detalle
+        if (!mensualidadPagada && !mensualidadEnDetalle) return [];
         const asignacionesNormal: any[] = Array.isArray(this.resumen?.asignaciones) ? this.resumen.asignaciones : [];
         const asignNormal = asignacionesNormal.find((a: any) => Number(a?.numero_cuota || 0) === numeroCuotaArrastre);
         if (!asignNormal) return [];
@@ -103,6 +104,39 @@ export class MensualidadModalComponent implements OnInit, OnChanges, AfterViewIn
           const idAsignCostoMora = Number(m?.id_asignacion_costo || 0);
           return idAsignCostoMora === idAsignNormal;
         });
+      }
+
+      // Para mensualidad: verificar si hay arrastre en el detalle
+      const hayArrastreEnDetalle = (this.detalleFactura || []).some((item: any) => {
+        const tipoPago = (item?.tipo_pago || item?.cod_tipo_cobro || '').toString().toUpperCase();
+        return tipoPago === 'ARRASTRE';
+      });
+
+      if (hayArrastreEnDetalle) {
+        // Si hay arrastre en detalle, buscar la mora vinculada a ese arrastre
+        const itemArrastre = (this.detalleFactura || []).find((item: any) => {
+          const tipoPago = (item?.tipo_pago || item?.cod_tipo_cobro || '').toString().toUpperCase();
+          return tipoPago === 'ARRASTRE';
+        });
+
+        if (itemArrastre) {
+          const numeroCuotaArrastre = Number(itemArrastre?.numero_cuota || 0);
+          const asignacionesArrastre = this.resumen?.asignaciones_arrastre || [];
+          const asignArrastre = asignacionesArrastre.find((a: any) => {
+            return Number(a?.numero_cuota || 0) === numeroCuotaArrastre;
+          });
+
+          if (asignArrastre) {
+            const idAsignArrastre = Number(asignArrastre?.id_asignacion_costo || 0);
+            // Retornar solo la mora vinculada a este arrastre
+            return list.filter((m: any) => {
+              const estado = (m?.estado || '').toString().toUpperCase();
+              if (!(estado === 'PENDIENTE' || estado === 'CONGELADA_PRORROGA' || estado === 'CERRADA_SIN_CUOTA')) return false;
+              const moraIdVinculada = Number(m?.id_asignacion_vinculada || 0);
+              return moraIdVinculada === idAsignArrastre;
+            });
+          }
+        }
       }
 
       const asignacionesNormal: any[] = Array.isArray(this.resumen?.asignaciones) ? this.resumen.asignaciones : [];
@@ -231,10 +265,43 @@ export class MensualidadModalComponent implements OnInit, OnChanges, AfterViewIn
     });
   }
 
-  private getMoraPendienteByAsign(idAsignacionCosto: any): any {
+  // Método auxiliar para buscar mora SIN verificar si el par está completo
+  // Se usa en addAndClose cuando se está agregando el arrastre/mensualidad (completando el par en ese momento)
+  private getMoraPendienteSinVerificarPar(idAsignacionCosto: any, tipoActual: 'mensualidad' | 'arrastre'): any {
+    try {
+      const id = Number(idAsignacionCosto || 0);
+      if (!id) return null;
+
+      const list: any[] = Array.isArray(this.morasPendientes) ? this.morasPendientes : [];
+
+      if (tipoActual === 'arrastre') {
+        // Para arrastre, buscar la mora de la inscripción NORMAL que esté vinculada a esta asignación de arrastre
+        const hit = list.find((m: any) => {
+          const moraIdVinculada = Number(m?.id_asignacion_vinculada || 0);
+          const estado = (m?.estado || '').toString().toUpperCase();
+          return moraIdVinculada === id && this.isMoraEstadoPendiente(estado);
+        });
+        return hit || null;
+      }
+
+      // Para mensualidad, buscar mora directa
+      const hit = list.find((m: any) => {
+        const idMoraAsign = Number(m?.id_asignacion_costo || 0);
+        const estado = (m?.estado || '').toString().toUpperCase();
+        return idMoraAsign === id && this.isMoraEstadoPendiente(estado);
+      });
+      return hit || null;
+    } catch (e) {
+      console.error('[MensualidadModal] Error en getMoraPendienteSinVerificarPar:', e);
+      return null;
+    }
+  }
+
+  private getMoraPendienteByAsign(idAsignacionCosto: any, numeroCuota?: number): any {
     try {
       console.log('[MensualidadModal] getMoraPendienteByAsign - INICIO');
       console.log('[MensualidadModal] idAsignacionCosto recibido:', idAsignacionCosto);
+      console.log('[MensualidadModal] numeroCuota recibido:', numeroCuota);
       console.log('[MensualidadModal] tipo:', this.tipo);
 
       const id = Number(idAsignacionCosto || 0);
@@ -275,6 +342,16 @@ export class MensualidadModalComponent implements OnInit, OnChanges, AfterViewIn
         });
 
         console.log('[MensualidadModal] Mora encontrada para arrastre:', hit);
+
+        // Verificar si el par mensualidad-arrastre está completo
+        if (hit && numeroCuota !== undefined) {
+          const parCompleto = this.parMensualidadArrastreCompleto(numeroCuota, 'arrastre');
+          if (!parCompleto) {
+            console.log('[MensualidadModal] Par NO completo, NO cobrar mora todavía');
+            return null;
+          }
+        }
+
         return hit || null;
       }
 
@@ -285,6 +362,16 @@ export class MensualidadModalComponent implements OnInit, OnChanges, AfterViewIn
         return idMoraAsign === id && this.isMoraEstadoPendiente(estado);
       });
       console.log('[MensualidadModal] Mora encontrada para mensualidad:', hit);
+
+      // Verificar si el par mensualidad-arrastre está completo
+      if (hit && numeroCuota !== undefined) {
+        const parCompleto = this.parMensualidadArrastreCompleto(numeroCuota, 'mensualidad');
+        if (!parCompleto) {
+          console.log('[MensualidadModal] Par NO completo, NO cobrar mora todavía');
+          return null;
+        }
+      }
+
       return hit || null;
     } catch (e) {
       console.error('[MensualidadModal] Error en getMoraPendienteByAsign:', e);
@@ -373,6 +460,71 @@ export class MensualidadModalComponent implements OnInit, OnChanges, AfterViewIn
     } catch (e) {
       console.error('[MensualidadModal] Error recalculando mora con fecha_deposito:', e);
       return this.getMoraNetoFromRow(mora);
+    }
+  }
+
+  /**
+   * Verifica si una cuota tiene su par mensualidad-arrastre completo.
+   * Solo se debe cobrar mora cuando AMBOS (mensualidad Y arrastre) de la misma cuota están pagados o en detalle.
+   *
+   * @param numeroCuota - Número de cuota a verificar
+   * @param tipoActual - Tipo actual que se está pagando ('mensualidad' o 'arrastre')
+   * @returns true si el par está completo (ambos pagados/en detalle), false si falta uno
+   */
+  private parMensualidadArrastreCompleto(numeroCuota: number, tipoActual: string): boolean {
+    try {
+      console.log('[MensualidadModal] parMensualidadArrastreCompleto - numeroCuota:', numeroCuota, 'tipoActual:', tipoActual);
+
+      // Verificar si hay asignaciones de arrastre (si no hay, no aplica esta lógica)
+      const asignacionesArrastre = this.resumen?.asignaciones_arrastre || [];
+      if (asignacionesArrastre.length === 0) {
+        console.log('[MensualidadModal] No hay asignaciones de arrastre, retornando true');
+        return true; // No hay arrastre, no aplica la lógica de pares
+      }
+
+      // Buscar si existe arrastre para esta cuota
+      const arrastreCuota = asignacionesArrastre.find((a: any) => Number(a?.numero_cuota || 0) === numeroCuota);
+      if (!arrastreCuota) {
+        console.log('[MensualidadModal] No hay arrastre para esta cuota, retornando true');
+        return true; // No hay arrastre para esta cuota específica
+      }
+
+      // Verificar estado de la mensualidad
+      const asignaciones = this.resumen?.asignaciones || [];
+      const mensualidadCuota = asignaciones.find((a: any) => Number(a?.numero_cuota || 0) === numeroCuota);
+      const mensualidadPagada = mensualidadCuota && (mensualidadCuota?.estado_pago || '').toString().toUpperCase() === 'COBRADO';
+      const mensualidadEnDetalle = (this.detalleFactura || []).some((item: any) => {
+        const tipoPago = (item?.tipo_pago || item?.cod_tipo_cobro || '').toString().toUpperCase();
+        const numCuota = Number(item?.numero_cuota || 0);
+        return tipoPago === 'MENSUALIDAD' && numCuota === numeroCuota;
+      });
+
+      // Verificar estado del arrastre
+      const arrastrePagado = (arrastreCuota?.estado_pago || '').toString().toUpperCase() === 'COBRADO';
+      const arrastreEnDetalle = (this.detalleFactura || []).some((item: any) => {
+        const tipoPago = (item?.tipo_pago || item?.cod_tipo_cobro || '').toString().toUpperCase();
+        const numCuota = Number(item?.numero_cuota || 0);
+        return tipoPago === 'ARRASTRE' && numCuota === numeroCuota;
+      });
+
+      console.log('[MensualidadModal] Estado del par:', {
+        mensualidadPagada,
+        mensualidadEnDetalle,
+        arrastrePagado,
+        arrastreEnDetalle
+      });
+
+      // El par está completo si AMBOS están pagados o en detalle
+      const mensualidadCompleta = mensualidadPagada || mensualidadEnDetalle;
+      const arrastreCompleto = arrastrePagado || arrastreEnDetalle;
+
+      const parCompleto = mensualidadCompleta && arrastreCompleto;
+      console.log('[MensualidadModal] Par completo:', parCompleto);
+
+      return parCompleto;
+    } catch (e) {
+      console.error('[MensualidadModal] Error en parMensualidadArrastreCompleto:', e);
+      return true; // En caso de error, permitir cobrar mora
     }
   }
 
@@ -530,10 +682,10 @@ export class MensualidadModalComponent implements OnInit, OnChanges, AfterViewIn
 
         // Para arrastre: NO mostrar mora si la mensualidad de esta cuota NO está pagada ni en detalle
         // La mora solo se muestra cuando la mensualidad está pagada o en el detalle
-        const { mensualidadPagada } = this.esCuotaPagadaOEnDetalle(numeroCuotaArrastre);
-        console.log('[MensualidadModal] mensualidadPagada o en detalle:', mensualidadPagada);
+        const { mensualidadPagada, mensualidadEnDetalle } = this.esCuotaPagadaOEnDetalle(numeroCuotaArrastre);
+        console.log('[MensualidadModal] mensualidadPagada:', mensualidadPagada, 'mensualidadEnDetalle:', mensualidadEnDetalle);
 
-        if (!mensualidadPagada) {
+        if (!mensualidadPagada && !mensualidadEnDetalle) {
           console.log('[MensualidadModal] Retornando 0 porque la mensualidad NO está pagada ni en detalle');
           return 0;
         }
@@ -541,7 +693,9 @@ export class MensualidadModalComponent implements OnInit, OnChanges, AfterViewIn
         const idAsign = next ? (next?.id_asignacion_costo ?? null) : null;
         console.log('[MensualidadModal] idAsignacionCosto del arrastre:', idAsign);
 
-        const mora = this.getMoraPendienteByAsign(idAsign);
+        // Usar getMoraPendienteSinVerificarPar porque estamos MOSTRANDO la mora en el modal
+        // ANTES de agregar el arrastre al detalle (el par se completará al hacer clic en "Adicionar y Salir")
+        const mora = this.getMoraPendienteSinVerificarPar(idAsign, 'arrastre');
         console.log('[MensualidadModal] Mora encontrada:', mora);
 
         const moraValue = mora ? this.recalcularMoraConFechaDeposito(mora) : 0;
@@ -592,7 +746,8 @@ export class MensualidadModalComponent implements OnInit, OnChanges, AfterViewIn
         const list = this.getOrderedCuotasRestantes();
         const first = list.find(it => Number(it.numero) === Number(start)) || list[0] || null;
         const idAsign = first ? (first.id_asignacion_costo ?? null) : null;
-        const mora = this.getMoraPendienteByAsign(idAsign);
+        const numeroCuota = first ? Number(first.numero || 0) : 0;
+        const mora = this.getMoraPendienteByAsign(idAsign, numeroCuota);
         return mora ? this.recalcularMoraConFechaDeposito(mora) : 0;
       }
 
@@ -600,7 +755,8 @@ export class MensualidadModalComponent implements OnInit, OnChanges, AfterViewIn
       const list = this.getOrderedCuotasRestantes().slice(0, cant);
       let acc = 0;
       for (const it of list) {
-        const mora = this.getMoraPendienteByAsign(it?.id_asignacion_costo ?? null);
+        const numeroCuota = Number(it?.numero || 0);
+        const mora = this.getMoraPendienteByAsign(it?.id_asignacion_costo ?? null, numeroCuota);
         if (mora) acc += this.recalcularMoraConFechaDeposito(mora);
       }
       return acc;
@@ -816,8 +972,9 @@ export class MensualidadModalComponent implements OnInit, OnChanges, AfterViewIn
       // Para arrastre, agregar la mora pendiente al máximo
       if (this.tipo === 'arrastre') {
         const idAsignacionCosto = Number(cuota?.id_asignacion_costo || 0);
+        const numeroCuota = Number(cuota?.numero_cuota || 0);
         if (idAsignacionCosto > 0) {
-          const mora = this.getMoraPendienteByAsign(idAsignacionCosto);
+          const mora = this.getMoraPendienteByAsign(idAsignacionCosto, numeroCuota);
           if (mora) {
             const moraNeto = this.recalcularMoraConFechaDeposito(mora);
             deudaReal += moraNeto;
@@ -1184,7 +1341,7 @@ export class MensualidadModalComponent implements OnInit, OnChanges, AfterViewIn
             const first = list.find(it => Number(it.numero) === Number(start)) || list[0] || null;
             const numero_cuota = first ? (Number(first.numero || 0) || null) : null;
             const id_asignacion_costo = first ? (first.id_asignacion_costo ?? null) : null;
-            const mora = this.getMoraPendienteByAsign(id_asignacion_costo);
+            const mora = this.getMoraPendienteByAsign(id_asignacion_costo, numero_cuota || undefined);
             if (mora && this.shouldCobrarMoraForPago(total, numero_cuota, id_asignacion_costo)) {
               total += this.recalcularMoraConFechaDeposito(mora);
             }
@@ -1247,7 +1404,8 @@ export class MensualidadModalComponent implements OnInit, OnChanges, AfterViewIn
               const list = this.getOrderedCuotasRestantes().slice(0, cant);
               let moraAcc = 0;
               for (const it of list) {
-                const mora = this.getMoraPendienteByAsign(it?.id_asignacion_costo ?? null);
+                const numeroCuota = Number(it?.numero || 0);
+                const mora = this.getMoraPendienteByAsign(it?.id_asignacion_costo ?? null, numeroCuota);
                 if (mora) moraAcc += this.recalcularMoraConFechaDeposito(mora);
               }
               total += moraAcc;
@@ -1275,7 +1433,7 @@ export class MensualidadModalComponent implements OnInit, OnChanges, AfterViewIn
 
         if (mensualidadPagada) {
           const idAsign = next ? (next?.id_asignacion_costo ?? null) : null;
-          const mora = this.getMoraPendienteByAsign(idAsign);
+          const mora = this.getMoraPendienteByAsign(idAsign, numeroCuotaArrastre);
           if (mora) total += this.recalcularMoraConFechaDeposito(mora);
         }
       } catch {}
@@ -1445,7 +1603,13 @@ export class MensualidadModalComponent implements OnInit, OnChanges, AfterViewIn
 
   // Devuelve lista ordenada por numero_cuota con {numero, restante} usando monto neto (monto - descuento)
   private getOrderedCuotasRestantes(): Array<{ numero: number; restante: number; id_cuota_template: number|null; id_asignacion_costo: number|null; }> {
-    const src: any[] = ((this.resumen?.asignacion_costos?.items || this.resumen?.asignaciones || []) as any[]);
+    // Para arrastre, usar asignaciones_arrastre; para mensualidad, usar asignaciones
+    let src: any[] = [];
+    if (this.tipo === 'arrastre') {
+      src = (this.resumen?.asignaciones_arrastre || []) as any[];
+    } else {
+      src = ((this.resumen?.asignacion_costos?.items || this.resumen?.asignaciones || []) as any[]);
+    }
     const ord = (src || []).slice().sort((a: any, b: any) => Number(a?.numero_cuota || 0) - Number(b?.numero_cuota || 0));
     const out: Array<{ numero: number; restante: number; id_cuota_template: number|null; id_asignacion_costo: number|null; }> = [];
 
@@ -1533,7 +1697,12 @@ export class MensualidadModalComponent implements OnInit, OnChanges, AfterViewIn
     return out;
   }
 
-  private esCuotaPagadaOEnDetalle(numeroCuota: number): { mensualidadPagada: boolean; arrastrePagado: boolean } {
+  private esCuotaPagadaOEnDetalle(numeroCuota: number): {
+    mensualidadPagada: boolean;
+    arrastrePagado: boolean;
+    mensualidadEnDetalle: boolean;
+    arrastreEnDetalle: boolean;
+  } {
     const asignaciones = this.resumen?.asignaciones || [];
     const asignacionesArrastre = this.resumen?.asignaciones_arrastre || [];
 
@@ -1556,10 +1725,11 @@ export class MensualidadModalComponent implements OnInit, OnChanges, AfterViewIn
     // Verificar arrastre (cobrado en BD o en detalle actual)
     const asignArrastre = asignacionesArrastre.find((a: any) => Number(a?.numero_cuota || 0) === numeroCuota);
     let arrastrePagado = true; // Si no hay arrastre, considerarlo como "pagado"
+    let arrastreEnDetalle = false;
     if (asignArrastre) {
       const estadoArr = (asignArrastre?.estado_pago || '').toString().toUpperCase();
       const arrastreCobrado = !!estadoArr && (estadoArr === 'COBRADO' || estadoArr === 'PAGADO');
-      const arrastreEnDetalle = (this.detalleFactura || []).some((item: any) => {
+      arrastreEnDetalle = (this.detalleFactura || []).some((item: any) => {
         const tipoPago = (item?.tipo_pago || item?.cod_tipo_cobro || '').toString().toUpperCase();
         const numCuota = Number(item?.numero_cuota || 0);
         return tipoPago === 'ARRASTRE' && numCuota === numeroCuota;
@@ -1570,7 +1740,7 @@ export class MensualidadModalComponent implements OnInit, OnChanges, AfterViewIn
       console.log(`[esCuotaPagadaOEnDetalle] Arrastre cuota ${numeroCuota}: NO EXISTE, considerado como pagado=true`);
     }
 
-    return { mensualidadPagada, arrastrePagado };
+    return { mensualidadPagada, arrastrePagado, mensualidadEnDetalle, arrastreEnDetalle };
   }
 
   private verificarOrdenPago(): void {
@@ -2414,95 +2584,176 @@ export class MensualidadModalComponent implements OnInit, OnChanges, AfterViewIn
     const medio_doc = (this.form.get('computarizada')?.value === 'MANUAL') ? 'M' : 'C';
 
     if (this.tipo === 'arrastre') {
-      const next = this.resumen?.arrastre?.next_cuota || null;
       const esParcial = !!this.form.get('pago_parcial')?.value;
+      const cant = Math.max(0, Number(this.form.get('cantidad')?.value || 0));
 
-      // Para arrastre, el PU/monto debe reflejar el NETO (monto - descuento) del item de arrastre
-      let montoArrastre = next ? this.toNumberLoose((next as any)?.monto_neto) : 0;
-      if (!(montoArrastre > 0) && next) {
-        const bruto = this.toNumberLoose((next as any)?.monto);
-        const desc = this.toNumberLoose((next as any)?.descuento);
-        montoArrastre = Math.max(0, bruto - desc);
-      }
-      if (!(montoArrastre > 0)) montoArrastre = Number(this.pu || 0);
+      console.log('[MensualidadModal] addAndClose ARRASTRE - esParcial:', esParcial, 'cantidad:', cant);
 
-      const numeroCuotaArrastre = next ? Number(next?.numero_cuota || 0) : 0;
-      const mesNombreArrastre = numeroCuotaArrastre ? this.getMesNombreByCuota(numeroCuotaArrastre) : null;
-      const detalleArrastre = mesNombreArrastre
-        ? `Nivelación (${mesNombreArrastre})`
-        : `Nivelación Cuota ${numeroCuotaArrastre || ''}`;
+      if (cant === 0 || esParcial) {
+        // Pago de 1 arrastre (parcial o completo de una sola cuota)
+        const next = this.resumen?.arrastre?.next_cuota || null;
 
-      // Si es pago parcial, calcular distribución entre arrastre y mora
-      let montoParaArrastre = montoArrastre;
-      let montoParaMora = 0;
+        // Para arrastre, el PU/monto debe reflejar el NETO (monto - descuento) del item de arrastre
+        let montoArrastre = next ? this.toNumberLoose((next as any)?.monto_neto) : 0;
+        if (montoArrastre <= 0) montoArrastre = Number(this.pu || 0);
 
-      if (esParcial) {
-        const montoParcialTotal = Number(this.form.get('monto_parcial')?.value || 0);
-        if (montoParcialTotal >= montoArrastre) {
-          // El pago cubre el arrastre completo, el resto va a mora
-          montoParaArrastre = montoArrastre;
-          montoParaMora = montoParcialTotal - montoArrastre;
-        } else {
-          // El pago solo cubre parte del arrastre, no hay pago de mora
-          montoParaArrastre = montoParcialTotal;
-          montoParaMora = 0;
+        const numeroCuotaArrastre = next ? Number(next?.numero_cuota || 0) : 0;
+        const mesNombre = numeroCuotaArrastre ? this.getMesNombreByCuota(numeroCuotaArrastre) : null;
+        const detalleArrastre = mesNombre
+          ? `Arrastre - Cuota ${numeroCuotaArrastre} (${mesNombre})`
+          : `Arrastre - Cuota ${numeroCuotaArrastre || ''}`;
+
+        let montoParaArrastre = montoArrastre;
+        let montoParaMora = 0;
+
+        if (esParcial) {
+          const montoParcialTotal = Number(this.form.get('monto_parcial')?.value || 0);
+          // Si el monto parcial cubre el arrastre completo, el resto va a la mora
+          if (montoParcialTotal >= montoArrastre) {
+            montoParaArrastre = montoArrastre;
+            montoParaMora = montoParcialTotal - montoArrastre;
+          } else {
+            // El pago solo cubre parte del arrastre, no hay pago de mora
+            montoParaArrastre = montoParcialTotal;
+            montoParaMora = 0;
+          }
         }
-      }
 
-      pagos.push({
-        id_forma_cobro: this.form.get('metodo_pago')?.value || null,
-        nro_cobro: this.baseNro || 1,
-        monto: montoParaArrastre,
-        fecha_cobro: hoy,
-        observaciones: this.composeObservaciones(),
-        pu_mensualidad: montoParaArrastre,
-        detalle: detalleArrastre,
-        cod_tipo_cobro: 'ARRASTRE',
-        tipo_pago: 'ARRASTRE',
-        numero_cuota: next ? (Number(next?.numero_cuota || 0) || null) : null,
-        id_cuota: next ? (next?.id_cuota_template ?? null) : null,
-        id_asignacion_costo: next ? (next?.id_asignacion_costo ?? null) : null,
-        // doc/medio
-        tipo_documento,
-        medio_doc,
-        comprobante: compSel || 'NINGUNO',
-        computarizada: this.form.get('computarizada')?.value,
-        // bancarias
-        id_cuentas_bancarias: this.form.get('id_cuentas_bancarias')?.value || null,
-        banco_origen: this.form.get('banco_origen')?.value || null,
-        fecha_deposito: this.form.get('fecha_deposito')?.value || null,
-        nro_deposito: this.form.get('nro_deposito')?.value || null,
-        tarjeta_first4: this.form.get('tarjeta_first4')?.value || null,
-        tarjeta_last4: this.form.get('tarjeta_last4')?.value || null,
-        // opcionales
-        descuento: this.form.get('descuento')?.value || null,
-        nro_factura: this.form.get('comprobante')?.value === 'FACTURA' ? (this.form.get('nro_factura')?.value || null) : null,
-        nro_recibo: this.form.get('comprobante')?.value === 'RECIBO' ? (this.form.get('nro_recibo')?.value || null) : null,
-      });
+        pagos.push({
+          id_forma_cobro: this.form.get('metodo_pago')?.value || null,
+          nro_cobro: this.baseNro || 1,
+          monto: montoParaArrastre,
+          fecha_cobro: hoy,
+          observaciones: this.composeObservaciones(),
+          pu_mensualidad: montoParaArrastre,
+          detalle: detalleArrastre,
+          cod_tipo_cobro: 'ARRASTRE',
+          tipo_pago: 'ARRASTRE',
+          numero_cuota: next ? (Number(next?.numero_cuota || 0) || null) : null,
+          id_cuota: next ? (next?.id_cuota_template ?? null) : null,
+          id_asignacion_costo: next ? (next?.id_asignacion_costo ?? null) : null,
+          // doc/medio
+          tipo_documento,
+          medio_doc,
+          comprobante: compSel || 'NINGUNO',
+          computarizada: this.form.get('computarizada')?.value,
+          // bancarias
+          id_cuentas_bancarias: this.form.get('id_cuentas_bancarias')?.value || null,
+          banco_origen: this.form.get('banco_origen')?.value || null,
+          fecha_deposito: this.form.get('fecha_deposito')?.value || null,
+          nro_deposito: this.form.get('nro_deposito')?.value || null,
+          tarjeta_first4: this.form.get('tarjeta_first4')?.value || null,
+          tarjeta_last4: this.form.get('tarjeta_last4')?.value || null,
+          // opcionales
+          descuento: this.form.get('descuento')?.value || null,
+          nro_factura: this.form.get('comprobante')?.value === 'FACTURA' ? (this.form.get('nro_factura')?.value || null) : null,
+          nro_recibo: this.form.get('comprobante')?.value === 'RECIBO' ? (this.form.get('nro_recibo')?.value || null) : null,
+        });
 
-      // Agregar mora de arrastre SOLO si la mensualidad de esta cuota está pagada O en detalle
-      // Si la mensualidad NO está pagada ni en detalle, la mora se cobrará cuando se pague esa mensualidad
-      const { mensualidadPagada } = this.esCuotaPagadaOEnDetalle(numeroCuotaArrastre);
+        // Agregar mora de arrastre SOLO si la mensualidad de esta cuota está pagada O en detalle
+        const { mensualidadPagada } = this.esCuotaPagadaOEnDetalle(numeroCuotaArrastre);
 
-      if (mensualidadPagada) {
-        try {
-          const mora = this.getMoraPendienteByAsign(next ? (next?.id_asignacion_costo ?? null) : null);
-          if (mora) {
-            // Si es pago parcial y hay monto para mora, agregar solo ese monto
-            // Si no es parcial, agregar la mora completa
-            if (esParcial && montoParaMora > 0) {
-              const moraItem = this.buildPagoMoraItem(mora, hoy, compSel, tipo_documento, medio_doc);
-              moraItem.nro_cobro = (this.baseNro || 1) + 1;
-              moraItem.monto = montoParaMora;
-              moraItem.pu_mensualidad = montoParaMora;
-              pagos.push(moraItem);
-            } else if (!esParcial) {
-              const moraItem = this.buildPagoMoraItem(mora, hoy, compSel, tipo_documento, medio_doc);
-              moraItem.nro_cobro = (this.baseNro || 1) + 1;
-              pagos.push(moraItem);
+        console.log('[MensualidadModal] addAndClose ARRASTRE (1 cuota) - mensualidadPagada:', mensualidadPagada, 'numeroCuota:', numeroCuotaArrastre);
+
+        if (mensualidadPagada) {
+          try {
+            // Usar getMoraPendienteSinVerificarPar porque estamos AGREGANDO el arrastre ahora (completando el par)
+            const mora = this.getMoraPendienteSinVerificarPar(next ? (next?.id_asignacion_costo ?? null) : null, 'arrastre');
+            console.log('[MensualidadModal] addAndClose ARRASTRE (1 cuota) - mora encontrada:', mora);
+
+            if (mora) {
+              if (esParcial && montoParaMora > 0) {
+                const moraItem = this.buildPagoMoraItem(mora, hoy, compSel, tipo_documento, medio_doc);
+                moraItem.nro_cobro = (this.baseNro || 1) + 1;
+                moraItem.monto = montoParaMora;
+                moraItem.pu_mensualidad = montoParaMora;
+                pagos.push(moraItem);
+                console.log('[MensualidadModal] addAndClose ARRASTRE (1 cuota) - mora PARCIAL agregada:', montoParaMora);
+              } else if (!esParcial) {
+                const moraItem = this.buildPagoMoraItem(mora, hoy, compSel, tipo_documento, medio_doc);
+                moraItem.nro_cobro = (this.baseNro || 1) + 1;
+                pagos.push(moraItem);
+                console.log('[MensualidadModal] addAndClose ARRASTRE (1 cuota) - mora COMPLETA agregada');
+              }
+            } else {
+              console.log('[MensualidadModal] addAndClose ARRASTRE (1 cuota) - NO se encontró mora pendiente');
+            }
+          } catch (err) {
+            console.error('[MensualidadModal] addAndClose ARRASTRE (1 cuota) - Error al agregar mora:', err);
+          }
+        } else {
+          console.log('[MensualidadModal] addAndClose ARRASTRE (1 cuota) - NO agregar mora porque mensualidad NO está pagada');
+        }
+      } else {
+        // Pago de múltiples arrastres (cant > 0)
+        console.log('[MensualidadModal] addAndClose ARRASTRE - Pago de múltiples arrastres, cantidad:', cant);
+        const list = this.getOrderedCuotasRestantes().slice(0, cant);
+        let nro = this.baseNro || 1;
+
+        for (const cuota of list) {
+          const numero_cuota = Number(cuota?.numero || 0);
+          const id_asignacion_costo = cuota?.id_asignacion_costo ?? null;
+          const id_cuota_template = cuota?.id_cuota_template ?? null;
+          const montoArrastre = cuota?.restante || Number(this.pu || 0);
+
+          const mesNombre = numero_cuota ? this.getMesNombreByCuota(numero_cuota) : null;
+          const detalleArrastre = mesNombre
+            ? `Arrastre - Cuota ${numero_cuota} (${mesNombre})`
+            : `Arrastre - Cuota ${numero_cuota || ''}`;
+
+          pagos.push({
+            id_forma_cobro: this.form.get('metodo_pago')?.value || null,
+            nro_cobro: nro++,
+            monto: montoArrastre,
+            fecha_cobro: hoy,
+            observaciones: this.composeObservaciones(),
+            pu_mensualidad: montoArrastre,
+            detalle: detalleArrastre,
+            cod_tipo_cobro: 'ARRASTRE',
+            tipo_pago: 'ARRASTRE',
+            numero_cuota,
+            id_cuota: id_cuota_template,
+            id_asignacion_costo,
+            // doc/medio
+            tipo_documento,
+            medio_doc,
+            comprobante: compSel || 'NINGUNO',
+            computarizada: this.form.get('computarizada')?.value,
+            // bancarias
+            id_cuentas_bancarias: this.form.get('id_cuentas_bancarias')?.value || null,
+            banco_origen: this.form.get('banco_origen')?.value || null,
+            fecha_deposito: this.form.get('fecha_deposito')?.value || null,
+            nro_deposito: this.form.get('nro_deposito')?.value || null,
+            tarjeta_first4: this.form.get('tarjeta_first4')?.value || null,
+            tarjeta_last4: this.form.get('tarjeta_last4')?.value || null,
+            // opcionales
+            descuento: this.form.get('descuento')?.value || null,
+            nro_factura: this.form.get('comprobante')?.value === 'FACTURA' ? (this.form.get('nro_factura')?.value || null) : null,
+            nro_recibo: this.form.get('comprobante')?.value === 'RECIBO' ? (this.form.get('nro_recibo')?.value || null) : null,
+          });
+
+          console.log('[MensualidadModal] addAndClose ARRASTRE (múltiples) - Agregado arrastre cuota:', numero_cuota);
+
+          // Agregar mora SOLO si la mensualidad de esta cuota está pagada
+          const { mensualidadPagada } = this.esCuotaPagadaOEnDetalle(numero_cuota);
+          console.log('[MensualidadModal] addAndClose ARRASTRE (múltiples) - cuota:', numero_cuota, 'mensualidadPagada:', mensualidadPagada);
+
+          if (mensualidadPagada) {
+            try {
+              const mora = this.getMoraPendienteSinVerificarPar(id_asignacion_costo, 'arrastre');
+              console.log('[MensualidadModal] addAndClose ARRASTRE (múltiples) - mora encontrada para cuota', numero_cuota, ':', mora);
+
+              if (mora) {
+                const moraItem = this.buildPagoMoraItem(mora, hoy, compSel, tipo_documento, medio_doc);
+                moraItem.nro_cobro = nro++;
+                pagos.push(moraItem);
+                console.log('[MensualidadModal] addAndClose ARRASTRE (múltiples) - mora agregada para cuota:', numero_cuota);
+              }
+            } catch (err) {
+              console.error('[MensualidadModal] addAndClose ARRASTRE (múltiples) - Error al agregar mora cuota', numero_cuota, ':', err);
             }
           }
-        } catch {}
+        }
       }
     } else if (this.tipo === 'mensualidad') {
       const esParcial = !!this.form.get('pago_parcial')?.value;
@@ -2557,7 +2808,7 @@ export class MensualidadModalComponent implements OnInit, OnChanges, AfterViewIn
 
         // Si este parcial completa la cuota, agregar mora pendiente de esa cuota
         try {
-          const mora = this.getMoraPendienteByAsign(id_asignacion_costo);
+          const mora = this.getMoraPendienteByAsign(id_asignacion_costo, numero_cuota ?? undefined);
           if (mora && this.shouldCobrarMoraForPago(monto, numero_cuota, id_asignacion_costo)) {
             const moraItem = this.buildPagoMoraItem(mora, hoy, compSel, tipo_documento, medio_doc);
             moraItem.nro_cobro = (this.baseNro || 1) + 1;
@@ -2741,7 +2992,7 @@ export class MensualidadModalComponent implements OnInit, OnChanges, AfterViewIn
             } else if (!hayArrastreEnDetalle) {
               // No hay arrastre en detalle: agregar mora de cada cuota de mensualidad
               try {
-                const mora = this.getMoraPendienteByAsign(id_asignacion_costo);
+                const mora = this.getMoraPendienteByAsign(id_asignacion_costo, numero_cuota ?? undefined);
                 if (mora) {
                   const moraItem = this.buildPagoMoraItem(mora, hoy, compSel, tipo_documento, medio_doc);
                   moraItem.nro_cobro = nro++;
