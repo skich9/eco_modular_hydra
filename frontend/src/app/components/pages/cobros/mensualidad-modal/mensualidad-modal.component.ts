@@ -679,7 +679,7 @@ export class MensualidadModalComponent implements OnInit, OnChanges {
           return;
         }
 
-        if (cantSel === totalCuotasPendientes && this.validarCuotasSinDescuentoPrevio(cantSel)) {
+        if (cantSel === 5 && this.validarCuotasSinDescuentoPrevio(cantSel)) {
           const descuentoAuto = this.calcularDescuentoSemestreCompleto(cantSel);
           if (descuentoAuto > 0) {
             d = descuentoAuto;
@@ -1182,7 +1182,7 @@ export class MensualidadModalComponent implements OnInit, OnChanges {
           total = deudaReal;
           const totalCuotasPendientes = this.pendientes || 0;
 
-          if (cant === totalCuotasPendientes && this.validarCuotasSinDescuentoPrevio(cant)) {
+          if (cant === 5 && this.validarCuotasSinDescuentoPrevio(cant)) {
             const descuentoAuto = this.calcularDescuentoSemestreCompleto(cant);
             if (descuentoAuto > 0) {
               total = Math.max(0, total - descuentoAuto);
@@ -3081,7 +3081,7 @@ export class MensualidadModalComponent implements OnInit, OnChanges {
       if (!this.descuentoSemestreIdDefDescuento || this.descuentoSemestreIdDefDescuento <= 0) return 0;
 
       const totalCuotasPendientes = this.pendientes || 0;
-      if (cantidadSeleccionada !== totalCuotasPendientes) return 0;
+      if (cantidadSeleccionada !== 5) return 0;
 
       const montoTotal = this.sumNextKCuotasRestantes(cantidadSeleccionada);
       if (montoTotal <= 0) return 0;

@@ -441,14 +441,18 @@
 							<span>Monto Semestral:</span>
 							<strong>{{ r?.totales?.monto_semestral | number: '1.2-2' }}</strong>
 						</div>
+						<!-- Fila de descuentos: solo visible cuando hay descuento aplicado -->
+						<div class="mb-2 d-flex justify-content-between" *ngIf="(r?.totales?.descuentos ?? 0) > 0">
+							<span>Total Descuentos:</span>
+							<strong class="text-primary">- {{ r?.totales?.descuentos | number: '1.2-2' }}</strong>
+						</div>
 						<div class="mb-2 d-flex justify-content-between">
 							<span>Total Pagado:</span>
 							<strong class="text-success">{{ r?.totales?.total_pagado_v2 | number: '1.2-2' }}</strong>
 						</div>
 						<div class="mb-3 d-flex justify-content-between">
 							<span>Saldo Mensualidad:</span>
-							<strong class="text-danger">{{ (r?.totales?.monto_semestral - r?.totales?.total_pagado_v2) |
-								number: '1.2-2' }}</strong>
+							<strong class="text-danger">{{ r?.totales?.saldo_mensualidad | number: '1.2-2' }}</strong>
 						</div>
 
 						<div class="mt-3">
