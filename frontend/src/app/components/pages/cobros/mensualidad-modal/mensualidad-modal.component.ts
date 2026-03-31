@@ -139,6 +139,43 @@ export class MensualidadModalComponent implements OnInit, OnChanges, AfterViewIn
         }
       }
 
+      // Verificar si hay arrastres cobrados (no en detalle) para las cuotas que se van a pagar
+      const cant = Math.max(0, Number(this.form.get('cantidad')?.value || 0));
+      const cuotasAPagar = this.getOrderedCuotasRestantes().slice(0, cant);
+
+      if (cuotasAPagar.length > 0) {
+        const asignacionesArrastre = this.resumen?.asignaciones_arrastre || [];
+        const morasVinculadasArrastreCobrado: any[] = [];
+
+        cuotasAPagar.forEach((cuota: any) => {
+          const numCuota = Number(cuota?.numero || 0);
+          const arrastreCuota = asignacionesArrastre.find((a: any) => Number(a?.numero_cuota || 0) === numCuota);
+
+          if (arrastreCuota) {
+            const arrastrePagado = (arrastreCuota?.estado_pago || '').toString().toUpperCase() === 'COBRADO';
+
+            if (arrastrePagado) {
+              // Si el arrastre está cobrado, buscar la mora vinculada a ese arrastre
+              const idAsignArrastre = Number(arrastreCuota?.id_asignacion_costo || 0);
+              const moraVinculada = list.find((m: any) => {
+                const estado = (m?.estado || '').toString().toUpperCase();
+                if (!(estado === 'PENDIENTE' || estado === 'CONGELADA_PRORROGA' || estado === 'CERRADA_SIN_CUOTA')) return false;
+                const moraIdVinculada = Number(m?.id_asignacion_vinculada || 0);
+                return moraIdVinculada === idAsignArrastre;
+              });
+
+              if (moraVinculada) {
+                morasVinculadasArrastreCobrado.push(moraVinculada);
+              }
+            }
+          }
+        });
+
+        if (morasVinculadasArrastreCobrado.length > 0) {
+          return morasVinculadasArrastreCobrado;
+        }
+      }
+
       const asignacionesNormal: any[] = Array.isArray(this.resumen?.asignaciones) ? this.resumen.asignaciones : [];
       const normalAsignIds = new Set<number>((asignacionesNormal || []).map((a: any) => Number(a?.id_asignacion_costo || 0)).filter((n: number) => n > 0));
       return list.filter((m: any) => {
@@ -363,12 +400,28 @@ export class MensualidadModalComponent implements OnInit, OnChanges, AfterViewIn
       });
       console.log('[MensualidadModal] Mora encontrada para mensualidad:', hit);
 
-      // Verificar si el par mensualidad-arrastre está completo
+      // Para MENSUALIDAD: verificar si el arrastre ya está cobrado
+      // Si el arrastre ya está cobrado, SÍ mostrar la mora porque el par se completará al pagar la mensualidad
       if (hit && numeroCuota !== undefined) {
-        const parCompleto = this.parMensualidadArrastreCompleto(numeroCuota, 'mensualidad');
-        if (!parCompleto) {
-          console.log('[MensualidadModal] Par NO completo, NO cobrar mora todavía');
-          return null;
+        const asignacionesArrastre = this.resumen?.asignaciones_arrastre || [];
+        const arrastreCuota = asignacionesArrastre.find((a: any) => Number(a?.numero_cuota || 0) === numeroCuota);
+
+        if (arrastreCuota) {
+          const arrastrePagado = (arrastreCuota?.estado_pago || '').toString().toUpperCase() === 'COBRADO';
+          console.log('[MensualidadModal] Arrastre de cuota', numeroCuota, 'pagado:', arrastrePagado);
+
+          // Si el arrastre ya está cobrado, SÍ mostrar la mora
+          if (arrastrePagado) {
+            console.log('[MensualidadModal] Arrastre cobrado, mostrar mora para mensualidad');
+            return hit;
+          }
+
+          // Si el arrastre NO está cobrado, verificar si el par está completo
+          const parCompleto = this.parMensualidadArrastreCompleto(numeroCuota, 'mensualidad');
+          if (!parCompleto) {
+            console.log('[MensualidadModal] Par NO completo, NO cobrar mora todavía');
+            return null;
+          }
         }
       }
 
@@ -1822,42 +1875,10 @@ export class MensualidadModalComponent implements OnInit, OnChanges, AfterViewIn
         let moraPendienteAnterior = null;
 
         if (hayArrastreEnDetalleParaMora) {
-          console.log('[MensualidadModal] HAY arrastre en detalle, buscando mora de inscripción normal...');
-          const itemArrastre = (this.detalleFactura || []).find((item: any) => {
-            const tipoPago = (item?.tipo_pago || item?.cod_tipo_cobro || '').toString().toUpperCase();
-            return tipoPago === 'ARRASTRE';
-          });
-
-          console.log('[MensualidadModal] itemArrastre encontrado:', itemArrastre);
-
-          if (itemArrastre) {
-            const numeroCuotaArrastre = Number(itemArrastre?.numero_cuota || 0);
-            console.log('[MensualidadModal] numeroCuotaArrastre:', numeroCuotaArrastre);
-
-            // Buscar la asignación de mensualidad NORMAL de la misma cuota
-            const asignaciones = this.resumen?.asignaciones || [];
-            const asignMensualidadNormal = asignaciones.find((a: any) => {
-              return Number(a?.numero_cuota || 0) === numeroCuotaArrastre;
-            });
-
-            console.log('[MensualidadModal] asignMensualidadNormal encontrada:', asignMensualidadNormal);
-
-            if (asignMensualidadNormal) {
-              const idAsignMensualidad = asignMensualidadNormal?.id_asignacion_costo ?? null;
-              console.log('[MensualidadModal] idAsignMensualidad:', idAsignMensualidad);
-
-              // Buscar la mora que tiene id_asignacion_costo apuntando a la mensualidad normal
-              moraPendienteAnterior = morasPendientes.find((m: any) => {
-                const moraIdAsignCosto = Number(m?.id_asignacion_costo || 0);
-                const estado = (m?.estado || '').toString().toUpperCase();
-                const cumple = moraIdAsignCosto === idAsignMensualidad && this.isMoraEstadoPendiente(estado);
-                console.log(`[MensualidadModal] Mora: id_asignacion_costo=${moraIdAsignCosto}, estado=${estado}, idAsignMensualidad=${idAsignMensualidad}, cumple=${cumple}`);
-                return cumple;
-              });
-
-              console.log('[MensualidadModal] moraPendienteAnterior (de mensualidad normal):', moraPendienteAnterior);
-            }
-          }
+          console.log('[MensualidadModal] HAY arrastre en detalle, NO verificar mora (se permite pagar mensualidad)');
+          // Con la nueva lógica: si hay arrastre en detalle, NO bloquear por mora
+          // La mora se agregará automáticamente cuando se agregue la mensualidad
+          moraPendienteAnterior = null;
         } else {
           console.log('[MensualidadModal] NO hay arrastre en detalle, buscando mora de cuotas ya pagadas...');
 
@@ -2698,8 +2719,8 @@ export class MensualidadModalComponent implements OnInit, OnChanges, AfterViewIn
 
           const mesNombre = numero_cuota ? this.getMesNombreByCuota(numero_cuota) : null;
           const detalleArrastre = mesNombre
-            ? `Arrastre - Cuota ${numero_cuota} (${mesNombre})`
-            : `Arrastre - Cuota ${numero_cuota || ''}`;
+            ? `Nivelación - Cuota ${numero_cuota} (${mesNombre})`
+            : `Nivelación - Cuota ${numero_cuota || ''}`;
 
           pagos.push({
             id_forma_cobro: this.form.get('metodo_pago')?.value || null,
