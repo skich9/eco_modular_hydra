@@ -1889,6 +1889,7 @@ class CobroController extends Controller
 					->orderByDesc('created_at')
 					->get();
 				$primaryInscripcion = null;
+				$arrastreInscripcion = null;
 				if ($codInsReq) {
 					$primaryInscripcion = $insList->firstWhere('cod_inscrip', (int)$codInsReq);
 				}
@@ -1898,6 +1899,8 @@ class CobroController extends Controller
 				if (!$primaryInscripcion) {
 					$primaryInscripcion = $insList->firstWhere('tipo_inscripcion', 'NORMAL') ?: $insList->first();
 				}
+				// Obtener inscripción ARRASTRE para usar su cod_inscrip cuando sea necesario
+				$arrastreInscripcion = $insList->firstWhere('tipo_inscripcion', 'ARRASTRE');
 				// Precargar asignaciones y cuotas pagadas para mapear automáticamente si faltan ids
 				$asignPrimarias = collect();
 				$paidTplIds = collect();
@@ -2992,6 +2995,22 @@ class CobroController extends Controller
                     } catch (\Throwable $e) {}
                 }
 
+                // Determinar cod_inscrip correcto según el tipo de cobro
+                $codInscripToUse = null;
+                if ($codTipoCobroItem === 'ARRASTRE' && $arrastreInscripcion) {
+                    // Para cobros de ARRASTRE, usar cod_inscrip de la inscripción ARRASTRE
+                    $codInscripToUse = (int)$arrastreInscripcion->cod_inscrip;
+                    \Log::info('[CobroController] Usando cod_inscrip de ARRASTRE', [
+                        'idx' => $idx,
+                        'cod_tipo_cobro' => $codTipoCobroItem,
+                        'cod_inscrip_arrastre' => $codInscripToUse,
+                        'cod_inscrip_normal' => $primaryInscripcion ? $primaryInscripcion->cod_inscrip : null
+                    ]);
+                } elseif ($primaryInscripcion) {
+                    // Para otros tipos de cobro, usar cod_inscrip de la inscripción primaria
+                    $codInscripToUse = (int)$primaryInscripcion->cod_inscrip;
+                }
+
                 $payload = array_merge($composite, [
                     'monto' => $item['monto'],
                     'fecha_cobro' => $fechaCobroSave,
@@ -3012,7 +3031,7 @@ class CobroController extends Controller
                     'tipo_documento' => $tipoDoc,
                     'medio_doc' => $medioDoc,
                     'gestion' => isset($request->gestion) ? $request->gestion : null,
-                    'cod_inscrip' => $primaryInscripcion ? (int)$primaryInscripcion->cod_inscrip : null,
+                    'cod_inscrip' => $codInscripToUse,
                     'cod_tipo_cobro' => $codTipoCobroItem,
                     'concepto' => $conceptoOut,
                     'reposicion_factura' => $isReposicionFactura ? 1 : null,
