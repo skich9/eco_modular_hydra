@@ -326,7 +326,7 @@ class NotaOtrosIngresosPdfService
 
 		$numDocShow = $numDoc !== '' ? $numDoc : 'S/N';
 
-		return $this->envolverHtml($inst, $carrera, 'NOTA DE REPOSICION', $correlativoDisplay, $fechaTxt, '
+		return $this->envolverHtml($inst, $carrera, 'Nota de pago en efectivo - Otros Ingresos', $correlativoDisplay, $fechaTxt, '
 			<tr>
 				<td colspan="2" style="font-size:11pt;color:#000;font-weight:bold;text-align:right;border:1px solid #000;background:#C8C8C8;">
 					<label>Nombre:</label>

@@ -5,18 +5,22 @@
 
 	<div *ngIf="alertMsg" class="alert" [ngClass]="alertOk ? 'alert-success' : 'alert-error'">{{ alertMsg }}</div>
 
+	<div *ngIf="bloqueoFacturaComputarizado" class="alert alert-warning" role="status">
+		Cambie a recibo o a emisión manual para poder continuar.
+	</div>
+
 	<div class="card-panel card-panel--inline-fields">
 		<h2>Datos del registro</h2>
 		<div class="form-grid">
 			<div class="field">
-				<label>Documento</label>
+				<label>Documento </label>
 				<div class="radio-row">
 					<label><input type="radio" name="fr" value="F" [(ngModel)]="facturaRecibo" (ngModelChange)="onFacturaReciboMedioChange()" /> Factura</label>
 					<label><input type="radio" name="fr" value="R" [(ngModel)]="facturaRecibo" (ngModelChange)="onFacturaReciboMedioChange()" /> Recibo</label>
 				</div>
 			</div>
 			<div class="field">
-				<label>Medio</label>
+				<label>Medio </label>
 				<div class="radio-row">
 					<label><input type="radio" name="med" value="E" [(ngModel)]="medioDoc" (ngModelChange)="onFacturaReciboMedioChange()" /> Computarizado</label>
 					<label><input type="radio" name="med" value="M" [(ngModel)]="medioDoc" (ngModelChange)="onFacturaReciboMedioChange()" /> Manual</label>
@@ -24,23 +28,43 @@
 			</div>
 
 			<div class="field">
-				<label>Carrera</label>
-				<select [(ngModel)]="codigoCarrera" (ngModelChange)="onCarreraChange()">
+				<label [class.field-label--req-error]="reqErrors['carrera']">Carrera</label>
+				<select
+					[(ngModel)]="codigoCarrera"
+					(ngModelChange)="onCarreraChange()"
+					[disabled]="bloqueoFacturaComputarizado"
+					[class.input-invalid]="reqErrors['carrera']"
+				>
 					<option value="">Seleccione…</option>
 					<option *ngFor="let c of carreras" [value]="c.codigo_carrera">{{ c.nombre }}</option>
 				</select>
+				<small *ngIf="reqErrors['carrera']" class="field-error">{{ msgCampoObligatorio }}</small>
 			</div>
 			<div class="field">
-				<label>Gestión</label>
+				<label [class.field-label--req-error]="reqErrors['gestion']">Gestión</label>
 				<div class="field__control">
-					<select [(ngModel)]="gestionSel">
+					<select
+						[(ngModel)]="gestionSel"
+						(ngModelChange)="sincronizarReqErrorsTrasEdicion()"
+						[disabled]="bloqueoFacturaComputarizado"
+						[class.input-invalid]="reqErrors['gestion']"
+					>
 						<option *ngFor="let g of gestiones" [value]="g.gestion">{{ g.gestion }}</option>
 					</select>
 				</div>
+				<small *ngIf="reqErrors['gestion']" class="field-error">{{ msgCampoObligatorio }}</small>
 			</div>
 
 			<div class="field field--checkbox-only">
-				<label><input type="checkbox" [(ngModel)]="anular" (ngModelChange)="onAnularChange()" /> Marque para anular</label>
+				<label
+					><input
+						type="checkbox"
+						[(ngModel)]="anular"
+						(ngModelChange)="onAnularChange()"
+						[disabled]="bloqueoFacturaComputarizado"
+					/>
+					Marque para anular</label
+				>
 			</div>
 			<div class="field field--empty" aria-hidden="true"></div>
 		</div>
@@ -48,29 +72,68 @@
 		<div class="otros-ingresos__dual">
 			<div class="otros-ingresos__col">
 				<div class="field">
-					<label>Razón social</label>
-					<input type="text" [(ngModel)]="razonSocial" placeholder="Introduzca razón social del cliente" [disabled]="nitRazonBloqueados" />
+					<label [class.field-label--req-error]="reqErrors['nit']">NIT / documento</label>
+					<div class="field__control">
+						<input
+							type="text"
+							[(ngModel)]="nit"
+							(ngModelChange)="onNitDocumentoNgModelChange($event)"
+							placeholder="Introduzca el NIT o documento del cliente"
+							[disabled]="nitRazonBloqueados"
+							(keydown)="onNitDocumentoKeydown($event)"
+							(keydown.enter)="onNitDocumentoEnter($event)"
+							autocomplete="off"
+							[class.input-invalid]="reqErrors['nit']"
+						/>
+					</div>
+					<small *ngIf="reqErrors['nit']" class="field-error">{{ msgCampoObligatorio }}</small>
 				</div>
 				<div class="field">
-					<label>NIT / documento</label>
+					<label>Razón social</label>
 					<div class="field__control field__control--row">
-						<input type="text" [(ngModel)]="nit" placeholder="NIT cliente" [disabled]="nitRazonBloqueados" />
-						<button type="button" class="btn btn-secondary" (click)="buscarRazonSocial()" [disabled]="nitRazonBloqueados">Buscar</button>
+						<input
+							type="text"
+							[ngModel]="razonSocial"
+							(ngModelChange)="onRazonSocialInput($event)"
+							placeholder="Introduzca Razon Social del cliente"
+							[disabled]="nitRazonBloqueados"
+							autocomplete="off"
+						/>
+						<button
+							type="button"
+							class="btn btn-secondary otros-ingresos__btn-edit-facturacion"
+							(click)="abrirModalFacturacion()"
+							[disabled]="nitRazonBloqueados"
+						>
+							Editar
+						</button>
 					</div>
 				</div>
 				<div class="field">
-					<label>Tipo de pago</label>
-					<select [(ngModel)]="codeTipoPago" (ngModelChange)="onTipoPagoChange()" [disabled]="anular">
-						<option value="">Seleccione…</option>
+					<label [class.field-label--req-error]="reqErrors['tipoPago']">Tipo de pago</label>
+					<select
+						[(ngModel)]="codeTipoPago"
+						(ngModelChange)="onTipoPagoChange()"
+						[disabled]="anular || bloqueoFacturaComputarizado"
+						[class.input-invalid]="reqErrors['tipoPago']"
+					>
+						<option value="">Seleccione tipo de pago</option>
 						<option *ngFor="let t of tiposPagoOtrosIngresos" [value]="t.code">{{ t.label }}</option>
 					</select>
+					<small *ngIf="reqErrors['tipoPago']" class="field-error">{{ msgCampoObligatorio }}</small>
 				</div>
 				<div class="field" *ngIf="!showFlujoDepositoTarjeta">
-					<label>Tipo ingreso</label>
-					<select [(ngModel)]="codTipoIngreso" (ngModelChange)="onTipoIngresoChange()" [disabled]="anular">
-						<option value="">Seleccione…</option>
+					<label [class.field-label--req-error]="reqErrors['tipoIngreso']">Tipo ingreso</label>
+					<select
+						[(ngModel)]="codTipoIngreso"
+						(ngModelChange)="onTipoIngresoChange()"
+						[disabled]="anular || bloqueoFacturaComputarizado"
+						[class.input-invalid]="reqErrors['tipoIngreso']"
+					>
+						<option value="">Seleccione tipo de ingreso</option>
 						<option *ngFor="let t of tiposIngresoVisibles" [value]="t.cod_tipo_ingreso">{{ t.nom_tipo_ingreso }}</option>
 					</select>
+					<small *ngIf="reqErrors['tipoIngreso']" class="field-error">{{ msgCampoObligatorio }}</small>
 				</div>
 				<div class="field" *ngIf="showAlquiler && !showFlujoDepositoTarjeta">
 					<label>Periodo (mes)</label>
@@ -79,7 +142,9 @@
 					</select>
 				</div>
 				<div class="field" *ngIf="showOt && !showFlujoDepositoTarjeta">
-					<label>Nº orden de trabajo <span class="field-req" aria-hidden="true">*</span></label>
+					<label [class.field-label--req-error]="reqErrors['nroOrden'] || nroOrdenError"
+						>Nº orden de trabajo <span class="field-req" aria-hidden="true">*</span></label
+					>
 					<input
 						type="number"
 						min="1"
@@ -89,44 +154,90 @@
 						[(ngModel)]="nroOrden"
 						(ngModelChange)="onNroOrdenInput()"
 						(blur)="onNroOrdenBlur()"
-						[class.input-invalid]="nroOrdenError"
+						[class.input-invalid]="nroOrdenError || reqErrors['nroOrden']"
 						[disabled]="!tipoFlujoNormalActivo"
-						[attr.aria-invalid]="!!nroOrdenError"
+						[attr.aria-invalid]="!!(nroOrdenError || reqErrors['nroOrden'])"
 					/>
-					<small *ngIf="nroOrdenError" class="field-error" role="alert">{{ nroOrdenError }}</small>
+					<small *ngIf="reqErrors['nroOrden']" class="field-error" role="alert">{{ msgCampoObligatorio }}</small>
+					<small *ngIf="!reqErrors['nroOrden'] && nroOrdenError" class="field-error" role="alert">{{ nroOrdenError }}</small>
 				</div>
 				<div class="field" *ngIf="!esPagoEfectivo">
-					<label>Banco / cuenta</label>
-					<select [(ngModel)]="ctaBanco" [disabled]="camposPagoSecundariosBloqueados">
-						<option value="">Seleccione…</option>
+					<label [class.field-label--req-error]="reqErrors['bancoCuenta']">Banco / Cuenta</label>
+					<select
+						[(ngModel)]="ctaBanco"
+						(ngModelChange)="sincronizarReqErrorsTrasEdicion()"
+						[disabled]="camposPagoSecundariosBloqueados"
+						[class.input-invalid]="reqErrors['bancoCuenta']"
+					>
+						<option value="">Seleccione la Cuenta</option>
 						<option *ngFor="let c of cuentas" [value]="cuentaValor(c)">{{ c.banco }} — {{ c.numero_cuenta }}</option>
 					</select>
+					<small *ngIf="reqErrors['bancoCuenta']" class="field-error">{{ msgCampoObligatorio }}</small>
 				</div>
 				<div class="field" *ngIf="showFlujoDepositoTarjeta">
-					<label>Nº depósito</label>
-					<input type="text" [(ngModel)]="numDeposito" [disabled]="camposPagoSecundariosBloqueados" />
+					<label [class.field-label--req-error]="reqErrors['numDeposito']">{{
+						showTransferencia || showTarjeta ? 'Nº de transacción' : 'Nº depósito'
+					}}</label>
+					<div
+						*ngIf="showTarjeta"
+						class="input-with-prefix"
+						[class.input-with-prefix--invalid]="reqErrors['numDeposito']"
+					>
+						<span class="input-with-prefix__fixed" aria-hidden="true">{{ linkserNroTransaccionPrefix }}</span>
+						<input
+							type="text"
+							class="input-with-prefix__input"
+							[ngModel]="nroTransaccionTarjetaSufijo"
+							(ngModelChange)="onNroTransaccionTarjetaSufijoChange($event)"
+							(keydown)="onNroTransaccionSoloDigitosKeydown($event)"
+							inputmode="numeric"
+							[disabled]="camposPagoSecundariosBloqueados"
+							autocomplete="off"
+							placeholder="Nº operación"
+						/>
+					</div>
+					<input
+						*ngIf="!showTarjeta"
+						type="text"
+						[ngModel]="numDeposito"
+						(ngModelChange)="onNumDepositoChange($event)"
+						(keydown)="onNumDepositoKeydown($event)"
+						inputmode="numeric"
+						[disabled]="camposPagoSecundariosBloqueados"
+						[class.input-invalid]="reqErrors['numDeposito']"
+					/>
+					<small *ngIf="reqErrors['numDeposito']" class="field-error">{{ msgCampoObligatorio }}</small>
 				</div>
 				<div class="field" *ngIf="showFlujoDepositoTarjeta">
-					<label>Fecha depósito (día/mes/año)</label>
+					<label>Fecha Depósito (día/mes/año)</label>
 					<input
 						type="date"
 						class="fecha-input-native"
 						[(ngModel)]="fechaDepositoIso"
 						[min]="minFechaIso"
 						[attr.max]="maxFechaIso"
+						[disabled]="camposPagoSecundariosBloqueados"
 						(ngModelChange)="clampTodasLasFechas()"
 						autocomplete="off"
 					/>
 				</div>
 				<div class="field" *ngIf="showFlujoDepositoTarjeta">
-					<label>Tipo ingreso</label>
-					<select [(ngModel)]="codTipoIngreso" (ngModelChange)="onTipoIngresoChange()" [disabled]="anular">
-						<option value="">Seleccione…</option>
+					<label [class.field-label--req-error]="reqErrors['tipoIngreso']">Tipo Ingreso</label>
+					<select
+						[(ngModel)]="codTipoIngreso"
+						(ngModelChange)="onTipoIngresoChange()"
+						[disabled]="anular || bloqueoFacturaComputarizado"
+						[class.input-invalid]="reqErrors['tipoIngreso']"
+					>
+						<option value="">Seleccione tipo de ingreso</option>
 						<option *ngFor="let t of tiposIngresoDeposito" [value]="t.cod">{{ t.nom }}</option>
 					</select>
+					<small *ngIf="reqErrors['tipoIngreso']" class="field-error">{{ msgCampoObligatorio }}</small>
 				</div>
 				<div class="field" *ngIf="showOt && showFlujoDepositoTarjeta">
-					<label>Nº orden de trabajo <span class="field-req" aria-hidden="true">*</span></label>
+					<label [class.field-label--req-error]="reqErrors['nroOrden'] || nroOrdenError"
+						>Nº orden de trabajo <span class="field-req" aria-hidden="true">*</span></label
+					>
 					<input
 						type="number"
 						min="1"
@@ -136,11 +247,12 @@
 						[(ngModel)]="nroOrden"
 						(ngModelChange)="onNroOrdenInput()"
 						(blur)="onNroOrdenBlur()"
-						[class.input-invalid]="nroOrdenError"
+						[class.input-invalid]="nroOrdenError || reqErrors['nroOrden']"
 						[disabled]="!tipoFlujoNormalActivo"
-						[attr.aria-invalid]="!!nroOrdenError"
+						[attr.aria-invalid]="!!(nroOrdenError || reqErrors['nroOrden'])"
 					/>
-					<small *ngIf="nroOrdenError" class="field-error" role="alert">{{ nroOrdenError }}</small>
+					<small *ngIf="reqErrors['nroOrden']" class="field-error" role="alert">{{ msgCampoObligatorio }}</small>
+					<small *ngIf="!reqErrors['nroOrden'] && nroOrdenError" class="field-error" role="alert">{{ nroOrdenError }}</small>
 				</div>
 				<div class="field" *ngIf="showAlquiler && showFlujoDepositoTarjeta">
 					<label>Periodo (mes)</label>
@@ -150,7 +262,9 @@
 				</div>
 				<div class="field field--stack rango-fechas-sga" *ngIf="mostrarRangoFechas">
 					<div class="rango-fechas-sga__line">
-						<label class="rango-fechas-sga__titulo">Rango de fechas (día/mes/año)</label>
+						<label class="rango-fechas-sga__titulo" [class.field-label--req-error]="reqErrors['rangoFechas']"
+							>Rango de Fechas (día/mes/año)</label
+						>
 						<ng-container *ngIf="esRangoFechasNativoRow; else rangoFechasOverlay">
 							<div class="rango-fechas-sga__row rango-fechas-sga__row--native">
 								<span class="rango-fechas-sga__del">Del:</span>
@@ -200,7 +314,7 @@
 										autocomplete="off"
 									/>
 								</div>
-								<span class="rango-fechas-sga__al">Al</span>
+								<span class="rango-fechas-sga__al">al</span>
 								<div class="fecha-dmy-field fecha-dmy-field--rango">
 									<input
 										type="text"
@@ -224,56 +338,133 @@
 							</div>
 						</ng-template>
 					</div>
+					<small *ngIf="reqErrors['rangoFechas']" class="field-error field-error--rango-full">{{ msgCampoObligatorio }}</small>
 				</div>
 			</div>
 
 			<div class="otros-ingresos__col">
-				<div class="field">
-					<label>Nº factura</label>
-					<input type="number" [(ngModel)]="numFactura" [readOnly]="facturaInputReadonly" />
+				<div class="field" *ngIf="facturaRecibo === 'F'">
+					<label>Nº Factura</label>
+					<input
+						type="number"
+						[(ngModel)]="numFactura"
+						(ngModelChange)="onNumFacturaModelChange()"
+						(blur)="onNumFacturaBlur()"
+						[readOnly]="facturaInputReadonly"
+						[class.input-invalid]="!!numFacturaDuplicadoError"
+						[attr.aria-invalid]="numFacturaDuplicadoError ? true : null"
+					/>
+					<small *ngIf="numFacturaDuplicadoError" class="field-error">{{ numFacturaDuplicadoError }}</small>
+				</div>
+				<div class="field" *ngIf="facturaRecibo === 'R'">
+					<label>Nº Recibo</label>
+					<input
+						type="number"
+						[(ngModel)]="numRecibo"
+						(ngModelChange)="onNumReciboModelChange()"
+						(blur)="onNumReciboBlur()"
+						[readOnly]="reciboInputReadonly"
+						[class.input-invalid]="!!numReciboDuplicadoError"
+						[attr.aria-invalid]="numReciboDuplicadoError ? true : null"
+						[attr.aria-label]="'Número de recibo'"
+					/>
+					<small *ngIf="numReciboDuplicadoError" class="field-error">{{ numReciboDuplicadoError }}</small>
 				</div>
 				<div class="field">
-					<label>Nº recibo</label>
-					<input type="number" [(ngModel)]="numRecibo" [readOnly]="reciboInputReadonly" />
-				</div>
-				<div class="field">
-					<label>Importe</label>
-					<input type="number" step="0.01" [(ngModel)]="importe" (ngModelChange)="calcNeto()" [readOnly]="importeDescuentoBloqueados" />
+					<label [class.field-label--req-error]="reqErrors['importe']">Importe</label>
+					<input
+						type="number"
+						step="0.01"
+						[(ngModel)]="importe"
+						(ngModelChange)="onImporteChange()"
+						[readOnly]="importeDescuentoBloqueados"
+						[class.input-invalid]="reqErrors['importe']"
+						min="0"
+					/>
+					<small *ngIf="reqErrors['importe']" class="field-error">{{ msgCampoObligatorio }}</small>
 				</div>
 				<div class="field">
 					<label>Descuento</label>
 					<input type="number" step="0.01" [(ngModel)]="descuento" (ngModelChange)="calcNeto()" [readOnly]="importeDescuentoBloqueados" />
 				</div>
 				<div class="field">
-					<label>Importe neto</label>
+					<label>Importe Neto</label>
 					<input type="text" [value]="importeNeto | number:'1.2-2'" disabled />
 				</div>
 				<div class="field" *ngIf="esPagoEfectivo">
-					<label>Fecha (día/mes/año)</label>
+					<label [class.field-label--req-error]="reqErrors['rangoFechas'] && !mostrarRangoFechas"
+						>Fecha (día/mes/año)</label
+					>
 					<input
 						type="date"
 						class="fecha-input-native"
 						[(ngModel)]="fechaFinIso"
 						[min]="minFechaIso"
 						[attr.max]="maxFechaIso"
+						[disabled]="importeDescuentoBloqueados"
 						(ngModelChange)="clampTodasLasFechas()"
 						autocomplete="off"
 					/>
+					<small *ngIf="reqErrors['rangoFechas'] && !mostrarRangoFechas" class="field-error">{{ msgCampoObligatorio }}</small>
 				</div>
 			</div>
 		</div>
 
 		<div class="form-section-below">
 			<div class="field field--textarea">
-				<label>Detalle / observaciones</label>
-				<textarea rows="3" [(ngModel)]="observacion"></textarea>
+				<label [class.field-label--req-error]="reqErrors['observacion']">Detalle / Observaciones</label>
+				<textarea
+					rows="3"
+					[(ngModel)]="observacion"
+					(ngModelChange)="sincronizarReqErrorsTrasEdicion()"
+					[disabled]="bloqueoFacturaComputarizado"
+					[class.input-invalid]="reqErrors['observacion']"
+				></textarea>
+				<small *ngIf="reqErrors['observacion']" class="field-error">{{ msgCampoObligatorio }}</small>
 			</div>
 		</div>
 
 		<div class="actions">
-			<button type="button" class="btn btn-primary" (click)="registrar()" [disabled]="loading">{{ loading ? 'Guardando…' : 'Registrar' }}</button>
+			<button type="button" class="btn btn-primary" (click)="registrar()" [disabled]="loading || bloqueoFacturaComputarizado">
+				{{ loading ? 'Guardando…' : 'Registrar' }}
+			</button>
 			<button type="button" class="btn btn-secondary" (click)="limpiar()">Limpiar</button>
 			<button type="button" class="btn btn-danger" (click)="cancelar()">Cancelar</button>
+		</div>
+	</div>
+</div>
+
+<div class="modal-backdrop" *ngIf="showModalFacturacion" (click)="cerrarModalFacturacion()">
+	<div class="modal-box modal-box--compact" (click)="$event.stopPropagation()" role="dialog" aria-modal="true" aria-labelledby="modal-facturacion-title">
+		<h3 id="modal-facturacion-title" style="margin-top: 0">Datos de facturación</h3>
+		<p class="modal-box__hint">Revise o corrija el documento y la razón social. Al confirmar se guardan en el catálogo (tabla razón social) y se actualiza el formulario.</p>
+		<div class="modal-box__fields">
+			<div class="modal-box__field">
+				<label for="nit-modal">NIT / documento</label>
+				<input
+					id="nit-modal"
+					type="text"
+					[ngModel]="nitModal"
+					(ngModelChange)="onNitModalDocumentoChange($event)"
+					(keydown)="onNitDocumentoKeydown($event)"
+					autocomplete="off"
+				/>
+			</div>
+			<div class="modal-box__field">
+				<label for="razon-modal">Razón Social</label>
+				<input
+					id="razon-modal"
+					type="text"
+					[ngModel]="razonModal"
+					(ngModelChange)="onRazonModalInput($event)"
+					placeholder="Introduzca Razon Social del cliente"
+					autocomplete="off"
+				/>
+			</div>
+		</div>
+		<div class="modal-box__actions">
+			<button type="button" class="btn btn-secondary" (click)="cerrarModalFacturacion()">Cancelar</button>
+			<button type="button" class="btn btn-primary" (click)="confirmarModalFacturacion()">Confirmar</button>
 		</div>
 	</div>
 </div>

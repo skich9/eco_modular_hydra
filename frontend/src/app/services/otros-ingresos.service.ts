@@ -49,8 +49,17 @@ export class OtrosIngresosService {
 		return this.http.post(`${this.baseReg}/factura-existe`, { factura, autorizacion }, { responseType: 'text' });
 	}
 
+	reciboExiste(recibo: number): Observable<string> {
+		return this.http.post(`${this.baseReg}/recibo-existe`, { recibo }, { responseType: 'text' });
+	}
+
 	registrar(payload: Record<string, unknown>): Observable<any> {
 		return this.http.post(`${this.baseReg}/registrar`, payload);
+	}
+
+	/** GET del PDF por URL firmada (tras registrar; mismo origen que `apiUrl` + Bearer si aplica). */
+	downloadNotaPdfSignedUrl(absoluteUrl: string): Observable<Blob> {
+		return this.http.get(absoluteUrl, { responseType: 'blob' });
 	}
 
 	getModInitial(): Observable<any> {
