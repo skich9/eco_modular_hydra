@@ -335,7 +335,7 @@
         <div class="w-100 d-flex justify-content-between align-items-center">
           <div class="small text-muted">Total: <strong>{{ (form.get('costo_total')?.value || 0) | number:'1.2-2' }}</strong></div>
           <div class="d-flex gap-2">
-            <button type="button" class="btn btn-success" [appClickLock]="true" [lockDuration]="3000" (click)="addAndClose()" [disabled]="(tipo === 'mensualidad' || tipo === 'arrastre' || tipo === 'mora') && pendientes === 0">
+            <button type="button" class="btn btn-success" [appClickLock]="true" [lockDuration]="3000" (click)="addAndClose()" [disabled]="botonDeshabilitado">
               <i class="bi bi-plus-circle me-1"></i> Adicionar y Salir
             </button>
             <button type="button" class="btn btn-secondary" [appClickLock]="true" [lockDuration]="1200" data-bs-dismiss="modal">Cancelar</button>

@@ -56,7 +56,11 @@ export class ParametrosSimpleComponent implements OnInit {
     // Formulario Parámetros Económicos
     this.parametroForm = this.fb.group({
       id_parametro_economico: [null],
-      nombre: ['', [Validators.required, Validators.maxLength(20)]],
+      nombre: ['', [
+        Validators.required,
+        Validators.maxLength(100),
+        Validators.pattern('^[a-zA-Z0-9_-]+$')
+      ]],
       valor: ['', [Validators.required, Validators.maxLength(255)]],
       descripcion: ['', [Validators.maxLength(255)]],
       estado: [true]
@@ -96,13 +100,18 @@ export class ParametrosSimpleComponent implements OnInit {
   ngOnInit(): void {
     this.loadAll();
     this.loadActividades();
-    // Normalizar automáticamente el campo 'nombre' a una clave corta (<=20, sin acentos/espacios)
+    // Normalizar el campo 'nombre' a clave corta SOLO en modo creación (editingParam === null)
     const nombreCtrl = this.parametroForm.get('nombre');
     nombreCtrl?.valueChanges.subscribe((v: any) => {
       const str = (v || '').toString();
-      const slug = this.slugifyKey(str).slice(0, 20);
-      if (str !== slug) {
-        nombreCtrl.setValue(slug, { emitEvent: false });
+      // Filtrar caracteres no permitidos en cualquier modo (letras sin acentos, números, _ y -)
+      let sanitizado = str.replace(/[^a-zA-Z0-9_-]/g, '');
+      // En modo creación: convertir a minúsculas también
+      if (this.editingParam === null) {
+        sanitizado = sanitizado.toLowerCase();
+      }
+      if (str !== sanitizado) {
+        nombreCtrl.setValue(sanitizado, { emitEvent: false });
       }
     });
   }
@@ -185,6 +194,8 @@ export class ParametrosSimpleComponent implements OnInit {
     this.editingParam = p;
     this.originalNombrePE = p.nombre;
     this.parametroForm.patchValue(p);
+    // Forzar re-evaluación de validez tras poblar el formulario
+    this.parametroForm.updateValueAndValidity({ emitEvent: false });
     this.showParamModal = true;
   }
 
@@ -210,12 +221,14 @@ export class ParametrosSimpleComponent implements OnInit {
 
   // GUARDAR / ACTUALIZAR
   saveParametro(): void {
-    // Normalizar 'nombre' a una clave corta (<=20) antes de validar
+    // Normalizar 'nombre' SOLO en modo creación (en edición, el nombre se guarda tal como está en la DB)
     const nombreCtrl = this.parametroForm.get('nombre');
-    const rawNombre = (nombreCtrl?.value || '').toString();
-    const slug = this.slugifyKey(rawNombre).slice(0, 20);
-    if (rawNombre !== slug) {
-      nombreCtrl?.setValue(slug, { emitEvent: false });
+    if (!this.editingParam) {
+      const rawNombre = (nombreCtrl?.value || '').toString();
+      const slug = this.slugifyKey(rawNombre).slice(0, 100);
+      if (rawNombre !== slug) {
+        nombreCtrl?.setValue(slug, { emitEvent: false });
+      }
     }
     // Asegurar valor sin espacios accidentales
     const valorCtrl = this.parametroForm.get('valor');
@@ -408,7 +421,7 @@ export class ParametrosSimpleComponent implements OnInit {
           window.scrollTo({ top: 0, behavior: 'smooth' });
         }
       }, 0);
-    } catch {}
+    } catch { }
     setTimeout(() => (this.alertMessage = ''), 4000);
   }
 

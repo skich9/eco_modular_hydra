@@ -42,7 +42,7 @@ class ParametrosEconomicosController extends Controller
     {
         try {
             $validator = Validator::make($request->all(), [
-                'nombre' => 'required|string|max:20',
+                'nombre' => 'required|string|max:100',
                 'valor' => 'required|string|max:255',
                 'descripcion' => 'nullable|string|max:255',
                 'estado' => 'required|boolean'
@@ -135,7 +135,7 @@ class ParametrosEconomicosController extends Controller
             }
 
             $validator = Validator::make($request->all(), [
-                'nombre' => 'required|string|max:20',
+                'nombre' => 'required|string|max:100',
                 'valor' => 'required|string|max:255',
                 'descripcion' => 'nullable|string|max:255',
                 'estado' => 'required|boolean'
