@@ -1172,6 +1172,10 @@ export class CobrosComponent implements OnInit {
     try { this.buscarDlg?.close(); } catch { }
     const cod = (row?.cod_ceta ?? row?.codCeta ?? row?.codigo ?? '').toString();
     if (!cod) return;
+    
+    // Limpiar estado previo antes de cargar el nuevo estudiante
+    this.limpiarTodo();
+    
     this.searchForm.patchValue({ cod_ceta: cod }, { emitEvent: false });
     this.loadResumen();
   }
@@ -1789,6 +1793,18 @@ export class CobrosComponent implements OnInit {
       this.alertMessage = '';
       this.metodoPagoLocked = false;
       this.successSummary = null;
+
+      // Resetear estados de Cobro y QR para evitar bloqueos en transacciones consecutivas
+      this.qrPanelActive = false;
+      this.qrPanelStatus = null;
+      this.qrMetodoSelected = false;
+      this.codigoSinBaseSelected = '';
+      this.selectedFormaItem = null;
+      
+      // Limpiar saldos parciales de frontend
+      this.frontSaldoByCuota = {};
+      this.startCuotaOverrideValue = null;
+      
       try { (this.batchForm.get('cabecera.codigo_sin') as any)?.enable?.({ emitEvent: false }); } catch { }
     } catch { }
   }
@@ -2665,6 +2681,10 @@ export class CobrosComponent implements OnInit {
       this.showAlert('Ingrese el Codigo CETA para buscar', 'warning');
       return;
     }
+
+    // Limpiar estado previo antes de cargar el nuevo resumen por código directo
+    this.limpiarTodo();
+
     // Reutiliza el formulario de búsqueda y la lógica existente
     this.searchForm.patchValue({ cod_ceta, gestion });
     this.loadResumen();
