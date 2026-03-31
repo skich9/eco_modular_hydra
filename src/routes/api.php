@@ -139,6 +139,7 @@ Route::middleware('auth:sanctum')->group(function () {
 		Route::post('get-directivas', [OtrosIngresosController::class, 'getDirectivas']);
 		Route::post('pertenece-directiva', [OtrosIngresosController::class, 'perteneceDirectiva']);
 		Route::post('factura-existe', [OtrosIngresosController::class, 'facturaExiste']);
+		Route::post('recibo-existe', [OtrosIngresosController::class, 'reciboExiste']);
 		Route::post('registrar', [OtrosIngresosController::class, 'registrar']);
 	});
 	Route::prefix('economico/mod-otros-ingresos')->group(function () {

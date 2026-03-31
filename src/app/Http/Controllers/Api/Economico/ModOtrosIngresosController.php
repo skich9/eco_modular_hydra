@@ -3,9 +3,11 @@
 namespace App\Http\Controllers\Api\Economico;
 
 use App\Http\Controllers\Controller;
+use App\Models\Usuario;
 use App\Services\Economico\OtrosIngresosService;
 use Illuminate\Http\JsonResponse;
 use Illuminate\Http\Request;
+use Illuminate\Support\Facades\Auth;
 
 class ModOtrosIngresosController extends Controller
 {
@@ -20,7 +22,7 @@ class ModOtrosIngresosController extends Controller
 			'success' => true,
 			'data' => [
 				'pensums' => $this->service->listPensumsConCarrera(),
-				'gestiones' => $this->service->listGestionesActivas(),
+				'gestiones' => $this->service->listGestionesParaOtrosIngresos(),
 				'gestion_cobro' => $this->service->getGestionCobroValor(),
 			],
 		]);
@@ -77,9 +79,19 @@ class ModOtrosIngresosController extends Controller
 		}
 
 		$ok = $this->service->actualizarPorId((int) $request->input('id'), $request->all());
+		$url = null;
+		if ($ok) {
+			$user = Auth::user();
+			if ($user instanceof Usuario) {
+				$pdf = $this->service->procesarPdfNotaTrasModificacion((int) $request->input('id'), $user);
+				$url = $pdf['url'] ?? null;
+			}
+		}
+
 		return response()->json([
 			'estado' => $ok ? 'exito' : 'No se pudo modificar el registro',
 			'hora' => now()->format('H:i:s'),
+			'url' => $url,
 		], $ok ? 200 : 422);
 	}
 }

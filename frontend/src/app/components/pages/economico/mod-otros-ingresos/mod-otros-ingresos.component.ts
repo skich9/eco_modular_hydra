@@ -7,6 +7,7 @@ import { OtrosIngresosService } from '../../../../services/otros-ingresos.servic
 import { CarreraService } from '../../../../services/carrera.service';
 import { Carrera } from '../../../../models/carrera.model';
 import { Pensum } from '../../../../models/materia.model';
+import { saveBlobAsFile } from '../../../../utils/pdf.helpers';
 
 @Component({
 	selector: 'app-mod-otros-ingresos',
@@ -343,10 +344,13 @@ export class ModOtrosIngresosComponent implements OnInit {
 			observaciones: this.concepto,
 		};
 		this.svc.registrarMod(payload).subscribe({
-			next: (r: any) => {
+			next: (r: { estado?: string; url?: string | null }) => {
 				this.saving = false;
 				if (r?.estado === 'exito') {
 					this.toast('Registro actualizado.', true);
+					if (r?.url) {
+						this.descargarNotaPdfTrasModificar(String(r.url));
+					}
 					this.cerrarEdicion();
 					this.buscar();
 				} else {
@@ -389,5 +393,29 @@ export class ModOtrosIngresosComponent implements OnInit {
 		this.alertMsg = msg;
 		this.alertOk = ok;
 		setTimeout(() => (this.alertMsg = ''), 4000);
+	}
+
+	/** Descarga automática de la nota PDF tras modificar (misma URL firmada que en registro). */
+	private descargarNotaPdfTrasModificar(url: string): void {
+		const nombre = ModOtrosIngresosComponent.nombreArchivoDesdeUrlNotaPdf(url);
+		this.svc.downloadNotaPdfSignedUrl(url).subscribe({
+			next: (blob) => saveBlobAsFile(blob, nombre),
+			error: () => {
+				window.open(url, '_blank', 'noopener,noreferrer');
+			},
+		});
+	}
+
+	private static nombreArchivoDesdeUrlNotaPdf(url: string): string {
+		try {
+			const u = new URL(url);
+			const seg = u.pathname.split('/').filter(Boolean).pop();
+			if (seg && /\.pdf$/i.test(seg)) {
+				return seg;
+			}
+		} catch {
+			/* ignore */
+		}
+		return 'nota_otros_ingresos.pdf';
 	}
 }
