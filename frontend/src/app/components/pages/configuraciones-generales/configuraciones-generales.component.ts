@@ -59,7 +59,7 @@ export class ConfiguracionesGeneralesComponent implements OnInit {
 	) {
 		this.pgForm = this.fb.group({
 			id_parametros_generales: [null],
-			nombre: ['', [Validators.required, Validators.maxLength(150)]],
+			nombre: ['', [Validators.required, Validators.maxLength(100)]],
 			valor: ['', [Validators.maxLength(255)]],
 			estado: [true]
 		});
@@ -491,6 +491,6 @@ export class ConfiguracionesGeneralesComponent implements OnInit {
 					alertEl.scrollIntoView({ behavior: 'smooth', block: 'start' });
 				}
 			}, 0);
-		} catch {}
+		} catch { }
 	}
 }

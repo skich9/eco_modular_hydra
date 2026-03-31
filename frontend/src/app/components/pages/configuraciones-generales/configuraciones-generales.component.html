@@ -14,7 +14,8 @@
 			<button class="btn btn-primary" *ngIf="activeTab==='gestion'" (click)="openNewG()">
 				<i class="fas fa-plus me-1"></i> Nueva Gestión
 			</button>
-			<button class="btn btn-outline-secondary" *ngIf="activeTab==='gestion'" (click)="toggleSortGestion()" title="Alternar orden por gestión">
+			<button class="btn btn-outline-secondary" *ngIf="activeTab==='gestion'" (click)="toggleSortGestion()"
+				title="Alternar orden por gestión">
 				<i class="fas" [ngClass]="sortGestionDir==='asc' ? 'fa-sort-alpha-down' : 'fa-sort-alpha-up'"></i>
 				Orden: {{ sortGestionDir==='asc' ? 'Asc' : 'Desc' }}
 			</button>
@@ -62,12 +63,16 @@
 						<td>{{ p.nombre }}</td>
 						<td>{{ p.valor }}</td>
 						<td>
-							<span class="badge" [ngClass]="p.estado ? 'bg-success' : 'bg-danger'">{{ p.estado ? 'Activo' : 'Inactivo' }}</span>
+							<span class="badge" [ngClass]="p.estado ? 'bg-success' : 'bg-danger'">{{ p.estado ? 'Activo'
+								: 'Inactivo' }}</span>
 						</td>
 						<td class="text-nowrap">
-							<button class="btn btn-sm btn-outline-primary me-1" (click)="openEditPG(p)"><i class="fas fa-edit"></i></button>
-							<button class="btn btn-sm btn-outline-secondary" (click)="togglePG(p)"><i class="fas" [ngClass]="p.estado ? 'fa-toggle-on' : 'fa-toggle-off'"></i></button>
-							<button class="btn btn-sm btn-outline-danger ms-1" (click)="confirmDelete(p, 'pg')"><i class="fas fa-trash"></i></button>
+							<button class="btn btn-sm btn-outline-primary me-1" (click)="openEditPG(p)"><i
+									class="fas fa-edit"></i></button>
+							<button class="btn btn-sm btn-outline-secondary" (click)="togglePG(p)"><i class="fas"
+									[ngClass]="p.estado ? 'fa-toggle-on' : 'fa-toggle-off'"></i></button>
+							<button class="btn btn-sm btn-outline-danger ms-1" (click)="confirmDelete(p, 'pg')"><i
+									class="fas fa-trash"></i></button>
 						</td>
 					</tr>
 					<tr *ngIf="filteredPG.length === 0">
@@ -104,12 +109,16 @@
 						<td>{{ g.orden }}</td>
 						<td>{{ g.fecha_graduacion ? (g.fecha_graduacion | date:'d, MMMM, y') : '-' }}</td>
 						<td>
-							<span class="badge" [ngClass]="g.estado ? 'bg-success' : 'bg-danger'">{{ g.estado ? 'Activo' : 'Inactivo' }}</span>
+							<span class="badge" [ngClass]="g.estado ? 'bg-success' : 'bg-danger'">{{ g.estado ? 'Activo'
+								: 'Inactivo' }}</span>
 						</td>
 						<td class="text-nowrap">
-							<button class="btn btn-sm btn-outline-primary me-1" (click)="openEditG(g)"><i class="fas fa-edit"></i></button>
-							<button class="btn btn-sm btn-outline-secondary" (click)="toggleG(g)"><i class="fas" [ngClass]="g.estado ? 'fa-toggle-on' : 'fa-toggle-off'"></i></button>
-							<button class="btn btn-sm btn-outline-danger ms-1" (click)="confirmDelete(g, 'g')"><i class="fas fa-trash"></i></button>
+							<button class="btn btn-sm btn-outline-primary me-1" (click)="openEditG(g)"><i
+									class="fas fa-edit"></i></button>
+							<button class="btn btn-sm btn-outline-secondary" (click)="toggleG(g)"><i class="fas"
+									[ngClass]="g.estado ? 'fa-toggle-on' : 'fa-toggle-off'"></i></button>
+							<button class="btn btn-sm btn-outline-danger ms-1" (click)="confirmDelete(g, 'g')"><i
+									class="fas fa-trash"></i></button>
 						</td>
 					</tr>
 					<tr *ngIf="filteredGestiones.length === 0">
@@ -172,33 +181,51 @@
 						<div class="form-group">
 							<label>Gestión</label>
 							<input class="form-control" type="text" formControlName="gestion" />
-							<small class="error" *ngIf="gForm.get('gestion')?.touched && gForm.get('gestion')?.hasError('required')">Requerido.</small>
-							<small class="error" *ngIf="gForm.get('gestion')?.touched && gForm.get('gestion')?.hasError('maxlength')">Máximo 30 caracteres.</small>
-							<small class="error" *ngIf="gForm.get('gestion')?.touched && gForm.get('gestion')?.hasError('backend')">{{ gForm.get('gestion')?.errors?.['message'] }}</small>
+							<small class="error"
+								*ngIf="gForm.get('gestion')?.touched && gForm.get('gestion')?.hasError('required')">Requerido.</small>
+							<small class="error"
+								*ngIf="gForm.get('gestion')?.touched && gForm.get('gestion')?.hasError('maxlength')">Máximo
+								30 caracteres.</small>
+							<small class="error"
+								*ngIf="gForm.get('gestion')?.touched && gForm.get('gestion')?.hasError('backend')">{{
+								gForm.get('gestion')?.errors?.['message'] }}</small>
 						</div>
 						<div class="form-group">
 							<label>Fecha Inicio</label>
 							<input class="form-control" type="date" formControlName="fecha_ini" />
-							<small class="error" *ngIf="gForm.get('fecha_ini')?.touched && gForm.get('fecha_ini')?.hasError('required')">Requerido.</small>
-							<small class="error" *ngIf="gForm.get('fecha_ini')?.touched && gForm.get('fecha_ini')?.hasError('backend')">{{ gForm.get('fecha_ini')?.errors?.['message'] }}</small>
+							<small class="error"
+								*ngIf="gForm.get('fecha_ini')?.touched && gForm.get('fecha_ini')?.hasError('required')">Requerido.</small>
+							<small class="error"
+								*ngIf="gForm.get('fecha_ini')?.touched && gForm.get('fecha_ini')?.hasError('backend')">{{
+								gForm.get('fecha_ini')?.errors?.['message'] }}</small>
 						</div>
 						<div class="form-group">
 							<label>Fecha Fin</label>
 							<input class="form-control" type="date" formControlName="fecha_fin" />
-							<small class="error" *ngIf="gForm.get('fecha_fin')?.touched && gForm.get('fecha_fin')?.hasError('required')">Requerido.</small>
-							<small class="error" *ngIf="gForm.get('fecha_fin')?.touched && gForm.get('fecha_fin')?.hasError('backend')">{{ gForm.get('fecha_fin')?.errors?.['message'] }}</small>
+							<small class="error"
+								*ngIf="gForm.get('fecha_fin')?.touched && gForm.get('fecha_fin')?.hasError('required')">Requerido.</small>
+							<small class="error"
+								*ngIf="gForm.get('fecha_fin')?.touched && gForm.get('fecha_fin')?.hasError('backend')">{{
+								gForm.get('fecha_fin')?.errors?.['message'] }}</small>
 						</div>
 						<div class="form-group">
 							<label>Orden</label>
 							<input class="form-control" type="number" formControlName="orden" />
-							<small class="error" *ngIf="gForm.get('orden')?.touched && gForm.get('orden')?.hasError('required')">Requerido.</small>
-							<small class="error" *ngIf="gForm.get('orden')?.touched && gForm.get('orden')?.hasError('min')">Debe ser mayor o igual a 1.</small>
-							<small class="error" *ngIf="gForm.get('orden')?.touched && gForm.get('orden')?.hasError('backend')">{{ gForm.get('orden')?.errors?.['message'] }}</small>
+							<small class="error"
+								*ngIf="gForm.get('orden')?.touched && gForm.get('orden')?.hasError('required')">Requerido.</small>
+							<small class="error"
+								*ngIf="gForm.get('orden')?.touched && gForm.get('orden')?.hasError('min')">Debe ser
+								mayor o igual a 1.</small>
+							<small class="error"
+								*ngIf="gForm.get('orden')?.touched && gForm.get('orden')?.hasError('backend')">{{
+								gForm.get('orden')?.errors?.['message'] }}</small>
 						</div>
 						<div class="form-group">
 							<label>Fecha Graduación</label>
 							<input class="form-control" type="date" formControlName="fecha_graduacion" />
-							<small class="error" *ngIf="gForm.get('fecha_graduacion')?.touched && gForm.get('fecha_graduacion')?.hasError('backend')">{{ gForm.get('fecha_graduacion')?.errors?.['message'] }}</small>
+							<small class="error"
+								*ngIf="gForm.get('fecha_graduacion')?.touched && gForm.get('fecha_graduacion')?.hasError('backend')">{{
+								gForm.get('fecha_graduacion')?.errors?.['message'] }}</small>
 						</div>
 						<div class="form-group checkbox-group">
 							<label>Activo</label>

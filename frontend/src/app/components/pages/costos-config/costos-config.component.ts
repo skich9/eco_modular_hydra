@@ -374,7 +374,27 @@ export class CostosConfigComponent implements OnInit {
 
 	loadGestiones(): void {
 		this.cobrosService.getGestionesActivas().subscribe({
-			next: (res) => { this.gestiones = res?.data || []; },
+			next: (res) => {
+				const data: any[] = res?.data || [];
+				// Ordenar gestiones de la más reciente a la más antigua
+				// Formato esperado: "SEMESTRE/AÑO" ej: "1/2025", "2/2025"
+				this.gestiones = data.sort((a, b) => {
+					const parsarGestion = (g: any): { anio: number; semestre: number } => {
+						const texto = String(g?.gestion || '');
+						const partes = texto.split('/');
+						const semestre = parseInt(partes[0], 10) || 0;
+						const anio = parseInt(partes[1], 10) || 0;
+						return { anio, semestre };
+					};
+					const gestionA = parsarGestion(a);
+					const gestionB = parsarGestion(b);
+					// Primero comparar por año descendente, luego por semestre descendente
+					if (gestionB.anio !== gestionA.anio) {
+						return gestionB.anio - gestionA.anio;
+					}
+					return gestionB.semestre - gestionA.semestre;
+				});
+			},
 			error: () => { this.gestiones = []; }
 		});
 	}
