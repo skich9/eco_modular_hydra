@@ -1165,9 +1165,11 @@ class CobroController extends Controller
 					'asignacion_costos' => $asignacion,
 					'descuentos_aplicados' => $descuentosAplicados,
 					// Exponer todas las cuotas ordenadas con datos clave para el modal
-					'asignaciones' => $asignacionesPrimarias->map(function($a) use ($descuentosPorAsign, $codCeta, $codPensumToUse){
+					// Combinar asignaciones primarias y de arrastre
+					'asignaciones' => $asignacionesPrimarias->concat($asignacionesArrastre)->map(function($a) use ($descuentosPorAsign, $descuentosPorAsignArrastre, $codCeta, $codPensumToUse){
 						$idAsignacion = (int) ($a->id_asignacion_costo ?? 0);
-						$descuentoPago = (float) ($descuentosPorAsign[$idAsignacion] ?? 0);
+						// Buscar descuento en ambos arrays (primarias y arrastre)
+						$descuentoPago = (float) ($descuentosPorAsign[$idAsignacion] ?? $descuentosPorAsignArrastre[$idAsignacion] ?? 0);
 						$monto = (float) ($a->monto ?? 0);
 						$montoPagado = (float) ($a->monto_pagado ?? 0);
 
@@ -1221,6 +1223,7 @@ class CobroController extends Controller
 							'fecha_vencimiento' => $a->fecha_vencimiento,
 							'gestion' => $a->gestion ?? null,
 							'gestion_cuota' => $a->gestion ?? null,
+							'tipo_inscripcion' => (string) ($a->tipo_inscripcion ?? 'NORMAL'),
 							// Datos para cálculo de descuento prorrateado
 							'descuento_aplicado' => $descuentoAplicado,
 							'total_debe_pagar' => $totalDebePagar,
@@ -2245,10 +2248,16 @@ class CobroController extends Controller
 					$row = DB::selectOne('SELECT LAST_INSERT_ID() AS id');
 					$nroCobro = (int)(isset($row->id) ? $row->id : 0);
 					Log::info('batchStore:nroCobro', [ 'idx' => $idx, 'nro' => $nroCobro ]);
+					// Determinar tipo_inscripcion correcto: si es ARRASTRE, usar 'ARRASTRE' en lugar de 'NORMAL'
+					$tipoInscripcionForCobro = (string)$request->tipo_inscripcion;
+					if ($codTipoCobroItem === 'ARRASTRE') {
+						$tipoInscripcionForCobro = 'ARRASTRE';
+					}
+
 					$composite = [
 						'cod_ceta' => (int)$request->cod_ceta,
 						'cod_pensum' => (string)$request->cod_pensum,
-						'tipo_inscripcion' => (string)$request->tipo_inscripcion,
+						'tipo_inscripcion' => $tipoInscripcionForCobro,
 						'nro_cobro' => $nroCobro,
 						'anio_cobro' => $anioItem,
 					];

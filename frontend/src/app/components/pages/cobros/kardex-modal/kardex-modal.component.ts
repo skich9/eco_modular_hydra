@@ -317,6 +317,11 @@ export class KardexModalComponent implements OnChanges {
 
 		try {
 			const asignaciones = this.resumen?.asignaciones || [];
+
+			// DEBUG: Ver qué asignaciones están disponibles
+			console.log('[Kardex DEBUG] Total asignaciones:', asignaciones.length);
+			console.log('[Kardex DEBUG] IDs de asignaciones:', asignaciones.map((a: any) => a?.id_asignacion_costo));
+
 			// Asegurar que cobrosItems siempre sea un array iterable
 			let cobrosItems: any[] = [];
 			try {
@@ -366,14 +371,50 @@ export class KardexModalComponent implements OnChanges {
 				for (let i = 0; i < pagos.length; i++) {
 					const pago = pagos[i];
 					const esUltimoPago = i === pagos.length - 1;
+
+					// DEBUG: Log para verificar datos
+					if (pago?.cod_tipo_cobro === 'ARRASTRE') {
+						console.log('[Kardex DEBUG] Arrastre:', {
+							id_asignacion: idAsignacion,
+							asignacion_encontrada: !!asignacion,
+							estado_pago: asignacion?.estado_pago,
+							estadoCuota: estadoCuota,
+							cuotaEsCompleta: cuotaEsCompleta,
+							esUltimoPago: esUltimoPago,
+							detalle: pago?.detalle,
+							concepto: pago?.concepto
+						});
+					}
+
 					// El pago total solo se marca como completo si la cuota está COBRADA y es el último pago
 					const esCompleto = (cuotaEsCompleta && esUltimoPago) ? 'Si' : 'No';
 
+					// Determinar tipo de inscripción: para ARRASTRE, mostrar 'ARRASTRE'
+					let tipoInscripcion = asignacion?.tipo_inscripcion || 'NORMAL';
+					if (pago?.cod_tipo_cobro === 'ARRASTRE') {
+						tipoInscripcion = 'ARRASTRE';
+					}
+
+					// Determinar número de cuota: para ARRASTRE, extraer del detalle
+					let numeroCuota = asignacion?.numero_cuota || 1;
+					if (pago?.cod_tipo_cobro === 'ARRASTRE') {
+						const detalle = (pago?.detalle || pago?.concepto || '').toString();
+						const mesMatch = detalle.match(/\b(Enero|Febrero|Marzo|Abril|Mayo|Junio|Julio|Agosto|Septiembre|Octubre|Noviembre|Diciembre)\b/i);
+						if (mesMatch) {
+							const meses = ['Febrero', 'Marzo', 'Abril', 'Mayo', 'Junio', 'Julio', 'Agosto', 'Septiembre', 'Octubre', 'Noviembre', 'Diciembre'];
+							const mesNombre = mesMatch[1];
+							const mesIndex = meses.findIndex(m => m.toLowerCase() === mesNombre.toLowerCase());
+							if (mesIndex >= 0) {
+								numeroCuota = mesIndex + 1;
+							}
+						}
+					}
+
 					const pagoExpandido = {
 						...pago,
-						numero_cuota: asignacion?.numero_cuota || 1,
+						numero_cuota: numeroCuota,
 						numero_pago: i + 1,
-						tipo_inscripcion: asignacion?.tipo_inscripcion || 'NORMAL',
+						tipo_inscripcion: tipoInscripcion,
 						es_multipago: pagos.length > 1,
 						es_completo: esCompleto,
 						estado_pago: estadoCuota || pago?.estado_pago || '',
