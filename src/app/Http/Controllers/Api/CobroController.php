@@ -1742,32 +1742,6 @@ class CobroController extends Controller
 				}
 
 				// Bloquear pago de cuotas futuras: ningún item puede apuntar a numero_cuota > gateNumero
-				$findNumeroByAsign = function($idAsign) use ($asigNormal, $asigArrastre) {
-					$idAsign = (int) $idAsign;
-					if ($idAsign <= 0) return null;
-					$hitN = $asigNormal->firstWhere('id_asignacion_costo', $idAsign);
-					if ($hitN) return (int) ($hitN->numero_cuota ?? 0);
-					$hitA = $asigArrastre->firstWhere('id_asignacion_costo', $idAsign);
-					if ($hitA) return (int) ($hitA->numero_cuota ?? 0);
-					return null;
-				};
-
-				if ($gateNumero !== null) {
-					foreach ($itemsList as $it) {
-						$tipoCobro = strtoupper((string)($it['cod_tipo_cobro'] ?? ''));
-						if ($tipoCobro === 'MORA') continue;
-						$idAsign = isset($it['id_asignacion_costo']) ? (int) $it['id_asignacion_costo'] : 0;
-						if ($idAsign <= 0) continue;
-						$numero = $findNumeroByAsign($idAsign);
-						if ($numero !== null && $numero > (int)$gateNumero) {
-							return response()->json([
-								'success' => false,
-								'message' => 'No puede pagar mensualidades de meses posteriores si tiene cuotas pendientes anteriores (incluyendo arrastre/mora).',
-							], 422);
-						}
-					}
-				}
-
 				// Exigir mora solo cuando el lote completa la(s) cuota(s) del mes
 				$completaCuota = function($asigs, $numero) use ($batchByAsign, $descuentoByAsign) {
 					if ($numero === null) return false;
@@ -1950,6 +1924,7 @@ class CobroController extends Controller
 					->orderByDesc('created_at')
 					->get();
 				$primaryInscripcion = null;
+				$arrastreInscripcion = null;
 				if ($codInsReq) {
 					$primaryInscripcion = $insList->firstWhere('cod_inscrip', (int)$codInsReq);
 				}
@@ -1959,6 +1934,8 @@ class CobroController extends Controller
 				if (!$primaryInscripcion) {
 					$primaryInscripcion = $insList->firstWhere('tipo_inscripcion', 'NORMAL') ?: $insList->first();
 				}
+				// Obtener inscripción ARRASTRE para usar su cod_inscrip cuando sea necesario
+				$arrastreInscripcion = $insList->firstWhere('tipo_inscripcion', 'ARRASTRE');
 				// Precargar asignaciones y cuotas pagadas para mapear automáticamente si faltan ids
 				$asignPrimarias = collect();
 				$paidTplIds = collect();
@@ -2936,6 +2913,33 @@ class CobroController extends Controller
                 if ($hasFacturaGroup && $tipoDoc === 'F' && $medioDoc === 'C') {
                     $detalleDesc = isset($detalle) && $detalle !== '' ? (string)$detalle : ((string)(isset($item['observaciones']) ? $item['observaciones'] : 'Cobro'));
 
+                    // Para facturas: transformar "Arrastre - Cuota X (Mes)" a "Nivelación Mes"
+                    if ($codTipoCobroItem === 'ARRASTRE') {
+                        \Log::info('[CobroController] Transformando detalle arrastre', [
+                            'detalle_original' => $detalleDesc,
+                            'cod_tipo_cobro' => $codTipoCobroItem
+                        ]);
+
+                        // Extraer el mes del formato: "Arrastre - Cuota X (Mes)" o "Arrastre - Cuota X Mes"
+                        $matches = [];
+                        // Intentar con paréntesis: "Arrastre - Cuota 3 (Abril)"
+                        if (preg_match('/\(([^)]+)\)\s*$/', $detalleDesc, $matches)) {
+                            $mes = trim($matches[1]);
+                            $detalleDesc = 'Nivelación ' . $mes;
+                        }
+                        // Intentar sin paréntesis: "Arrastre - Cuota 3 Abril"
+                        elseif (preg_match('/Cuota\s+\d+\s+(.+)$/', $detalleDesc, $matches)) {
+                            $mes = trim($matches[1]);
+                            $detalleDesc = 'Nivelación ' . $mes;
+                        }
+                        // Fallback: solo reemplazar "Arrastre" por "Nivelación"
+                        else {
+                            $detalleDesc = str_replace('Arrastre', 'Nivelación', $detalleDesc);
+                        }
+
+                        \Log::info('[CobroController] Detalle transformado', ['detalle_final' => $detalleDesc]);
+                    }
+
                     // Usar valores PRE-CALCULADOS de descuento prorrateado
                     $precioBruto = 0.0;
                     $descuentoMonto = 0.0;
@@ -3046,6 +3050,22 @@ class CobroController extends Controller
                     } catch (\Throwable $e) {}
                 }
 
+                // Determinar cod_inscrip correcto según el tipo de cobro
+                $codInscripToUse = null;
+                if ($codTipoCobroItem === 'ARRASTRE' && $arrastreInscripcion) {
+                    // Para cobros de ARRASTRE, usar cod_inscrip de la inscripción ARRASTRE
+                    $codInscripToUse = (int)$arrastreInscripcion->cod_inscrip;
+                    \Log::info('[CobroController] Usando cod_inscrip de ARRASTRE', [
+                        'idx' => $idx,
+                        'cod_tipo_cobro' => $codTipoCobroItem,
+                        'cod_inscrip_arrastre' => $codInscripToUse,
+                        'cod_inscrip_normal' => $primaryInscripcion ? $primaryInscripcion->cod_inscrip : null
+                    ]);
+                } elseif ($primaryInscripcion) {
+                    // Para otros tipos de cobro, usar cod_inscrip de la inscripción primaria
+                    $codInscripToUse = (int)$primaryInscripcion->cod_inscrip;
+                }
+
                 $payload = array_merge($composite, [
                     'monto' => $item['monto'],
                     'fecha_cobro' => $fechaCobroSave,
@@ -3066,7 +3086,7 @@ class CobroController extends Controller
                     'tipo_documento' => $tipoDoc,
                     'medio_doc' => $medioDoc,
                     'gestion' => isset($request->gestion) ? $request->gestion : null,
-                    'cod_inscrip' => $primaryInscripcion ? (int)$primaryInscripcion->cod_inscrip : null,
+                    'cod_inscrip' => $codInscripToUse,
                     'cod_tipo_cobro' => $codTipoCobroItem,
                     'concepto' => $conceptoOut,
                     'reposicion_factura' => $isReposicionFactura,
@@ -3979,10 +3999,26 @@ class CobroController extends Controller
 
 			$idAsignOtra = (int)($otraAsignacion->id_asignacion_costo ?? 0);
 
-			// CASO 1: Se pagó MENSUALIDAD completa, vincular mora a ARRASTRE pendiente
+			// CASO 1: Se pagó MENSUALIDAD completa, verificar si ya existe mora vinculada al arrastre
 			if ($tipoInscripPagada === 'NORMAL') {
-				// Buscar moras PENDIENTE o EN_ESPERA de la mensualidad pagada
-				// (EN_ESPERA puede existir si el comando diario detectó inscripciones duplicadas)
+				// Verificar si ya existe una mora vinculada al arrastre pendiente
+				$moraYaVinculada = DB::table('asignacion_mora')
+					->where('id_asignacion_vinculada', $idAsignOtra)
+					->whereIn('estado', ['PENDIENTE', 'EN_ESPERA'])
+					->exists();
+
+				// Si ya existe mora vinculada al arrastre, NO hacer nada
+				// La mora ya fue creada correctamente por el sistema de sincronización
+				if ($moraYaVinculada) {
+					\Log::info('[CobroController] gestionarMoraVinculada: mora ya vinculada al arrastre, skip', [
+						'id_asignacion_mensualidad' => $idAsignPagada,
+						'id_asignacion_arrastre' => $idAsignOtra,
+					]);
+					return;
+				}
+
+				// Solo vincular si NO existe mora vinculada al arrastre
+				// Buscar moras PENDIENTE o EN_ESPERA de la mensualidad pagada sin vinculación
 				$morasMensualidad = DB::table('asignacion_mora')
 					->where('id_asignacion_costo', $idAsignPagada)
 					->whereIn('estado', ['PENDIENTE', 'EN_ESPERA'])
@@ -4062,6 +4098,75 @@ class CobroController extends Controller
 			$fechaPago = Carbon::parse($fechaPagoStr)->startOfDay();
 			$fechaCorte = $fechaPago->copy()->subDay();
 
+			// Obtener información de la asignación pagada
+			$codCeta = (int)($request->cod_ceta ?? 0);
+			$gestion = (string)($request->gestion ?? '');
+			$numeroCuota = (int)($asignacionPagada->numero_cuota ?? 0);
+			$codInscripPagada = (int)($asignacionPagada->cod_inscrip ?? 0);
+
+			// Determinar tipo de inscripción pagada
+			$inscripPagada = DB::table('inscripciones')
+				->where('cod_inscrip', $codInscripPagada)
+				->first(['tipo_inscripcion']);
+
+			if (!$inscripPagada) {
+				return;
+			}
+
+			$tipoInscripPagada = strtoupper(trim((string)($inscripPagada->tipo_inscripcion ?? '')));
+
+			// Buscar la otra inscripción del par (NORMAL ↔ ARRASTRE)
+			$tipoInscripBuscar = ($tipoInscripPagada === 'NORMAL') ? 'ARRASTRE' : 'NORMAL';
+
+			$otraInscrip = DB::table('inscripciones')
+				->where('cod_ceta', $codCeta)
+				->where('gestion', $gestion)
+				->where('tipo_inscripcion', $tipoInscripBuscar)
+				->where('cod_inscrip', '!=', $codInscripPagada)
+				->first(['cod_inscrip']);
+
+			// Verificar si el par está completo (ambas partes cobradas)
+			$parCompleto = false;
+			if ($otraInscrip) {
+				$codInscripOtra = (int)($otraInscrip->cod_inscrip ?? 0);
+				$otraAsignacion = DB::table('asignacion_costos')
+					->where('cod_inscrip', $codInscripOtra)
+					->where('numero_cuota', $numeroCuota)
+					->first(['id_asignacion_costo', 'estado_pago']);
+
+				if ($otraAsignacion) {
+					$estadoPagoOtra = strtoupper(trim((string)($otraAsignacion->estado_pago ?? '')));
+					$parCompleto = in_array($estadoPagoOtra, ['COBRADO', 'PAGADO']);
+
+					try {
+						Log::info('[CobroController] cerrarMoraPorCuotaCobrada: verificación par', [
+							'idx' => $idx,
+							'numero_cuota' => $numeroCuota,
+							'tipo_pagada' => $tipoInscripPagada,
+							'tipo_otra' => $tipoInscripBuscar,
+							'estado_pago_otra' => $estadoPagoOtra,
+							'par_completo' => $parCompleto,
+						]);
+					} catch (\Throwable $e) {}
+				}
+			} else {
+				// Si no existe la otra inscripción, considerar el par como completo
+				$parCompleto = true;
+			}
+
+			// Solo cerrar moras si el par está completo
+			if (!$parCompleto) {
+				try {
+					Log::info('[CobroController] cerrarMoraPorCuotaCobrada: par incompleto, NO cerrar mora', [
+						'idx' => $idx,
+						'id_asignacion_costo' => $idAsignPagada,
+						'numero_cuota' => $numeroCuota,
+						'tipo_pagada' => $tipoInscripPagada,
+					]);
+				} catch (\Throwable $e) {}
+				return;
+			}
+
 			// Buscar moras de la asignación pagada Y moras vinculadas a esta asignación
 			// Ejemplo: si se paga arrastre (230), buscar moras de 230 Y moras con id_asignacion_vinculada=230
 			// IMPORTANTE: Solo cerrar moras en estado PENDIENTE para preservar el histórico de prórrogas
@@ -4088,38 +4193,25 @@ class CobroController extends Controller
 
 			// Procesar cada mora encontrada
 			foreach ($morasACerrar as $mora) {
-				$montoBaseDia = (float)($mora->monto_base ?? 0);
+				$idMora = (int)$mora->id_asignacion_mora;
+				$montoMoraActual = (float)($mora->monto_mora ?? 0);
 				$montoPagado = (float)($mora->monto_pagado ?? 0);
 				$desc = (float)($mora->monto_descuento ?? 0);
-				$inicio = !empty($mora->fecha_inicio_mora) ? Carbon::parse($mora->fecha_inicio_mora)->startOfDay() : null;
-				$fin = !empty($mora->fecha_fin_mora) ? Carbon::parse($mora->fecha_fin_mora)->startOfDay() : null;
-				$fechaCalculo = $fechaCorte;
-				if ($fin && $fin->lt($fechaCalculo)) {
-					$fechaCalculo = $fin;
-				}
 
-				$dias = 0;
-				if ($inicio && $montoBaseDia > 0 && $fechaCalculo->gte($inicio)) {
-					$dias = $inicio->diffInDays($fechaCalculo) + 1;
-				}
-				$montoCalc = (float)$montoBaseDia * (int)$dias;
-				$neto = max(0, $montoCalc - $desc);
+				// NO recalcular el monto_mora aquí
+				// El monto ya fue calculado correctamente por el sistema de sincronización de moras
+				// Este método solo debe actualizar el ESTADO de la mora
+
+				$neto = max(0, $montoMoraActual - $desc);
 				$estadoFinal = ($neto <= 0.0001 || $montoPagado >= ($neto - 0.0001)) ? 'PAGADO' : 'CERRADA_SIN_CUOTA';
 
 				try {
-					Log::info('[CobroController] cerrarMoraPorCuotaCobrada: recalculo', [
+					Log::info('[CobroController] cerrarMoraPorCuotaCobrada: cambio de estado', [
 						'idx' => $idx,
 						'id_asignacion_costo' => $idAsignPagada,
-						'id_asignacion_mora' => (int)$mora->id_asignacion_mora,
+						'id_asignacion_mora' => $idMora,
 						'estado_anterior' => (string)($mora->estado ?? ''),
-						'fecha_pago' => $fechaPago->toDateString(),
-						'fecha_corte' => $fechaCorte->toDateString(),
-						'fecha_calculo' => $fechaCalculo->toDateString(),
-						'inicio' => $inicio ? $inicio->toDateString() : null,
-						'fin' => $fin ? $fin->toDateString() : null,
-						'dias' => $dias,
-						'monto_base' => $montoBaseDia,
-						'monto_calc' => $montoCalc,
+						'monto_mora' => $montoMoraActual,
 						'descuento' => $desc,
 						'neto' => $neto,
 						'monto_pagado' => $montoPagado,
@@ -4127,10 +4219,10 @@ class CobroController extends Controller
 					]);
 				} catch (\Throwable $e) {}
 
+				// Solo actualizar el estado, NO el monto_mora
 				$aff = DB::table('asignacion_mora')
-					->where('id_asignacion_mora', (int)$mora->id_asignacion_mora)
+					->where('id_asignacion_mora', $idMora)
 					->update([
-						'monto_mora' => $montoCalc,
 						'estado' => $estadoFinal,
 						'updated_at' => now(),
 					]);
