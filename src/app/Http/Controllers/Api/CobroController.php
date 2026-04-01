@@ -2248,16 +2248,11 @@ class CobroController extends Controller
 					$row = DB::selectOne('SELECT LAST_INSERT_ID() AS id');
 					$nroCobro = (int)(isset($row->id) ? $row->id : 0);
 					Log::info('batchStore:nroCobro', [ 'idx' => $idx, 'nro' => $nroCobro ]);
-					// Determinar tipo_inscripcion correcto: si es ARRASTRE, usar 'ARRASTRE' en lugar de 'NORMAL'
-					$tipoInscripcionForCobro = (string)$request->tipo_inscripcion;
-					if ($codTipoCobroItem === 'ARRASTRE') {
-						$tipoInscripcionForCobro = 'ARRASTRE';
-					}
 
 					$composite = [
 						'cod_ceta' => (int)$request->cod_ceta,
 						'cod_pensum' => (string)$request->cod_pensum,
-						'tipo_inscripcion' => $tipoInscripcionForCobro,
+						'tipo_inscripcion' => $request->tipo_inscripcion,
 						'nro_cobro' => $nroCobro,
 						'anio_cobro' => $anioItem,
 					];
@@ -2773,7 +2768,12 @@ class CobroController extends Controller
 					\Log::info('[CobroController] cod_tipo_cobro derivado:', ['cod_tipo_cobro' => $codTipoCobroItem]);
 				}
 
-					// Formatear concepto según tipo de cobro (DESPUÉS de derivar cod_tipo_cobro)
+					// Actualizar tipo_inscripcion en composite si es ARRASTRE
+					if ($codTipoCobroItem === 'ARRASTRE') {
+						$composite['tipo_inscripcion'] = 'ARRASTRE';
+					}
+
+				// Formatear concepto según tipo de cobro (DESPUÉS de derivar cod_tipo_cobro)
 				$mesNombre = '';
 				$numeroCuotaForConcepto = 0;
 				$parcialForConcepto = false;
