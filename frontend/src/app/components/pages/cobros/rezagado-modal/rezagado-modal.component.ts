@@ -75,9 +75,19 @@ export class RezagadoModalComponent implements OnInit {
 		return Number.isFinite(n) && n > 0 ? n : this.FEE_REZAGADO;
 	}
 
+	get costoMateria(): number {
+		const conJustificativo = this.form.get('justificativo')?.value === true;
+		return conJustificativo ? 0 : this.feeRezagado;
+	}
+
 	private loadMaterias(): void {
 		try {
+			console.log('[REZAGADO DEBUG] Iniciando loadMaterias');
+			console.log('[REZAGADO DEBUG] resumen completo:', this.resumen);
+
 			const est = this.resumen?.estudiante || {};
+			console.log('[REZAGADO DEBUG] estudiante:', est);
+
 			// Seleccionar inscripción preferente: misma gestión si existe, luego mayor cod_inscrip
 			const insPreferida = (() => {
 				const principal = this.resumen?.inscripcion || null;
@@ -90,14 +100,38 @@ export class RezagadoModalComponent implements OnInit {
 				return src.slice().sort((a: any, b: any) => Number(b?.cod_inscrip || 0) - Number(a?.cod_inscrip || 0))[0] || {};
 			})();
 			const ins = insPreferida || {};
+			console.log('[REZAGADO DEBUG] inscripción preferida:', ins);
+
 			const cod_ceta = est?.cod_ceta || '';
 			const cod_pensum = ins?.cod_pensum || est?.cod_pensum || '';
 			const cod_inscrip = ins?.cod_inscrip ?? ins?.cod_inscripcion ?? ins?.id_inscripcion ?? ins?.id ?? null;
 			const tipo_incripcion = (ins?.tipo_inscripcion ?? ins?.tipo_incripcion ?? null);
-			if (!cod_ceta || !cod_pensum) { this.materias = []; return; }
+
+			console.log('[REZAGADO DEBUG] Parámetros extraídos:', {
+				cod_ceta,
+				cod_pensum,
+				cod_inscrip,
+				tipo_incripcion
+			});
+
+			if (!cod_ceta || !cod_pensum) {
+				console.error('[REZAGADO DEBUG] Faltan cod_ceta o cod_pensum, abortando');
+				this.materias = [];
+				return;
+			}
+
 			const gestion = (this.resumen?.gestion || ins?.gestion || '').toString();
-			this.cobrosService.getKardexMaterias({ cod_ceta, cod_pensum, cod_inscrip: cod_inscrip ?? undefined, tipo_incripcion: tipo_incripcion ?? undefined, tipo_inscripcion: tipo_incripcion ?? undefined, gestion }).subscribe({
+			const params = {
+				cod_ceta,
+				cod_pensum,
+				gestion
+			};
+
+			console.log('[REZAGADO DEBUG] Llamando a getKardexMaterias con params:', params);
+
+			this.cobrosService.getKardexMaterias(params).subscribe({
 				next: (res) => {
+					console.log('[REZAGADO DEBUG] Respuesta de getKardexMaterias:', res);
 					if (res?.success) {
 						this.materias = (res.data || []).map((r: any) => ({
 							sigla: r?.sigla_materia || '',
@@ -105,13 +139,19 @@ export class RezagadoModalComponent implements OnInit {
 							tipo: (r?.tipo_incripcion || 'NORMAL').toString(),
 							selected: false
 						}));
+						console.log('[REZAGADO DEBUG] Materias procesadas:', this.materias);
 					} else {
+						console.warn('[REZAGADO DEBUG] Respuesta no exitosa');
 						this.materias = [];
 					}
 				},
-				error: () => { this.materias = []; }
+				error: (err) => {
+					console.error('[REZAGADO DEBUG] Error en getKardexMaterias:', err);
+					this.materias = [];
+				}
 			});
-		} catch {
+		} catch (err) {
+			console.error('[REZAGADO DEBUG] Error en try-catch:', err);
 			this.materias = [];
 		}
 	}
@@ -319,7 +359,7 @@ export class RezagadoModalComponent implements OnInit {
 
 	get total(): number {
 		const count = (this.materias || []).filter(m => m.selected).length;
-		return count * this.feeRezagado;
+		return count * this.costoMateria;
 	}
 
 	open(): void {
@@ -349,19 +389,22 @@ export class RezagadoModalComponent implements OnInit {
 		const hoy = new Date().toISOString().slice(0, 10);
 		const periodo = Number(this.form.get('periodo')?.value || 1);
 		let nro = this.baseNro || 1;
+		const conJustificativo = this.form.get('justificativo')?.value === true;
+		const montoRezagado = conJustificativo ? 0 : this.feeRezagado;
 		const pagos = (this.materias || []).filter(m => m.selected).map(m => {
 			const detalle = `Rezagado - ${m.sigla} ${m.nombre} - ${periodo}er P.`;
 			const payload: any = {
 				id_forma_cobro: this.form.get('metodo_pago')?.value || null,
 				nro_cobro: nro++,
-				monto: this.feeRezagado,
+				monto: montoRezagado,
 				fecha_cobro: hoy,
 				observaciones: (() => {
 					const base = (this.form.get('observaciones')?.value || '').toString().trim();
 					const marker = `[REZAGADO] ${detalle}`;
-					return base ? `${base} | ${marker}` : marker;
+					const justif = conJustificativo ? ' [CON JUSTIFICATIVO]' : '';
+					return base ? `${base} | ${marker}${justif}` : `${marker}${justif}`;
 				})(),
-				pu_mensualidad: this.feeRezagado,
+				pu_mensualidad: montoRezagado,
 				cantidad: 1,
 				detalle,
 				// doc/medio

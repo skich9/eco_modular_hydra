@@ -26,8 +26,17 @@ class KardexNotasController extends Controller
 				$tipoInscripcion = $request->query('tipo_inscripcion');
 			}
 
+			\Log::info('[KARDEX MATERIAS DEBUG] Parámetros recibidos:', [
+				'cod_ceta' => $codCeta,
+				'cod_pensum' => $codPensum,
+				'cod_inscrip' => $codInscrip,
+				'gestion' => $gestion,
+				'tipo_incripcion' => $tipoInscripcion
+			]);
+
 			// Requerimos al menos cod_ceta y cod_pensum
 			if (!$codCeta || !$codPensum) {
+				\Log::warning('[KARDEX MATERIAS DEBUG] Parámetros insuficientes');
 				return response()->json([
 					'success' => false,
 					'data' => [],
@@ -35,21 +44,16 @@ class KardexNotasController extends Controller
 				], 422);
 			}
 
-			// Si no viene cod_inscrip, intentar resolver por gestión; si no hay gestión, usar el máximo
-			if (!$codInscrip) {
-				if (!empty($gestion)) {
-					$codInscrip = DB::table('inscripciones')
-						->where('cod_ceta', $codCeta)
-						->where('cod_pensum', $codPensum)
-						->where('gestion', $gestion)
-						->max('cod_inscrip');
-				}
-				if (!$codInscrip) {
-					$codInscrip = DB::table('kardex_notas')
-						->where('cod_ceta', $codCeta)
-						->where('cod_pensum', $codPensum)
-						->max('cod_inscrip');
-				}
+			// Si viene gestión, obtener todas las inscripciones de esa gestión
+			$inscripcionesGestion = [];
+			if (!empty($gestion)) {
+				$inscripcionesGestion = DB::table('inscripciones')
+					->where('cod_ceta', $codCeta)
+					->where('cod_pensum', $codPensum)
+					->where('gestion', $gestion)
+					->pluck('cod_inscrip')
+					->toArray();
+				\Log::info('[KARDEX MATERIAS DEBUG] Inscripciones de la gestión:', ['inscripciones' => $inscripcionesGestion]);
 			}
 
 			$q = DB::table('kardex_notas as k')
@@ -66,16 +70,29 @@ class KardexNotasController extends Controller
 				->where('k.cod_ceta', $codCeta)
 				->where('k.cod_pensum', $codPensum);
 
-			// Filtrado por inscripción si la tenemos
-			if (!empty($codInscrip)) {
+			// Si hay inscripciones de la gestión, filtrar por ellas (NORMAL + ARRASTRE)
+			if (!empty($inscripcionesGestion)) {
+				$q->whereIn('k.cod_inscrip', $inscripcionesGestion);
+				\Log::info('[KARDEX MATERIAS DEBUG] Filtrando por inscripciones de gestión:', ['count' => count($inscripcionesGestion)]);
+			} elseif (!empty($codInscrip)) {
+				// Si no hay gestión pero sí cod_inscrip específico, usar ese
 				$q->where('k.cod_inscrip', $codInscrip);
-			}
-			// Filtrar por tipo si fue proporcionado
-			if (!empty($tipoInscripcion)) {
-				$q->where('k.tipo_incripcion', $tipoInscripcion);
+				\Log::info('[KARDEX MATERIAS DEBUG] Filtrando por cod_inscrip específico:', ['cod_inscrip' => $codInscrip]);
 			}
 
+			// Filtrar por tipo solo si fue proporcionado explícitamente
+			if (!empty($tipoInscripcion)) {
+				$q->where('k.tipo_incripcion', $tipoInscripcion);
+				\Log::info('[KARDEX MATERIAS DEBUG] Filtrando por tipo_incripcion:', ['tipo_incripcion' => $tipoInscripcion]);
+			}
+
+			\Log::info('[KARDEX MATERIAS DEBUG] SQL Query:', ['sql' => $q->toSql(), 'bindings' => $q->getBindings()]);
+
 			$rows = $q->orderBy('k.cod_kardex')->get();
+			\Log::info('[KARDEX MATERIAS DEBUG] Resultados obtenidos:', [
+				'total_rows' => $rows->count(),
+				'rows' => $rows->toArray()
+			]);
 
 			// Distinct por sigla_materia manteniendo la primera ocurrencia
 			$unique = [];
@@ -92,6 +109,11 @@ class KardexNotasController extends Controller
 					$seen[$key] = true;
 				}
 			}
+
+			\Log::info('[KARDEX MATERIAS DEBUG] Resultado final:', [
+				'total_unique' => count($unique),
+				'unique' => $unique
+			]);
 
 			return response()->json([
 				'success' => true,
