@@ -1089,6 +1089,12 @@ export class MensualidadModalComponent implements OnInit, OnChanges, AfterViewIn
     // Inicializar estado del botón
     this.actualizarEstadoBoton();
 
+    // Cargar parámetros de descuento de semestre completo y definiciones de descuentos
+    this.cargarParametrosDescuentoSemestre();
+    this.cargarDefinicionesDescuentos();
+    console.log('[MensualidadModal] Cache inicial:', this.defDescuentosCache.length);
+    this.recalcTotal();
+
     // Recalcular total al cambiar cantidad, descuento o monto_manual
     this.form.get('cantidad')?.valueChanges.subscribe(() => {
       this.recalcTotal();
@@ -1385,7 +1391,7 @@ export class MensualidadModalComponent implements OnInit, OnChanges, AfterViewIn
                 }
               }
             }
-          } catch {}
+          } catch { }
         } else {
           // No hay arrastre en detalle: sumar mora de la cuota de mensualidad
           try {
@@ -1450,7 +1456,7 @@ export class MensualidadModalComponent implements OnInit, OnChanges, AfterViewIn
                   if (moraNormal) total += this.recalcularMoraConFechaDeposito(moraNormal);
                 }
               }
-            } catch {}
+            } catch { }
           } else {
             // No hay arrastre en detalle: sumar mora de las cuotas de mensualidad
             try {
@@ -1655,7 +1661,7 @@ export class MensualidadModalComponent implements OnInit, OnChanges, AfterViewIn
   }
 
   // Devuelve lista ordenada por numero_cuota con {numero, restante} usando monto neto (monto - descuento)
-  private getOrderedCuotasRestantes(): Array<{ numero: number; restante: number; id_cuota_template: number|null; id_asignacion_costo: number|null; }> {
+  private getOrderedCuotasRestantes(): Array<{ numero: number; restante: number; id_cuota_template: number | null; id_asignacion_costo: number | null; }> {
     // Para arrastre, usar asignaciones_arrastre; para mensualidad, usar asignaciones
     let src: any[] = [];
     if (this.tipo === 'arrastre') {
@@ -1664,7 +1670,7 @@ export class MensualidadModalComponent implements OnInit, OnChanges, AfterViewIn
       src = ((this.resumen?.asignacion_costos?.items || this.resumen?.asignaciones || []) as any[]);
     }
     const ord = (src || []).slice().sort((a: any, b: any) => Number(a?.numero_cuota || 0) - Number(b?.numero_cuota || 0));
-    const out: Array<{ numero: number; restante: number; id_cuota_template: number|null; id_asignacion_costo: number|null; }> = [];
+    const out: Array<{ numero: number; restante: number; id_cuota_template: number | null; id_asignacion_costo: number | null; }> = [];
 
     console.log('[MensualidadModal] getOrderedCuotasRestantes - tipo:', this.tipo, 'detalleFactura:', this.detalleFactura);
     console.log('[MensualidadModal] Total asignaciones en resumen:', src.length, 'pendientes (prop):', this.pendientes);
@@ -2835,7 +2841,7 @@ export class MensualidadModalComponent implements OnInit, OnChanges, AfterViewIn
             moraItem.nro_cobro = (this.baseNro || 1) + 1;
             pagos.push(moraItem);
           }
-        } catch {}
+        } catch { }
       } else {
         console.log('[MensualidadModal] INICIO bloque pago completo mensualidad');
         const cant = Math.max(0, Number(this.form.get('cantidad')?.value || 0));
@@ -3009,7 +3015,7 @@ export class MensualidadModalComponent implements OnInit, OnChanges, AfterViewIn
                     }
                   }
                 }
-              } catch {}
+              } catch { }
             } else if (!hayArrastreEnDetalle) {
               // No hay arrastre en detalle: agregar mora de cada cuota de mensualidad
               try {
@@ -3429,6 +3435,7 @@ export class MensualidadModalComponent implements OnInit, OnChanges, AfterViewIn
       if (!this.descuentoSemestreIdDefDescuento || this.descuentoSemestreIdDefDescuento <= 0) return 0;
 
       const totalCuotasPendientes = this.pendientes || 0;
+      // El descuento solo aplica si se seleccionan las 5 cuotas del semestre completo de una sola vez
       if (cantidadSeleccionada !== 5) return 0;
 
       const montoTotal = this.sumNextKCuotasRestantes(cantidadSeleccionada);
