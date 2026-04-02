@@ -81,6 +81,10 @@
 	grid-column: 2;
 }
 
+.card-panel--inline-fields .field.field--textarea > .field-error {
+	grid-column: 2;
+}
+
 .card-panel--inline-fields .field.field--stack {
 	display: block;
 }
@@ -309,9 +313,66 @@
 	line-height: 1.3;
 }
 
-.field input.input-invalid:not(:disabled) {
+/** Label en rojo cuando falta un obligatorio (validación previa a registrar). */
+.field-label--req-error,
+label.field-label--req-error,
+.rango-fechas-sga__titulo.field-label--req-error {
+	color: #dc2626 !important;
+	font-weight: 600;
+}
+
+.field-error--rango-full {
+	margin-top: 0.5rem;
+}
+
+.field input.input-invalid:not(:disabled),
+.field select.input-invalid:not(:disabled),
+.field textarea.input-invalid:not(:disabled) {
 	border-color: #dc2626;
 	box-shadow: 0 0 0 1px #fecaca;
+}
+
+/** Nº transacción tarjeta: prefijo fijo Linkser + solo el dato editable */
+.input-with-prefix {
+	display: flex;
+	align-items: stretch;
+	width: 100%;
+	min-width: 0;
+	border: 1px solid #d1d5db;
+	border-radius: 6px;
+	overflow: hidden;
+	background: #fff;
+}
+
+.input-with-prefix--invalid {
+	border-color: #dc2626;
+	box-shadow: 0 0 0 1px #fecaca;
+}
+
+.input-with-prefix__fixed {
+	flex: 0 0 auto;
+	padding: 0.45rem 0.55rem;
+	background: #f3f4f6;
+	color: #374151;
+	font-size: 0.9rem;
+	white-space: nowrap;
+	border-right: 1px solid #e5e7eb;
+	align-self: stretch;
+	display: inline-flex;
+	align-items: center;
+}
+
+.field .input-with-prefix__input {
+	border: none !important;
+	border-radius: 0 !important;
+	box-shadow: none !important;
+	flex: 1 1 auto;
+	min-width: 0;
+	width: auto;
+}
+
+.field .input-with-prefix__input:disabled {
+	background: #f3f4f6;
 }
 
 /* Rango Del / Al (estilo SGA) */
@@ -478,6 +539,12 @@
 	color: #991b1b;
 }
 
+.alert-warning {
+	background: #fef3c7;
+	color: #92400e;
+	border: 1px solid #fcd34d;
+}
+
 .modal-backdrop {
 	position: fixed;
 	inset: 0;
@@ -495,4 +562,58 @@
 	max-width: 520px;
 	width: 100%;
 	padding: 1.25rem;
+}
+
+.modal-box--compact {
+	max-width: 420px;
+}
+
+.modal-box__hint {
+	margin: 0 0 1rem;
+	font-size: 0.875rem;
+	color: #4b5563;
+	line-height: 1.4;
+}
+
+.modal-box__fields {
+	display: flex;
+	flex-direction: column;
+	gap: 0.75rem;
+	margin-bottom: 1.25rem;
+}
+
+.modal-box__field {
+	display: flex;
+	flex-direction: column;
+	gap: 0.35rem;
+}
+
+.modal-box__field label {
+	font-weight: 500;
+	font-size: 0.875rem;
+}
+
+.modal-box__field input {
+	width: 100%;
+	padding: 0.45rem 0.5rem;
+	border: 1px solid #d1d5db;
+	border-radius: 6px;
+	font-size: 0.9375rem;
+}
+
+.modal-box__actions {
+	display: flex;
+	justify-content: flex-end;
+	gap: 0.5rem;
+	flex-wrap: wrap;
+}
+
+.card-panel--inline-fields .field .field__control--row .otros-ingresos__btn-edit-facturacion {
+	flex-shrink: 0;
+	align-self: center;
+}
+
+.otros-ingresos__btn-edit-facturacion {
+	font-size: 0.8125rem;
+	padding: 0.35rem 0.65rem;
 }
