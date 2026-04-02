@@ -5,6 +5,7 @@ namespace App\Http\Controllers\Api;
 use App\Http\Controllers\Controller;
 use App\Models\CostoSemestral;
 use Illuminate\Http\Request;
+use Illuminate\Support\Facades\Log;
 
 class CostoSemestralController extends Controller
 {
@@ -42,7 +43,10 @@ class CostoSemestralController extends Controller
 
 		$userId = optional($request->user())->id ?? $request->input('id_usuario');
 		$created = 0; $updated = 0;
+		Log::info('batchStore los datos que se intentan guardar son'. print_r($validated, true));
+
 		foreach ($validated['rows'] as $row) {
+			Log::info('batchStore los datos que se intentan guardar2 son'. print_r($row, true));
 			$attrs = [
 				'cod_pensum' => $validated['cod_pensum'],
 				'gestion' => $validated['gestion'],

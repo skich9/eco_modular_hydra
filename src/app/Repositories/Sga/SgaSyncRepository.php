@@ -3283,4 +3283,173 @@ class SgaSyncRepository
 			return collect([]);
 		}
 	}
+
+	public function syncKardexNotas(string $source, int $chunk = 1000, bool $dryRun = false, ?string $gestion = null): array
+	{
+		$source = in_array($source, ['sga_elec','sga_mec']) ? $source : 'sga_elec';
+		$carreraLabel = $source === 'sga_elec' ? 'Electricidad y Electrónica Automotriz' : 'Mecánica Automotriz';
+		$total = 0; $inserted = 0; $updated = 0; $skipped = 0;
+
+		if (!Schema::hasTable('kardex_notas')) {
+			return compact('source','total','inserted','updated','skipped');
+		}
+
+		$colTipo = null;
+		if (Schema::hasColumn('kardex_notas', 'tipo_inscripcion')) {
+			$colTipo = 'tipo_inscripcion';
+		} elseif (Schema::hasColumn('kardex_notas', 'tipo_incripcion')) {
+			$colTipo = 'tipo_incripcion';
+		}
+
+		if (!$colTipo) {
+			\Log::warning('SgaSyncRepository: kardex_notas no tiene columna tipo_inscripcion/tipo_incripcion');
+			return compact('source','total','inserted','updated','skipped');
+		}
+
+		$inscripcionesGestion = [];
+		if ($gestion) {
+			$inscripcionesGestion = DB::connection($source)
+				->table('registro_inscripcion')
+				->where('gestion', $gestion)
+				->pluck('cod_inscrip')
+				->toArray();
+			\Log::info("[KARDEX SYNC {$carreraLabel}] Filtrando por gestión {$gestion}: " . count($inscripcionesGestion) . " inscripciones encontradas");
+		}
+
+		$query = DB::connection($source)->table('kardex_notas');
+
+		if (!empty($inscripcionesGestion)) {
+			$query->whereIn('cod_inscrip', $inscripcionesGestion);
+		}
+
+		$query->orderBy('cod_kardex')
+			->chunk($chunk, function ($rows) use (&$total, &$inserted, &$updated, &$skipped, $dryRun, $carreraLabel, $colTipo) {
+				$total += count($rows);
+				$now = now();
+				$payload = [];
+
+				$sgaInscrips = [];
+				foreach ($rows as $r) {
+					$codInsSga = (int) ($r->cod_inscrip ?? 0);
+					if ($codInsSga > 0) { $sgaInscrips[] = $codInsSga; }
+				}
+				$sgaInscrips = array_values(array_unique($sgaInscrips));
+
+				$inscripMap = [];
+				if (!empty($sgaInscrips)) {
+					$inscripMap = DB::table('inscripciones')
+						->where('carrera', $carreraLabel)
+						->whereIn('source_cod_inscrip', $sgaInscrips)
+						->pluck('cod_inscrip', 'source_cod_inscrip')
+						->all();
+				}
+
+				$sgaPensums = [];
+				foreach ($rows as $r) {
+					$cp = trim((string) ($r->cod_pensum ?? ''));
+					if ($cp !== '') { $sgaPensums[] = mb_substr($cp, 0, 50); }
+				}
+				$sgaPensums = array_values(array_unique($sgaPensums));
+
+				$pensumMap = [];
+				if (!empty($sgaPensums)) {
+					$existingLocal = DB::table('pensums')->whereIn('cod_pensum', $sgaPensums)->pluck('cod_pensum')->all();
+					foreach ($existingLocal as $cp) { $pensumMap[$cp] = $cp; }
+				}
+				if (!empty($sgaPensums)) {
+					$pairs = DB::table('pensum_map')
+						->where('carrera', $carreraLabel)
+						->whereIn('cod_pensum_sga', $sgaPensums)
+						->pluck('cod_pensum_local', 'cod_pensum_sga')
+						->all();
+					$pensumMap = array_replace($pensumMap, $pairs);
+				}
+
+				$materiasExistentes = [];
+				$materias = DB::table('materia')->select('cod_pensum', 'sigla_materia')->get();
+				foreach ($materias as $m) {
+					$materiasExistentes[$m->cod_pensum . '|' . $m->sigla_materia] = true;
+				}
+
+				$inscripcionesPensum = [];
+				$inscripcionesTipo = [];
+				if (!empty($inscripMap)) {
+					$inscripciones = DB::table('inscripciones')
+						->select('cod_inscrip', 'cod_pensum', 'tipo_inscripcion')
+						->whereIn('cod_inscrip', array_values($inscripMap))
+						->get();
+					foreach ($inscripciones as $ins) {
+						$inscripcionesPensum[$ins->cod_inscrip . '|' . $ins->cod_pensum] = true;
+						$inscripcionesTipo[$ins->cod_inscrip] = $ins->tipo_inscripcion ?? 'NORMAL';
+					}
+				}
+
+				foreach ($rows as $r) {
+					$codKardex = (int) ($r->cod_kardex ?? 0);
+					$codCeta = (int) ($r->cod_ceta ?? 0);
+					$codInsSga = (int) ($r->cod_inscrip ?? 0);
+					$codPensumSga = $this->substr((string) ($r->cod_pensum ?? ''), 50);
+					$siglaMat = $this->substr((string) ($r->sigla_materia ?? ''), 20);
+
+					if ($codKardex === 0 || $codCeta === 0 || $siglaMat === '') {
+						$skipped++;
+						continue;
+					}
+
+					if (!isset($inscripMap[$codInsSga])) {
+						$skipped++;
+						continue;
+					}
+
+					if ($codPensumSga === '' || !isset($pensumMap[$codPensumSga])) {
+						$skipped++;
+						continue;
+					}
+
+					$codInscripLocal = $inscripMap[$codInsSga];
+					$codPensumLocal = $pensumMap[$codPensumSga];
+					$tipoInscripLocal = $inscripcionesTipo[$codInscripLocal] ?? 'NORMAL';
+
+					if (!isset($materiasExistentes[$codPensumLocal . '|' . $siglaMat])) {
+						$skipped++;
+						continue;
+					}
+
+					if (!isset($inscripcionesPensum[$codInscripLocal . '|' . $codPensumLocal])) {
+						$skipped++;
+						continue;
+					}
+
+					$payload[] = [
+						'cod_kardex'      => $codKardex,
+						'cod_ceta'        => $codCeta,
+						'cod_pensum'      => $codPensumLocal,
+						'cod_inscrip'     => $codInscripLocal,
+						'sigla_materia'   => $siglaMat,
+						$colTipo          => $tipoInscripLocal,
+						'observacion'     => $this->substrNull($r->observacion ?? null, 255),
+						'id_usuario'      => (int) ($r->id_usuario ?? 1),
+						'created_at'      => $now,
+						'updated_at'      => $now,
+					];
+				}
+
+				if ($dryRun || empty($payload)) {
+					return;
+				}
+
+				DB::table('kardex_notas')->upsert(
+					$payload,
+					['cod_kardex'],
+					['cod_ceta','cod_pensum','cod_inscrip','sigla_materia',$colTipo,'observacion','id_usuario','updated_at']
+				);
+
+				$ids = array_column($payload, 'cod_kardex');
+				$existing = DB::table('kardex_notas')->whereIn('cod_kardex', $ids)->count();
+				$updated += $existing;
+				$inserted += (count($payload) - $existing);
+			});
+
+		return compact('source','total','inserted','updated','skipped');
+	}
 }
