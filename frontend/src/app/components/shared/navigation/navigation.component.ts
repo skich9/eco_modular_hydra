@@ -51,8 +51,8 @@ export class NavigationComponent implements OnInit {
 			icon: 'fas fa-money-bill-wave',
 			submenu: [
 				{ name: 'Gestionar Cobros', icon: 'fa-cash-register', route: '/cobros', permissionCode: 'cobros_gestionar' },
-				{ name: 'Otros ingresos (ventas)', icon: 'fa-coins', route: '/economico/otros-ingresos', permissionCode: 'economico_otros_ingresos' },
-				{ name: 'Modificar otros ingresos', icon: 'fa-edit', route: '/economico/mod-otros-ingresos', permissionCode: 'economico_mod_otros_ingresos' }
+				{ name: 'Otros ingresos (ventas)', icon: 'fa-coins', route: '/cobros/otros-ingresos', permissionCode: 'economico_otros_ingresos' },
+				{ name: 'Modificar otros ingresos', icon: 'fa-edit', route: '/cobros/mod-otros-ingresos', permissionCode: 'economico_mod_otros_ingresos' }
 			]
 		},
 		{

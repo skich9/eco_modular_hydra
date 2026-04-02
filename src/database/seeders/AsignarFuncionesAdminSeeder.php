@@ -53,6 +53,8 @@ class AsignarFuncionesAdminSeeder extends Seeder
 				// Económico
 				'economico_prorroga_mora',
 				'economico_descuento_mora',
+				'economico_otros_ingresos',
+				'economico_mod_otros_ingresos',
 
 				// Configuración
 				'configuracion_usuarios',

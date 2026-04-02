@@ -22,8 +22,13 @@ class PermisosInicialSeeder extends Seeder
 		$this->call(FuncionesMenuSeeder::class);
 		$this->command->newLine();
 
-		// 2. Asignar funciones al usuario Administrador en asignacion_funcion
-		$this->command->info('2️⃣  Asignando funciones al usuario Administrador...');
+		// 2. Asignar funciones al rol Administrador (rol_funcion)
+		$this->command->info('2️⃣  Asignando funciones al rol Administrador...');
+		$this->call(AsignarFuncionesAdminSeeder::class);
+		$this->command->newLine();
+
+		// 3. Replicar en asignacion_funcion lo definido en rol_funcion para el usuario admin
+		$this->command->info('3️⃣  Sincronizando asignacion_funcion del usuario Administrador...');
 		$this->call(AsignarFuncionesUsuarioAdminSeeder::class);
 		$this->command->newLine();
 
