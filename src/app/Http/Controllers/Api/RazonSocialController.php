@@ -5,6 +5,8 @@ namespace App\Http\Controllers\Api;
 use App\Http\Controllers\Controller;
 use App\Models\RazonSocial;
 use Illuminate\Http\Request;
+use Illuminate\Support\Facades\DB;
+use Illuminate\Support\Facades\Schema;
 
 class RazonSocialController extends Controller
 {
@@ -19,7 +21,6 @@ class RazonSocialController extends Controller
 	public function search(Request $request)
 	{
 		$numero = trim((string) $request->query('numero', ''));
-		$tipoId = (int) $request->query('tipo_id', 1);
 
 		if ($numero === '') {
 			return response()->json([
@@ -31,11 +32,34 @@ class RazonSocialController extends Controller
 
 		// Desde ahora el campo 'tipo' se maneja como 'cliente' de forma fija
 		$tipo = 'cliente';
-		$reg = RazonSocial::where('nit', $numero)->where('tipo', $tipo)->first();
+
+		/** @var RazonSocial|null $reg */
+		$reg = RazonSocial::query()->where('tipo', $tipo)->where('nit', $numero)->first();
+		$match = 'exacto';
+
+		if (!$reg) {
+			$reg = RazonSocial::query()->where('tipo', $tipo)->whereRaw('TRIM(nit) = ?', [trim($numero)])->first();
+			if ($reg) {
+				$match = 'trim';
+			}
+		}
+
+		if (!$reg && strlen($numero) >= 2) {
+			$escaped = addcslashes($numero, '%_\\');
+			$reg = RazonSocial::query()
+				->where('tipo', $tipo)
+				->where('nit', 'like', '%'.$escaped.'%')
+				->orderByRaw('LENGTH(nit) asc')
+				->first();
+			if ($reg) {
+				$match = 'similar';
+			}
+		}
 
 		return response()->json([
 			'success' => true,
 			'data' => $reg,
+			'match' => $reg ? $match : null,
 		]);
 	}
 
@@ -53,7 +77,11 @@ class RazonSocialController extends Controller
 
 		// Si ya existe el registro para el mismo NIT, validar que no se intente cambiar el tipo de identidad
 		$existente = RazonSocial::where('nit', $data['nit'])->where('tipo', $tipo)->first();
-		if ($existente && (int) $existente->id_tipo_doc_identidad !== (int) $data['tipo_id']) {
+		if (
+			Schema::hasColumn('razon_social', 'id_tipo_doc_identidad')
+			&& $existente
+			&& (int) $existente->id_tipo_doc_identidad !== (int) $data['tipo_id']
+		) {
 			$tipoExistente = self::TIPOS[(int) $existente->id_tipo_doc_identidad] ?? 'DESCONOCIDO';
 			return response()->json([
 				'success' => false,
@@ -61,14 +89,29 @@ class RazonSocialController extends Controller
 			], 422);
 		}
 
-		$rs = RazonSocial::updateOrCreate(
-			['nit' => $data['nit'], 'tipo' => $tipo],
-			[
-				'razon_social' => $data['razon_social'] ?? null,
-				'id_tipo_doc_identidad' => $data['tipo_id'],
-				'complemento' => $data['complemento'] ?? null,
-			]
-		);
+		$now = now();
+		$values = [
+			'razon_social' => $data['razon_social'] ?? null,
+		];
+		if (Schema::hasColumn('razon_social', 'updated_at')) {
+			$values['updated_at'] = $now;
+		}
+		if (Schema::hasColumn('razon_social', 'id_tipo_doc_identidad')) {
+			$values['id_tipo_doc_identidad'] = (int) $data['tipo_id'];
+		}
+		if (Schema::hasColumn('razon_social', 'complemento')) {
+			$values['complemento'] = $data['complemento'] ?? null;
+		}
+
+		$key = ['nit' => $data['nit'], 'tipo' => $tipo];
+		$exists = DB::table('razon_social')->where($key)->exists();
+		if (!$exists && Schema::hasColumn('razon_social', 'created_at')) {
+			$values['created_at'] = $now;
+		}
+
+		DB::table('razon_social')->updateOrInsert($key, $values);
+
+		$rs = RazonSocial::where('nit', $data['nit'])->where('tipo', $tipo)->first();
 
 		return response()->json([
 			'success' => true,

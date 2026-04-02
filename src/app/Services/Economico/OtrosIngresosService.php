@@ -104,6 +104,30 @@ class OtrosIngresosService
 		return $q->get($cols)->values()->all();
 	}
 
+	/**
+	 * Gestión(es) para el selector de otros ingresos: prioriza `parametros_economicos` (`nombre` = gestion_cobro, activo).
+	 * Si no hay valor configurado, se usa el listado de la tabla `gestion` ({@see listGestionesActivas}).
+	 *
+	 * @return array<int, array{gestion: string, fecha_ini: mixed, fecha_fin: mixed}>
+	 */
+	public function listGestionesParaOtrosIngresos(): array
+	{
+		$v = $this->getGestionCobroValor();
+		if ($v !== null && trim((string) $v) !== '') {
+			$g = trim((string) $v);
+
+			return [
+				[
+					'gestion' => $g,
+					'fecha_ini' => null,
+					'fecha_fin' => null,
+				],
+			];
+		}
+
+		return $this->listGestionesActivas();
+	}
+
 	public function listTiposIngreso(): array
 	{
 		if (!Schema::hasTable('tipo_otro_ingreso')) {
@@ -192,6 +216,34 @@ class OtrosIngresosService
 		}
 
 		return 'otro';
+	}
+
+	/**
+	 * Para tarjeta (Linkser), el Nº de transacción se persiste como «linkser » + dato.
+	 * Si el usuario o el front ya enviaron el prefijo, se normaliza una sola vez (sin duplicar).
+	 *
+	 * @param  string|null  $nroDep  Valor recibido (solo sufijo o ya con prefijo).
+	 */
+	private static function normalizarNroDepositoTarjetaOtrosIngresos(?string $tipoPagoId, ?string $nroDep): ?string
+	{
+		if ($nroDep === null || $nroDep === '') {
+			return null;
+		}
+		$s = trim((string) $nroDep);
+		if ($s === '') {
+			return null;
+		}
+		$flujo = self::inferirFlujoFormaCobroOtrosIngresos((string) ($tipoPagoId ?? ''), null);
+		if ($flujo !== 'tarjeta') {
+			return $s;
+		}
+		if (preg_match('/^linkser\s*/i', $s) === 1) {
+			$rest = trim(preg_replace('/^linkser\s*/i', '', $s, 1));
+
+			return 'linkser '.$rest;
+		}
+
+		return 'linkser '.$s;
 	}
 
 	private function mapFormaCobroFlujoOtrosIngresos(string $idFormaCobro, ?string $nombre = null): string
@@ -418,6 +470,45 @@ class OtrosIngresosService
 	}
 
 	/**
+	 * @return string HTML lista de conflictos o la cadena "exito"
+	 */
+	public function reciboExiste(int $recibo): string
+	{
+		if ($recibo <= 0) {
+			return 'exito';
+		}
+
+		$messages = [];
+
+		if (OtroIngreso::query()->where('num_recibo', $recibo)->exists()) {
+			$messages[] = '<li>El número de recibo ya está asignado al registro de OTROS INGRESOS.</li>';
+		}
+
+		if (Schema::hasTable('cobro')) {
+			$hasCobro = DB::table('cobro')->where('nro_recibo', $recibo)->exists();
+			if ($hasCobro) {
+				$messages[] = '<li>El número de recibo ya está asignado a un COBRO registrado.</li>';
+			}
+		}
+
+		if (Schema::hasTable('segunda_instancia') && Schema::hasColumn('segunda_instancia', 'num_recibo')) {
+			$has = DB::table('segunda_instancia')->where('num_recibo', $recibo)->exists();
+			if ($has) {
+				$messages[] = '<li>El número de recibo ya está asignado a una SEGUNDA INSTANCIA.</li>';
+			}
+		}
+
+		if (Schema::hasTable('rezagados') && Schema::hasColumn('rezagados', 'num_recibo')) {
+			$has = DB::table('rezagados')->where('num_recibo', $recibo)->exists();
+			if ($has) {
+				$messages[] = '<li>El número de recibo ya está asignado a un REZAGADO.</li>';
+			}
+		}
+
+		return $messages === [] ? 'exito' : implode('', $messages);
+	}
+
+	/**
 	 * Siguiente Nº de recibo correlativo para `otros_ingresos` (vista previa; sin bloqueo).
 	 * Si no hay registros con número > 0, devuelve 1.
 	 */
@@ -583,6 +674,7 @@ class OtrosIngresosService
 				}
 				$nroDep = $input['nro_deposito'] ?? null;
 				$nroDep = ($nroDep === '' || $nroDep === null) ? null : (string) $nroDep;
+				$nroDep = self::normalizarNroDepositoTarjetaOtrosIngresos((string) ($input['tipo_pago'] ?? ''), $nroDep);
 				$fechaDep = $this->parseDateOrNull($input['fecha_deposito'] ?? null);
 				$fechaIni = $this->parseDateOrNull($input['fecha_ini'] ?? null);
 				$fechaFin = $this->parseDateOrNull($input['fecha_fin'] ?? null);
@@ -613,6 +705,8 @@ class OtrosIngresosService
 				'num_factura' => $oi->num_factura,
 			];
 		});
+
+		$this->syncRazonSocialCatalogoTrasFormulario($input);
 
 		$oi = OtroIngreso::query()->find($result['id'] ?? null);
 		if ($oi) {
@@ -701,7 +795,156 @@ class OtrosIngresosService
 		}
 		$row->fill($fill);
 
-		return $row->save();
+		$ok = $row->save();
+		if ($ok) {
+			$this->syncRazonSocialCatalogoTrasFormulario([
+				'nit' => $row->nit,
+				'razon_social' => $row->razon_social,
+				'valido' => $row->valido,
+			]);
+		}
+
+		return $ok;
+	}
+
+	/**
+	 * Tras modificar un otro ingreso: genera la misma nota PDF que al registrar (efectivo / depósito / tarjeta).
+	 *
+	 * @return array{message: string, url: ?string}
+	 */
+	public function procesarPdfNotaTrasModificacion(int $id, Usuario $usuario): array
+	{
+		$oi = OtroIngreso::with('detalle')->find($id);
+		if (!$oi) {
+			return ['message' => 'sin_registro', 'url' => null];
+		}
+		$input = $this->construirInputPdfParaNotaDesdeModelo($oi);
+
+		return $this->notaOtrosIngresosPdfService->procesarTrasRegistro($oi, $input, $usuario);
+	}
+
+	/**
+	 * Reconstruye el payload tipo registro para {@see NotaOtrosIngresosPdfService::procesarTrasRegistro} desde BD.
+	 *
+	 * @return array<string, mixed>
+	 */
+	private function construirInputPdfParaNotaDesdeModelo(OtroIngreso $oi): array
+	{
+		$input = [
+			'tipo_pago' => (string) ($oi->code_tipo_pago ?? ''),
+			'nombre_carrera' => '',
+			'cta_banco' => '',
+			'nro_deposito' => '',
+			'fecha_deposito' => '',
+			'fecha_ini' => '',
+			'fecha_fin' => '',
+			'nro_orden' => 0,
+			'concepto_alq' => '',
+		];
+		if (Schema::hasColumn('otros_ingresos', 'codigo_carrera') && $oi->codigo_carrera && Schema::hasTable('carreras')) {
+			$nom = DB::table('carreras')->where('codigo_carrera', $oi->codigo_carrera)->value('nombre');
+			if ($nom) {
+				$input['nombre_carrera'] = (string) $nom;
+			}
+		}
+		$det = $oi->detalle;
+		if ($det) {
+			$input['cta_banco'] = (string) ($det->cta_banco ?? '');
+			$input['nro_deposito'] = (string) ($det->nro_deposito ?? '');
+			$input['fecha_deposito'] = $this->fechaDetalleADmy($det->fecha_deposito ?? null);
+			$input['fecha_ini'] = $this->fechaDetalleADmy($det->fecha_ini ?? null);
+			$input['fecha_fin'] = $this->fechaDetalleADmy($det->fecha_fin ?? null);
+			$input['nro_orden'] = (int) ($det->nro_orden ?? 0);
+			$input['concepto_alq'] = $this->extraerConceptoAlqParaPdf($det);
+		}
+
+		return $input;
+	}
+
+	private function fechaDetalleADmy(mixed $v): string
+	{
+		if ($v === null || $v === '') {
+			return '';
+		}
+		try {
+			return Carbon::parse($v)->format('d/m/Y');
+		} catch (\Throwable) {
+			return '';
+		}
+	}
+
+	private function extraerConceptoAlqParaPdf(OtroIngresoDetalle $det): string
+	{
+		$raw = trim((string) ($det->concepto_alquiler ?? ''));
+		if ($raw === '') {
+			return '';
+		}
+		if (preg_match('/mes\s+(.+)/iu', $raw, $m)) {
+			return trim($m[1]);
+		}
+
+		return $raw;
+	}
+
+	/**
+	 * Mantiene `razon_social` (catálogo NIT + cliente) alineado con lo capturado en otros ingresos.
+	 *
+	 * @param  array<string,mixed>  $input
+	 */
+	private function syncRazonSocialCatalogoTrasFormulario(array $input): void
+	{
+		if (!Schema::hasTable('razon_social')) {
+			return;
+		}
+		$valido = (string) ($input['valido'] ?? 'S');
+		if ($valido === 'A') {
+			return;
+		}
+		$nit = trim((string) ($input['nit'] ?? ''));
+		$rs = trim((string) ($input['razon_social'] ?? ''));
+		$this->syncRazonSocialCatalogo($nit, $rs);
+	}
+
+	/**
+	 * Upsert en tabla `razon_social` (tipo fijo `cliente`). No persiste NIT vacío, anulado o sin nombre.
+	 */
+	private function syncRazonSocialCatalogo(string $nit, string $razonSocial): void
+	{
+		if ($nit === '' || $nit === '0') {
+			return;
+		}
+		if ($razonSocial === '') {
+			return;
+		}
+
+		$tipo = 'cliente';
+		$key = ['nit' => $nit, 'tipo' => $tipo];
+		$now = now();
+
+		$tipoDoc = 5;
+		if (Schema::hasColumn('razon_social', 'id_tipo_doc_identidad')) {
+			$ex = DB::table('razon_social')->where($key)->first();
+			if ($ex && isset($ex->id_tipo_doc_identidad) && $ex->id_tipo_doc_identidad !== null) {
+				$tipoDoc = (int) $ex->id_tipo_doc_identidad;
+			}
+		}
+
+		$values = [
+			'razon_social' => $razonSocial,
+		];
+		if (Schema::hasColumn('razon_social', 'updated_at')) {
+			$values['updated_at'] = $now;
+		}
+		if (Schema::hasColumn('razon_social', 'id_tipo_doc_identidad')) {
+			$values['id_tipo_doc_identidad'] = $tipoDoc;
+		}
+
+		$exists = DB::table('razon_social')->where($key)->exists();
+		if (!$exists && Schema::hasColumn('razon_social', 'created_at')) {
+			$values['created_at'] = $now;
+		}
+
+		DB::table('razon_social')->updateOrInsert($key, $values);
 	}
 
 	private function parseFechaHora(?string $dmy): Carbon

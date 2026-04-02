@@ -24,7 +24,7 @@ class OtrosIngresosController extends Controller
 			'success' => true,
 			'data' => [
 				'pensums' => $this->service->listPensumsConCarrera(),
-				'gestiones' => $this->service->listGestionesActivas(),
+				'gestiones' => $this->service->listGestionesParaOtrosIngresos(),
 				'gestion_cobro' => $this->service->getGestionCobroValor(),
 				'tipos_ingreso' => $this->service->listTiposIngreso(),
 				'formas_cobro' => $this->service->listFormasCobroParaOtrosIngresos(),
@@ -103,6 +103,19 @@ class OtrosIngresosController extends Controller
 			(int) $request->input('factura'),
 			(string) $request->input('autorizacion', '')
 		);
+		return response($msg, 200)->header('Content-Type', 'text/html; charset=UTF-8');
+	}
+
+	/** Texto plano: "exito" o HTML con listas de conflictos (misma forma que factura-existe). */
+	public function reciboExiste(Request $request): \Illuminate\Http\Response
+	{
+		$request->validate([
+			'recibo' => 'required|numeric',
+		]);
+		$msg = $this->service->reciboExiste(
+			(int) $request->input('recibo'),
+		);
+
 		return response($msg, 200)->header('Content-Type', 'text/html; charset=UTF-8');
 	}
 

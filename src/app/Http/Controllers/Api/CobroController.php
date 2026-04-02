@@ -1165,9 +1165,11 @@ class CobroController extends Controller
 					'asignacion_costos' => $asignacion,
 					'descuentos_aplicados' => $descuentosAplicados,
 					// Exponer todas las cuotas ordenadas con datos clave para el modal
-					'asignaciones' => $asignacionesPrimarias->map(function($a) use ($descuentosPorAsign, $codCeta, $codPensumToUse){
+					// Combinar asignaciones primarias y de arrastre
+					'asignaciones' => $asignacionesPrimarias->concat($asignacionesArrastre)->map(function($a) use ($descuentosPorAsign, $descuentosPorAsignArrastre, $codCeta, $codPensumToUse){
 						$idAsignacion = (int) ($a->id_asignacion_costo ?? 0);
-						$descuentoPago = (float) ($descuentosPorAsign[$idAsignacion] ?? 0);
+						// Buscar descuento en ambos arrays (primarias y arrastre)
+						$descuentoPago = (float) ($descuentosPorAsign[$idAsignacion] ?? $descuentosPorAsignArrastre[$idAsignacion] ?? 0);
 						$monto = (float) ($a->monto ?? 0);
 						$montoPagado = (float) ($a->monto_pagado ?? 0);
 
@@ -1221,6 +1223,7 @@ class CobroController extends Controller
 							'fecha_vencimiento' => $a->fecha_vencimiento,
 							'gestion' => $a->gestion ?? null,
 							'gestion_cuota' => $a->gestion ?? null,
+							'tipo_inscripcion' => (string) ($a->tipo_inscripcion ?? 'NORMAL'),
 							// Datos para cálculo de descuento prorrateado
 							'descuento_aplicado' => $descuentoAplicado,
 							'total_debe_pagar' => $totalDebePagar,
@@ -2245,10 +2248,11 @@ class CobroController extends Controller
 					$row = DB::selectOne('SELECT LAST_INSERT_ID() AS id');
 					$nroCobro = (int)(isset($row->id) ? $row->id : 0);
 					Log::info('batchStore:nroCobro', [ 'idx' => $idx, 'nro' => $nroCobro ]);
+
 					$composite = [
 						'cod_ceta' => (int)$request->cod_ceta,
 						'cod_pensum' => (string)$request->cod_pensum,
-						'tipo_inscripcion' => (string)$request->tipo_inscripcion,
+						'tipo_inscripcion' => $request->tipo_inscripcion,
 						'nro_cobro' => $nroCobro,
 						'anio_cobro' => $anioItem,
 					];
@@ -2764,7 +2768,12 @@ class CobroController extends Controller
 					\Log::info('[CobroController] cod_tipo_cobro derivado:', ['cod_tipo_cobro' => $codTipoCobroItem]);
 				}
 
-					// Formatear concepto según tipo de cobro (DESPUÉS de derivar cod_tipo_cobro)
+					// Actualizar tipo_inscripcion en composite si es ARRASTRE
+					if ($codTipoCobroItem === 'ARRASTRE') {
+						$composite['tipo_inscripcion'] = 'ARRASTRE';
+					}
+
+				// Formatear concepto según tipo de cobro (DESPUÉS de derivar cod_tipo_cobro)
 				$mesNombre = '';
 				$numeroCuotaForConcepto = 0;
 				$parcialForConcepto = false;
