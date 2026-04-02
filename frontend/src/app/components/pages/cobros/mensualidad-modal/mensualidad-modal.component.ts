@@ -1582,13 +1582,20 @@ export class MensualidadModalComponent implements OnInit, OnChanges, AfterViewIn
         return Number(this.startCuotaOverride);
       }
 
-      // Para arrastre, usar directamente la cuota de arrastre.next_cuota
+      // Para arrastre, usar la primera cuota pendiente real del listado filtrado.
+      // NO usar resumen.arrastre.next_cuota porque el backend no filtra estado_pago='COBRADO'
+      // (calcula saldo residual sin considerar el estado), por lo que puede apuntar a cuotas
+      // ya cobradas que tienen monto_pagado < monto (p.ej. pagos parciales marcados COBRADO).
       if (this.tipo === 'arrastre') {
+        const list = this.getOrderedCuotasRestantes();
+        if (list && list.length > 0) {
+          const first = Number(list[0]?.numero || 0);
+          if (first > 0) return first;
+        }
+        // Fallback solo si no hay cuotas en la lista
         const next = this.resumen?.arrastre?.next_cuota || null;
         const numeroCuota = Number(next?.numero_cuota || 0);
-        if (numeroCuota > 0) {
-          return numeroCuota;
-        }
+        if (numeroCuota > 0) return numeroCuota;
       }
 
       // Para mensualidad, usar la primera cuota restante
@@ -1668,6 +1675,20 @@ export class MensualidadModalComponent implements OnInit, OnChanges, AfterViewIn
       src = (this.resumen?.asignaciones_arrastre || []) as any[];
     } else {
       src = ((this.resumen?.asignacion_costos?.items || this.resumen?.asignaciones || []) as any[]);
+      // El backend concatena primarias+arrastre en 'asignaciones'. Para mensualidad, excluir las de ARRASTRE.
+      // NOTE: tipo_inscripcion en asignaciones es siempre 'NORMAL' (el query no join inscripciones),
+      // por eso se usa exclusión por id_asignacion_costo comparando con asignaciones_arrastre.
+      if (this.tipo === 'mensualidad') {
+        const arrastreIds = new Set(
+          ((this.resumen?.asignaciones_arrastre || []) as any[])
+            .map((a: any) => Number(a?.id_asignacion_costo || 0))
+            .filter((id: number) => id > 0)
+        );
+        src = src.filter((a: any) => {
+          const id = Number(a?.id_asignacion_costo || 0);
+          return id <= 0 || !arrastreIds.has(id);
+        });
+      }
     }
     const ord = (src || []).slice().sort((a: any, b: any) => Number(a?.numero_cuota || 0) - Number(b?.numero_cuota || 0));
     const out: Array<{ numero: number; restante: number; id_cuota_template: number | null; id_asignacion_costo: number | null; }> = [];
@@ -1704,6 +1725,14 @@ export class MensualidadModalComponent implements OnInit, OnChanges, AfterViewIn
       const montoNeto = (a?.monto_neto !== undefined && a?.monto_neto !== null) ? this.toNumberLoose(a?.monto_neto) : Math.max(0, bruto - desc);
       const pagado = this.toNumberLoose(a?.monto_pagado);
       const numero = Number(a?.numero_cuota || 0);
+
+      // Saltar cuotas completamente cobradas — estado_pago es la autoridad definitiva.
+      // Evita que discrepancias en descuento/monto_neto muestren cuotas ya pagadas.
+      const estadoPago = (a?.estado_pago || '').toString().toUpperCase();
+      if (estadoPago === 'COBRADO') {
+        console.log('[MensualidadModal] Cuota SKIP (estado COBRADO):', numero);
+        continue;
+      }
 
       // Saltar cuotas ya agregadas al detalle de factura
       if (cuotasYaAgregadas.has(numero)) {
@@ -1889,7 +1918,11 @@ export class MensualidadModalComponent implements OnInit, OnChanges, AfterViewIn
           console.log('[MensualidadModal] NO hay arrastre en detalle, buscando mora de cuotas ya pagadas...');
 
           // Obtener las asignaciones de mensualidad y arrastre
-          const asignaciones = this.resumen?.asignaciones || [];
+          // Filtrar solo NORMAL para no confundir con asignaciones arrastre del mismo número de cuota
+          const asignaciones = (this.resumen?.asignaciones || []).filter((a: any) => {
+            const ti = (a?.tipo_inscripcion || 'NORMAL').toString().toUpperCase();
+            return ti !== 'ARRASTRE';
+          });
           const asignacionesArrastre = this.resumen?.asignaciones_arrastre || [];
 
           // Buscar moras pendientes cuyas mensualidades y arrastres ya fueron pagados
@@ -1939,7 +1972,14 @@ export class MensualidadModalComponent implements OnInit, OnChanges, AfterViewIn
           console.log('[MensualidadModal] moraPendienteAnterior (de cuotas pagadas):', moraPendienteAnterior);
         }
 
-        console.log('[MensualidadModal] tieneArrastrePendiente():', this.tieneArrastrePendiente());
+        const hayArrastrePendiente = this.tieneArrastrePendiente();
+        console.log('[MensualidadModal] tieneArrastrePendiente():', hayArrastrePendiente);
+
+        // Si hay arrastre pendiente, la mensualidad se paga independientemente — no bloquear por mora
+        if (moraPendienteAnterior && hayArrastrePendiente) {
+          console.log('[MensualidadModal] Suprimiendo mora porque hay arrastre pendiente');
+          moraPendienteAnterior = null;
+        }
 
         // Verificar si la mora ya está pagada o en el detalle de factura
         if (moraPendienteAnterior) {
