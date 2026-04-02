@@ -2674,7 +2674,14 @@ export class CobrosComponent implements OnInit {
   buscarPorCodCetaCabecera(): void {
     const cabecera = this.batchForm.get('cabecera') as FormGroup;
     const cod_ceta = cabecera?.get('cod_ceta')?.value;
-    const gestion = cabecera?.get('gestion')?.value || '';
+    let gestion = cabecera?.get('gestion')?.value || '';
+
+    // Si el usuario ingresó un nuevo estudiante, ignoramos la gestión que quedó seleccionada 
+    // en el DOM (probablemente del estudiante anterior o autocompletada por fallback)
+    const prevCodCeta = this.resumen?.estudiante?.cod_ceta || this.searchForm.get('cod_ceta')?.value;
+    if (prevCodCeta && String(prevCodCeta) !== String(cod_ceta)) {
+       gestion = '';
+    }
 
     console.log('[Cobros] buscarPorCodCetaCabecera xxxssasdd', { cod_ceta, gestion });
     if (!cod_ceta) {
