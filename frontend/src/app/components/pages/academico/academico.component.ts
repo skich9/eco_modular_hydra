@@ -37,6 +37,8 @@ export class AcademicoComponent implements OnInit, OnDestroy {
   loadingPensums = false;
   loadingMaterias = false;
   loadingAux = false; // para acciones de guardar/eliminar
+  /** Mensaje de error del API al guardar (422/500); visible en el modal */
+  saveError = '';
   pensumFilter = '';
   materiaFilter = '';
 
@@ -181,11 +183,13 @@ export class AcademicoComponent implements OnInit, OnDestroy {
 
   // Modal form helpers
   private buildForm(m?: Materia): void {
+    const nivel = m?.nivel_materia;
     this.form = this.fb.group({
       sigla_materia: [m?.sigla_materia || '', [Validators.required, Validators.maxLength(10)]],
       cod_pensum: [m?.cod_pensum || this.selectedPensum?.cod_pensum || '', [Validators.required]],
       nombre_materia: [m?.nombre_materia || '', [Validators.required, Validators.maxLength(100)]],
       nombre_material_oficial: [m?.nombre_material_oficial || '', [Validators.required, Validators.maxLength(100)]],
+      nivel_materia: [nivel != null && String(nivel).trim() !== '' ? String(nivel) : '1', [Validators.required, Validators.maxLength(50)]],
       nro_creditos: [m?.nro_creditos ?? 1, [Validators.required, Validators.min(1)]],
       orden: [m?.orden ?? 1, [Validators.required, Validators.min(1)]],
       descripcion: [m?.descripcion || ''],
@@ -197,6 +201,7 @@ export class AcademicoComponent implements OnInit, OnDestroy {
     if (!this.selectedPensum) return;
     this.modalMode = 'create';
     this.editingKeys = null;
+    this.saveError = '';
     this.buildForm();
     this.modalOpen = true;
   }
@@ -204,12 +209,14 @@ export class AcademicoComponent implements OnInit, OnDestroy {
   openEditModal(m: Materia): void {
     this.modalMode = 'edit';
     this.editingKeys = { sigla: m.sigla_materia, pensum: m.cod_pensum };
+    this.saveError = '';
     this.buildForm(m);
     this.modalOpen = true;
   }
 
   closeModal(): void {
     this.modalOpen = false;
+    this.saveError = '';
   }
 
   // Cerrar modal al hacer click fuera del cuadro
@@ -222,6 +229,7 @@ export class AcademicoComponent implements OnInit, OnDestroy {
 
   saveMateria(): void {
     if (!this.form) return;
+    this.saveError = '';
     if (this.form.invalid) {
       this.form.markAllAsTouched();
       return;
@@ -234,9 +242,10 @@ export class AcademicoComponent implements OnInit, OnDestroy {
           this.closeModal();
           if (this.selectedPensum) this.loadMaterias(this.selectedPensum.cod_pensum);
         },
-        error: (err) => {
+        error: (err: { error?: { message?: string; errors?: Record<string, string[]> } }) => {
           console.error('Error al crear materia:', err);
-          this.loadingAux = false; // re-habilitar botones al fallar
+          this.saveError = this.formatApiError(err);
+          this.loadingAux = false;
         },
         complete: () => (this.loadingAux = false)
       });
@@ -246,13 +255,26 @@ export class AcademicoComponent implements OnInit, OnDestroy {
           this.closeModal();
           if (this.selectedPensum) this.loadMaterias(this.selectedPensum.cod_pensum);
         },
-        error: (err) => {
+        error: (err: { error?: { message?: string; errors?: Record<string, string[]> } }) => {
           console.error('Error al actualizar materia:', err);
-          this.loadingAux = false; // re-habilitar botones al fallar
+          this.saveError = this.formatApiError(err);
+          this.loadingAux = false;
         },
         complete: () => (this.loadingAux = false)
       });
     }
+  }
+
+  private formatApiError(err: { error?: { message?: string; errors?: Record<string, string[]> } }): string {
+    const body = err?.error;
+    if (body?.errors) {
+      const parts = Object.values(body.errors)
+        .flat()
+        .filter((m): m is string => typeof m === 'string' && m.length > 0);
+      if (parts.length) return parts.join(' ');
+    }
+    if (body?.message) return body.message;
+    return 'No se pudo guardar. Revise los datos o intente de nuevo.';
   }
 
   deleteMateria(m: Materia): void {
