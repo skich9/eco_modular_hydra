@@ -571,12 +571,34 @@ class CobroController extends Controller
 				}
 			} catch (\Throwable $e) { /* noop */ }
 
+			// Tipos de inscripción para el mismo pensum/gestión (p. ej. NORMAL + ARRASTRE).
+			// resumen/kardex los cobros registrados con tipo_inscripcion = ARRASTRE.
+			$tiposInscripcionCobros = $inscripciones
+				->filter(function ($ins) use ($codPensumToUse) {
+					return (string)($ins->cod_pensum ?? '') === (string)$codPensumToUse;
+				})
+				->pluck('tipo_inscripcion')
+				->filter()
+				->map(function ($t) {
+					return (string) $t;
+				})
+				->unique()
+				->values()
+				->all();
+
 			$cobrosBase = Cobro::where('cod_ceta', $codCeta)
 				->where('cod_pensum', $codPensumToUse)
 				->when($gestionToUse, function ($q) use ($gestionToUse) {
 					$q->where('gestion', $gestionToUse);
 				})
-				->when($primaryInscripcion, function ($q) use ($primaryInscripcion) {
+				->when(count($tiposInscripcionCobros) > 0, function ($q) use ($tiposInscripcionCobros) {
+					if (count($tiposInscripcionCobros) === 1) {
+						$q->where('tipo_inscripcion', $tiposInscripcionCobros[0]);
+					} else {
+						$q->whereIn('tipo_inscripcion', $tiposInscripcionCobros);
+					}
+				})
+				->when(count($tiposInscripcionCobros) === 0 && $primaryInscripcion, function ($q) use ($primaryInscripcion) {
 					$q->where('tipo_inscripcion', $primaryInscripcion->tipo_inscripcion);
 				});
 

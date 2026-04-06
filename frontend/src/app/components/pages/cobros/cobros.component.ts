@@ -62,6 +62,7 @@ export class CobrosComponent implements OnInit {
 
   // Datos
   resumen: any = null;
+  allGestiones: any[] = [];
   gestiones: any[] = [];
   formasCobro: any[] = [];
   sinDocsIdentidad: Array<{ codigo: number; descripcion: string }> = [];
@@ -503,16 +504,75 @@ export class CobrosComponent implements OnInit {
       this.gestionService.getAll().subscribe({
         next: (res) => {
           const arr = Array.isArray((res as any)?.data) ? (res as any).data : (Array.isArray(res) ? res : []);
-          this.gestiones = arr.slice().sort((a: any, b: any) => `${b?.gestion}`.localeCompare(`${a?.gestion}`));
+          this.allGestiones = this.sortGestionesDesc(arr);
+          // Inicialmente vacía hasta buscar estudiante
+          this.gestiones = [];
         },
         error: () => {
           this.gestionService.getActivas().subscribe({
-            next: (r) => { this.gestiones = Array.isArray((r as any)?.data) ? (r as any).data : []; },
-            error: () => { this.gestiones = []; }
+            next: (r) => {
+              const arr = Array.isArray((r as any)?.data) ? (r as any).data : [];
+              this.allGestiones = this.sortGestionesDesc(arr);
+              this.gestiones = [];
+            },
+            error: () => { this.allGestiones = []; this.gestiones = []; }
           });
         }
       });
-    } catch { this.gestiones = []; }
+    } catch { this.allGestiones = []; this.gestiones = []; }
+  }
+
+  private sortGestionesDesc(arr: any[]): any[] {
+    return arr.slice().sort((a: any, b: any) => {
+      const parse = (s: string) => {
+        const parts = (s || '').toString().split('/');
+        if (parts.length < 2) return { sem: 0, anio: 0 };
+        return { sem: parseInt(parts[0]) || 0, anio: parseInt(parts[1]) || 0 };
+      };
+      const pa = parse(a?.gestion);
+      const pb = parse(b?.gestion);
+      if (pb.anio !== pa.anio) return pb.anio - pa.anio;
+      return pb.sem - pa.sem;
+    });
+  }
+
+  private applyGestionFilter(): void {
+    if (!this.resumen) {
+      this.gestiones = [];
+      return;
+    }
+    // Obtener todas las gestiones de las inscripciones del estudiante
+    const inscrip = Array.isArray(this.resumen?.inscripciones) ? this.resumen.inscripciones : [];
+    const unique = new Set<string>();
+    inscrip.forEach((i: any) => {
+      if (i?.gestion) unique.add(i.gestion.toString());
+    });
+    // También incluir la gestión del resumen actual si no estaba
+    if (this.resumen?.gestion) {
+      unique.add(this.resumen.gestion.toString());
+    }
+
+    if (unique.size === 0) {
+      this.gestiones = [];
+      return;
+    }
+
+    // Filtrar del catálogo completo
+    const filtered = this.allGestiones.filter(g => unique.has(g.gestion?.toString()));
+    this.gestiones = this.sortGestionesDesc(filtered);
+  }
+
+  onGestionChange(): void {
+    try {
+      const cab = this.batchForm.get('cabecera') as FormGroup;
+      const gestion = (cab?.get('gestion')?.value || '').toString();
+      if (gestion && this.searchForm.get('cod_ceta')?.value) {
+        this.searchForm.patchValue({ gestion: gestion }, { emitEvent: false });
+        this.loadResumen();
+      }
+    } catch (e) {
+      console.error('[Cobros] Error onGestionChange:', e);
+    }
   }
 
   private checkQrPendiente(): void {
@@ -1789,6 +1849,7 @@ export class CobrosComponent implements OnInit {
       this.mensualidadModalForm.reset({ metodo_pago: '', cantidad: 1, costo_total: 0, observaciones: '' });
       this.searchForm.reset({ cod_ceta: '', gestion: '' });
       this.resumen = null;
+      this.gestiones = []; // Vaciar gestiones al limpiar
       this.showOpciones = false;
       this.alertMessage = '';
       this.metodoPagoLocked = false;
@@ -2296,6 +2357,9 @@ export class CobrosComponent implements OnInit {
           // Calcular costos contextuales
           this.updateRezagadoCosto();
           this.updateReincorporacionCosto();
+
+          // Aplicar filtro de gestiones tras cargar el resumen
+          this.applyGestionFilter();
         } else {
           // Sin coincidencia: marcar sin información
           this.identidadForm.patchValue({ ci: 'SIN INFORMACIÓN' }, { emitEvent: false });
@@ -2336,6 +2400,8 @@ export class CobrosComponent implements OnInit {
                   // Actualizar costos contextuales tras fallback
                   this.updateRezagadoCosto();
                   this.updateReincorporacionCosto();
+                  // Aplicar filtro tras fallback
+                  this.applyGestionFilter();
                 } else {
                   this.resumen = null; this.reincorporacion = null; this.showOpciones = false;
                 }
@@ -2674,7 +2740,14 @@ export class CobrosComponent implements OnInit {
   buscarPorCodCetaCabecera(): void {
     const cabecera = this.batchForm.get('cabecera') as FormGroup;
     const cod_ceta = cabecera?.get('cod_ceta')?.value;
-    const gestion = cabecera?.get('gestion')?.value || '';
+    let gestion = cabecera?.get('gestion')?.value || '';
+
+    // Si el usuario ingresó un nuevo estudiante, ignoramos la gestión que quedó seleccionada 
+    // en el DOM (probablemente del estudiante anterior o autocompletada por fallback)
+    const prevCodCeta = this.resumen?.estudiante?.cod_ceta || this.searchForm.get('cod_ceta')?.value;
+    if (prevCodCeta && String(prevCodCeta) !== String(cod_ceta)) {
+       gestion = '';
+    }
 
     console.log('[Cobros] buscarPorCodCetaCabecera xxxssasdd', { cod_ceta, gestion });
     if (!cod_ceta) {
