@@ -13,38 +13,38 @@ return new class extends Migration
 	{
 		if (!Schema::hasTable('costo_semestral')) {
 			Schema::create('costo_semestral', function (Blueprint $table) {
-			$table->bigIncrements('id_costo_semestral');
-			$table->string('cod_pensum', 50);
-			$table->string('gestion', 30);
-			$table->unsignedBigInteger('cod_inscrip')->nullable();
-			$table->string('semestre', 30);
-			$table->decimal('monto_semestre', 10, 2);
-			$table->unsignedBigInteger('id_usuario');
-			$table->timestamps();
-			
-			$table->foreign('cod_pensum')
-				  ->references('cod_pensum')
-				  ->on('pensums')
-				  ->onDelete('restrict')
-				  ->onUpdate('restrict');
-			
-			$table->foreign('gestion')
-				  ->references('gestion')
-				  ->on('gestion')
-				  ->onDelete('restrict')
-				  ->onUpdate('restrict');
-				  
-			$table->foreign('id_usuario')
-				  ->references('id_usuario')
-				  ->on('usuarios')
-				  ->onDelete('restrict')
-				  ->onUpdate('restrict');
+				$table->bigIncrements('id_costo_semestral');
+				$table->string('cod_pensum', 50);
+				$table->string('gestion', 30);
+				$table->string('semestre', 30);
+				$table->string('turno', 150)->default('REGULAR');
+				$table->decimal('monto_semestre', 10, 2);
+				$table->string('tipo_costo', 50)->nullable();
+				$table->boolean('costo_fijo')->default(false);
+				$table->decimal('valor_credito', 10, 2)->default(0);
+				$table->unsignedBigInteger('id_usuario');
+				$table->timestamps();
 
-			$table->foreign('cod_inscrip')
-				  ->references('cod_inscrip')
-				  ->on('inscripciones')
-				  ->onDelete('restrict')
-				  ->onUpdate('restrict');
+				// Índice normal (no único) para búsquedas
+				$table->index(['cod_pensum', 'gestion', 'semestre', 'tipo_costo', 'turno'], 'idx_costo_semestral_busqueda');
+
+				$table->foreign('cod_pensum')
+					->references('cod_pensum')
+					->on('pensums')
+					->onDelete('restrict')
+					->onUpdate('restrict');
+
+				$table->foreign('gestion')
+					->references('gestion')
+					->on('gestion')
+					->onDelete('restrict')
+					->onUpdate('restrict');
+
+				$table->foreign('id_usuario')
+					->references('id_usuario')
+					->on('usuarios')
+					->onDelete('restrict')
+					->onUpdate('restrict');
 			});
 		}
 	}

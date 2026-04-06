@@ -55,6 +55,8 @@ return new class extends Migration
 		}
 
 		// 3) costo_semestral: agregar campos; quitar cod_inscrip
+		// NOTA: Estas columnas ya están en la migración inicial (2024_01_06_000000_create_costo_semestral_table.php)
+		// Se mantiene el código por compatibilidad con bases de datos existentes
 		if (Schema::hasTable('costo_semestral')) {
 			Schema::table('costo_semestral', function (Blueprint $table) {
 				if (!Schema::hasColumn('costo_semestral', 'tipo_costo')) {
@@ -76,8 +78,8 @@ return new class extends Migration
 					$table->dropColumn('cod_inscrip');
 				});
 			}
-			// Unicidad lógica por pensum+gestion+semestre
-			try { DB::statement('CREATE UNIQUE INDEX `uk_costo_semestral_pensum_gestion_sem` ON `costo_semestral` (`cod_pensum`, `gestion`, `semestre`)'); } catch (\Throwable $e) {}
+			// NOTA: Ya no se crea índice único, se usa índice normal en la migración inicial
+			// try { DB::statement('CREATE UNIQUE INDEX `uk_costo_semestral_pensum_gestion_sem` ON `costo_semestral` (`cod_pensum`, `gestion`, `semestre`)'); } catch (\Throwable $e) {}
 		}
 
 		// 4) costo_materia: agregar cod_pensum, quitar nombre_materia, ajustar PK, FK compuesta a materia
