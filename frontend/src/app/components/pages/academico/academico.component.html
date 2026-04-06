@@ -139,6 +139,7 @@
         </div>
         <form [formGroup]="form" (ngSubmit)="saveMateria()">
           <div class="modal-body">
+            <div *ngIf="saveError" class="alert alert-danger py-2 mb-3" role="alert">{{ saveError }}</div>
             <div class="row g-3">
               <div class="col-12 col-md-4">
                 <label class="form-label">Sigla</label>
@@ -165,6 +166,11 @@
               <div class="col-12 col-md-4">
                 <label class="form-label">Orden</label>
                 <input type="number" class="form-control" formControlName="orden" min="1" />
+              </div>
+
+              <div class="col-12 col-md-4">
+                <label class="form-label">Nivel materia</label>
+                <input type="text" class="form-control" formControlName="nivel_materia" maxlength="50" placeholder="ej. 1" />
               </div>
 
               <div class="col-12">

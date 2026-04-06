@@ -105,6 +105,21 @@ import { MateriaService } from '../../../services/materia.service';
 							<span *ngIf="f['nro_creditos'].errors['min']">Número de créditos debe ser mayor a 0</span>
 						</div>
 					</div>
+					<div class="form-group">
+						<label for="nivel_materia">Nivel materia *</label>
+						<input 
+							type="text" 
+							id="nivel_materia" 
+							formControlName="nivel_materia" 
+							class="form-control"
+							maxlength="50"
+							[class.is-invalid]="submitted && f['nivel_materia'].errors"
+							placeholder="ej. 1"
+						>
+						<div class="invalid-feedback" *ngIf="submitted && f['nivel_materia'].errors">
+							<span *ngIf="f['nivel_materia'].errors['required']">Nivel es requerido</span>
+						</div>
+					</div>
 				</div>
 
 				<div class="form-row">
@@ -388,6 +403,7 @@ export class MateriaFormComponent implements OnInit {
 			nombre_materia: ['', Validators.required],
 			nombre_material_oficial: ['', Validators.required],
 			cod_pensum: [null, Validators.required],
+			nivel_materia: ['1', [Validators.required, Validators.maxLength(50)]],
 			nro_creditos: [null, [Validators.required, Validators.min(1)]],
 			orden: [null, [Validators.required, Validators.min(1)]],
 			descripcion: [''],
@@ -428,6 +444,7 @@ export class MateriaFormComponent implements OnInit {
 						nombre_materia: materia.nombre_materia,
 						nombre_material_oficial: materia.nombre_material_oficial,
 						cod_pensum: materia.cod_pensum,
+						nivel_materia: materia.nivel_materia != null && String(materia.nivel_materia).trim() !== '' ? String(materia.nivel_materia) : '1',
 						nro_creditos: materia.nro_creditos,
 						orden: materia.orden,
 						descripcion: materia.descripcion,
