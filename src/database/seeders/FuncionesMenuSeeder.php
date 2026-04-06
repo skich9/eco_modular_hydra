@@ -51,7 +51,7 @@ class FuncionesMenuSeeder extends Seeder
 				'codigo' => 'economico_otros_ingresos',
 				'nombre' => 'Otros ingresos (ventas)',
 				'descripcion' => 'Registro de otros ingresos no académicos',
-				'modulo' => 'Económico',
+				'modulo' => 'Cobros',
 				'activo' => true,
 				'created_at' => $now,
 				'updated_at' => $now
@@ -60,7 +60,7 @@ class FuncionesMenuSeeder extends Seeder
 				'codigo' => 'economico_mod_otros_ingresos',
 				'nombre' => 'Modificar / eliminar otros ingresos',
 				'descripcion' => 'Búsqueda, edición y eliminación de otros ingresos',
-				'modulo' => 'Económico',
+				'modulo' => 'Cobros',
 				'activo' => true,
 				'created_at' => $now,
 				'updated_at' => $now
@@ -200,10 +200,10 @@ class FuncionesMenuSeeder extends Seeder
 				'activo' => true,
 				'created_at' => $now,
 				'updated_at' => $now
-			]
+			],
 		];
 
-		// Insertar funciones solo si no existen (basado en código único)
+		// Sincroniza catálogo `funciones` con los códigos usados en menú/rutas (clave única: codigo)
 		foreach ($funciones as $funcion) {
 			DB::table('funciones')->updateOrInsert(
 				['codigo' => $funcion['codigo']],
@@ -211,6 +211,6 @@ class FuncionesMenuSeeder extends Seeder
 			);
 		}
 
-		$this->command->info('Funciones insertadas correctamente (sin funciones de menú).');
+		$this->command->info('Tabla funciones actualizada desde FuncionesMenuSeeder.');
 	}
 }

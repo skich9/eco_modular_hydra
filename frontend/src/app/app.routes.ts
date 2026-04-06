@@ -185,17 +185,20 @@ export const routes: Routes = [
 				data: { requiredPermission: 'economico_descuento_mora' }
 			},
 			{
-				path: 'economico/otros-ingresos',
-				loadComponent: () => import('./components/pages/economico/otros-ingresos/otros-ingresos.component').then(m => m.OtrosIngresosComponent),
+				path: 'cobros/otros-ingresos',
+				loadComponent: () => import('./components/pages/cobros/otros-ingresos/otros-ingresos.component').then(m => m.OtrosIngresosComponent),
 				canActivate: [permissionGuard],
 				data: { requiredPermission: 'economico_otros_ingresos' }
 			},
 			{
-				path: 'economico/mod-otros-ingresos',
-				loadComponent: () => import('./components/pages/economico/mod-otros-ingresos/mod-otros-ingresos.component').then(m => m.ModOtrosIngresosComponent),
+				path: 'cobros/mod-otros-ingresos',
+				loadComponent: () => import('./components/pages/cobros/mod-otros-ingresos/mod-otros-ingresos.component').then(m => m.ModOtrosIngresosComponent),
 				canActivate: [permissionGuard],
 				data: { requiredPermission: 'economico_mod_otros_ingresos' }
 			},
+			// Compatibilidad: rutas antiguas bajo /economico/...
+			{ path: 'economico/otros-ingresos', redirectTo: 'cobros/otros-ingresos', pathMatch: 'full' },
+			{ path: 'economico/mod-otros-ingresos', redirectTo: 'cobros/mod-otros-ingresos', pathMatch: 'full' },
 
             // SIN: Estado de Factura / Anulación
             {
