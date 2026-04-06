@@ -562,6 +562,19 @@ export class CobrosComponent implements OnInit {
     this.gestiones = this.sortGestionesDesc(filtered);
   }
 
+  onGestionChange(): void {
+    try {
+      const cab = this.batchForm.get('cabecera') as FormGroup;
+      const gestion = (cab?.get('gestion')?.value || '').toString();
+      if (gestion && this.searchForm.get('cod_ceta')?.value) {
+        this.searchForm.patchValue({ gestion: gestion }, { emitEvent: false });
+        this.loadResumen();
+      }
+    } catch (e) {
+      console.error('[Cobros] Error onGestionChange:', e);
+    }
+  }
+
   private checkQrPendiente(): void {
     try {
       const cod = (this.batchForm.get('cabecera.cod_ceta') as any)?.value || '';
