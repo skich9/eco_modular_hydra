@@ -70,15 +70,31 @@ export class ItemsModalComponent implements OnInit, OnChanges {
 		this.form.get('id_item')?.valueChanges.subscribe((v) => this.onItemChange(v));
 		this.form.get('cantidad')?.valueChanges.subscribe(() => this.recalcTotal());
 		this.form.get('metodo_pago')?.valueChanges.subscribe(() => this.updateBancarioValidators());
-		this.form.get('comprobante')?.valueChanges.subscribe(() => this.updateDocValidators());
+		this.form.get('comprobante')?.valueChanges.subscribe((v) => this.onComprobanteChange(v));
 		this.updateBancarioValidators();
 		this.updateDocValidators();
+	}
+
+	private onComprobanteChange(val: string | null): void {
+		if (val === 'FACTURA' && !this.canInvoice) {
+			this.form.get('comprobante')?.setValue('RECIBO', { emitEvent: false });
+		}
 	}
 
 	private onItemChange(val: any): void {
 		const it = (this.items || []).find(i => `${i?.id_item}` === `${val}`);
 		const precio = Number(it?.costo || 0);
 		this.form.get('precio')?.setValue(precio, { emitEvent: false });
+		
+		// [FIJO] Si el item no es facturado (facturado === 0), forzar comprobante a RECIBO
+		const isFacturado = it && (it.facturado == 1 || it.facturado === true);
+		if (!isFacturado) {
+			const compCtrl = this.form.get('comprobante');
+			if (compCtrl?.value === 'FACTURA') {
+				compCtrl.setValue('RECIBO', { emitEvent: true });
+			}
+		}
+
 		this.recalcTotal();
 	}
 
@@ -138,6 +154,12 @@ export class ItemsModalComponent implements OnInit, OnChanges {
 		let match = list.find((f: any) => `${f?.codigo_sin}` === val);
 		if (!match) match = list.find((f: any) => `${f?.id_forma_cobro}` === val);
 		return match || null;
+	}
+
+	get canInvoice(): boolean {
+		const it = this.selectedItem();
+		if (!it) return true; // Permitir por defecto si no hay selección aún
+		return it.facturado == 1 || it.facturado === true;
 	}
 
 	private updateBancarioValidators(): void {
