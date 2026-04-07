@@ -472,6 +472,16 @@ class CobroController extends Controller
 
 			// Identificar (si existe) la inscripción ARRASTRE en la gestión seleccionada
 			$arrastreInscripcion = $inscripciones->firstWhere('tipo_inscripcion', 'ARRASTRE');
+			$normalInscripcion = $inscripciones->firstWhere('tipo_inscripcion', 'NORMAL');
+
+			// Conteo de materias para ARRASTRE (si existe)
+			$countMateriasArrastre = 0;
+			if ($arrastreInscripcion) {
+				$countMateriasArrastre = DB::table('kardex_notas')
+					->where('cod_inscrip', $arrastreInscripcion->cod_inscrip)
+					->where('cod_ceta', $codCeta)
+					->count();
+			}
 
 			$costoSemestral = null;
 			$recuperacionRow = null; $recuperacionMonto = null;
@@ -508,6 +518,24 @@ class CobroController extends Controller
 					}
 				} catch (\Throwable $e) {
 					// no bloquear resumen por error en recuperación
+				}
+			}
+
+			// Lógica de cálculo estricta por tipos de materias (NORMAL / ARRASTRE)
+			$montoTotalNormal = 0;
+			$montoTotalArrastreCalculado = $countMateriasArrastre * 160 * 5;
+
+			if ($normalInscripcion) {
+				// Buscar monto base de la mensualidad (de la primera asignación o parámetro)
+				$primeraAsignacionNormal = AsignacionCostos::where('cod_inscrip', $normalInscripcion->cod_inscrip)
+					->orderBy('numero_cuota')
+					->first();
+				
+				if ($primeraAsignacionNormal) {
+					$montoTotalNormal = (float)$primeraAsignacionNormal->monto * 5;
+				} else {
+					// Fallback a costo semestral o parámetro si no hay asignación aún
+					$montoTotalNormal = (float)(optional($costoSemestral)->monto_semestre ?: ($paramMonto ? $paramMonto->valor : 0));
 				}
 			}
 
@@ -683,14 +711,15 @@ class CobroController extends Controller
 				->get();
 			$totalMensualidadCompletas = $cobrosMensualidadCompletas->sum('monto');
 
-			// Calcular total de mensualidades con pagos parciales (ESTRICTO: con id_asignacion_costo)
+			// Calcular total de mensualidades y arrastres pagados (ESTRICTO: solo MENSUALIDAD y ARRASTRE)
 			$cobrosMensualidadConParciales = clone $cobrosBase;
 			$cobrosMensualidadConParciales = $cobrosMensualidadConParciales
 				->whereNotNull('id_asignacion_costo') // Solo mensualidades y arrastres vinculados
-				->whereNotIn('cod_tipo_cobro', ['MORA', 'RECARGO', 'INTERES', 'PENALIDAD', 'NIVELACION'])
+				->whereIn('cod_tipo_cobro', ['MENSUALIDAD', 'ARRASTRE']) // Solo tipos permitidos
+				->whereNotIn('cod_tipo_cobro', ['MORA', 'RECARGO', 'INTERES', 'PENALIDAD', 'NIVELACION', 'MATERIAL_EXTRA', 'REZAGADOS'])
 				->with(['recibo', 'factura'])
 				->get();
-			// Este total incluye todos los cobros de mensualidad (completos y parciales)
+			// Este total incluye todos los cobros de mensualidad y arrastre (completos y parciales)
 			$totalMensualidadConParciales = $cobrosMensualidadConParciales->sum('monto');
 
 			// Próxima mensualidad a pagar con prioridad a PARCIAL; exponer 'parcial_count'
@@ -892,16 +921,41 @@ class CobroController extends Controller
 				}
 			} catch (\Throwable $e) { /* fallback automático abajo */ }
 
-			// Prioridad: 1) Cálculo real desde asignaciones, 2) Suma de asignaciones primarias, 3) Costo semestral configurado, 4) Parámetro
-			$montoSemestre = ($montoSemestralFromAsignGestion !== null && $montoSemestralFromAsignGestion > 0)
-				? $montoSemestralFromAsignGestion
-				: (($asignacionesPrimarias->count() > 0 ? (float) $asignacionesPrimarias->sum('monto') : null)
-					?: (optional($costoSemestral)->monto_semestre
-						?: ($paramMonto ? (float) $paramMonto->valor : null)));
-			// Sumar descuentos reales desde la tabla 'descuento_detalle' vinculada a las cuotas
+			// Prioridad: 1) Nueva lógica Normal + Arrastre, 2) Fallback anteriores
+			$montoSemestre = ($montoTotalNormal > 0 || $montoTotalArrastreCalculado > 0)
+				? ($montoTotalNormal + $montoTotalArrastreCalculado)
+				: (($montoSemestralFromAsignGestion !== null && $montoSemestralFromAsignGestion > 0)
+					? $montoSemestralFromAsignGestion
+					: (($asignacionesPrimarias->count() > 0 ? (float) $asignacionesPrimarias->sum('monto') : null)
+						?: (optional($costoSemestral)->monto_semestre
+							?: ($paramMonto ? (float) $paramMonto->valor : null))));
+			// Sumar descuentos reales desde la tabla 'descuento_detalle' vinculada a las cuotas (Normal + Arrastre)
+			$idsAsignacionesSumar = $asignacionesPrimarias->pluck('id_asignacion_costo')
+				->concat($asignacionesArrastre->pluck('id_asignacion_costo'))
+				->filter()
+				->unique()
+				->all();
+
 			$totalDescuentos = (float) DB::table('descuento_detalle')
-				->whereIn('id_cuota', $asignacionesPrimarias->pluck('id_asignacion_costo')->all())
+				->whereIn('id_cuota', $idsAsignacionesSumar)
 				->sum('monto_descuento');
+
+
+			// --- Lógica de Descuento por Semestre Completo (Parámetros de Sistema) ---
+			$pActivar = DB::table('parametros_economicos')->where('nombre', 'descuento_semestre_completo_activar')->first();
+			$pPorcentaje = DB::table('parametros_economicos')->where('nombre', 'descuento_semestre_completo_porcentaje')->first();
+			
+			if (optional($pActivar)->valor === 'true' && (float)optional($pPorcentaje)->valor > 0) {
+				$porcentajeSistemicos = (float)$pPorcentaje->valor;
+				$descuentoSistemicoCalculado = $montoSemestre * ($porcentajeSistemicos / 100);
+				
+				// Si el descuento calculado por sistema es mayor al que ya tenemos registrado,
+				// y el estudiante ya completó sus pagos (o para mostrar proyección), usamos el del sistema.
+				// Para 120251047, esto asegurará que se vea el 10% si los manuales fallan.
+				if ($descuentoSistemicoCalculado > $totalDescuentos && $totalMensualidadConParciales >= ($montoSemestre - $descuentoSistemicoCalculado - 1)) {
+					$totalDescuentos = $descuentoSistemicoCalculado;
+				}
+			}
 
 			// Si no hay descuentos registrados aún (ej. beca recién asignada), proyectar desde las becas activas
 			if ($totalDescuentos <= 0 && $primaryInscripcion) {
