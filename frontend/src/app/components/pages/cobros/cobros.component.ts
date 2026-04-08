@@ -2121,9 +2121,10 @@ export class CobrosComponent implements OnInit {
   }
 
   removePago(i: number): void {
-    const last = this.pagos.length - 1;
-    if (i !== last) {
-      this.showAlert('Solo puede eliminar la última fila del detalle', 'warning');
+    if (i < 0 || i >= this.pagos.length) {
+      return;
+    }
+    if (i !== this.pagos.length - 1) {
       return;
     }
     // Antes de eliminar, si la fila es una Mensualidad parcial, limpiar el saldo frontal

@@ -184,6 +184,46 @@ export class KardexModalComponent implements OnChanges {
 		}
 	}
 
+	/**
+	 * Filas para la tarjeta «Boleta de Rezagados» (API: `resumen.boleta_rezagados`).
+	 */
+	boletaRezagadosFilas(): any[] {
+		const raw = this.resumen?.boleta_rezagados;
+		return Array.isArray(raw) ? raw : [];
+	}
+
+	formatParcialRezagado(row: any): string {
+		if (row == null) return '-';
+		const v = row.parcial ?? row.es_parcial;
+		if (typeof v === 'boolean') return v ? 'Sí' : 'No';
+		const s = `${v}`.trim().toUpperCase();
+		if (s === '1' || s === 'S' || s === 'SI' || s === 'SÍ') return 'Sí';
+		if (s === '0' || s === 'N' || s === 'NO') return 'No';
+		return v !== undefined && v !== null && `${v}` !== '' ? `${v}` : '-';
+	}
+
+	/**
+	 * Nombre de carrera + código de pensum de la inscripción del resumen (p. ej. "Mecánica Automotriz | Pensum: 04-MTZ-23").
+	 */
+	carreraConPensumDisplay(r: any): string {
+		const raw = r?.estudiante?.carrera;
+		const nombre =
+			typeof raw === 'string'
+				? raw.trim()
+				: `${raw?.nombre ?? raw?.nombre_carrera ?? ''}`.trim();
+		const pensum = `${r?.inscripcion?.cod_pensum ?? r?.estudiante?.cod_pensum ?? ''}`.trim();
+		if (!nombre && !pensum) {
+			return '—';
+		}
+		if (!pensum) {
+			return nombre || '—';
+		}
+		if (!nombre) {
+			return `Pensum: ${pensum}`;
+		}
+		return `${nombre} | Pensum: ${pensum}`;
+	}
+
 	/** Inscripciones mostradas en el bloque "Grupos" (toda la historia o solo la gestión actual). */
 	get inscripcionesParaKardex(): any[] {
 		const list = Array.isArray(this.resumen?.inscripciones) ? this.resumen.inscripciones : [];

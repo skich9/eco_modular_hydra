@@ -283,10 +283,12 @@
 												</ng-template>
 											</td>
 
-											<!-- Acciones -->
+											<!-- Acciones: solo se puede eliminar la última fila del detalle -->
 											<td class="text-center">
 												<button type="button" class="btn btn-sm btn-outline-danger"
-													(click)="removePago(i)" [disabled]="i !== (pagos.length - 1)">
+													[disabled]="i !== pagos.length - 1"
+													[attr.title]="i === pagos.length - 1 ? 'Quitar esta línea del detalle' : 'Solo puede eliminar la última fila del detalle'"
+													(click)="removePago(i)">
 													<i class="fa fa-regular fa-trash-can"></i>
 												</button>
 											</td>
@@ -577,7 +579,7 @@
 		(addItem)="onAddItem($event)"></app-items-modal>
 
 	<!-- Modal: Rezagado -->
-	<app-rezagado-modal [resumen]="resumen" [formasCobro]="modalFormasCobro" [cuentasBancarias]="cuentasBancarias"
+	<app-rezagado-modal [resumen]="resumen" [gestionContexto]="getCurrentGestion()" [formasCobro]="modalFormasCobro" [cuentasBancarias]="cuentasBancarias"
 		[baseNro]="getNextCobroNro()" [defaultMetodoPago]="modalFormasCobro[0]?.id_forma_cobro || selectedFormaCobroId"
 		[costoRezagado]="rezagadoCosto" (addRezagados)="onAddPagosFromModal($event)"></app-rezagado-modal>
 
@@ -627,3 +629,4 @@
 			</div>
 		</div>
 	</div>
+</div>
