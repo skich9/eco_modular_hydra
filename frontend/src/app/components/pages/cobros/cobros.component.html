@@ -115,7 +115,7 @@
 									</div>
 									<div class="col-12">
 										<label class="form-label">Gestión</label>
-										<select class="form-select" formControlName="gestion">
+										<select class="form-select" formControlName="gestion" (change)="onGestionChange()">
 											<option value="">-- Seleccione gestión --</option>
 											<option *ngFor="let g of gestiones" [ngValue]="g?.gestion">{{ g?.gestion }}
 											</option>
