@@ -2634,48 +2634,87 @@ class SgaSyncRepository
 		}));
 
 		foreach ($connections as $conn) {
+			// Pre-cargar catálogos de libros y materiales extra para búsqueda por nombre
+			$libros = DB::connection($conn)->table('libro')
+				->select('nombre_libro', 'costo', 'activo')
+				->get()
+				->keyBy(fn($item) => trim(mb_strtolower($item->nombre_libro)));
+
+			$materiales = DB::connection($conn)->table('material_extra')
+				->select('insumo', 'costo', 'activo')
+				->get()
+				->keyBy(fn($item) => trim(mb_strtolower($item->insumo)));
+
 			DB::connection($conn)
 				->table('sin_item_service')
 				->orderBy('id_item')
-				->chunk($chunk, function ($rows) use (&$total, &$inserted, &$updated, &$skipped, $dryRun, $peId, $conn) {
+				->chunk($chunk, function ($rows) use (&$total, &$inserted, &$updated, &$skipped, $dryRun, $peId, $conn, $libros, $materiales) {
 					$total += count($rows);
 					if (empty($rows)) { return; }
 
 					$now = now();
 					$payload = [];
 					$seenCodes = [];
+					$seenNames = [];
+
 					foreach ($rows as $r) {
 						$codigo = trim((string) ($r->codigo_producto_interno ?? ''));
-						$idItem = isset($r->id_item) ? (int)$r->id_item : 0;
-						$imp = isset($r->codigo_producto_impuestos) ? (int)$r->codigo_producto_impuestos : 0;
-						// Fallback robusto: generar clave única conservando longitud <= 15
-						$prefix = ($conn === 'sga_elec') ? 'E' : (($conn === 'sga_mec') ? 'M' : 'S');
-						if ($codigo === '' || $codigo === '0') {
-							if ($idItem > 0) {
-								// Ej: E1234567890123 (<=15)
-								$codigo = $prefix . substr((string)$idItem, -14);
-							} elseif ($imp > 0) {
-								// Ej: EI99100 (prefijo + I + impuesto)
-								$codigo = $prefix . 'I' . substr((string)$imp, -13);
-							}
-						}
+						$nombre = mb_substr(trim((string) ($r->nombre_servicio ?? '')), 0, 100);
+						$nombreLower = mb_strtolower($nombre);
+
+						if ($nombre === '') { $skipped++; continue; }
+
 						$codigo = mb_substr($codigo, 0, 15);
-						if ($codigo === '' || $codigo === '0') { $skipped++; continue; }
-						// Deduplicar dentro del mismo lote para evitar inserciones repetidas de la misma clave
-						if (isset($seenCodes[$codigo])) { $skipped++; continue; }
-						$seenCodes[$codigo] = true;
+						
+						// Deduplicar dentro del mismo lote
+						// Solo chequeamos duplicados de código si el código NO es vacío
+						if (($codigo !== '' && isset($seenCodes[$codigo])) || isset($seenNames[$nombreLower])) { 
+							$skipped++; continue; 
+						}
+						
+						if ($codigo !== '') {
+							$seenCodes[$codigo] = true;
+						}
+						$seenNames[$nombreLower] = true;
+
+						// Lógica de búsqueda de costo y estado por nombre
+						$costo = 0;
+						$estado = true;
+
+						if ($libros->has($nombreLower)) {
+							$lib = $libros->get($nombreLower);
+							$costo = (float)($lib->costo ?? 0);
+							$estado = (bool)(($lib->activo ?? false) === true || ($lib->activo ?? 0) === 1 || (string)($lib->activo ?? '') === 't');
+						} elseif ($materiales->has($nombreLower)) {
+							$mat = $materiales->get($nombreLower);
+							$costo = (float)($mat->costo ?? 0);
+							$estado = (bool)(($mat->activo ?? false) === true || ($mat->activo ?? 0) === 1 || (string)($mat->activo ?? '') === 't');
+						}
+
+						// Forzar facturado = 1 para items específicos solicitados
+						$forcedInvoices = [
+							'instancia',
+							'ingreso por fotocopiadora',
+							'ingreso por alquileres',
+							'rezagado',
+							'reincorporación',
+							'multa',
+							'ingresos varios'
+						];
+						$isForcedInvoice = in_array($nombreLower, $forcedInvoices);
+
 						$payload[] = [
-							'codigo_producto_interno'  => mb_substr($codigo, 0, 15),
-							'nombre_servicio'          => mb_substr((string) ($r->nombre_servicio ?? ''), 0, 100),
+							'codigo_producto_interno'  => $codigo,
+							'nombre_servicio'          => $nombre,
 							'codigo_producto_impuesto'  => isset($r->codigo_producto_impuestos) ? (int)$r->codigo_producto_impuestos : null,
 							'unidad_medida'            => isset($r->unidad_medida) ? (int)$r->unidad_medida : 0,
 							'actividad_economica'      => $this->substrNull($r->codigo_actividad_economica ?? null, 255) ?? '',
-							'facturado'                 => isset($r->facturado) ? (bool)$r->facturado : false,
+							'facturado'                 => $isForcedInvoice ?: (bool) (($r->facturado ?? false) === true || ($r->facturado ?? 0) === 1 || (string)($r->facturado ?? '') === '1' || strtolower((string)($r->facturado ?? '')) === 't'),
 							'tipo_item'                 => 'SERVICIO',
-							'estado'                    => true,
+							'estado'                    => $estado,
 							'id_parametro_economico'    => (int)$peId,
 							'nro_creditos'              => 0,
-							'costo'                     => 0,
+							'costo'                     => $costo,
 							'created_at'                => $now,
 							'updated_at'                => $now,
 						];
@@ -2683,18 +2722,48 @@ class SgaSyncRepository
 
 					if ($dryRun || empty($payload)) { return; }
 
-					// Detectar existentes por codigo_producto_interno para separar inserts/updates
+					// Detectar existentes por codigo_producto_interno O nombre_servicio para separar inserts/updates
 					$codes = array_column($payload, 'codigo_producto_interno');
-					$existing = DB::table('items_cobro')->whereIn('codigo_producto_interno', $codes)->pluck('codigo_producto_interno')->all();
-					$existingMap = array_fill_keys(array_map('strval', $existing), true);
+					$names = array_column($payload, 'nombre_servicio');
+
+					$existingByCode = DB::table('items_cobro')->whereIn('codigo_producto_interno', $codes)->pluck('codigo_producto_interno')->all();
+					$existingByName = DB::table('items_cobro')->whereIn('nombre_servicio', $names)->pluck('nombre_servicio')->all();
+
+					$existingCodeMap = array_fill_keys(array_map('strval', $existingByCode), true);
+					$existingNameMap = array_fill_keys(array_map(fn($n) => mb_strtolower($n), $existingByName), true);
 
 					$toInsert = [];
 					$toUpdate = [];
 					foreach ($payload as $row) {
 						$code = (string)$row['codigo_producto_interno'];
-						if (isset($existingMap[$code])) {
+						$nameLow = mb_strtolower($row['nombre_servicio']);
+
+						if (isset($existingNameMap[$nameLow])) {
+							// Prioridad 1: Coincidencia por NOMBRE (Consolidación de items con mismo nombre entre carreras)
+							$updateData = [
+								'codigo_producto_interno' => $row['codigo_producto_interno'], 
+								'codigo_producto_impuesto' => $row['codigo_producto_impuesto'],
+								'unidad_medida'           => $row['unidad_medida'],
+								'actividad_economica'     => $row['actividad_economica'],
+								'facturado'                => $row['facturado'],
+								'tipo_item'                => $row['tipo_item'],
+								'estado'                   => $row['estado'],
+								'id_parametro_economico'   => $row['id_parametro_economico'],
+								'updated_at'               => $row['updated_at'],
+							];
+							// Solo actualizar costo si el nuevo valor es mayor a 0 para evitar borrar costos válidos de otra carrera
+							if ($row['costo'] > 0) {
+								$updateData['costo'] = $row['costo'];
+							}
+
 							$toUpdate[] = [
-								'codigo_producto_interno' => $row['codigo_producto_interno'],
+								'key' => 'nombre_servicio',
+								'val' => $row['nombre_servicio'],
+								'data' => $updateData
+							];
+						} elseif (isset($existingCodeMap[$code])) {
+							// Prioridad 2: Coincidencia por Código (Nombre diferente pero código idéntico)
+							$updateData = [
 								'nombre_servicio'         => $row['nombre_servicio'],
 								'codigo_producto_impuesto' => $row['codigo_producto_impuesto'],
 								'unidad_medida'           => $row['unidad_medida'],
@@ -2704,6 +2773,15 @@ class SgaSyncRepository
 								'estado'                   => $row['estado'],
 								'id_parametro_economico'   => $row['id_parametro_economico'],
 								'updated_at'               => $row['updated_at'],
+							];
+							if ($row['costo'] > 0) {
+								$updateData['costo'] = $row['costo'];
+							}
+
+							$toUpdate[] = [
+								'key' => 'codigo_producto_interno',
+								'val' => $code,
+								'data' => $updateData
 							];
 						} else {
 							$toInsert[] = $row;
@@ -2715,13 +2793,11 @@ class SgaSyncRepository
 						$inserted += count($toInsert);
 					}
 					if (!empty($toUpdate)) {
-						foreach (array_chunk($toUpdate, 1000) as $chunkRows) {
-							foreach ($chunkRows as $u) {
-								DB::table('items_cobro')
-									->where('codigo_producto_interno', $u['codigo_producto_interno'])
-									->update($u);
-								$updated++;
-							}
+						foreach ($toUpdate as $u) {
+							DB::table('items_cobro')
+								->where($u['key'], $u['val'])
+								->update($u['data']);
+							$updated++;
 						}
 					}
 				});
