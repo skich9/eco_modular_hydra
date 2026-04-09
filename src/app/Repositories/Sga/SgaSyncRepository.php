@@ -3316,26 +3316,33 @@ class SgaSyncRepository
 		);
 	}
 
-	private function loadLocalInscripcionesBySource(array $sourceIds, string $carreraLabel): array
+	private function loadLocalInscripcionesBySource(array $sourceIds, string $carreraLabel, ?string $gestion = null): array
 	{
 		$sourceIds = array_values(array_unique(array_filter(array_map('intval', $sourceIds))));
 		if (empty($sourceIds)) {
 			return [];
 		}
+		$gestion = trim((string) $gestion);
 
 		$grouped = [];
-		$rows = DB::table('inscripciones')
-			->select('source_cod_inscrip', 'cod_inscrip', 'cod_pensum', 'tipo_inscripcion')
+		$query = DB::table('inscripciones')
+			->select('source_cod_inscrip', 'cod_inscrip', 'cod_pensum', 'tipo_inscripcion', 'cod_curso')
 			->where('carrera', $carreraLabel)
 			->whereIn('source_cod_inscrip', $sourceIds)
-			->orderBy('cod_inscrip')
-			->get();
+			->orderBy('cod_inscrip');
+
+		if ($gestion !== '') {
+			$query->where('gestion', $gestion);
+		}
+
+		$rows = $query->get();
 
 		foreach ($rows as $row) {
 			$grouped[(int) $row->source_cod_inscrip][] = [
 				'cod_inscrip' => (int) $row->cod_inscrip,
 				'cod_pensum' => (string) $row->cod_pensum,
 				'tipo_inscripcion' => $this->normalizeTipoInscripcion($row->tipo_inscripcion ?? null),
+				'cod_curso' => isset($row->cod_curso) ? trim((string) $row->cod_curso) : '',
 			];
 		}
 
@@ -3567,6 +3574,622 @@ class SgaSyncRepository
 			]);
 			return collect([]);
 		}
+	}
+
+	/**
+	 * Sincroniza descuentos asignados en SGA hacia descuentos y descuento_detalle.
+	 *
+	 * Reglas de mapeo:
+	 * - Semestrales: kardex_economico.descuento_convenio -> descuento_detalle.monto_descuento
+	 *   aplicado a todas las cuotas de la inscripción local.
+	 * - Por cuota: descuento_parcial + descuento_parcial_detalle (nro/num_cuota) -> cuota específica.
+	 *
+	 * @param string $source sga_elec|sga_mec|all
+	 * @param int $chunk Tamaño de lote
+	 * @param bool $dryRun Si true, solo cuenta sin persistir
+	 * @return array Resumen de sincronización
+	 */
+	public function syncDescuentosSga(string $source, int $chunk = 1000, bool $dryRun = false, ?string $gestion = null): array
+	{
+		$source = strtolower(trim($source));
+		$gestion = trim((string) $gestion);
+		if ($gestion === '') {
+			$gestion = null;
+		}
+		$connections = [];
+		switch ($source) {
+			case 'sga_elec': $connections = ['sga_elec']; break;
+			case 'sga_mec': $connections = ['sga_mec']; break;
+			case 'all':
+			default: $connections = ['sga_elec', 'sga_mec']; break;
+		}
+
+		$summary = [
+			'source' => $source,
+			'gestion' => $gestion,
+			'total_rows' => 0,
+			'semestrales_rows' => 0,
+			'parciales_rows' => 0,
+			'maestros_inserted' => 0,
+			'maestros_updated' => 0,
+			'detalles_inserted' => 0,
+			'detalles_updated' => 0,
+			'semestrales_applied' => 0,
+			'parciales_applied' => 0,
+			'skipped_missing_inscripcion' => 0,
+			'skipped_missing_cuota' => 0,
+			'skipped_conflict' => 0,
+			'overrides_applied' => 0,
+			'skipped_invalid' => 0,
+		];
+
+		if (!Schema::hasTable('descuentos') || !Schema::hasTable('descuento_detalle') || !Schema::hasTable('asignacion_costos')) {
+			$summary['error'] = 'Faltan tablas locales requeridas: descuentos, descuento_detalle o asignacion_costos';
+			return $summary;
+		}
+		if (!Schema::hasTable('def_descuentos_beca')) {
+			$summary['error'] = 'Falta tabla def_descuentos_beca para resolver cod_beca';
+			return $summary;
+		}
+
+		$defaultUserId = (int) (env('HYDRA_DEFAULT_USER_ID', env('SYNC_DEFAULT_USER_ID', 1)));
+		$defaultCodBecaEnv = (int) env('SGA_SYNC_DESCUENTOS_DEFAULT_COD_BECA', 0);
+		$becasRows = DB::table('def_descuentos_beca')->get(['cod_beca', 'nombre_beca', 'beca']);
+		$becaNameMap = [];
+		foreach ($becasRows as $bRow) {
+			$key = $this->normalizeLookupKey((string) ($bRow->nombre_beca ?? ''));
+			if ($key !== '' && !isset($becaNameMap[$key])) {
+				$becaNameMap[$key] = (int) ($bRow->cod_beca ?? 0);
+			}
+		}
+
+		// Cargar IDs de descuentos institucionales desde parametros_economicos
+		// y agregar aliases de nombres SGA → cod_beca correcto
+		$diParamIds = [];
+		try {
+			$diKeys = ['dinstitucionalmanana', 'dinstitucionaltarde', 'dinstitucionalnoche'];
+			$diRows = DB::table('parametros_economicos')
+				->whereIn(DB::raw('LOWER(TRIM(nombre))'), $diKeys)
+				->select('nombre', 'valor')
+				->get();
+			foreach ($diRows as $pr) {
+				$pKey = strtolower(trim((string) ($pr->nombre ?? '')));
+				$pVal = (int) ($pr->valor ?? 0);
+				if ($pKey !== '' && $pVal > 0) {
+					$diParamIds[$pKey] = $pVal;
+				}
+			}
+		} catch (\Throwable $e) {}
+
+		// Alias SGA para "Descuento instituciónal Bs.-35 Tarde" → cod_beca de Tarde
+		if (isset($diParamIds['dinstitucionaltarde']) && $diParamIds['dinstitucionaltarde'] > 0) {
+			foreach ([
+				'DESCUENTO INSTITUCIÓNAL BS.-35 TARDE',
+				'DESCUENTO INSTITUCIONAL BS.-35 TARDE',
+			] as $alias) {
+				if (!isset($becaNameMap[$alias])) {
+					$becaNameMap[$alias] = $diParamIds['dinstitucionaltarde'];
+				}
+			}
+		}
+
+		$defaultCodBeca = null;
+		if ($defaultCodBecaEnv > 0) {
+			$exists = DB::table('def_descuentos_beca')->where('cod_beca', $defaultCodBecaEnv)->value('cod_beca');
+			if ($exists) {
+				$defaultCodBeca = (int) $exists;
+			}
+		}
+		if ($defaultCodBeca === null) {
+			$fallback = DB::table('def_descuentos_beca')->where('beca', false)->orderBy('cod_beca')->value('cod_beca');
+			if ($fallback) {
+				$defaultCodBeca = (int) $fallback;
+			}
+		}
+		if ($defaultCodBeca === null) {
+			$fallbackAny = DB::table('def_descuentos_beca')->orderBy('cod_beca')->value('cod_beca');
+			if ($fallbackAny) {
+				$defaultCodBeca = (int) $fallbackAny;
+			}
+		}
+		$summary['default_cod_beca'] = $defaultCodBeca;
+		if ($defaultCodBeca === null) {
+			$summary['error'] = 'No se pudo resolver cod_beca: configure SGA_SYNC_DESCUENTOS_DEFAULT_COD_BECA o cargue def_descuentos_beca';
+			return $summary;
+		}
+
+		foreach ($connections as $conn) {
+			$carreraLabel = $this->getCarreraLabel($conn);
+			$sourceInscripcionesGestion = [];
+			if ($gestion !== null && Schema::connection($conn)->hasTable('registro_inscripcion') && Schema::connection($conn)->hasColumn('registro_inscripcion', 'gestion')) {
+				$sourceInscripcionesGestion = DB::connection($conn)
+					->table('registro_inscripcion')
+					->where('gestion', $gestion)
+					->pluck('cod_inscrip')
+					->map(function ($v) { return (int) $v; })
+					->filter(function ($v) { return $v > 0; })
+					->values()
+					->all();
+			}
+
+			// 1) Descuentos semestrales: kardex_economico
+			if (Schema::connection($conn)->hasTable('kardex_economico')) {
+				$querySemestral = DB::connection($conn)
+					->table('kardex_economico')
+					->whereNotNull('descuento_convenio')
+					->where('descuento_convenio', '>', 0);
+
+				if ($gestion !== null && Schema::connection($conn)->hasColumn('kardex_economico', 'gestion')) {
+					$querySemestral->where('gestion', $gestion);
+				} elseif ($gestion !== null) {
+					if (!empty($sourceInscripcionesGestion)) {
+						$querySemestral->whereIn('cod_inscrip', $sourceInscripcionesGestion);
+					} else {
+						$querySemestral->whereRaw('1 = 0');
+					}
+				}
+
+				$querySemestral
+					->orderBy('cod_inscrip')
+					->chunk($chunk, function ($rows) use (&$summary, $dryRun, $defaultUserId, $defaultCodBeca, $becaNameMap, $diParamIds, $carreraLabel, $gestion) {
+						if (empty($rows)) {
+							return;
+						}
+
+						$summary['total_rows'] += count($rows);
+						$summary['semestrales_rows'] += count($rows);
+
+						$pensumMap = $this->mapPensumsByCarrera($this->extractColumnValues($rows, 'cod_pensum', 50), $carreraLabel);
+						$localInscripciones = $this->loadLocalInscripcionesBySource(
+							array_map('intval', $this->extractColumnValues($rows, 'cod_inscrip')),
+							$carreraLabel,
+							$gestion
+						);
+
+						foreach ($rows as $r) {
+							$monto = (float) ($r->descuento_convenio ?? 0);
+							$codCeta = (int) ($r->cod_ceta ?? 0);
+							$codInsSga = (int) ($r->cod_inscrip ?? 0);
+							$codPensumSga = trim((string) ($r->cod_pensum ?? ''));
+							$tipoInsSga = $this->normalizeTipoInscripcion($r->kardex_economico ?? 'NORMAL');
+
+							if ($monto <= 0 || $codCeta === 0 || $codInsSga === 0 || $codPensumSga === '') {
+								$summary['skipped_invalid']++;
+								continue;
+							}
+
+							if (!isset($pensumMap[$codPensumSga]) || !isset($localInscripciones[$codInsSga])) {
+								$summary['skipped_missing_inscripcion']++;
+								continue;
+							}
+
+							$codPensumLocal = (string) $pensumMap[$codPensumSga];
+							$inscLocal = $this->pickLocalInscripcion($localInscripciones[$codInsSga], $tipoInsSga, $codPensumLocal);
+							if (!$inscLocal) {
+								$summary['skipped_missing_inscripcion']++;
+								continue;
+							}
+
+							$codInsLocal = (int) $inscLocal['cod_inscrip'];
+							$tipoInsLocal = (string) ($inscLocal['tipo_inscripcion'] ?? 'NORMAL');
+							$nombre = trim((string) ($r->tipo_descuento ?? ''));
+							if ($nombre === '') {
+								$nombre = 'Descuento semestral SGA';
+							}
+							$obs = isset($r->observaciones) ? (string) $r->observaciones : null;
+							$codBeca = $this->resolveCodBecaByNameAndShift(
+								$nombre, $inscLocal['cod_curso'] ?? '', $diParamIds, $becaNameMap, $defaultCodBeca
+							);
+
+							$maestro = $this->resolveOrCreateDescuentoSgaMaster(
+								$codCeta,
+								$codPensumLocal,
+								$codInsLocal,
+								$defaultUserId,
+								$codBeca,
+								$nombre,
+								$obs,
+								'SGA_SEMESTRAL',
+								$dryRun,
+								$summary
+							);
+							if ($maestro === null) {
+								$summary['skipped_invalid']++;
+								continue;
+							}
+
+							$cuotas = DB::table('asignacion_costos')
+								->where('cod_inscrip', $codInsLocal)
+								->where('cod_pensum', $codPensumLocal)
+								->orderBy('numero_cuota')
+								->get(['id_asignacion_costo', 'numero_cuota']);
+
+							if ($cuotas->isEmpty()) {
+								$summary['skipped_missing_cuota']++;
+								continue;
+							}
+
+							foreach ($cuotas as $c) {
+								$ok = $this->upsertDescuentoDetalleCuota(
+									$maestro,
+									$codInsLocal,
+									$codPensumLocal,
+									(int) ($c->id_asignacion_costo ?? 0),
+									(int) ($c->numero_cuota ?? 0),
+									$monto,
+									null,
+									$obs,
+									$tipoInsLocal,
+									'SGA_SEMESTRAL',
+									$dryRun,
+									$summary
+								);
+								if ($ok) {
+									$summary['semestrales_applied']++;
+								}
+							}
+						}
+					});
+			}
+
+			// 2) Descuentos por cuota: descuento_parcial + descuento_parcial_detalle
+			if (Schema::connection($conn)->hasTable('descuento_parcial') && Schema::connection($conn)->hasTable('descuento_parcial_detalle')) {
+				$queryParcial = DB::connection($conn)
+					->table('descuento_parcial as dp')
+					->join('descuento_parcial_detalle as dpd', 'dpd.id_descuento_parcial', '=', 'dp.id_descuento_parcial')
+					->whereNotNull('dpd.monto_descuento')
+					->where('dpd.monto_descuento', '>=', 0);
+
+				if ($gestion !== null && Schema::connection($conn)->hasColumn('descuento_parcial', 'gestion')) {
+					$queryParcial->where('dp.gestion', $gestion);
+				} elseif ($gestion !== null) {
+					if (!empty($sourceInscripcionesGestion)) {
+						$queryParcial->whereIn('dp.cod_inscrip', $sourceInscripcionesGestion);
+					} else {
+						$queryParcial->whereRaw('1 = 0');
+					}
+				}
+
+				if (Schema::connection($conn)->hasColumn('descuento_parcial_detalle', 'valido')) {
+					$queryParcial->where(function ($q) {
+						$q->where('dpd.valido', true)
+							->orWhere('dpd.valido', 1)
+							->orWhereIn('dpd.valido', ['t', 'T', 'true', 'TRUE']);
+					});
+				}
+
+				$queryParcial
+					->orderBy('dp.id_descuento_parcial')
+					->orderBy('dpd.id_descuento_detalle')
+					->chunk($chunk, function ($rows) use (&$summary, $dryRun, $defaultUserId, $defaultCodBeca, $carreraLabel, $gestion) {
+						if (empty($rows)) {
+							return;
+						}
+
+						$summary['total_rows'] += count($rows);
+						$summary['parciales_rows'] += count($rows);
+
+						$pensumMap = $this->mapPensumsByCarrera($this->extractColumnValues($rows, 'cod_pensum', 50), $carreraLabel);
+						$localInscripciones = $this->loadLocalInscripcionesBySource(
+							array_map('intval', $this->extractColumnValues($rows, 'cod_inscrip')),
+							$carreraLabel,
+							$gestion
+						);
+
+						foreach ($rows as $r) {
+							$monto = (float) ($r->monto_descuento ?? 0);
+							$codCeta = (int) ($r->cod_ceta ?? 0);
+							$codInsSga = (int) ($r->cod_inscrip ?? 0);
+							$codPensumSga = trim((string) ($r->cod_pensum ?? ''));
+							$nroCuota = (int) ($r->nro_cuota ?? ($r->num_cuota ?? 0));
+							$tipoInsSga = $this->normalizeTipoInscripcion($r->kardex_economico ?? 'NORMAL');
+							$codArchivo = isset($r->cod_archivo) ? trim((string) $r->cod_archivo) : null;
+							$obs = isset($r->observacion) ? (string) $r->observacion : (isset($r->observaciones) ? (string) $r->observaciones : null);
+
+							if ($monto < 0 || $codCeta === 0 || $codInsSga === 0 || $nroCuota <= 0 || $codPensumSga === '') {
+								$summary['skipped_invalid']++;
+								continue;
+							}
+
+							if (!isset($pensumMap[$codPensumSga]) || !isset($localInscripciones[$codInsSga])) {
+								$summary['skipped_missing_inscripcion']++;
+								continue;
+							}
+
+							$codPensumLocal = (string) $pensumMap[$codPensumSga];
+							$inscLocal = $this->pickLocalInscripcion($localInscripciones[$codInsSga], $tipoInsSga, $codPensumLocal);
+							if (!$inscLocal) {
+								$summary['skipped_missing_inscripcion']++;
+								continue;
+							}
+
+							$codInsLocal = (int) $inscLocal['cod_inscrip'];
+							$tipoInsLocal = (string) ($inscLocal['tipo_inscripcion'] ?? 'NORMAL');
+
+							$maestro = $this->resolveOrCreateDescuentoSgaMaster(
+								$codCeta,
+								$codPensumLocal,
+								$codInsLocal,
+								$defaultUserId,
+								$defaultCodBeca,
+								'Descuento parcial SGA',
+								$obs,
+								'SGA_PARCIAL',
+								$dryRun,
+								$summary
+							);
+							if ($maestro === null) {
+								$summary['skipped_invalid']++;
+								continue;
+							}
+
+							$ok = $this->upsertDescuentoDetalleCuota(
+								$maestro,
+								$codInsLocal,
+								$codPensumLocal,
+								null,
+								$nroCuota,
+								$monto,
+								$codArchivo,
+								$obs,
+								$tipoInsLocal,
+								'SGA_PARCIAL',
+								$dryRun,
+								$summary
+							);
+							if ($ok) {
+								$summary['parciales_applied']++;
+							}
+						}
+					});
+			}
+		}
+
+		return $summary;
+	}
+
+	private function resolveOrCreateDescuentoSgaMaster(
+		int $codCeta,
+		string $codPensum,
+		int $codInscrip,
+		int $idUsuario,
+		?int $codBeca,
+		string $nombre,
+		?string $observaciones,
+		string $tipo,
+		bool $dryRun,
+		array &$summary
+	): ?int {
+		$nombre = trim($nombre);
+		if ($codCeta <= 0 || $codInscrip <= 0 || $codPensum === '' || $nombre === '') {
+			return null;
+		}
+
+		$existing = DB::table('descuentos')
+			->where('cod_ceta', $codCeta)
+			->where('cod_pensum', $codPensum)
+			->where('cod_inscrip', $codInscrip)
+			->where('tipo', $tipo)
+			->where('nombre', $nombre)
+			->orderByDesc('id_descuentos')
+			->first(['id_descuentos']);
+
+		if ($existing) {
+			$summary['maestros_updated']++;
+			if (!$dryRun) {
+				$updateData = [
+					'observaciones' => $observaciones,
+					'id_usuario' => $idUsuario,
+					'estado' => true,
+					'updated_at' => now(),
+				];
+				if ($codBeca !== null) {
+					$updateData['cod_beca'] = $codBeca;
+				}
+				DB::table('descuentos')
+					->where('id_descuentos', (int) $existing->id_descuentos)
+					->update($updateData);
+			}
+			return (int) $existing->id_descuentos;
+		}
+
+		$summary['maestros_inserted']++;
+		if ($dryRun) {
+			return -1;
+		}
+
+		return (int) DB::table('descuentos')->insertGetId([
+			'cod_ceta' => $codCeta,
+			'cod_pensum' => $codPensum,
+			'cod_inscrip' => $codInscrip,
+			'cod_beca' => $codBeca,
+			'id_usuario' => $idUsuario,
+			'nombre' => mb_substr($nombre, 0, 255),
+			'observaciones' => $observaciones,
+			'tipo' => mb_substr($tipo, 0, 100),
+			'estado' => true,
+			'fecha_registro' => now(),
+			'fecha_solicitud' => now()->toDateString(),
+			'created_at' => now(),
+			'updated_at' => now(),
+		]);
+	}
+
+	private function normalizeLookupKey(string $value): string
+	{
+		return mb_strtoupper(trim($value));
+	}
+
+	private function resolveCodBecaByName(string $nombre, array $becaNameMap, ?int $defaultCodBeca): ?int
+	{
+		$key = $this->normalizeLookupKey($nombre);
+		if ($key !== '' && isset($becaNameMap[$key])) {
+			return (int) $becaNameMap[$key];
+		}
+
+		return $defaultCodBeca !== null ? (int) $defaultCodBeca : null;
+	}
+
+	/**
+	 * Resuelve cod_beca considerando aliases de nombres SGA y turno del estudiante.
+	 * - "Descuento Institucional 5%" → Mañana o Noche según el turno del cod_curso
+	 * - "Descuento instituciónal Bs.-35 Tarde" → ya mapeado en becaNameMap; cae al lookup normal
+	 */
+	private function resolveCodBecaByNameAndShift(
+		string $nombre,
+		string $codCurso,
+		array $diParamIds,
+		array $becaNameMap,
+		?int $defaultCodBeca
+	): ?int {
+		$key = $this->normalizeLookupKey($nombre);
+
+		// Alias SGA: "Descuento Institucional 5%" → Mañana o Noche según turno
+		if ($key === 'DESCUENTO INSTITUCIONAL 5%') {
+			$turno = $this->extractTurnoFromCodCurso($codCurso);
+			if ($turno === 'N' && isset($diParamIds['dinstitucionalnoche']) && $diParamIds['dinstitucionalnoche'] > 0) {
+				return $diParamIds['dinstitucionalnoche'];
+			}
+			if (isset($diParamIds['dinstitucionalmanana']) && $diParamIds['dinstitucionalmanana'] > 0) {
+				return $diParamIds['dinstitucionalmanana'];
+			}
+		}
+
+		return $this->resolveCodBecaByName($nombre, $becaNameMap, $defaultCodBeca);
+	}
+
+	/**
+	 * Extrae el turno (M/T/N) del cod_curso usando el último carácter del último segmento.
+	 * Ejemplo: "04-MTZ-101M" → 'M', "04-MTZ-102T" → 'T', "04-MTZ-103N" → 'N'
+	 */
+	private function extractTurnoFromCodCurso(string $codCurso): string
+	{
+		$raw = strtoupper(trim($codCurso));
+		if ($raw === '') { return 'M'; }
+		$parts = explode('-', $raw);
+		$suffix = trim((string) end($parts));
+		if ($suffix === '') { return 'M'; }
+		$last = substr($suffix, -1);
+		if ($last === 'T') { return 'T'; }
+		if ($last === 'N') { return 'N'; }
+		return 'M';
+	}
+
+	private function upsertDescuentoDetalleCuota(
+		int $idDescuento,
+		int $codInscrip,
+		string $codPensum,
+		?int $idCuota,
+		int $numeroCuota,
+		float $monto,
+		?string $codArchivo,
+		?string $observaciones,
+		string $tipoInscripcion,
+		string $tipoDescuento,
+		bool $dryRun,
+		array &$summary
+	): bool {
+		if ($idDescuento === 0 || $codInscrip <= 0 || $codPensum === '' || $monto < 0) {
+			$summary['skipped_invalid']++;
+			return false;
+		}
+
+		$resolvedIdCuota = $idCuota ? (int) $idCuota : 0;
+		if ($resolvedIdCuota <= 0 && $numeroCuota > 0) {
+			$resolvedIdCuota = (int) (DB::table('asignacion_costos')
+				->where('cod_inscrip', $codInscrip)
+				->where('cod_pensum', $codPensum)
+				->where('numero_cuota', $numeroCuota)
+				->value('id_asignacion_costo') ?? 0);
+		}
+
+		if ($resolvedIdCuota <= 0) {
+			$summary['skipped_missing_cuota']++;
+			return false;
+		}
+
+		$asig = DB::table('asignacion_costos')
+			->where('id_asignacion_costo', $resolvedIdCuota)
+			->first(['id_descuentoDetalle']);
+
+		$currentDetailId = (int) ($asig->id_descuentoDetalle ?? 0);
+		$currentDetail = null;
+		if ($currentDetailId > 0) {
+			$currentDetail = DB::table('descuento_detalle')
+				->where('id_descuento_detalle', $currentDetailId)
+				->first(['id_descuento_detalle', 'id_descuento']);
+		}
+
+		if (!$currentDetail) {
+			$currentDetail = DB::table('descuento_detalle')
+				->where('id_cuota', $resolvedIdCuota)
+				->orderByDesc('id_descuento_detalle')
+				->first(['id_descuento_detalle', 'id_descuento']);
+		}
+
+		if ($currentDetail && (int) ($currentDetail->id_descuento ?? 0) !== $idDescuento) {
+			$existingIdDescuento = (int) ($currentDetail->id_descuento ?? 0);
+			$existingTipo = strtoupper(trim((string) (DB::table('descuentos')
+				->where('id_descuentos', $existingIdDescuento)
+				->value('tipo') ?? '')));
+			$incomingTipo = strtoupper(trim($tipoDescuento));
+
+			// SGA parcial es más específico y debe reemplazar al descuento semestral por cuota.
+			$allowOverride = $incomingTipo === 'SGA_PARCIAL' && $existingTipo === 'SGA_SEMESTRAL';
+			if (!$allowOverride) {
+				$summary['skipped_conflict']++;
+				return false;
+			}
+
+			$summary['overrides_applied']++;
+		}
+
+		if ($currentDetail) {
+			$summary['detalles_updated']++;
+			if (!$dryRun && $idDescuento > 0) {
+				DB::table('descuento_detalle')
+					->where('id_descuento_detalle', (int) $currentDetail->id_descuento_detalle)
+					->update([
+						'id_descuento' => $idDescuento,
+						'id_inscripcion' => $codInscrip,
+						'id_cuota' => $resolvedIdCuota,
+						'monto_descuento' => round($monto, 2),
+						'cod_Archivo' => $codArchivo,
+						'observaciones' => $observaciones,
+						'tipo_inscripcion' => $tipoInscripcion,
+						'updated_at' => now(),
+					]);
+
+				DB::table('asignacion_costos')
+					->where('id_asignacion_costo', $resolvedIdCuota)
+					->update(['id_descuentoDetalle' => (int) $currentDetail->id_descuento_detalle]);
+			}
+			return true;
+		}
+
+		$summary['detalles_inserted']++;
+		if ($dryRun || $idDescuento < 0) {
+			return true;
+		}
+
+		$idDet = (int) DB::table('descuento_detalle')->insertGetId([
+			'id_descuento' => $idDescuento,
+			'id_inscripcion' => $codInscrip,
+			'id_cuota' => $resolvedIdCuota,
+			'monto_descuento' => round($monto, 2),
+			'cod_Archivo' => $codArchivo,
+			'observaciones' => $observaciones,
+			'tipo_inscripcion' => mb_substr($tipoInscripcion, 0, 100),
+			'meses_descuento' => null,
+			'created_at' => now(),
+			'updated_at' => now(),
+		]);
+
+		DB::table('asignacion_costos')
+			->where('id_asignacion_costo', $resolvedIdCuota)
+			->update(['id_descuentoDetalle' => $idDet]);
+
+		return true;
 	}
 
 	public function syncKardexNotas(string $source, int $chunk = 1000, bool $dryRun = false, ?string $gestion = null): array
