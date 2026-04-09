@@ -1,6 +1,8 @@
 import { Component, EventEmitter, Input, OnInit, Output } from '@angular/core';
 import { CommonModule } from '@angular/common';
 import { FormBuilder, FormGroup, ReactiveFormsModule, Validators, FormsModule } from '@angular/forms';
+import { forkJoin, of } from 'rxjs';
+import { catchError } from 'rxjs/operators';
 import { CobrosService } from '../../../../services/cobros.service';
 import { MateriaService } from '../../../../services/materia.service';
 
@@ -17,11 +19,13 @@ export class RezagadoModalComponent implements OnInit {
 	@Input() baseNro = 1;
 	@Input() defaultMetodoPago: string = '';
 	@Input() resumen: any = null;
-    @Input() costoRezagado: number | null = null;
+	/** Gestión elegida en cobros (cabecera / búsqueda); filtra materias al kardex de esa gestión. */
+	@Input() gestionContexto: string = '';
+	@Input() costoRezagado: number | null = null;
 	@Output() addRezagados = new EventEmitter<any>();
 
 	form: FormGroup;
-	materias: Array<{ sigla: string; nombre: string; tipo: string; selected: boolean }>=[];
+	materias: Array<{ sigla: string; nombre: string; tipo: string; selected: boolean }> = [];
 	readonly FEE_REZAGADO = 30; // fallback local
 	modalAlertMessage: string = '';
 	modalAlertType: 'success' | 'error' | 'warning' = 'warning';
@@ -68,6 +72,7 @@ export class RezagadoModalComponent implements OnInit {
 		// Validadores de comprobante
 		this.form.get('comprobante')?.valueChanges.subscribe(() => this.updateComprobanteValidators());
 		this.updateComprobanteValidators();
+		this.form.get('periodo')?.valueChanges.subscribe(() => this.clearSelectionOnPaidRezagados());
 	}
 
 	get feeRezagado(): number {
@@ -80,78 +85,144 @@ export class RezagadoModalComponent implements OnInit {
 		return conJustificativo ? 0 : this.feeRezagado;
 	}
 
+	/** Gestión mostrada y usada para cargar materias (prioriza la seleccionada en cobros). */
+	get gestionMostrada(): string {
+		return (this.gestionContexto || this.resumen?.gestion || '').toString();
+	}
+
+	/** Inscripción que coincide con la gestión actual (para pensum/tipo en cabecera). */
+	get inscripcionParaGestion(): any | null {
+		const g = (this.gestionContexto || this.resumen?.gestion || '').toString().trim();
+		const list = Array.isArray(this.resumen?.inscripciones) ? this.resumen.inscripciones : [];
+		if (g && list.length) {
+			const x = list.find((i: any) => `${i?.gestion ?? ''}`.trim() === g);
+			if (x) return x;
+		}
+		return this.resumen?.inscripcion ?? null;
+	}
+
+	/**
+	 * Claves `SIGLA|1|2|3` según `resumen.boleta_rezagados` (tabla rezagados: materia = sigla, parcial = período).
+	 */
+	private getRezagadoPagadoKeys(): Set<string> {
+		const rows = Array.isArray(this.resumen?.boleta_rezagados) ? this.resumen.boleta_rezagados : [];
+		const set = new Set<string>();
+		for (const r of rows) {
+			const sigla = (r?.nombre_materia ?? r?.sigla_materia ?? r?.materia ?? '')
+				.toString()
+				.trim()
+				.toUpperCase();
+			const p = `${r?.parcial ?? ''}`.trim();
+			if (sigla && (p === '1' || p === '2' || p === '3')) {
+				set.add(`${sigla}|${p}`);
+			}
+		}
+		return set;
+	}
+
+	/** True si ya existe rezagado pagado para esa sigla y el período elegido en el formulario (1–3). */
+	isRezagadoPagadoParaPeriodo(sigla: string): boolean {
+		const periodo = Number(this.form.get('periodo')?.value ?? 1);
+		if (periodo < 1 || periodo > 3) return false;
+		const key = `${sigla.toString().trim().toUpperCase()}|${periodo}`;
+		return this.getRezagadoPagadoKeys().has(key);
+	}
+
+	private clearSelectionOnPaidRezagados(): void {
+		for (const m of this.materias) {
+			if (this.isRezagadoPagadoParaPeriodo(m.sigla)) {
+				m.selected = false;
+			}
+		}
+	}
+
 	private loadMaterias(): void {
 		try {
-			console.log('[REZAGADO DEBUG] Iniciando loadMaterias');
-			console.log('[REZAGADO DEBUG] resumen completo:', this.resumen);
-
 			const est = this.resumen?.estudiante || {};
-			console.log('[REZAGADO DEBUG] estudiante:', est);
+			const gSel = (this.gestionContexto || this.resumen?.gestion || '').toString().trim();
 
-			// Seleccionar inscripción preferente: misma gestión si existe, luego mayor cod_inscrip
 			const insPreferida = (() => {
 				const principal = this.resumen?.inscripcion || null;
 				const list = Array.isArray(this.resumen?.inscripciones) ? (this.resumen?.inscripciones || []) : [];
+				if (gSel) {
+					const byG = list.filter((x: any) => `${x?.gestion ?? ''}`.trim() === gSel);
+					if (byG.length) {
+						return byG.slice().sort((a: any, b: any) => Number(b?.cod_inscrip || 0) - Number(a?.cod_inscrip || 0))[0];
+					}
+					if (principal && `${principal?.gestion ?? ''}`.trim() === gSel) {
+						return principal;
+					}
+				}
 				if (principal) return principal;
 				if (!list.length) return {} as any;
-				const gestion = (this.resumen?.gestion || '').toString();
-				const byGestion = list.filter((x: any) => `${x?.gestion || ''}` === gestion);
+				const byGestion = list.filter((x: any) => `${x?.gestion || ''}` === (this.resumen?.gestion || '').toString());
 				const src = byGestion.length ? byGestion : list;
 				return src.slice().sort((a: any, b: any) => Number(b?.cod_inscrip || 0) - Number(a?.cod_inscrip || 0))[0] || {};
 			})();
 			const ins = insPreferida || {};
-			console.log('[REZAGADO DEBUG] inscripción preferida:', ins);
 
 			const cod_ceta = est?.cod_ceta || '';
 			const cod_pensum = ins?.cod_pensum || est?.cod_pensum || '';
-			const cod_inscrip = ins?.cod_inscrip ?? ins?.cod_inscripcion ?? ins?.id_inscripcion ?? ins?.id ?? null;
-			const tipo_incripcion = (ins?.tipo_inscripcion ?? ins?.tipo_incripcion ?? null);
-
-			console.log('[REZAGADO DEBUG] Parámetros extraídos:', {
-				cod_ceta,
-				cod_pensum,
-				cod_inscrip,
-				tipo_incripcion
-			});
 
 			if (!cod_ceta || !cod_pensum) {
-				console.error('[REZAGADO DEBUG] Faltan cod_ceta o cod_pensum, abortando');
 				this.materias = [];
 				return;
 			}
 
-			const gestion = (this.resumen?.gestion || ins?.gestion || '').toString();
-			const params = {
+			// Misma gestión que el selector de cobros; el API filtra kardex por inscripciones de esa gestión.
+			const gestion = (this.gestionContexto || this.resumen?.gestion || ins?.gestion || '').toString();
+			const params: { cod_ceta: string | number; cod_pensum: string; gestion?: string; cod_inscrip?: string | number } = {
 				cod_ceta,
 				cod_pensum,
 				gestion
 			};
+			if (ins?.cod_inscrip != null && ins?.cod_inscrip !== '') {
+				params.cod_inscrip = ins.cod_inscrip;
+			}
 
-			console.log('[REZAGADO DEBUG] Llamando a getKardexMaterias con params:', params);
+			forkJoin({
+				pensum: this.materiaService.getByPensum(String(cod_pensum)).pipe(
+					catchError(() => of({ success: false as const, data: [] as any[] }))
+				),
+				kardex: this.cobrosService.getKardexMaterias(params).pipe(
+					catchError(() => of({ success: false as const, data: [] as any[] }))
+				)
+			}).subscribe({
+				next: ({ pensum, kardex }) => {
+					const nombreBySigla = new Map<string, string>();
+					if (pensum?.success && Array.isArray(pensum.data)) {
+						for (const m of pensum.data) {
+							const sigU = (m?.sigla_materia ?? '').toString().trim().toUpperCase();
+							if (sigU) {
+								nombreBySigla.set(sigU, (m?.nombre_materia || m?.sigla_materia || '').toString());
+							}
+						}
+					}
 
-			this.cobrosService.getKardexMaterias(params).subscribe({
-				next: (res) => {
-					console.log('[REZAGADO DEBUG] Respuesta de getKardexMaterias:', res);
-					if (res?.success) {
-						this.materias = (res.data || []).map((r: any) => ({
-							sigla: r?.sigla_materia || '',
-							nombre: r?.nombre_materia || '',
-							tipo: (r?.tipo_incripcion || 'NORMAL').toString(),
-							selected: false
-						}));
-						console.log('[REZAGADO DEBUG] Materias procesadas:', this.materias);
+					const kRows = kardex?.success && Array.isArray(kardex.data) ? kardex.data : [];
+					// Solo materias del kardex en la gestión indicada (no todo el pensum).
+					if (kRows.length > 0) {
+						this.materias = kRows.map((r: any) => {
+							const sig = (r?.sigla_materia || '').toString().trim();
+							const sigU = sig.toUpperCase();
+							const nombre = (r?.nombre_materia || nombreBySigla.get(sigU) || sig).toString();
+							return {
+								sigla: sig,
+								nombre,
+								tipo: (r?.tipo_incripcion || 'NORMAL').toString(),
+								selected: false
+							};
+						});
 					} else {
-						console.warn('[REZAGADO DEBUG] Respuesta no exitosa');
 						this.materias = [];
 					}
+					this.clearSelectionOnPaidRezagados();
 				},
-				error: (err) => {
-					console.error('[REZAGADO DEBUG] Error en getKardexMaterias:', err);
+				error: () => {
 					this.materias = [];
 				}
 			});
-		} catch (err) {
-			console.error('[REZAGADO DEBUG] Error en try-catch:', err);
+		} catch {
 			this.materias = [];
 		}
 	}
@@ -195,10 +266,6 @@ export class RezagadoModalComponent implements OnInit {
 			['id_cuentas_bancarias','fecha_deposito','nro_deposito'].forEach(addIfMissing);
 		}
 		return out;
-	}
-
-	private loadMateriasFallbackPensum(pensum: string): void {
-		this.materias = [];
 	}
 
 	get isTarjeta(): boolean {
@@ -358,7 +425,9 @@ export class RezagadoModalComponent implements OnInit {
 	}
 
 	get total(): number {
-		const count = (this.materias || []).filter(m => m.selected).length;
+		const count = (this.materias || []).filter(
+			m => m.selected && !this.isRezagadoPagadoParaPeriodo(m.sigla)
+		).length;
 		return count * this.costoMateria;
 	}
 
@@ -391,7 +460,9 @@ export class RezagadoModalComponent implements OnInit {
 		let nro = this.baseNro || 1;
 		const conJustificativo = this.form.get('justificativo')?.value === true;
 		const montoRezagado = conJustificativo ? 0 : this.feeRezagado;
-		const pagos = (this.materias || []).filter(m => m.selected).map(m => {
+		const pagos = (this.materias || [])
+			.filter(m => m.selected && !this.isRezagadoPagadoParaPeriodo(m.sigla))
+			.map(m => {
 			const detalle = `Rezagado - ${m.sigla} ${m.nombre} - ${periodo}er P.`;
 			const payload: any = {
 				id_forma_cobro: this.form.get('metodo_pago')?.value || null,

@@ -1,3 +1,38 @@
+// Tokens y mixins compartidos (Bootstrap ya cubre .btn / .alert en angular.json)
+@mixin oi-form-control($font-size: 0.9rem, $pad-v: 0.45rem, $pad-h: 0.55rem) {
+	width: 100%;
+	box-sizing: border-box;
+	padding: $pad-v $pad-h;
+	border: 1px solid var(--oi-border);
+	border-radius: var(--oi-radius);
+	font-size: $font-size;
+}
+
+@mixin oi-invalid-ring {
+	border-color: var(--oi-danger);
+	box-shadow: 0 0 0 1px var(--oi-danger-ring);
+}
+
+:host {
+	--oi-field-label-width: 180px;
+	--oi-field-label-gap: 8px;
+	--oi-radius: 6px;
+	--oi-radius-panel: 8px;
+	--oi-bg: #fff;
+	--oi-bg-muted: #f3f4f6;
+	--oi-border: #d1d5db;
+	--oi-border-light: #e5e7eb;
+	--oi-text: #111827;
+	--oi-text-muted: #4b5563;
+	--oi-text-label: #374151;
+	--oi-heading: #1e3a5f;
+	--oi-danger: #dc2626;
+	--oi-danger-ring: #fecaca;
+	--oi-shadow-sm: 0 1px 2px rgba(0, 0, 0, 0.04);
+	--oi-backdrop: rgba(0, 0, 0, 0.45);
+	--oi-z-modal: 1000;
+}
+
 .page-wrap {
 	max-width: 1100px;
 	margin: 0 auto;
@@ -11,25 +46,20 @@
 }
 
 .card-panel {
-	background: #fff;
-	border: 1px solid #e5e7eb;
-	border-radius: 8px;
+	background: var(--oi-bg);
+	border: 1px solid var(--oi-border-light);
+	border-radius: var(--oi-radius-panel);
 	padding: 1.25rem;
 	margin-bottom: 1.25rem;
-	box-shadow: 0 1px 2px rgba(0, 0, 0, 0.04);
+	box-shadow: var(--oi-shadow-sm);
 }
 
 .card-panel h2 {
 	font-size: 1rem;
 	margin: 0 0 1rem;
-	color: #1e3a5f;
-	border-bottom: 1px solid #e5e7eb;
+	color: var(--oi-heading);
+	border-bottom: 1px solid var(--oi-border-light);
 	padding-bottom: 0.5rem;
-}
-
-:host {
-	--oi-field-label-width: 180px;
-	--oi-field-label-gap: 8px;
 }
 
 .form-grid {
@@ -241,7 +271,7 @@
 .field label {
 	display: block;
 	font-size: 0.8rem;
-	color: #4b5563;
+	color: var(--oi-text-muted);
 	margin-bottom: 0.25rem;
 }
 
@@ -259,49 +289,27 @@
 	font-weight: 400;
 	margin-bottom: 0;
 	font-size: 0.85rem;
-	color: #374151;
+	color: var(--oi-text-label);
 }
 
 .field input,
 .field select,
 .field textarea {
-	width: 100%;
-	padding: 0.45rem 0.55rem;
-	border: 1px solid #d1d5db;
-	border-radius: 6px;
-	font-size: 0.9rem;
+	@include oi-form-control;
 }
 
 .field input:disabled,
 .field select:disabled {
-	background: #f3f4f6;
+	background: var(--oi-bg-muted);
 }
 
-.field input[readOnly]:not(.fecha-dmy-field__visible),
-.field input.input-readonly-sga {
-	background: #f3f4f6;
+.field input[readOnly]:not(.fecha-dmy-field__visible) {
+	background: var(--oi-bg-muted);
 	cursor: default;
 }
 
-.input-readonly-sga {
-	width: 100%;
-	padding: 0.45rem 0.55rem;
-	border: 1px solid #d1d5db;
-	border-radius: 6px;
-	font-size: 0.9rem;
-	box-sizing: border-box;
-}
-
-.field-hint {
-	display: block;
-	margin-top: 0.25rem;
-	font-size: 0.72rem;
-	color: #6b7280;
-	line-height: 1.3;
-}
-
 .field-req {
-	color: #dc2626;
+	color: var(--oi-danger);
 	font-weight: 600;
 }
 
@@ -309,7 +317,7 @@
 	display: block;
 	margin-top: 0.35rem;
 	font-size: 0.78rem;
-	color: #dc2626;
+	color: var(--oi-danger);
 	line-height: 1.3;
 }
 
@@ -317,7 +325,7 @@
 .field-label--req-error,
 label.field-label--req-error,
 .rango-fechas-sga__titulo.field-label--req-error {
-	color: #dc2626 !important;
+	color: var(--oi-danger) !important;
 	font-weight: 600;
 }
 
@@ -328,8 +336,7 @@ label.field-label--req-error,
 .field input.input-invalid:not(:disabled),
 .field select.input-invalid:not(:disabled),
 .field textarea.input-invalid:not(:disabled) {
-	border-color: #dc2626;
-	box-shadow: 0 0 0 1px #fecaca;
+	@include oi-invalid-ring;
 }
 
 /** Nº transacción tarjeta: prefijo fijo Linkser + solo el dato editable */
@@ -338,25 +345,24 @@ label.field-label--req-error,
 	align-items: stretch;
 	width: 100%;
 	min-width: 0;
-	border: 1px solid #d1d5db;
-	border-radius: 6px;
+	border: 1px solid var(--oi-border);
+	border-radius: var(--oi-radius);
 	overflow: hidden;
-	background: #fff;
+	background: var(--oi-bg);
 }
 
 .input-with-prefix--invalid {
-	border-color: #dc2626;
-	box-shadow: 0 0 0 1px #fecaca;
+	@include oi-invalid-ring;
 }
 
 .input-with-prefix__fixed {
 	flex: 0 0 auto;
 	padding: 0.45rem 0.55rem;
-	background: #f3f4f6;
-	color: #374151;
+	background: var(--oi-bg-muted);
+	color: var(--oi-text-label);
 	font-size: 0.9rem;
 	white-space: nowrap;
-	border-right: 1px solid #e5e7eb;
+	border-right: 1px solid var(--oi-border-light);
 	align-self: stretch;
 	display: inline-flex;
 	align-items: center;
@@ -372,14 +378,14 @@ label.field-label--req-error,
 }
 
 .field .input-with-prefix__input:disabled {
-	background: #f3f4f6;
+	background: var(--oi-bg-muted);
 }
 
 /* Rango Del / Al (estilo SGA) */
 .rango-fechas-sga__titulo {
 	display: block;
 	font-size: 0.8rem;
-	color: #4b5563;
+	color: var(--oi-text-muted);
 	margin-bottom: 0;
 	font-weight: 600;
 }
@@ -395,14 +401,14 @@ label.field-label--req-error,
 .rango-fechas-sga__del {
 	font-weight: 400;
 	font-size: 0.8rem;
-	color: #4b5563;
+	color: var(--oi-text-muted);
 	margin: 0;
 	white-space: nowrap;
 }
 
 .rango-fechas-sga__al {
 	font-size: 0.82rem;
-	color: #4b5563;
+	color: var(--oi-text-muted);
 	margin: 0;
 	white-space: nowrap;
 }
@@ -414,12 +420,6 @@ label.field-label--req-error,
 	width: 100%;
 }
 
-.fecha-dmy-field--compact {
-	width: auto;
-	min-width: 9.75rem;
-	max-width: 11.5rem;
-}
-
 /** Dentro del rango en una fila: comparte espacio con el otro datepicker */
 .fecha-dmy-field--rango {
 	flex: 1 1 0;
@@ -429,14 +429,9 @@ label.field-label--req-error,
 }
 
 .fecha-dmy-field__visible {
-	width: 100%;
-	box-sizing: border-box;
-	padding: 0.45rem 0.55rem;
-	border: 1px solid #d1d5db;
-	border-radius: 6px;
-	font-size: 0.9rem;
-	background: #f3f4f6;
-	color: #111827;
+	@include oi-form-control;
+	background: var(--oi-bg-muted);
+	color: var(--oi-text);
 	pointer-events: none;
 }
 
@@ -458,19 +453,8 @@ label.field-label--req-error,
 
 /** Datepicker nativo visible (p. ej. Fecha con efectivo): evita fallos del overlay transparente. */
 .fecha-input-native {
-	width: 100%;
-	box-sizing: border-box;
-	padding: 0.45rem 0.55rem;
-	border: 1px solid #d1d5db;
-	border-radius: 6px;
-	font-size: 0.9rem;
+	@include oi-form-control;
 	min-height: 2.5rem;
-}
-
-.fecha-input-native--compact {
-	flex: 0 1 11rem;
-	min-width: 9rem;
-	max-width: 12rem;
 }
 
 /** Inputs type=date en fila única con rango: se reparten el ancho disponible */
@@ -499,66 +483,21 @@ label.field-label--req-error,
 	margin-top: 1.25rem;
 }
 
-.btn {
-	padding: 0.5rem 1rem;
-	border-radius: 6px;
-	border: none;
-	cursor: pointer;
-	font-size: 0.9rem;
-}
-
-.btn-primary {
-	background: #2563eb;
-	color: #fff;
-}
-
-.btn-secondary {
-	background: #e5e7eb;
-	color: #111827;
-}
-
-.btn-danger {
-	background: #dc2626;
-	color: #fff;
-}
-
-.alert {
-	padding: 0.65rem 0.85rem;
-	border-radius: 6px;
-	margin-bottom: 1rem;
-	font-size: 0.875rem;
-}
-
-.alert-success {
-	background: #d1fae5;
-	color: #065f46;
-}
-
-.alert-error {
-	background: #fee2e2;
-	color: #991b1b;
-}
-
-.alert-warning {
-	background: #fef3c7;
-	color: #92400e;
-	border: 1px solid #fcd34d;
-}
-
+/* Botones: estilos de Bootstrap (global); solo ajuste opcional del botón compacto */
 .modal-backdrop {
 	position: fixed;
 	inset: 0;
-	background: rgba(0, 0, 0, 0.45);
+	background: var(--oi-backdrop);
 	display: flex;
 	align-items: center;
 	justify-content: center;
-	z-index: 1000;
+	z-index: var(--oi-z-modal);
 	padding: 1rem;
 }
 
 .modal-box {
-	background: #fff;
-	border-radius: 8px;
+	background: var(--oi-bg);
+	border-radius: var(--oi-radius-panel);
 	max-width: 520px;
 	width: 100%;
 	padding: 1.25rem;
@@ -571,7 +510,7 @@ label.field-label--req-error,
 .modal-box__hint {
 	margin: 0 0 1rem;
 	font-size: 0.875rem;
-	color: #4b5563;
+	color: var(--oi-text-muted);
 	line-height: 1.4;
 }
 
@@ -594,11 +533,7 @@ label.field-label--req-error,
 }
 
 .modal-box__field input {
-	width: 100%;
-	padding: 0.45rem 0.5rem;
-	border: 1px solid #d1d5db;
-	border-radius: 6px;
-	font-size: 0.9375rem;
+	@include oi-form-control(0.9375rem, 0.45rem, 0.5rem);
 }
 
 .modal-box__actions {
