@@ -167,6 +167,8 @@ Route::post('items-cobro/sync-sin', [ItemsCobroController::class, 'syncFromSin']
 
 // Sincronización SGA: Becas y Descuentos (de_becas -> def_descuentos_beca, def_descuentos)
 Route::post('sga/sync/becas-descuentos', [SgaSyncController::class, 'syncBecasDescuentos']);
+// Sincronización SGA: Descuentos aplicados (kardex_economico + descuento_parcial*)
+Route::post('sga/sync/descuentos', [SgaSyncController::class, 'syncDescuentosSga']);
 
 // Formas de cobro (catálogo)
 Route::get('formas-cobro', [FormaCobroController::class, 'index']);

@@ -56,4 +56,38 @@ class SgaSyncController extends Controller
 			], 500);
 		}
 	}
+
+	/**
+	 * Sincroniza descuentos aplicados en SGA (kardex_economico y descuento_parcial*)
+	 * hacia descuentos y descuento_detalle local.
+	 *
+	 * Request:
+	 * - source: sga_elec|sga_mec|all (por defecto: all)
+	 * - gestion: string opcional (ej. 1/2026)
+	 * - chunk: tamaño de lote (por defecto: 1000)
+	 * - dry_run: bool (por defecto: false)
+	 */
+	public function syncDescuentosSga(Request $request, SgaSyncRepository $repo)
+	{
+		try {
+			$sourceArg = strtolower((string) $request->input('source', 'all'));
+			$gestion = trim((string) $request->input('gestion', ''));
+			$chunk = (int) $request->input('chunk', 1000);
+			$dry = (bool) $request->boolean('dry_run', false);
+
+			$res = $repo->syncDescuentosSga($sourceArg, $chunk, $dry, $gestion !== '' ? $gestion : null);
+
+			return response()->json([
+				'success' => true,
+				'data' => $res,
+				'message' => 'Sincronización de descuentos SGA ejecutada'
+			]);
+		} catch (\Throwable $e) {
+			Log::error('Error en syncDescuentosSga: ' . $e->getMessage());
+			return response()->json([
+				'success' => false,
+				'message' => 'Error al sincronizar descuentos SGA: ' . $e->getMessage()
+			], 500);
+		}
+	}
 }
