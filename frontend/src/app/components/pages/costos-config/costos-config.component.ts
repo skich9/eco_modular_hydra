@@ -59,6 +59,18 @@ export class CostosConfigComponent implements OnInit {
 	deleting = false;
 	deletingRow: any = null;
 
+	/** Cuotas (mismo pensum, gestión, semestre; todos los tipos/turnos) en el modal «Editar costo semestral». */
+	editModalCuotasLoading = false;
+	editModalCuotas: Array<{
+		id_cuota?: number;
+		nombre: string;
+		semestre: string;
+		monto: string;
+		fecha_vencimiento: string;
+		tipo?: string | null;
+		turno?: string | null;
+	}> = [];
+
 	// Modal de gestión/edición de parámetros de costos (lista completa)
 	manageOpen = false;
 	manageLoading = false;
@@ -541,6 +553,8 @@ export class CostosConfigComponent implements OnInit {
 
 	openEdit(row: any): void {
 		this.editingRow = row;
+		this.editModalCuotas = [];
+		this.editModalCuotasLoading = false;
 		const rawM = row?.monto_semestre;
 		let montoStr = '';
 		if (rawM !== null && rawM !== undefined && `${rawM}`.trim() !== '') {
@@ -554,9 +568,64 @@ export class CostosConfigComponent implements OnInit {
 			turno: row?.turno || 'MANANA',
 		});
 		this.editOpen = true;
+		this.loadEditModalCuotas(row);
 	}
 
-	closeEdit(): void { this.editOpen = false; this.editingRow = null; }
+	/** Todas las filas `cuotas` del mismo pensum, gestión y semestre (sin filtrar por tipo ni turno). */
+	private loadEditModalCuotas(row: any): void {
+		const cp = String(row?.cod_pensum || '').trim();
+		const gs = String(row?.gestion || '').trim();
+		const sem = row?.semestre;
+		if (!cp || !gs) {
+			this.editModalCuotas = [];
+			return;
+		}
+		this.editModalCuotasLoading = true;
+		this.cobrosService
+			.getCuotas({
+				gestion: gs,
+				cod_pensum: cp,
+				semestre: sem,
+			})
+			.subscribe({
+				next: (res) => {
+					const list = (res?.data || []) as any[];
+					const mapped = list.map((c: any) => ({
+						id_cuota: c.id_cuota,
+						nombre: String(c.nombre || ''),
+						semestre: String(c.semestre ?? sem ?? ''),
+						monto:
+							c.monto != null && `${c.monto}`.trim() !== ''
+								? String(Math.trunc(Number(c.monto)))
+								: '',
+						fecha_vencimiento: this.toDateInput(c.fecha_vencimiento || ''),
+						tipo: c.tipo != null && `${c.tipo}`.trim() !== '' ? String(c.tipo) : null,
+						turno: c.turno != null && `${c.turno}`.trim() !== '' ? String(c.turno) : null,
+					}));
+					mapped.sort((a, b) => {
+						const n = a.nombre.localeCompare(b.nombre);
+						if (n !== 0) return n;
+						const t = String(a.tipo || '').localeCompare(String(b.tipo || ''));
+						if (t !== 0) return t;
+						return String(a.turno || '').localeCompare(String(b.turno || ''));
+					});
+					this.editModalCuotas = mapped;
+				},
+				error: () => {
+					this.editModalCuotas = [];
+				},
+				complete: () => {
+					this.editModalCuotasLoading = false;
+				},
+			});
+	}
+
+	closeEdit(): void {
+		this.editOpen = false;
+		this.editingRow = null;
+		this.editModalCuotas = [];
+		this.editModalCuotasLoading = false;
+	}
 
 	// --- Creación de nuevo costo (UI-only) ---
 	openCreate(): void {
@@ -751,40 +820,98 @@ export class CostosConfigComponent implements OnInit {
 			this.editForm.get('monto_semestre')?.markAsTouched();
 			return;
 		}
+		const tipoKey = this.normalizeTipoKeyFromLabel(String(row?.tipo_costo || ''));
+		const cp = row?.cod_pensum as string | undefined;
+		const gs = row?.gestion as string | undefined;
+		const turnoKey = String(row?.turno || '').trim();
+
+		if (this.editModalCuotas.length > 0) {
+			for (const cq of this.editModalCuotas) {
+				const mq = parsePositiveInteger(cq.monto);
+				if (mq === null) {
+					this.notificacionCostosError = 'En cuotas, cada monto debe ser un entero mayor a cero.';
+					return;
+				}
+				const fv = String(cq.fecha_vencimiento || '').trim();
+				if (!fv) {
+					this.notificacionCostosError = 'En cuotas, indique la fecha de vencimiento en cada fila.';
+					return;
+				}
+			}
+		}
+
 		const payload = { monto_semestre: montoOk };
 		this.cobrosService.updateCostoSemestral(Number(id), payload).subscribe({
 			next: () => {
-				this.editOpen = false;
-				// Refrescar sólo el pensum afectado, usando la gestión original del row
-				const cp = row?.cod_pensum as string | undefined;
-				const gs = row?.gestion as string | undefined;
-				if (cp) {
-					this.cobrosService.getCostoSemestralByPensum(cp, gs).subscribe({
-						next: (res) => { this.costoSemestralMap[cp] = res?.data || []; },
-						error: () => { /* mantener datos previos si falla */ },
-					});
-				}
-				// Encadenar actualización de cuotas por contexto
-				try {
-					const tipoKey = this.normalizeTipoKeyFromLabel(String(row?.tipo_costo || ''));
-					const turnoKey = String(row?.turno || '').trim();
-					if (tipoKey && cp && gs && row?.semestre) {
-						this.cobrosService.updateCuotasByContext({
-							cod_pensum: cp,
-							gestion: gs,
-							semestre: row.semestre,
-							monto: montoOk,
-							tipo: (tipoKey === 'costo_mensual' || tipoKey === 'materia') ? tipoKey : undefined,
-							turno: turnoKey || undefined,
-						}).subscribe({
-							next: () => {},
-							error: (e) => { console.warn('Actualización de cuotas por contexto falló', e); },
-							complete: () => { /* sin alert extra */ }
+				const refreshMap = () => {
+					if (cp) {
+						this.cobrosService.getCostoSemestralByPensum(cp, gs).subscribe({
+							next: (res) => { this.costoSemestralMap[cp] = res?.data || []; },
+							error: () => { /* mantener datos previos si falla */ },
 						});
 					}
-				} catch {}
-				this.editingRow = null;
-				alert('Registro actualizado correctamente.');
+				};
+
+				const finishOk = () => {
+					refreshMap();
+					this.closeEdit();
+					alert('Registro actualizado correctamente.');
+				};
+
+				const syncCuotas = () => {
+					if (!cp || !gs) {
+						finishOk();
+						return;
+					}
+					if (this.editModalCuotas.length > 0) {
+						const cuotasPayload = this.editModalCuotas.map((cq) => ({
+							nombre: cq.nombre,
+							descripcion: '',
+							semestre: String(cq.semestre || row.semestre),
+							monto: parsePositiveInteger(cq.monto) as number,
+							fecha_vencimiento: String(cq.fecha_vencimiento || '').substring(0, 10),
+							tipo: cq.tipo || undefined,
+							turno: cq.turno || undefined,
+						}));
+						this.cobrosService.createCuotasBatch({ cod_pensum: cp, gestion: gs, cuotas: cuotasPayload }).subscribe({
+							next: () => finishOk(),
+							error: (e) => {
+								console.warn('Error al guardar cuotas desde el modal de edición', e);
+								this.notificacionCostosError = 'El costo semestral se guardó, pero no se pudieron actualizar las cuotas.';
+								refreshMap();
+							},
+						});
+						return;
+					}
+					if (
+						tipoKey &&
+						(tipoKey === 'costo_mensual' || tipoKey === 'materia') &&
+						row?.semestre != null
+					) {
+						this.cobrosService
+							.updateCuotasByContext({
+								cod_pensum: cp,
+								gestion: gs,
+								semestre: row.semestre,
+								monto: montoOk,
+								tipo: tipoKey,
+								turno: turnoKey || undefined,
+							})
+							.subscribe({
+								next: () => finishOk(),
+								error: (e) => {
+									console.warn('Actualización de cuotas por contexto falló', e);
+									this.notificacionCostosError =
+										'El costo semestral se guardó, pero no se pudieron sincronizar las cuotas (mismo monto).';
+									refreshMap();
+								},
+							});
+						return;
+					}
+					finishOk();
+				};
+
+				syncCuotas();
 			},
 			error: (err) => {
 				console.error('Error al actualizar costo semestral', err);
