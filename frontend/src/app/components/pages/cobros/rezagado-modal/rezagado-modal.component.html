@@ -16,8 +16,8 @@
             <div class="col-md-8">
               <div class="small fw-semibold">Datos del Estudiante</div>
               <div class="small text-muted">{{ resumen?.estudiante?.cod_ceta }} - {{ resumen?.estudiante?.nombre_completo || resumen?.estudiante?.nombres }}</div>
-              <div class="small">Pensum: {{ resumen?.inscripcion?.cod_pensum }} | Tipo: {{ resumen?.inscripcion?.tipo_inscripcion }}</div>
-              <div class="small">Gestión: {{ resumen?.gestion }}</div>
+              <div class="small">Pensum: {{ inscripcionParaGestion?.cod_pensum || resumen?.inscripcion?.cod_pensum }} | Tipo: {{ inscripcionParaGestion?.tipo_inscripcion || inscripcionParaGestion?.tipo_incripcion || resumen?.inscripcion?.tipo_inscripcion }}</div>
+              <div class="small">Gestión: {{ gestionMostrada || '—' }}</div>
             </div>
             <div class="col-md-4" [formGroup]="form">
               <label class="form-label">Método de Pago</label>
@@ -129,13 +129,23 @@
                   </tr>
                 </thead>
                 <tbody>
-                  <tr *ngFor="let m of materias">
+                  <tr *ngFor="let m of materias" [class.table-secondary]="isRezagadoPagadoParaPeriodo(m.sigla)">
                     <td>
-                      <input type="checkbox" class="form-check-input" [(ngModel)]="m.selected" [ngModelOptions]="{standalone:true}" name="sel_{{m.sigla}}" />
+                      <input
+                        type="checkbox"
+                        class="form-check-input"
+                        [(ngModel)]="m.selected"
+                        [disabled]="isRezagadoPagadoParaPeriodo(m.sigla)"
+                        [ngModelOptions]="{standalone:true}"
+                        [attr.name]="'sel_' + m.sigla"
+                      />
                     </td>
                     <td>{{ m.sigla }}</td>
                     <td>{{ m.nombre }}</td>
-                    <td>{{ m.tipo }}</td>
+                    <td>
+                      {{ m.tipo }}
+                      <span *ngIf="isRezagadoPagadoParaPeriodo(m.sigla)" class="badge bg-secondary ms-1">Pagado</span>
+                    </td>
                     <td class="text-end">{{ costoMateria | number:'1.0-0' }}</td>
                   </tr>
                 </tbody>

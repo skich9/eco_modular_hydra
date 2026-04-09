@@ -1457,6 +1457,20 @@ class CobroController extends Controller
 					'documentos_presentados' => $documentosPresentados,
 					'documento_identidad' => $documentoIdentidad,
 					'warnings' => $warnings,
+					// Boletas de rezagados (tabla rezagados) para el Kardex económico
+					'boleta_rezagados' => $this->buildBoletaRezagadosResumen(
+						(int) $codCeta,
+						(string) $codPensumToUse,
+						(string) $gestionToUse,
+						$inscripciones
+					),
+					// Descuentos / obs. (tablas kardex_economico + registro_inscripcion), alineado a SGA helpers::get_asig_becas_y_obs_inscrip
+					'kardex_descuentos_obs' => $this->buildKardexDescuentosObsInscrip(
+						(int) $codCeta,
+						(string) $codPensumToUse,
+						(string) $gestionToUse,
+						$inscripciones
+					),
 					// Moras pendientes del estudiante
 					'moras_pendientes' => $this->getMorasPendientes($codCeta, $gestionToUse),
 				]
@@ -1467,6 +1481,347 @@ class CobroController extends Controller
 				'message' => 'Error al generar resumen: ' . $e->getMessage()
 			], 500);
 		}
+	}
+
+	/**
+	 * Construye las filas para el card «Boleta de Rezagados» del Kardex a partir de la tabla `rezagados`.
+	 * Filtra por inscripciones del estudiante con mismo pensum y gestión que el resumen.
+	 */
+	private function buildBoletaRezagadosResumen(int $codCeta, string $codPensumToUse, string $gestionToUse, $inscripciones): array
+	{
+		try {
+			if (!Schema::hasTable('rezagados')) {
+				return [];
+			}
+
+			$ids = collect($inscripciones)
+				->filter(function ($ins) use ($codPensumToUse, $gestionToUse) {
+					return (string) ($ins->cod_pensum ?? '') === (string) $codPensumToUse
+						&& (string) ($ins->gestion ?? '') === (string) $gestionToUse;
+				})
+				->pluck('cod_inscrip')
+				->unique()
+				->filter()
+				->map(function ($v) {
+					return (int) $v;
+				})
+				->values()
+				->all();
+
+			if (count($ids) === 0) {
+				$fallback = collect($inscripciones)->firstWhere('cod_pensum', $codPensumToUse);
+				if ($fallback && isset($fallback->cod_inscrip)) {
+					$ids = [(int) $fallback->cod_inscrip];
+				}
+			}
+
+			if (count($ids) === 0) {
+				return [];
+			}
+
+			$rows = DB::table('rezagados')
+				->whereIn('cod_inscrip', $ids)
+				->orderByDesc('fecha_pago')
+				->orderByDesc('num_rezagado')
+				->orderBy('num_pago_rezagado')
+				->get();
+
+			if ($rows->isEmpty()) {
+				return [];
+			}
+
+			$numsRec = $rows->pluck('num_recibo')->filter(function ($v) {
+				return $v !== null && $v !== '';
+			})->map(function ($v) {
+				return (string) $v;
+			})->unique()->values()->all();
+			$numsFact = $rows->pluck('num_factura')->filter(function ($v) {
+				return $v !== null && $v !== '';
+			})->map(function ($v) {
+				return (string) $v;
+			})->unique()->values()->all();
+
+			$cobrosCliente = collect();
+			if (count($numsRec) > 0 || count($numsFact) > 0) {
+				$cobrosCliente = Cobro::with(['recibo', 'factura'])
+					->where('cod_ceta', $codCeta)
+					->where('cod_pensum', $codPensumToUse)
+					->where(function ($q) use ($numsRec, $numsFact) {
+						if (count($numsRec) > 0 && count($numsFact) > 0) {
+							$q->whereIn('nro_recibo', $numsRec)->orWhereIn('nro_factura', $numsFact);
+						} elseif (count($numsRec) > 0) {
+							$q->whereIn('nro_recibo', $numsRec);
+						} elseif (count($numsFact) > 0) {
+							$q->whereIn('nro_factura', $numsFact);
+						}
+					})
+					->get();
+			}
+
+			$lookupCliente = function ($numRec, $numFact) use ($cobrosCliente) {
+				$nr = $numRec !== null && $numRec !== '' ? (string) $numRec : null;
+				$nf = $numFact !== null && $numFact !== '' ? (string) $numFact : null;
+				foreach ($cobrosCliente as $c) {
+					if ($nr !== null && (string) ($c->nro_recibo ?? '') === $nr) {
+						return $c;
+					}
+					if ($nf !== null && (string) ($c->nro_factura ?? '') === $nf) {
+						return $c;
+					}
+				}
+				return null;
+			};
+
+			$out = [];
+			foreach ($rows as $r) {
+				$cobroLink = $lookupCliente($r->num_recibo ?? null, $r->num_factura ?? null);
+				$cliente = null;
+				$nroDoc = null;
+				if ($cobroLink) {
+					$reciboCliente = (isset($cobroLink->recibo) && isset($cobroLink->recibo->cliente)) ? $cobroLink->recibo->cliente : null;
+					$facturaCliente = (isset($cobroLink->factura) && isset($cobroLink->factura->cliente)) ? $cobroLink->factura->cliente : null;
+					$cliente = $reciboCliente !== null ? $reciboCliente : $facturaCliente;
+					$reciboNroDoc = (isset($cobroLink->recibo) && isset($cobroLink->recibo->nro_documento_cobro)) ? $cobroLink->recibo->nro_documento_cobro : null;
+					$facturaNroDoc = (isset($cobroLink->factura) && isset($cobroLink->factura->nro_documento_cobro)) ? $cobroLink->factura->nro_documento_cobro : null;
+					$nroDoc = $reciboNroDoc !== null ? $reciboNroDoc : $facturaNroDoc;
+				}
+
+				$p = trim((string) ($r->parcial ?? ''));
+				$parcialDisplay = '';
+				if ($p === '1') {
+					$parcialDisplay = '1er P.';
+				} elseif ($p === '2') {
+					$parcialDisplay = '2do P.';
+				} elseif ($p === '3') {
+					$parcialDisplay = '3er P.';
+				}
+				if ($parcialDisplay === '' && isset($r->pago_completo)) {
+					$parcialDisplay = ((bool) $r->pago_completo) ? 'Completo' : 'Parcial';
+				}
+				if ($parcialDisplay === '') {
+					$parcialDisplay = '-';
+				}
+
+				$fechaPago = $r->fecha_pago;
+				if ($fechaPago && ! is_string($fechaPago)) {
+					try {
+						$fechaPago = Carbon::parse($fechaPago)->format('Y-m-d');
+					} catch (\Throwable $e) {
+						$fechaPago = (string) $fechaPago;
+					}
+				}
+
+				$out[] = [
+					'tipo' => 'Rezagado',
+					'monto' => (float) ($r->monto ?? 0),
+					'nro_factura' => $r->num_factura,
+					'nro_recibo' => $r->num_recibo,
+					'fecha_cobro' => $fechaPago,
+					'parcial' => $r->parcial,
+					'parcial_display' => $parcialDisplay,
+					'nombre_materia' => $r->materia ?? '',
+					'pago_completo' => isset($r->pago_completo) ? (bool) $r->pago_completo : null,
+					'cliente' => $cliente,
+					'nro_documento_cobro' => $nroDoc,
+					'es_parcial' => isset($r->pago_completo) ? ! (bool) $r->pago_completo : null,
+				];
+			}
+
+			return $out;
+		} catch (\Throwable $e) {
+			try {
+				Log::warning('buildBoletaRezagadosResumen: ' . $e->getMessage());
+			} catch (\Throwable $e2) {
+			}
+
+			return [];
+		}
+	}
+
+	/**
+	 * Bloque «Descuento» + observaciones de inscripción para el Kardex (equivalente SGA: helpers::get_asig_becas_y_obs_inscrip).
+	 *
+	 * @param  \Illuminate\Support\Collection|array  $inscripciones  Inscripciones de la gestión/pensum del resumen
+	 */
+	private function buildKardexDescuentosObsInscrip(int $codCeta, string $codPensumToUse, string $gestionToUse, $inscripciones): array
+	{
+		$filasDescuento = [];
+		$obsRegistro = [];
+
+		try {
+			if (Schema::hasTable('kardex_economico') && $inscripciones && count($inscripciones) > 0) {
+				foreach ($inscripciones as $ins) {
+					$codInscrip = (int) ($ins->cod_inscrip ?? 0);
+					if ($codInscrip <= 0) {
+						continue;
+					}
+					$rows = DB::table('kardex_economico')
+						->where('cod_ceta', $codCeta)
+						->where('cod_inscrip', $codInscrip)
+						->where('descuento_convenio', '>', 0)
+						->get();
+					foreach ($rows as $r) {
+						$filasDescuento[] = [
+							'kardex_economico' => isset($r->kardex_economico) ? (string) $r->kardex_economico : '',
+							'tipo_descuento' => isset($r->tipo_descuento) ? (string) $r->tipo_descuento : '',
+							'descuento_convenio' => (float) ($r->descuento_convenio ?? 0),
+							'observaciones' => isset($r->observaciones) ? (string) $r->observaciones : '',
+						];
+					}
+				}
+			}
+		} catch (\Throwable $e) {
+			try {
+				Log::warning('buildKardexDescuentosObsInscrip kardex_economico: ' . $e->getMessage());
+			} catch (\Throwable $e2) {
+			}
+		}
+
+		// Asignaciones desde sistemaEco (descuentos + def_descuentos_beca + usuario), cuando no hay filas legacy kardex_economico o además de ellas
+		try {
+			if (Schema::hasTable('descuentos') && Schema::hasTable('descuento_detalle') && $inscripciones && count($inscripciones) > 0 && $codPensumToUse !== '') {
+				$codInscrips = [];
+				foreach ($inscripciones as $ins) {
+					$c = (int) ($ins->cod_inscrip ?? 0);
+					if ($c > 0) {
+						$codInscrips[$c] = $c;
+					}
+				}
+				$codInscrips = array_values($codInscrips);
+				if (count($codInscrips) > 0) {
+					$q = DB::table('descuentos as d')
+						->leftJoin('def_descuentos_beca as def', 'd.cod_beca', '=', 'def.cod_beca')
+						->leftJoin('usuarios as u', 'd.id_usuario', '=', 'u.id_usuario')
+						->where('d.cod_ceta', $codCeta)
+						->where('d.cod_pensum', $codPensumToUse)
+						->whereIn('d.cod_inscrip', $codInscrips)
+						->where(function ($w) {
+							$w->where('d.estado', true)->orWhere('d.estado', 1);
+						})
+						->select([
+							'd.id_descuentos',
+							'd.cod_inscrip',
+							'd.nombre as nombre_asignacion',
+							'd.observaciones as obs_cabecera',
+							'd.tipo as tipo_inscripcion_desc',
+							'def.nombre_beca as nombre_definicion',
+							'u.nombre as u_nombre',
+							'u.ap_paterno as u_ap',
+							'u.ap_materno as u_am',
+							'u.nickname as u_nick',
+						]);
+					$ecoRows = $q->get();
+					foreach ($ecoRows as $er) {
+						$idDesc = (int) ($er->id_descuentos ?? 0);
+						if ($idDesc <= 0) {
+							continue;
+						}
+						$montoSum = (float) DB::table('descuento_detalle')
+							->where('id_descuento', $idDesc)
+							->sum('monto_descuento');
+						if ($montoSum <= 0) {
+							continue;
+						}
+						$tipoIns = trim((string) ($er->tipo_inscripcion_desc ?? ''));
+						if ($tipoIns === '') {
+							$cins = (int) ($er->cod_inscrip ?? 0);
+							if ($cins > 0) {
+								foreach ($inscripciones as $insRow) {
+									if ((int) ($insRow->cod_inscrip ?? 0) === $cins) {
+										$tipoIns = trim((string) ($insRow->tipo_inscripcion ?? ''));
+										break;
+									}
+								}
+							}
+						}
+						if ($tipoIns === '') {
+							$tipoIns = '—';
+						} else {
+							$tipoIns = strtoupper($tipoIns);
+						}
+						$nombreDef = trim((string) ($er->nombre_definicion ?? ''));
+						if ($nombreDef === '') {
+							$nombreDef = trim((string) ($er->nombre_asignacion ?? ''));
+						}
+						if ($nombreDef === '') {
+							$nombreDef = 'Descuento / beca';
+						}
+						$parts = array_filter([
+							isset($er->u_nombre) ? trim((string) $er->u_nombre) : '',
+							isset($er->u_ap) ? trim((string) $er->u_ap) : '',
+							isset($er->u_am) ? trim((string) $er->u_am) : '',
+						]);
+						$asignador = trim(implode(' ', $parts));
+						if ($asignador === '') {
+							$asignador = trim((string) ($er->u_nick ?? ''));
+						}
+						$obs = trim((string) ($er->obs_cabecera ?? ''));
+						if ($asignador !== '') {
+							$obs = $obs === '' ? ('Asignado por: ' . $asignador) : ($obs . "\nAsignado por: " . $asignador);
+						}
+						$filasDescuento[] = [
+							'kardex_economico' => $tipoIns,
+							'tipo_descuento' => $nombreDef,
+							'descuento_convenio' => round($montoSum, 2),
+							'observaciones' => $obs,
+						];
+					}
+				}
+			}
+		} catch (\Throwable $e) {
+			try {
+				Log::warning('buildKardexDescuentosObsInscrip descuentos: ' . $e->getMessage());
+			} catch (\Throwable $e2) {
+			}
+		}
+
+		try {
+			if (Schema::hasTable('registro_inscripcion') && $gestionToUse !== '' && $codPensumToUse !== '') {
+				$obsRows = DB::table('registro_inscripcion')
+					->where('cod_ceta', $codCeta)
+					->where('cod_pensum', $codPensumToUse)
+					->where('gestion', $gestionToUse)
+					->get(['observaciones', 'tipo_inscripcion']);
+				foreach ($obsRows as $obs) {
+					$txt = isset($obs->observaciones) ? trim((string) $obs->observaciones) : '';
+					$tipo = isset($obs->tipo_inscripcion) ? (string) $obs->tipo_inscripcion : '';
+					if ($txt === '' && $tipo === '') {
+						continue;
+					}
+					$obsRegistro[] = [
+						'tipo_inscripcion' => $tipo,
+						'texto_obs' => $txt,
+					];
+				}
+			}
+		} catch (\Throwable $e) {
+			try {
+				Log::warning('buildKardexDescuentosObsInscrip registro_inscripcion: ' . $e->getMessage());
+			} catch (\Throwable $e2) {
+			}
+		}
+
+		try {
+			if (Schema::hasTable('estudiantes')) {
+				$obsEst = trim((string) (DB::table('estudiantes')->where('cod_ceta', $codCeta)->value('observaciones') ?? ''));
+				if ($obsEst !== '') {
+					$obsRegistro[] = [
+						'tipo_inscripcion' => 'Estudiante',
+						'texto_obs' => $obsEst,
+					];
+				}
+			}
+		} catch (\Throwable $e) {
+			try {
+				Log::warning('buildKardexDescuentosObsInscrip estudiantes.observaciones: ' . $e->getMessage());
+			} catch (\Throwable $e2) {
+			}
+		}
+
+		return [
+			'filas_descuento' => $filasDescuento,
+			'obs_registro_inscripcion' => $obsRegistro,
+		];
 	}
 
 	/**
