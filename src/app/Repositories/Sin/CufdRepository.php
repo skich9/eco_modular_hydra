@@ -99,8 +99,14 @@ class CufdRepository
 
 	private function normalizeDate($fecha)
     {
-        $normalized = str_replace('T', ' ', str_replace('-04:00', '', $fecha));
-        return date('Y-m-d H:i:s', strtotime($normalized));
+        $normalized = str_replace(['-04:00', 'T'], ['', ' '], $fecha);
+        // Preservar milisegundos si vienen del SIN (e.g. "2026-03-30 12:00:00.000")
+        if (preg_match('/\d{4}-\d{2}-\d{2} \d{2}:\d{2}:\d{2}\.\d+/', $normalized)) {
+            return \Carbon\Carbon::createFromFormat('Y-m-d H:i:s.u', $normalized, 'America/La_Paz')
+                ->format('Y-m-d H:i:s.v');
+        }
+        return \Carbon\Carbon::createFromFormat('Y-m-d H:i:s', $normalized, 'America/La_Paz')
+            ->format('Y-m-d H:i:s.000');
     }
 
     private function calculateRange($fechaVigencia)
@@ -134,7 +140,7 @@ class CufdRepository
 
     public function getVigenteOrCreate2($codigoAmbiente,$codigoSucursal,$puntoVenta, $forceNew = false)
 	{
-        Log::info('CufdRepository.getVigenteOrCreate2: codigoAmbiente='.$codigoAmbiente.', codigoSucursal='.$codigoSucursal.', puntoVenta='.$puntoVenta.', forceNew='.($forceNew ? 'true' : 'false'));
+        Log::info('CufdRepository.getVigenteOrCreate2: codigoAmbiente='.$codigoAmbiente.', codigoSucursal='.$codigoSucursal.', puntoVenta='.$puntoVenta);
 		// Asegurar CUIS vigente
 		$cuisData = $this->cuisRepo->getVigenteOrCreate2($codigoAmbiente,$codigoSucursal,$puntoVenta);
 		$cuis = $cuisData['codigo_cuis'];
