@@ -3,7 +3,7 @@
 		<h1>Registro de ingresos (ventas)</h1>
 	</div>
 
-	<div *ngIf="alertMsg" class="alert" [ngClass]="alertOk ? 'alert-success' : 'alert-error'">{{ alertMsg }}</div>
+	<div *ngIf="alertMsg" class="alert" [ngClass]="alertOk ? 'alert-success' : 'alert-danger'">{{ alertMsg }}</div>
 
 	<div *ngIf="bloqueoFacturaComputarizado" class="alert alert-warning" role="status">
 		Cambie a recibo o a emisión manual para poder continuar.

@@ -40,7 +40,7 @@
 								<div class="h-100">
 									<div class="mb-3">
 										<label class="form-label small text-muted">Carrera</label>
-										<div class="fw-bold">{{ r?.estudiante?.carrera || '-' }}</div>
+										<div class="fw-bold">{{ carreraConPensumDisplay(r) }}</div>
 									</div>
 									<div class="mb-3">
 										<label class="form-label small text-muted">Resolución</label>
@@ -74,49 +74,48 @@
 							</div>
 						</div>
 					</div>
-					<div class="card-footer bg-light">
-						<div class="row">
-							<div class="col-md-6">
-								<div class="small">
-									<span class="text-muted">Descuento:</span>
-									<span class="fw-bold">{{ r?.estudiante?.descuento || '-' }}</span>
+					<div class="card-footer bg-light p-0">
+						<ng-container *ngIf="r?.kardex_descuentos_obs as kdo; else footerDescuentoLegacy">
+							<div class="table-responsive border-top">
+								<table class="table table-sm table-bordered align-middle mb-0 kardex-descuentos-table">
+									<tbody>
+										<tr>
+											<td class="text-end text-muted small kardex-descuentos-label"><strong>Descuento:</strong></td>
+											<ng-container *ngIf="kdo.filas_descuento?.length; else sinDescKdo">
+												<ng-container *ngFor="let f of kdo.filas_descuento">
+													<td class="small" title="Tipo de inscripción">{{ f.kardex_economico }}</td>
+													<td class="small" title="Beca o descuento (monto)">{{ f.tipo_descuento }} ({{ f.descuento_convenio | number:'1.2-2' }} Bs.)</td>
+													<td class="small text-break kardex-obs-cell" title="Observaciones">{{ f.observaciones }}</td>
+												</ng-container>
+											</ng-container>
+											<ng-template #sinDescKdo>
+												<td colspan="3" class="small text-muted">No existen becas asignadas</td>
+											</ng-template>
+										</tr>
+										<tr *ngFor="let ob of kdo.obs_registro_inscripcion || []">
+											<td class="text-end text-muted small kardex-descuentos-label"><strong>Obs. {{ ob.tipo_inscripcion }}:</strong></td>
+											<td colspan="3" class="small text-break kardex-obs-cell">{{ ob.texto_obs }}</td>
+										</tr>
+									</tbody>
+								</table>
+							</div>
+						</ng-container>
+						<ng-template #footerDescuentoLegacy>
+							<div class="row g-3 p-3">
+								<div class="col-md-6">
+									<div class="small">
+										<span class="text-muted">Descuento:</span>
+										<span class="fw-bold">{{ r?.estudiante?.descuento || '-' }}</span>
+									</div>
+								</div>
+								<div class="col-md-6">
+									<div class="small">
+										<span class="text-muted">Observaciones:</span>
+										<span class="fw-bold">{{ r?.estudiante?.observaciones || '-' }}</span>
+									</div>
 								</div>
 							</div>
-							<div class="col-md-6">
-								<div class="small">
-									<span class="text-muted">Observaciones:</span>
-									<span class="fw-bold">{{ r?.estudiante?.observaciones || '-' }}</span>
-								</div>
-							</div>
-						</div>
-					</div>
-				</div>
-
-				<!-- Resumen Financiero -->
-				<div class="financial-summary mb-4">
-					<div class="row g-3">
-						<div class="col-md-6">
-							<div class="student-info">
-								<div class="fw-semibold">{{ r?.estudiante?.cod_ceta }} - {{ r?.estudiante?.nombre_completo || r?.estudiante?.nombres }}</div>
-								<div class="small">Pensum: {{ r?.inscripcion?.cod_pensum }} | Tipo: {{ r?.inscripcion?.tipo_inscripcion }}</div>
-							</div>
-						</div>
-						<div class="col-md-6">
-							<ul class="financial-details">
-								<li>
-									<span class="text-muted">Monto Semestral:</span>
-									<strong class="float-end">{{ r?.totales?.monto_semestral | number:'1.2-2' }}</strong>
-								</li>
-								<li>
-									<span class="text-muted">Total Pagado:</span>
-									<strong class="text-success float-end">{{ r?.totales?.total_pagado_v2 | number:'1.2-2' }}</strong>
-								</li>
-								<li>
-									<span class="text-muted">Saldo Mensualidad:</span>
-									<strong class="text-danger float-end">{{ r?.totales?.saldo_mensualidad | number:'1.2-2' }}</strong>
-								</li>
-							</ul>
-						</div>
+						</ng-template>
 					</div>
 				</div>
 
@@ -284,6 +283,54 @@
 									<tr *ngIf="(r?.cobros | filterReincorporacion)?.length === 0" class="text-center">
 										<td colspan="8" class="text-muted py-3">
 											No hay registros de matrícula o reincorporación
+										</td>
+									</tr>
+								</tbody>
+							</table>
+						</div>
+					</div>
+				</div>
+
+				<!-- Boleta de Rezagados (resumen.boleta_rezagados) -->
+				<div class="card mb-4">
+					<div class="card-header bg-secondary text-white">
+						<h6 class="mb-0">Boleta de Rezagados</h6>
+					</div>
+					<div class="card-body">
+						<div class="table-responsive">
+							<table class="table table-sm table-bordered align-middle boleta-rezagados-table">
+								<thead class="table-light">
+									<tr>
+										<th class="text-center" style="width:3%">Nº</th>
+										<th>Tipo</th>
+										<th class="text-end">Monto</th>
+										<th class="text-center">Factura</th>
+										<th class="text-center">Recibo</th>
+										<th class="text-center">Fecha</th>
+										<th class="text-center">Parcial</th>
+										<th>Nombre de la Materia</th>
+										<th class="text-center">Razón Social / NIT</th>
+									</tr>
+								</thead>
+								<tbody>
+									<tr *ngFor="let br of boletaRezagadosFilas(); let i = index">
+										<td class="text-center">{{ i + 1 }}</td>
+										<td>{{ br?.tipo ?? '-' }}</td>
+										<td class="text-end">
+											<span class="status-indicator paid">{{ br?.monto != null ? (br.monto | number:'1.0-0') : '-' }}</span>
+										</td>
+										<td class="text-center">{{ br?.nro_factura ?? '-' }}</td>
+										<td class="text-center">{{ br?.nro_recibo ?? '-' }}</td>
+										<td class="text-center">{{ (br?.fecha_cobro || br?.fecha) ? ((br?.fecha_cobro || br?.fecha) | date:'dd/MM/yyyy') : '-' }}</td>
+										<td class="text-center">
+											<span class="badge bg-light text-dark border">{{ br?.parcial_display || formatParcialRezagado(br) }}</span>
+										</td>
+										<td>{{ br?.nombre_materia || '-' }}</td>
+										<td class="text-center">{{ getRazonSocialNIT(br) }}</td>
+									</tr>
+									<tr *ngIf="boletaRezagadosFilas().length === 0" class="text-center">
+										<td colspan="9" class="text-muted py-3">
+											No hay registros de boleta de rezagados
 										</td>
 									</tr>
 								</tbody>

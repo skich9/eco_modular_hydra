@@ -5,6 +5,7 @@ namespace App\Http\Controllers\Api;
 use App\Http\Controllers\Controller;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\DB;
+use Illuminate\Support\Facades\Schema;
 
 class KardexNotasController extends Controller
 {
@@ -56,17 +57,25 @@ class KardexNotasController extends Controller
 				\Log::info('[KARDEX MATERIAS DEBUG] Inscripciones de la gestión:', ['inscripciones' => $inscripcionesGestion]);
 			}
 
+			$hasNivelCol = Schema::hasTable('materia') && Schema::hasColumn('materia', 'nivel_materia');
+
+			$selectMateria = [
+				'k.sigla_materia',
+				DB::raw('m.nombre_materia as nombre_materia'),
+				'k.tipo_incripcion',
+				'k.cod_kardex',
+				'm.orden',
+			];
+			if ($hasNivelCol) {
+				$selectMateria[] = 'm.nivel_materia';
+			}
+
 			$q = DB::table('kardex_notas as k')
 				->leftJoin('materia as m', function ($j) {
 					$j->on('m.cod_pensum', '=', 'k.cod_pensum')
 					  ->on('m.sigla_materia', '=', 'k.sigla_materia');
 				})
-				->select(
-					'k.sigla_materia',
-					DB::raw('m.nombre_materia as nombre_materia'),
-					'k.tipo_incripcion',
-					'k.cod_kardex'
-				)
+				->select($selectMateria)
 				->where('k.cod_ceta', $codCeta)
 				->where('k.cod_pensum', $codPensum);
 
@@ -94,21 +103,43 @@ class KardexNotasController extends Controller
 				'rows' => $rows->toArray()
 			]);
 
-			// Distinct por sigla_materia manteniendo la primera ocurrencia
+			// Distinct por sigla_materia manteniendo la primera ocurrencia (orden de $rows solo afecta cuál fila kardex queda; el orden final es por materia.nivel / orden)
 			$unique = [];
 			$seen = [];
 			foreach ($rows as $r) {
 				$key = $r->sigla_materia;
 				if (!isset($seen[$key])) {
-					$unique[] = [
+					$row = [
 						'sigla_materia' => $r->sigla_materia,
 						'nombre_materia' => $r->nombre_materia ?: $r->sigla_materia,
 						'tipo_incripcion' => $r->tipo_incripcion,
 						'cod_kardex' => $r->cod_kardex,
+						'orden' => isset($r->orden) ? (int) $r->orden : null,
 					];
+					if ($hasNivelCol) {
+						$row['nivel_materia'] = $r->nivel_materia ?? null;
+					}
+					$unique[] = $row;
 					$seen[$key] = true;
 				}
 			}
+
+			usort($unique, static function (array $a, array $b) use ($hasNivelCol) {
+				if ($hasNivelCol) {
+					$na = self::kardexMateriaNivelSortKey($a['nivel_materia'] ?? null);
+					$nb = self::kardexMateriaNivelSortKey($b['nivel_materia'] ?? null);
+					if ($na !== $nb) {
+						return $na <=> $nb;
+					}
+				}
+				$oa = isset($a['orden']) && $a['orden'] !== null ? (int) $a['orden'] : 9999;
+				$ob = isset($b['orden']) && $b['orden'] !== null ? (int) $b['orden'] : 9999;
+				if ($oa !== $ob) {
+					return $oa <=> $ob;
+				}
+
+				return strcmp((string) ($a['sigla_materia'] ?? ''), (string) ($b['sigla_materia'] ?? ''));
+			});
 
 			\Log::info('[KARDEX MATERIAS DEBUG] Resultado final:', [
 				'total_unique' => count($unique),
@@ -126,5 +157,27 @@ class KardexNotasController extends Controller
 				'error' => $e->getMessage(),
 			], 500);
 		}
+	}
+
+	/**
+	 * Orden curricular: nivel/semestre (numérico si aplica; sin dato → al final).
+	 */
+	private static function kardexMateriaNivelSortKey($nivel): int
+	{
+		if ($nivel === null || $nivel === '') {
+			return 9999;
+		}
+		if (is_numeric($nivel)) {
+			return (int) $nivel;
+		}
+		$s = preg_replace('/\s+/', '', (string) $nivel);
+		if (preg_match('/^\d+$/', $s)) {
+			return (int) $s;
+		}
+		if (preg_match('/(\d+)/', $s, $m)) {
+			return (int) $m[1];
+		}
+
+		return 9999;
 	}
 }

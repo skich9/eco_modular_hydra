@@ -1,12 +1,14 @@
 <div class="container py-3">
 	<!-- Notificaciones animadas -->
 	<div class="position-fixed top-0 end-0 p-3" style="z-index: 9999;">
-		<div class="alert alert-success alert-dismissible fade" [class.show]="showSuccessAlert" role="alert" *ngIf="showSuccessAlert">
+		<div class="alert alert-success alert-dismissible fade" [class.show]="showSuccessAlert" role="alert"
+			*ngIf="showSuccessAlert">
 			<i class="fas fa-check-circle me-2"></i>
 			<strong>¡Éxito!</strong> {{ alertMessage }}
 			<button type="button" class="btn-close" (click)="showSuccessAlert = false"></button>
 		</div>
-		<div class="alert alert-danger alert-dismissible fade" [class.show]="showErrorAlert" role="alert" *ngIf="showErrorAlert">
+		<div class="alert alert-danger alert-dismissible fade" [class.show]="showErrorAlert" role="alert"
+			*ngIf="showErrorAlert">
 			<i class="fas fa-exclamation-circle me-2"></i>
 			<strong>¡Error!</strong> {{ alertMessage }}
 			<button type="button" class="btn-close" (click)="showErrorAlert = false"></button>
@@ -21,7 +23,8 @@
 				<i class="fas fa-plus me-1"></i>
 				Anadir punto de venta
 			</button>
-			<button type="button" class="btn btn-outline-secondary" (click)="sincronizarConSin()" [disabled]="isSyncing">
+			<button type="button" class="btn btn-outline-secondary" (click)="sincronizarConSin()"
+				[disabled]="isSyncing">
 				<i class="fas me-1" [ngClass]="isSyncing ? 'fa-spinner fa-spin' : 'fa-sync-alt'"></i>
 				{{ isSyncing ? 'Sincronizando...' : 'Sincronizar con SIN' }}
 			</button>
@@ -33,19 +36,14 @@
 				<select class="form-select" [(ngModel)]="filtroSucursal" (ngModelChange)="onSearchChange()">
 					<option [ngValue]="null">Todas</option>
 					@for (s of sucursalesUnicas; track s) {
-						<option [ngValue]="+s">Sucursal {{ s }}</option>
+					<option [ngValue]="+s">Sucursal {{ s }}</option>
 					}
 				</select>
 			</div>
 			<div>
 				<label class="form-label mb-1 small">Buscar</label>
-				<input
-					type="text"
-					class="form-control"
-					[(ngModel)]="searchTerm"
-					(ngModelChange)="onSearchChange()"
-					placeholder="Buscar por codigo, nombre..."
-				/>
+				<input type="text" class="form-control" [(ngModel)]="searchTerm" (ngModelChange)="onSearchChange()"
+					placeholder="Buscar por nombre, usuario asignado" />
 			</div>
 		</div>
 	</div>
@@ -88,8 +86,10 @@
 						<span *ngIf="!pv.usuario_asignado" class="text-muted">—</span>
 					</td>
 					<td>
-						<small *ngIf="pv.usuario_asignado && pv.vence_en">{{ pv.vence_en | date:'dd/MM/yyyy HH:mm' }}</small>
-						<small *ngIf="pv.usuario_asignado && !pv.vence_en" class="text-success fw-bold">Asignado permanentemente</small>
+						<small *ngIf="pv.usuario_asignado && pv.vence_en">{{ pv.vence_en | date:'dd/MM/yyyy HH:mm'
+							}}</small>
+						<small *ngIf="pv.usuario_asignado && !pv.vence_en" class="text-success fw-bold">Asignado
+							permanentemente</small>
 						<span *ngIf="!pv.usuario_asignado" class="text-muted">—</span>
 					</td>
 					<td>{{ getTipoNombre(pv.tipo) }}</td>
@@ -99,17 +99,12 @@
 						</span>
 					</td>
 					<td>
-						<button
-							type="button"
-							class="btn btn-sm btn-outline-primary me-1"
+						<button type="button" class="btn btn-sm btn-outline-primary me-1"
 							(click)="openAddUsersModal(pv)"
 							[attr.title]="pv.usuario_asignado ? 'Editar asignación de usuario' : 'Asignar usuario al punto de venta'">
 							<i class="fas" [ngClass]="pv.usuario_asignado ? 'fa-user-edit' : 'fa-user-plus'"></i>
 						</button>
-						<button
-							type="button"
-							class="btn btn-sm btn-outline-danger"
-							(click)="openDeleteModal(pv)"
+						<button type="button" class="btn btn-sm btn-outline-danger" (click)="openDeleteModal(pv)"
 							title="Eliminar">
 							<i class="fas fa-trash"></i>
 						</button>
@@ -125,9 +120,11 @@
 	</div>
 
 	<!-- Paginación -->
-	<div class="d-flex justify-content-between align-items-center mt-3" *ngIf="!isLoading && filteredPuntosVenta.length > 0">
+	<div class="d-flex justify-content-between align-items-center mt-3"
+		*ngIf="!isLoading && filteredPuntosVenta.length > 0">
 		<div class="text-muted small">
-			Mostrando {{ (currentPage - 1) * itemsPerPage + 1 }} - {{ Math.min(currentPage * itemsPerPage, filteredPuntosVenta.length) }} de {{ filteredPuntosVenta.length }} registros
+			Mostrando {{ (currentPage - 1) * itemsPerPage + 1 }} - {{ Math.min(currentPage * itemsPerPage,
+			filteredPuntosVenta.length) }} de {{ filteredPuntosVenta.length }} registros
 		</div>
 		<nav aria-label="Paginación">
 			<ul class="pagination pagination-sm mb-0">
@@ -159,18 +156,13 @@
 	</div>
 </div>
 
-<app-add-punto-venta-modal
-	(puntoVentaCreated)="onPuntoVentaCreated($event)"
+<app-add-punto-venta-modal (puntoVentaCreated)="onPuntoVentaCreated($event)"
 	(puntoVentaError)="onPuntoVentaError($event)">
 </app-add-punto-venta-modal>
 
-<app-delete-punto-venta-modal
-	[puntoVenta]="puntoVentaToDelete"
-	(confirmDelete)="onConfirmDelete($event)"
+<app-delete-punto-venta-modal [puntoVenta]="puntoVentaToDelete" (confirmDelete)="onConfirmDelete($event)"
 	(cancelDelete)="onCancelDelete()">
 </app-delete-punto-venta-modal>
 
-<app-add-users-modal
-	[puntoVenta]="puntoVentaForUsers"
-	(usersAdded)="onUsersAdded($event)">
+<app-add-users-modal [puntoVenta]="puntoVentaForUsers" (usersAdded)="onUsersAdded($event)">
 </app-add-users-modal>

@@ -497,6 +497,31 @@ export class CobrosService {
 		);
 	}
 
+	/** Lista cuotas filtradas por contexto (misma API que Laravel `CuotaController@index`). */
+	getCuotas(params: {
+		gestion: string;
+		cod_pensum: string;
+		semestre?: string | number;
+		turno?: string;
+		tipo?: string;
+	}): Observable<any> {
+		let httpParams = new HttpParams()
+			.set('gestion', params.gestion)
+			.set('cod_pensum', params.cod_pensum);
+		if (params.semestre != null && `${params.semestre}`.trim() !== '') {
+			httpParams = httpParams.set('semestre', String(params.semestre));
+		}
+		if (params.turno) {
+			httpParams = httpParams.set('turno', params.turno);
+		}
+		if (params.tipo) {
+			httpParams = httpParams.set('tipo', params.tipo);
+		}
+		return this.http.get<any>(`${this.apiUrl}/cuotas`, { params: httpParams }).pipe(
+			map((res: any) => ({ success: !!res?.success, data: res?.data || [], message: res?.message }))
+		);
+	}
+
 	// Actualizar costo_semestral por ID
 	updateCostoSemestral(id: number, payload: { monto_semestre: number; tipo_costo?: string; turno?: string }): Observable<any> {
 		return this.http.put<any>(`${this.apiUrl}/costo-semestral/${id}`, payload).pipe(

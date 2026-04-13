@@ -132,13 +132,15 @@ export class ConfiguracionPuntoVentaComponent implements OnInit {
 				const suc = pv.sucursal != null ? String(pv.sucursal).toLowerCase() : '';
 				const cuis = (pv.codigo_cuis_genera || '').toLowerCase();
 				const tipo = pv.tipo != null ? String(pv.tipo).toLowerCase() : '';
+				const usuario = (pv.usuario_asignado || '').toLowerCase();
 				return (
 					codigo.includes(term) ||
 					nombre.includes(term) ||
 					desc.includes(term) ||
 					suc.includes(term) ||
 					cuis.includes(term) ||
-					tipo.includes(term)
+					tipo.includes(term) ||
+					usuario.includes(term)
 				);
 			});
 		}

@@ -331,7 +331,7 @@
 	<!-- Modal de edición (UI-only) -->
 	<div class="modal-backdrop show" *ngIf="editOpen" style="display:block;"></div>
 	<div class="modal fade show" tabindex="-1" role="dialog" *ngIf="editOpen" style="display:block;">
-		<div class="modal-dialog">
+		<div class="modal-dialog modal-lg modal-dialog-scrollable">
 			<div class="modal-content">
 				<div class="modal-header">
 					<h5 class="modal-title">Editar costo semestral</h5>
@@ -359,11 +359,59 @@
 								<option value="NOCHE">Noche</option>
 							</select>
 						</div>
+
+						<div class="border-top pt-3 mt-2">
+							<div *ngIf="!editModalCuotasLoading && editModalCuotas.length === 0" class="small text-muted mb-0">
+								No hay filas en <code>cuotas</code> para este pensum/gestión/semestre. Si el costo es mensual o arrastre, al guardar se puede sincronizar el monto vía cuotas por contexto.
+							</div>
+							<div class="table-responsive" *ngIf="!editModalCuotasLoading && editModalCuotas.length > 0">
+								<table class="table table-sm table-bordered align-middle mb-0">
+									<thead class="table-light">
+										<tr>
+											<th>Cuota</th>
+											<th class="text-nowrap">Tipo</th>
+											<th class="text-nowrap">Turno</th>
+											<th style="width: 110px;">Monto</th>
+											<th style="width: 168px;">Fecha vencimiento</th>
+										</tr>
+									</thead>
+									<tbody>
+										<tr *ngFor="let cq of editModalCuotas; let i = index">
+											<td>
+												<span class="form-control-plaintext form-control-sm py-0">{{ cq.nombre }}</span>
+											</td>
+											<td class="small text-muted">{{ cq.tipo || '—' }}</td>
+											<td class="small text-muted">{{ cq.turno || '—' }}</td>
+											<td>
+												<input
+													type="text"
+													inputmode="numeric"
+													class="form-control form-control-sm"
+													[name]="'ecm_'+i"
+													[(ngModel)]="cq.monto"
+													[ngModelOptions]="{standalone: true}"
+													autocomplete="off"
+												/>
+											</td>
+											<td>
+												<input
+													type="date"
+													class="form-control form-control-sm"
+													[name]="'ecf_'+i"
+													[(ngModel)]="cq.fecha_vencimiento"
+													[ngModelOptions]="{standalone: true}"
+												/>
+											</td>
+										</tr>
+									</tbody>
+								</table>
+							</div>
+						</div>
 					</div>
 				</div>
 				<div class="modal-footer">
 					<button type="button" class="btn btn-secondary" (click)="closeEdit()">Cerrar</button>
-					<button type="button" class="btn btn-primary" (click)="saveEdit()">Guardar</button>
+					<button type="button" class="btn btn-primary" (click)="saveEdit()" [disabled]="editModalCuotasLoading">Guardar</button>
 				</div>
 			</div>
 		</div>
@@ -490,3 +538,4 @@
 			</div>
 		</div>
 </div>
+

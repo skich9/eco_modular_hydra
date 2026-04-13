@@ -51,6 +51,7 @@ class EstudianteController extends Controller
 				'estudiantes.ap_paterno',
 				'estudiantes.ap_materno',
 				'estudiantes.carrera',
+				DB::raw("(SELECT p.codigo_carrera FROM inscripciones i JOIN pensums p ON i.cod_pensum = p.cod_pensum WHERE i.cod_ceta = estudiantes.cod_ceta ORDER BY i.gestion DESC LIMIT 1) as codigo_carrera"),
 				'estudiantes.resolucion',
 				'estudiantes.gestion',
 				'estudiantes.grupos',
