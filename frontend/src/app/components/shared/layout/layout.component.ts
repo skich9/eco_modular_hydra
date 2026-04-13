@@ -1,7 +1,8 @@
-import { Component } from '@angular/core';
+import { Component, OnInit } from '@angular/core';
 import { CommonModule } from '@angular/common';
 import { RouterModule } from '@angular/router';
 import { NavigationComponent } from '../navigation/navigation.component';
+import { ParametrosGeneralesService } from '../../../services/parametros-generales.service';
 
 @Component({
 	selector: 'app-layout',
@@ -21,7 +22,7 @@ import { NavigationComponent } from '../navigation/navigation.component';
 
 			<footer class="layout-footer">
 				<div class="container-fluid px-4 py-2">
-					<span class="text-muted small">&copy; {{ currentYear }} Instituto Tecnológico CETA - Sistema de Cobros</span>
+					<span class="text-muted small">&copy; {{ currentYear }} {{ nombreInstitucion }} - Sistema de Cobros</span>
 				</div>
 			</footer>
 		</div>
@@ -65,6 +66,28 @@ import { NavigationComponent } from '../navigation/navigation.component';
 		}
 	`
 })
-export class LayoutComponent {
+export class LayoutComponent implements OnInit {
 	currentYear = new Date().getFullYear();
+	nombreInstitucion: string = 'Instituto Tecnológico CETA';
+
+	constructor(private pgService: ParametrosGeneralesService) { }
+
+	ngOnInit(): void {
+		this.loadInstitucionName();
+	}
+
+	private loadInstitucionName(): void {
+		this.pgService.getAll().subscribe({
+			next: (res) => {
+				if (res.success && res.data) {
+					// El ID 2 corresponde al nombre en la tabla parametros_generales
+					const param = res.data.find(p => p.id_parametros_generales === 2);
+					if (param && param.valor) {
+						this.nombreInstitucion = param.valor;
+					}
+				}
+			},
+			error: (err) => console.error('Error cargando nombre de institución en footer:', err)
+		});
+	}
 }
