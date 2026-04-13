@@ -6,6 +6,7 @@ import { AuthService } from '../../../services/auth.service';
 import { PermissionService } from '../../../services/permission.service';
 import { Carrera } from '../../../models/carrera.model';
 import { CarreraService } from '../../../services/carrera.service';
+import { ParametrosGeneralesService } from '../../../services/parametros-generales.service';
 import { Usuario } from '../../../models/usuario.model';
 
 interface MenuItem {
@@ -34,6 +35,7 @@ export class NavigationComponent implements OnInit {
 	currentUser: Usuario | null = null;
 	showUserDropdown = false;
 	activeSubmenu: number | null = null;
+	nombreInstitucion: string = 'Instituto Tecnológico CETA';
 
 	// Change password form
 	changePasswordForm: FormGroup;
@@ -121,7 +123,8 @@ export class NavigationComponent implements OnInit {
 		private permissionService: PermissionService,
 		private router: Router,
 		private formBuilder: FormBuilder,
-		private carreraService: CarreraService
+		private carreraService: CarreraService,
+		private pgService: ParametrosGeneralesService
 	) {
 		this.changePasswordForm = this.formBuilder.group({
 			contraseniaActual: ['', [Validators.required]],
@@ -150,6 +153,24 @@ export class NavigationComponent implements OnInit {
 
 		// Cargar carreras para el menú académico
 		this.loadCarreras();
+
+		// Cargar nombre de la institución
+		this.loadInstitucionName();
+	}
+
+	private loadInstitucionName(): void {
+		this.pgService.getAll().subscribe({
+			next: (res) => {
+				if (res.success && res.data) {
+					// El ID 2 corresponde al nombre en la tabla parametros_generales
+					const param = res.data.find(p => p.id_parametros_generales === 2);
+					if (param && param.valor) {
+						this.nombreInstitucion = param.valor;
+					}
+				}
+			},
+			error: (err) => console.error('Error cargando nombre de institución:', err)
+		});
 	}
 
 	private filterMenusByPermissions(): void {

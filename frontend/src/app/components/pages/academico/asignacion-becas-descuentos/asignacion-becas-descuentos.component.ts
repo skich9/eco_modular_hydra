@@ -367,8 +367,21 @@ export class AsignacionBecasDescuentosComponent implements OnInit {
 		this.codInscripArrastre = inscArr?.cod_inscrip ?? null;
 		this.codInscrip = this.codInscripNormal;
 		this.codPensumSelected = (insc?.cod_pensum ?? est?.cod_pensum ?? '') as string;
-		const asignacionesCuotas = Array.isArray(res?.data?.asignaciones) ? res.data.asignaciones : [];
+		// `asignaciones` en API = primarias + arrastre concatenados. Para NORMAL: excluir arrastre por tipo y por id (por si el merge no trae tipo_inscripcion fiable).
+		const asignacionesCuotasRaw = Array.isArray(res?.data?.asignaciones) ? res.data.asignaciones : [];
 		const asignacionesArrastre = Array.isArray(res?.data?.asignaciones_arrastre) ? res.data.asignaciones_arrastre : [];
+		const idsAsignacionArrastre = new Set(
+			(asignacionesArrastre as any[])
+				.map((a: any) => Number(a?.id_asignacion_costo ?? 0))
+				.filter((id: number) => id > 0)
+		);
+		const asignacionesCuotas = (asignacionesCuotasRaw as any[]).filter((a: any) => {
+			const id = Number(a?.id_asignacion_costo ?? 0);
+			if (id > 0 && idsAsignacionArrastre.has(id)) {
+				return false;
+			}
+			return String(a?.tipo_inscripcion ?? 'NORMAL').toUpperCase() !== 'ARRASTRE';
+		});
 		this.cuotasNormal = (asignacionesCuotas as any[]).map((a: any) => {
 			const estado = String(a?.estado_pago || '').toUpperCase();
 			const selected = estado === 'PENDIENTE' || estado === 'PARCIAL';
