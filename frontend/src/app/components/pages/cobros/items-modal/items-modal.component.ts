@@ -267,6 +267,14 @@ export class ItemsModalComponent implements OnInit, OnChanges {
 		setTimeout(() => { this.comboOpen = false; }, 150);
 	}
 
+	onSearchChange(val: string): void {
+		this.comboOpen = true; // Mantener siempre abierto al borrar o escribir
+		const currentSelected = this.selectedItem();
+		if (currentSelected && currentSelected.nombre_servicio !== val) {
+			this.form.patchValue({ id_item: '' }, { emitEvent: true }); // Resetear precio y selección internamente
+		}
+	}
+
 	selectComboItem(it: any): void {
 		if (!it) return;
 		this.form.patchValue({ id_item: it.id_item }, { emitEvent: true });
