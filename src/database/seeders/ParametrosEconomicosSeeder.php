@@ -123,6 +123,12 @@ class ParametrosEconomicosSeeder extends Seeder
                 'descripcion' => 'id descuento institucional turno noche',
                 'estado' => true,
             ],
+            [
+                'nombre' => 'credito',
+                'valor' => 'item_base',
+                'descripcion' => 'Parámetro base para ítems de colección',
+                'estado' => true,
+            ],
         ];
 
         foreach ($parametros as $parametro) {
