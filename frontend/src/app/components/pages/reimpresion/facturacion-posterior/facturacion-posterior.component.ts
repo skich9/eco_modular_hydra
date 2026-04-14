@@ -305,6 +305,36 @@ export class FacturacionPosteriorComponent implements OnInit {
 		return parts.length ? `Pago según ${parts.join(' / ')}` : 'Pago registrado';
 	}
 
+	/** Recibo para marcar repuesto: fila agrupada o cualquier ítem (API puede no poner nro_recibo en raw[0]). */
+	private extractNroReciboParaReposicion(selRow: { recibo?: number | null }, rawItems: any[]): number | null {
+		const fromRow = selRow?.recibo;
+		if (fromRow != null && !Number.isNaN(Number(fromRow)) && Number(fromRow) > 0) {
+			return Number(fromRow);
+		}
+		for (const r of rawItems || []) {
+			const v =
+				r?.nro_recibo ??
+				r?.num_recibo ??
+				r?.recibo?.nro_recibo ??
+				r?.recibo?.num_recibo;
+			if (v != null && String(v).trim() !== '') {
+				const n = Number(v);
+				if (!Number.isNaN(n) && n > 0) return n;
+			}
+		}
+		return null;
+	}
+
+	private safeHttpErrMessage(err: unknown): string {
+		const e = err as any;
+		const m =
+			(typeof e?.message === 'string' && e.message) ||
+			(typeof e?.error?.message === 'string' && e.error.message) ||
+			(typeof e?.error === 'string' && e.error) ||
+			'';
+		return m || 'Error de red o del servidor.';
+	}
+
 	// Mostrar en tabla: construye el detalle de factura en una tarjeta inferior
 	mostrarItems(): void {
 		if (this.isObsInvalid()) return;
@@ -331,22 +361,51 @@ export class FacturacionPosteriorComponent implements OnInit {
 		this.locked = true; // bloquear selección y observaciones
 	}
 
+	/** Cobro que ya es factura (no recibo a convertir): reposición no implementada. */
+	private esCobroConFacturaEmitida(selRow: { factura?: number | null; recibo?: number | null }, rawItems: any[]): boolean {
+		const nf = selRow?.factura != null ? Number(selRow.factura) : NaN;
+		if (Number.isFinite(nf) && nf > 0) {
+			return true;
+		}
+		if (!rawItems?.length) {
+			return false;
+		}
+		return rawItems.every((r: any) => {
+			const td = String(r?.tipo_documento || '').toUpperCase();
+			const nroF = r?.nro_factura != null ? Number(r.nro_factura) : NaN;
+			return td === 'F' && Number.isFinite(nroF) && nroF > 0;
+		});
+	}
+
 	reponerFactura(): void {
 		try {
-			const selRow = this.cobros.find(c => !!c.selected);
-			if (!selRow) return;
+			const selRows = this.cobros.filter(c => !!c.selected);
+			if (selRows.length === 0) {
+				alert('Seleccione una fila en la tabla de cobros previos.');
+				return;
+			}
+			if (selRows.length > 1) {
+				alert('Para reponer factura seleccione una sola fila.');
+				return;
+			}
+			const selRow = selRows[0];
 			const raw = Array.isArray(selRow.rawItems) ? selRow.rawItems : [];
 			if (raw.length === 0) return;
 
-			// Obtener nro_recibo del primer item
-			const anyIt: any = raw[0] || {};
-			const nroRecibo = anyIt?.nro_recibo ? Number(anyIt.nro_recibo) : null;
-
-			if (!nroRecibo) {
-				alert('No se pudo identificar el número de recibo.');
+			if (this.esCobroConFacturaEmitida(selRow, raw)) {
+				alert(
+					'La reposición de factura para cobros ya facturados no está disponible.'
+				);
 				return;
 			}
 
+			const nroRecibo = this.extractNroReciboParaReposicion(selRow, raw);
+			if (!nroRecibo) {
+				alert('No se pudo identificar el número de recibo (ni en la fila ni en los ítems). Revise los datos del cobro.');
+				return;
+			}
+
+			const anyIt: any = raw[0] || {};
 			const idForma = (anyIt?.id_forma_cobro || '1').toString();
 			const now = new Date();
 			const fechaIso = now.toISOString().slice(0, 19).replace('T', ' ');
@@ -356,19 +415,23 @@ export class FacturacionPosteriorComponent implements OnInit {
 			const obsConGeneradoPor = obsBase ? `${obsBase}. Generado por ${this.currentUserNickname}` : `Generado por ${this.currentUserNickname}`;
 
 			// Construir items para la factura nueva (CON reposicion_factura, SIN id_asignacion_costo/id_cuota)
-			const items = raw.map((r: any) => ({
-				monto: Number(r?.monto || 0) || 0,
-				fecha_cobro: fechaIso,
-				pu_mensualidad: Number(r?.pu_mensualidad || 0) || 0,
-				descuento: Number(r?.descuento || 0) || 0,
-				order: r?.order ?? null,
-				id_item: r?.id_item ?? null,
-				tipo_documento: 'F',
-				medio_doc: 'C',
-				concepto: (r?.concepto || '').toString(),
-				observaciones: obsConGeneradoPor,
-				reposicion_factura: 1
-			}));
+			const items = raw.map((r: any, idx: number) => {
+				const conceptoStr = (r?.concepto || '').toString().trim();
+				return {
+					monto: Number(r?.monto || 0) || 0,
+					fecha_cobro: fechaIso,
+					pu_mensualidad: Number(r?.pu_mensualidad || 0) || 0,
+					descuento: Number(r?.descuento || 0) || 0,
+					order: r?.order ?? (idx + 1),
+					id_item: r?.id_item ?? null,
+					tipo_documento: 'F',
+					medio_doc: 'C',
+					concepto: (r?.concepto || '').toString(),
+					detalle: conceptoStr || (r?.observaciones || '').toString().trim() || 'Reposición',
+					observaciones: obsConGeneradoPor,
+					reposicion_factura: 1
+				};
+			});
 
 			// Obtener datos del cliente desde identidadForm (puede haber sido modificado en modal)
 			const tipoId = Number(this.identidadForm.get('tipo_identidad')?.value || 1);
@@ -384,9 +447,9 @@ export class FacturacionPosteriorComponent implements OnInit {
 			let idUsuario = 0;
 			if (typeof localStorage !== 'undefined') {
 				try {
-					const raw = localStorage.getItem('current_user');
-					if (raw) {
-						const parsed = JSON.parse(raw);
+					const lsUser = localStorage.getItem('current_user');
+					if (lsUser) {
+						const parsed = JSON.parse(lsUser);
 						if (parsed?.id_usuario) {
 							idUsuario = Number(parsed.id_usuario);
 						}
@@ -414,21 +477,19 @@ export class FacturacionPosteriorComponent implements OnInit {
 				}
 			};
 
-			// Paso 1: Marcar el recibo original como repuesto
+			// Paso 1: Marcar el recibo de esa fila como repuesto
 			this.cobrosService.marcarReciboRepuesto(nroRecibo).subscribe({
 				next: (res: any) => {
 					if (res?.success) {
-						// Paso 2: Crear la factura nueva con id_usuario=37
+						// Paso 2: Crear la factura nueva
 						this.cobrosService.batchStore(payload).subscribe({
 							next: (res2: any) => {
 								if (res2?.success) {
-									alert('Reposición registrada correctamente.');
-
 									// Descargar la factura generada
-									const items = res2?.data?.items || [];
-									if (items.length > 0) {
+									const itemsOut = res2?.data?.items || [];
+									if (itemsOut.length > 0) {
 										// Buscar el primer item que sea factura (tipo_documento='F')
-										const facturaItem = items.find((it: any) => String(it?.tipo_documento || '').toUpperCase() === 'F');
+										const facturaItem = itemsOut.find((it: any) => String(it?.tipo_documento || '').toUpperCase() === 'F');
 
 										if (facturaItem && facturaItem.nro_factura) {
 											const nroFactura = facturaItem.nro_factura;
@@ -439,6 +500,10 @@ export class FacturacionPosteriorComponent implements OnInit {
 											const pvCtx = facturaItem?.codigo_punto_venta ?? null;
 											this.cobrosService.downloadFacturaPdf(anio, nroFactura, { codigo_sucursal: sucursalCtx, codigo_punto_venta: pvCtx }).subscribe({
 												next: (blob: Blob) => {
+													if (!blob || blob.size === 0) {
+														alert('Reposición registrada, pero el PDF llegó vacío. Revise el servidor o el endpoint de facturas.');
+														return;
+													}
 													const url = window.URL.createObjectURL(blob);
 													const a = document.createElement('a');
 													a.href = url;
@@ -447,12 +512,18 @@ export class FacturacionPosteriorComponent implements OnInit {
 													a.click();
 													document.body.removeChild(a);
 													window.URL.revokeObjectURL(url);
+													alert('Reposición registrada correctamente. Se descargó el PDF.');
 												},
 												error: (err) => {
 													console.error('Error descargando factura', err);
+													alert('Reposición registrada, pero no se pudo descargar el PDF: ' + this.safeHttpErrMessage(err));
 												}
 											});
+										} else {
+											alert('Reposición registrada, pero la respuesta no incluye número de factura para descargar el PDF.');
 										}
+									} else {
+										alert('Reposición registrada, pero no se recibieron ítems en la respuesta; no se puede descargar el PDF.');
 									}
 
 									this.detalleFacturaVisible = false;
@@ -464,7 +535,7 @@ export class FacturacionPosteriorComponent implements OnInit {
 							},
 							error: (err) => {
 								console.error('Error creando factura', err);
-								alert('Error al crear la factura.');
+								alert('Error al crear la factura: ' + this.safeHttpErrMessage(err));
 							}
 						});
 					} else {
@@ -473,7 +544,7 @@ export class FacturacionPosteriorComponent implements OnInit {
 				},
 				error: (err) => {
 					console.error('Error marcando recibo', err);
-					alert('Error al marcar el recibo como repuesto.');
+					alert('Error al marcar el recibo como repuesto: ' + this.safeHttpErrMessage(err));
 				}
 			});
 		} catch (e) {
@@ -660,3 +731,5 @@ export class FacturacionPosteriorComponent implements OnInit {
 		this.modalAlertType = type;
 	}
 }
+
+
