@@ -1232,10 +1232,10 @@ export class CobrosComponent implements OnInit {
     try { this.buscarDlg?.close(); } catch { }
     const cod = (row?.cod_ceta ?? row?.codCeta ?? row?.codigo ?? '').toString();
     if (!cod) return;
-    
+
     // Limpiar estado previo antes de cargar el nuevo estudiante
     this.limpiarTodo();
-    
+
     this.searchForm.patchValue({ cod_ceta: cod }, { emitEvent: false });
     this.loadResumen();
   }
@@ -1731,10 +1731,11 @@ export class CobrosComponent implements OnInit {
 
   private apiBase(): string {
     try {
-      const protocol = typeof window !== 'undefined' && window.location ? (window.location.protocol || 'http:') : 'http:';
-      const host = typeof window !== 'undefined' && window.location ? (window.location.hostname || 'localhost') : 'localhost';
-      const port = environment.apiPort || '8069';
-      return `${protocol}//${host}:${port}/api`;
+      // const protocol = typeof window !== 'undefined' && window.location ? (window.location.protocol || 'http:') : 'http:';
+      // const host = typeof window !== 'undefined' && window.location ? (window.location.hostname || 'localhost') : 'localhost';
+      // const port = environment.apiPort || '8069';
+      // return `${protocol}//${host}:${port}/api`;
+      return environment.apiUrl;
     } catch {
       return environment.apiUrl;
     }
@@ -1861,11 +1862,11 @@ export class CobrosComponent implements OnInit {
       this.qrMetodoSelected = false;
       this.codigoSinBaseSelected = '';
       this.selectedFormaItem = null;
-      
+
       // Limpiar saldos parciales de frontend
       this.frontSaldoByCuota = {};
       this.startCuotaOverrideValue = null;
-      
+
       try { (this.batchForm.get('cabecera.codigo_sin') as any)?.enable?.({ emitEvent: false }); } catch { }
     } catch { }
   }
@@ -2743,7 +2744,7 @@ export class CobrosComponent implements OnInit {
     const cod_ceta = cabecera?.get('cod_ceta')?.value;
     let gestion = cabecera?.get('gestion')?.value || '';
 
-    // Si el usuario ingresó un nuevo estudiante, ignoramos la gestión que quedó seleccionada 
+    // Si el usuario ingresó un nuevo estudiante, ignoramos la gestión que quedó seleccionada
     // en el DOM (probablemente del estudiante anterior o autocompletada por fallback)
     const prevCodCeta = this.resumen?.estudiante?.cod_ceta || this.searchForm.get('cod_ceta')?.value;
     if (prevCodCeta && String(prevCodCeta) !== String(cod_ceta)) {

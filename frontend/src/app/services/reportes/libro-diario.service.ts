@@ -82,10 +82,11 @@ export class LibroDiarioService {
 		@Inject(PLATFORM_ID) private platformId: Object
 	) {
 		if (isPlatformBrowser(this.platformId)) {
-			const protocol = typeof window !== 'undefined' && window.location ? (window.location.protocol || 'http:') : 'http:';
-			const host = typeof window !== 'undefined' && window.location ? (window.location.hostname || 'localhost') : 'localhost';
-			const port = environment.apiPort || '8069';
-			this.apiUrl = `${protocol}//${host}:${port}/api`;
+			// const protocol = typeof window !== 'undefined' && window.location ? (window.location.protocol || 'http:') : 'http:';
+			// const host = typeof window !== 'undefined' && window.location ? (window.location.hostname || 'localhost') : 'localhost';
+			// const port = environment.apiPort || '8069';
+			// this.apiUrl = `${protocol}//${host}:${port}/api`;
+      this.apiUrl = environment.apiUrl;
 		} else {
 			this.apiUrl = environment.apiUrl;
 		}

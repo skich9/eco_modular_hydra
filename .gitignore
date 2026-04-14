@@ -14,3 +14,12 @@ frontend/src/environments/environment.ts
 
 # Archivos internos del asistente (Antigravity)
 brain/
+
+src/.env
+src/.env.development
+src/.env.production
+src/.env.example.docker
+
+
+frontend/src/environments/environment.ts.nodocker
+frontend/src/environments/environment.ts.docker
