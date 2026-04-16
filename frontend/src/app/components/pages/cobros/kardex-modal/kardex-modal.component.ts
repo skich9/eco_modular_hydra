@@ -318,16 +318,14 @@ export class KardexModalComponent implements OnChanges {
 		return mes ? `${numeroCuota} - ${mes}` : `${numeroCuota}`;
 	}
 
-	/** Cobro de mora: no usa id_asignacion_costo; puede venir como MORA o NIVELACION (mismo flujo batch). */
+	/** Cobro de mora: puede venir como MORA o NIVELACION; a veces con id_asignacion_costo (se muestra en fila de cuota con etiqueta MORA). */
 	private isCobroMora(cobro: any): boolean {
 		const cod = String(cobro?.cod_tipo_cobro || '').toUpperCase();
 		if (cod === 'MORA') return true;
 		if (String(cobro?.tipo_pago || '').toUpperCase() === 'MORA') return true;
 		if (Number(cobro?.id_asignacion_mora || 0) > 0 && !cobro?.id_asignacion_costo) return true;
-		if (cod === 'NIVELACION' && !cobro?.id_asignacion_costo) {
-			const raw = `${cobro?.detalle ?? ''} ${cobro?.concepto ?? ''}`;
-			return /\bMens\.|\bNiv\b|mora/i.test(raw);
-		}
+		// NIVELACION en BD = mora de nivelación; no depender del texto de detalle (p. ej. "Nivelación" no coincide con \bNiv\b).
+		if (cod === 'NIVELACION' && !cobro?.id_asignacion_costo) return true;
 		return false;
 	}
 
@@ -456,10 +454,13 @@ export class KardexModalComponent implements OnChanges {
 					// El pago total solo se marca como completo si la cuota está COBRADA y es el último pago
 					const esCompleto = (cuotaEsCompleta && esUltimoPago) ? 'Si' : 'No';
 
-					// Determinar tipo de inscripción: para ARRASTRE, mostrar 'ARRASTRE'
+					// Tipo mostrado: la cuota es NORMAL/ARRASTRE, pero MORA/NIVELACION deben verse como MORA (coincide con cod_tipo_cobro en cobro).
+					const codTipo = String(pago?.cod_tipo_cobro || '').toUpperCase();
 					let tipoInscripcion = asignacion?.tipo_inscripcion || 'NORMAL';
-					if (pago?.cod_tipo_cobro === 'ARRASTRE') {
+					if (codTipo === 'ARRASTRE') {
 						tipoInscripcion = 'ARRASTRE';
+					} else if (codTipo === 'MORA' || codTipo === 'NIVELACION') {
+						tipoInscripcion = 'MORA';
 					}
 
 					// Determinar número de cuota: para ARRASTRE, extraer del detalle
