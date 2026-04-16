@@ -731,3 +731,6 @@ export class FacturacionPosteriorComponent implements OnInit {
 		this.modalAlertType = type;
 	}
 }
+
+
+

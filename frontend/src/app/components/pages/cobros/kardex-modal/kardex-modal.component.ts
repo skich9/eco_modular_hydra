@@ -318,6 +318,33 @@ export class KardexModalComponent implements OnChanges {
 		return mes ? `${numeroCuota} - ${mes}` : `${numeroCuota}`;
 	}
 
+	/** Cobro de mora: no usa id_asignacion_costo; puede venir como MORA o NIVELACION (mismo flujo batch). */
+	private isCobroMora(cobro: any): boolean {
+		const cod = String(cobro?.cod_tipo_cobro || '').toUpperCase();
+		if (cod === 'MORA') return true;
+		if (String(cobro?.tipo_pago || '').toUpperCase() === 'MORA') return true;
+		if (Number(cobro?.id_asignacion_mora || 0) > 0 && !cobro?.id_asignacion_costo) return true;
+		if (cod === 'NIVELACION' && !cobro?.id_asignacion_costo) {
+			const raw = `${cobro?.detalle ?? ''} ${cobro?.concepto ?? ''}`;
+			return /\bMens\.|\bNiv\b|mora/i.test(raw);
+		}
+		return false;
+	}
+
+	/** Número de cuota (1–12) desde detalle/concepto de mora (p. ej. "Mens. (Marzo) Niv", "Cuota 3"). */
+	private numeroCuotaFromMoraDetalle(cobro: any): number {
+		const raw = `${cobro?.detalle ?? ''} ${cobro?.concepto ?? ''}`.trim();
+		const meses = ['Febrero', 'Marzo', 'Abril', 'Mayo', 'Junio', 'Julio', 'Agosto', 'Septiembre', 'Octubre', 'Noviembre', 'Diciembre'];
+		const mesMatch = raw.match(/\b(Enero|Febrero|Marzo|Abril|Mayo|Junio|Julio|Agosto|Septiembre|Octubre|Noviembre|Diciembre)\b/i);
+		if (mesMatch) {
+			const idx = meses.findIndex(m => m.toLowerCase() === mesMatch[1].toLowerCase());
+			if (idx >= 0) return idx + 1;
+		}
+		const cuotaMatch = raw.match(/Cuota\s*(\d+)/i);
+		if (cuotaMatch) return parseInt(cuotaMatch[1], 10) || 1;
+		return 1;
+	}
+
 	// Obtener nombre del mes según gestión y número de cuota
 	getMesByCuota(numeroCuota: number): string {
 		const gestion = this.gestion.toString() || '';
@@ -466,6 +493,47 @@ export class KardexModalComponent implements OnChanges {
 					};
 
 					expandidos.push(pagoExpandido);
+				}
+			}
+
+			// Moras pagadas: no tienen id_asignacion_costo; agrupar por id_asignacion_mora o por clave de cobro
+			const pagosMoraPorClave = new Map<string, any[]>();
+			for (const cobro of cobrosItems) {
+				if (!this.isCobroMora(cobro)) continue;
+				const idM = Number(cobro?.id_asignacion_mora || 0);
+				const key =
+					idM > 0
+						? `mora_${idM}`
+						: `mora_cobro_${cobro?.nro_cobro ?? ''}_${cobro?.anio_cobro ?? ''}_${cobro?.tipo_inscripcion ?? ''}`;
+				if (!pagosMoraPorClave.has(key)) pagosMoraPorClave.set(key, []);
+				pagosMoraPorClave.get(key)!.push(cobro);
+			}
+
+			for (const [, pagosM] of pagosMoraPorClave.entries()) {
+				pagosM.sort((a: any, b: any) => {
+					const fa = new Date(a?.fecha_cobro || a?.fecha_pago || 0).getTime();
+					const fb = new Date(b?.fecha_cobro || b?.fecha_pago || 0).getTime();
+					return fa - fb;
+				});
+				const numeroCuota = this.numeroCuotaFromMoraDetalle(pagosM[0]);
+				for (let i = 0; i < pagosM.length; i++) {
+					const pago = pagosM[i];
+					const esUltimo = i === pagosM.length - 1;
+					const completo = pago?.cobro_completo === true || pago?.cobro_completo === 1 || esUltimo;
+					expandidos.push({
+						...pago,
+						numero_cuota: numeroCuota,
+						numero_pago: i + 1,
+						tipo_inscripcion: 'MORA',
+						es_multipago: pagosM.length > 1,
+						es_completo: completo ? 'Si' : 'No',
+						estado_pago: 'COBRADO',
+						fecha_pago: pago?.fecha_cobro || pago?.fecha_pago || null,
+						monto_pagado: pago?.monto || 0,
+						nro_factura: pago?.nro_factura || '-',
+						nro_recibo: pago?.nro_recibo || '0',
+						observaciones: this.getObservacionesExtendidas(pago),
+					});
 				}
 			}
 
