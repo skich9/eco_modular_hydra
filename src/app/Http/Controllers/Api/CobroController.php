@@ -4775,14 +4775,3 @@ class CobroController extends Controller
 		}
 	}
 }
-
-Bug formulario (Angular + Laravel).
-Página: cobros
-context: podrias revisar y decirme por que cuando ingreso codigo ceta le doy a buscar , una vez que cargue los datos, le doy  al boton "kardex economico" , salta el kardex modal y en el card de "Mensualidades pagadas "me sale mora como NORMAL pero en la bd tabla cobro en el campo "codigo_tipo_cobro" esta como "NIVELACION" donde si dice eso deberia decir mora en el kardex modal 
-Return:
-- Problemas
-- Causa raíz
-- Flujo de datos (corto)
-- Validaciones rotas
-- Solución
-- Código
