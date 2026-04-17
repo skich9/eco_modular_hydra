@@ -33,6 +33,7 @@ class DatabaseSeeder extends Seeder
             // sin_forma_cobro depende de formas_cobro -> se ejecuta más abajo
 
             // Descuentos y becas
+            DefDescuentosBecaEspecialSeeder::class,
             // DefDescuentosBecaSeeder::class,  // Causa duplicados
 
             // Estructura académica
@@ -42,7 +43,11 @@ class DatabaseSeeder extends Seeder
             GestionSeeder::class,
 
             // Costos y cobros
-            // CostoSemestralSeeder::class,  // Problemas con factory
+            // Costos y cobros (NUEVOS ESTATICOS)
+            CostoSemestralEspecialSeeder::class,
+            CuotasEspecialSeeder::class,
+            DatosMoraDetalleEspecialSeeder::class,
+            
             AsignacionCostosSeeder::class,
             FormasCobroSeeder::class,
             // Luego de formas_cobro, poblar el mapeo SIN
@@ -50,7 +55,6 @@ class DatabaseSeeder extends Seeder
             // SinListLeyendaFacturaSeeder::class,  // Problemas de estructura
             SinMotivoAnulacionFacturaSeeder::class,
             CuentasBancariasSeeder::class,
-            // CuotasSeeder::class,  // Problemas de estructura
 
             // Catálogos y parametrizaciones adicionales
             ItemsCobroSeeder::class,
