@@ -522,6 +522,22 @@ class CobroController extends Controller
 			}
 
 			// Lógica de cálculo estricta por tipos de materias (NORMAL / ARRASTRE)
+			$paramMonto = null;        // MONTO_SEMESTRAL_FIJO (pre-cargado antes del primer uso)
+			$paramNroCuotas = null;    // NRO_CUOTAS
+			if (!$costoSemestral && $gestionToUse) {
+				if (Schema::hasColumn('parametros_costos', 'nombre') && Schema::hasColumn('parametros_costos', 'valor')) {
+					$pcQuery = ParametroCosto::query();
+					if (Schema::hasColumn('parametros_costos', 'gestion')) {
+						$pcQuery->where('gestion', $gestionToUse);
+					}
+					$pcQuery->where('nombre', 'MONTO_SEMESTRAL_FIJO');
+					if (Schema::hasColumn('parametros_costos', 'estado')) {
+						$pcQuery->where('estado', true);
+					}
+					$paramMonto = $pcQuery->first();
+				}
+			}
+
 			$montoTotalNormal = 0;
 			$montoTotalArrastreCalculado = $countMateriasArrastre * 160 * 5;
 
@@ -862,21 +878,6 @@ class CobroController extends Controller
 			}
 
 			// Parámetros y cálculo de monto/nro_cuotas/pu
-			$paramMonto = null;        // MONTO_SEMESTRAL_FIJO
-			$paramNroCuotas = null;    // NRO_CUOTAS
-			if (!$costoSemestral && $gestionToUse) {
-				if (Schema::hasColumn('parametros_costos', 'nombre') && Schema::hasColumn('parametros_costos', 'valor')) {
-					$pcQuery = ParametroCosto::query();
-					if (Schema::hasColumn('parametros_costos', 'gestion')) {
-						$pcQuery->where('gestion', $gestionToUse);
-					}
-					$pcQuery->where('nombre', 'MONTO_SEMESTRAL_FIJO');
-					if (Schema::hasColumn('parametros_costos', 'estado')) {
-						$pcQuery->where('estado', true);
-					}
-					$paramMonto = $pcQuery->first();
-				}
-			}
 			// Calcular NRO_CUOTAS con prioridad desde asignacion_costos y fallback a parametros_costos/cuotas
 			$paramNroCuotas = null;
 			$nroCuotasFromTable = 0;
