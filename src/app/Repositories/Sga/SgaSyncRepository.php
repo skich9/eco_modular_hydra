@@ -4527,4 +4527,577 @@ class SgaSyncRepository
 
 		return compact('source','total','inserted','updated','skipped');
 	}
+
+	/**
+	 * Sincroniza cobros de MATERIAL_ADICIONAL (libros/material extra) desde SGA hacia cobro.
+	 *
+	 * Origen: tabla material_adicional (sga_elec|sga_mec). Como la tabla no tiene columna gestion,
+	 * ésta se obtiene mediante JOIN con registro_inscripcion (ri.cod_inscrip = ma.cod_inscrip).
+	 *
+	 * Estrategia por fila:
+	 *  - Se resuelve cod_pensum local vía mapPensumsByCarrera (soporta divergencia de códigos).
+	 *  - Se busca inscripción local por (carrera, cod_ceta, cod_pensum_local, gestion, tipo_inscripcion).
+	 *    Si no existe, se marca ERROR en sga_sync_cobros (queda reintentable en futuras corridas).
+	 *  - cod_tipo_cobro = MATERIAL_EXTRA (validado contra tipo_cobro).
+	 *  - id_item: cascada nombre_libro -> insumo -> concepto -> item genérico "material extra" -> null.
+	 *  - Se replican factura/recibo y nota_reposicion/nota_bancaria igual que los otros sync (si WRITE).
+	 *
+	 * Idempotente vía sga_sync_cobros (source_table='material_adicional').
+	 */
+	public function syncCobrosMaterialAdicional(string $source, ?string $gestion = null, int $chunk = 1000, bool $dryRun = false, ?int $codCetaFilter = null, ?string $codPensumFilter = null, bool $trace = false): array
+	{
+		$source = in_array($source, ['sga_elec','sga_mec']) ? $source : 'sga_elec';
+		$gestion = $gestion !== null ? trim((string) $gestion) : null;
+		if ($gestion === '') { $gestion = null; }
+
+		$total = 0; $inserted = 0; $skipped = 0; $errors = 0;
+		$skippedSynced = 0; $skippedMissingUser = 0; $skippedMissingInscripcion = 0;
+		$skippedMissingItem = 0;
+
+		if (!Schema::hasTable('cobro') || !Schema::hasTable('sga_sync_cobros')) {
+			return compact('source','gestion','total','inserted','skipped','errors','skippedSynced','skippedMissingUser','skippedMissingInscripcion','skippedMissingItem');
+		}
+		if (!Schema::connection($source)->hasTable('material_adicional')) {
+			return compact('source','gestion','total','inserted','skipped','errors','skippedSynced','skippedMissingUser','skippedMissingInscripcion','skippedMissingItem');
+		}
+		if (!Schema::connection($source)->hasTable('registro_inscripcion')) {
+			return compact('source','gestion','total','inserted','skipped','errors','skippedSynced','skippedMissingUser','skippedMissingInscripcion','skippedMissingItem');
+		}
+
+		$defaultUserId = (int) (env('SYNC_DEFAULT_USER_ID', 1));
+		$carreraLabel = $source === 'sga_elec' ? 'Electricidad y Electrónica Automotriz' : 'Mecánica Automotriz';
+
+		try {
+			Log::info('SGA sync cobros material: mode', [
+				'source' => $source,
+				'gestion' => $gestion ?? 'ALL',
+				'dry_run' => $dryRun,
+				'trace' => $trace,
+				'writes_cobro' => !$dryRun,
+				'writes_sga_sync_cobros' => (!$dryRun) || $trace,
+				'default_user_id' => $defaultUserId,
+			]);
+		} catch (\Throwable $e) {}
+
+		$codTipoCobroMaterial = $this->resolveCodTipoCobro('MATERIAL_EXTRA');
+
+		$genericItemId = null;
+		try {
+			if (Schema::hasTable('items_cobro')) {
+				$genericItemId = DB::table('items_cobro')
+					->whereRaw('LOWER(TRIM(nombre_servicio)) IN (?, ?, ?, ?)', [
+						'material extra', 'material adicional', 'libros', 'material educativo'
+					])
+					->value('id_item');
+				$genericItemId = $genericItemId ? (int) $genericItemId : null;
+			}
+		} catch (\Throwable $e) { $genericItemId = null; }
+
+		$baseQuery = DB::connection($source)
+			->table('material_adicional as ma')
+			->join('registro_inscripcion as ri', function ($join) {
+				$join->on('ri.cod_inscrip', '=', 'ma.cod_inscrip')
+					->on('ri.cod_ceta', '=', 'ma.cod_ceta')
+					->on('ri.cod_pensum', '=', 'ma.cod_pensum');
+			})
+			->when($gestion !== null, function ($q) use ($gestion) {
+				$q->where('ri.gestion', (string) $gestion);
+			})
+			->when($codCetaFilter !== null, function ($q) use ($codCetaFilter) {
+				$q->where('ma.cod_ceta', (int) $codCetaFilter);
+			})
+			->when($codPensumFilter !== null && trim((string)$codPensumFilter) !== '', function ($q) use ($codPensumFilter) {
+				$q->where('ma.cod_pensum', (string) $codPensumFilter);
+			});
+
+		try {
+			$cnt = (int) (clone $baseQuery)->count();
+			Log::info('SGA sync cobros material: query count', [
+				'source' => $source,
+				'gestion' => $gestion ?? 'ALL',
+				'count' => $cnt,
+				'dry_run' => $dryRun,
+				'trace' => $trace,
+			]);
+		} catch (\Throwable $e) {}
+
+		$baseQuery
+			->select('ma.*', 'ri.gestion as ri_gestion', 'ri.cod_curso as ri_cod_curso')
+			->orderBy('ma.cod_ceta')
+			->orderBy('ma.cod_pensum')
+			->orderBy('ma.cod_inscrip')
+			->orderBy('ma.num_pago_mat')
+			->chunk($chunk, function ($rows) use (&$total, &$inserted, &$skipped, &$errors, &$skippedSynced, &$skippedMissingUser, &$skippedMissingInscripcion, &$skippedMissingItem, $dryRun, $trace, $source, $gestion, $defaultUserId, $carreraLabel, $codTipoCobroMaterial, $genericItemId) {
+				$total += count($rows);
+				if (empty($rows)) { return; }
+
+				$now = now();
+				$sourcePks = [];
+				$nicknames = [];
+				$sgaPensums = [];
+				$libroNames = [];
+				$insumoNames = [];
+				$conceptoNames = [];
+				foreach ($rows as $r) {
+					$sourcePk = $this->makeMaterialAdicionalSourcePk($r);
+					if ($sourcePk !== '') { $sourcePks[] = $sourcePk; }
+					$userNick = trim((string) ($r->usuario ?? ''));
+					if ($userNick !== '') { $nicknames[] = mb_substr($userNick, 0, 40); }
+					$cp = trim((string) ($r->cod_pensum ?? ''));
+					if ($cp !== '') { $sgaPensums[] = mb_substr($cp, 0, 50); }
+					$lib = mb_strtolower(trim((string) ($r->nombre_libro ?? '')));
+					if ($lib !== '') { $libroNames[] = $lib; }
+					$ins = mb_strtolower(trim((string) ($r->insumo ?? '')));
+					if ($ins !== '') { $insumoNames[] = $ins; }
+					$cpt = mb_strtolower(trim((string) ($r->concepto ?? '')));
+					if ($cpt !== '') { $conceptoNames[] = $cpt; }
+				}
+				$sourcePks = array_values(array_unique(array_filter($sourcePks)));
+				$nicknames = array_values(array_unique(array_filter($nicknames)));
+				$sgaPensums = array_values(array_unique($sgaPensums));
+
+				$pensumMap = $this->mapPensumsByCarrera($sgaPensums, $carreraLabel);
+
+				$already = [];
+				if (!empty($sourcePks)) {
+					$syncQuery = DB::table('sga_sync_cobros')
+						->where('source_conn', $source)
+						->where('source_table', 'material_adicional')
+						->whereIn('source_pk', $sourcePks);
+					if (!$dryRun) {
+						$syncQuery->where('status', 'OK');
+					}
+					$rowsSynced = $syncQuery->pluck('source_pk')->all();
+					foreach ($rowsSynced as $pk) { $already[(string)$pk] = true; }
+				}
+
+				$userMap = [];
+				if (!empty($nicknames)) {
+					$uRows = DB::table('usuarios')->whereIn('nickname', $nicknames)->select('id_usuario','nickname')->get();
+					foreach ($uRows as $u) { $userMap[(string)$u->nickname] = (int) $u->id_usuario; }
+				}
+
+				$itemMap = [];
+				if (Schema::hasTable('items_cobro')) {
+					$allItemNames = array_values(array_unique(array_merge($libroNames, $insumoNames, $conceptoNames)));
+					if (!empty($allItemNames)) {
+						$itemRows = DB::table('items_cobro')
+							->whereIn(DB::raw('LOWER(TRIM(nombre_servicio))'), $allItemNames)
+							->select('id_item', 'nombre_servicio')
+							->get();
+						foreach ($itemRows as $it) {
+							$itemMap[mb_strtolower(trim((string) $it->nombre_servicio))] = (int) $it->id_item;
+						}
+					}
+				}
+
+				foreach ($rows as $r) {
+					try {
+						$sourcePk = $this->makeMaterialAdicionalSourcePk($r);
+						if ($sourcePk === '') { $skipped++; continue; }
+						if (isset($already[$sourcePk])) { $skippedSynced++; continue; }
+
+						$codCeta = (int) ($r->cod_ceta ?? 0);
+						$codPensumSga = trim((string) ($r->cod_pensum ?? ''));
+						if ($codCeta <= 0 || $codPensumSga === '') { $skipped++; continue; }
+
+						$codPensumLocal = $pensumMap[$codPensumSga] ?? $codPensumSga;
+
+						$gestionRow = trim((string) ($r->ri_gestion ?? ''));
+						if ($gestion !== null && $gestionRow === '') { $gestionRow = (string) $gestion; }
+						if ($gestionRow === '') {
+							$skipped++;
+							$this->markSyncCobro($source, 'material_adicional', $sourcePk, $codCeta, $codPensumLocal, '', $r, null, null, ($dryRun && !$trace), ($dryRun ? 'DRY_ERROR' : 'ERROR'), 'Sin gestion resuelta (registro_inscripcion no pareado)');
+							continue;
+						}
+
+						$tipoIns = strtoupper(trim((string) ($r->kardex_economico ?? '')));
+						if ($tipoIns === '') { $tipoIns = 'NORMAL'; }
+
+						$userNick = trim((string) ($r->usuario ?? ''));
+						$idUsuario = $defaultUserId;
+						if ($userNick !== '' && isset($userMap[$userNick])) {
+							$idUsuario = (int) $userMap[$userNick];
+						} else {
+							$skippedMissingUser++;
+						}
+
+						$idFormaCobro = $this->resolveFormaCobro((string) ($r->code_tipo_pago ?? ''));
+						$numPagoMat = (int) ($r->num_pago_mat ?? 0);
+						$orden = isset($r->orden) ? (int) $r->orden : $numPagoMat;
+						$monto = (float) ($r->costo_total ?? 0);
+						$cobroCompleto = (bool) ($r->pago_completo ?? true);
+						$nroRecibo = isset($r->num_comprobante) && (int) $r->num_comprobante > 0 ? (int) $r->num_comprobante : null;
+						$nroFactura = isset($r->num_factura) && (int) $r->num_factura > 0 ? (int) $r->num_factura : null;
+
+						$razon = null;
+						try {
+							$razon = trim((string) ($r->razon ?? $r->razon_social ?? ''));
+							if ($razon === '') { $razon = null; }
+						} catch (\Throwable $e) { $razon = null; }
+						$nroDocumentoPago = null;
+						try {
+							$nroDocumentoPago = trim((string) ($r->nro_documento_pago ?? ''));
+							if ($nroDocumentoPago === '') { $nroDocumentoPago = null; }
+						} catch (\Throwable $e) { $nroDocumentoPago = null; }
+
+						$nombreLibro = trim((string) ($r->nombre_libro ?? ''));
+						$insumo = trim((string) ($r->insumo ?? ''));
+						$concepto = trim((string) ($r->concepto ?? ''));
+						if ($concepto === '') {
+							if ($nombreLibro !== '') { $concepto = $nombreLibro; }
+							elseif ($insumo !== '') { $concepto = $insumo; }
+							else { $concepto = 'Material Extra'; }
+						}
+
+						$idItem = null;
+						$libKey = mb_strtolower($nombreLibro);
+						$insKey = mb_strtolower($insumo);
+						$cptKey = mb_strtolower($concepto);
+						if ($libKey !== '' && isset($itemMap[$libKey])) {
+							$idItem = $itemMap[$libKey];
+						} elseif ($insKey !== '' && isset($itemMap[$insKey])) {
+							$idItem = $itemMap[$insKey];
+						} elseif ($cptKey !== '' && isset($itemMap[$cptKey])) {
+							$idItem = $itemMap[$cptKey];
+						} elseif ($genericItemId !== null) {
+							$idItem = $genericItemId;
+						} else {
+							$idItem = null;
+							$skippedMissingItem++;
+						}
+
+						$fechaPago = isset($r->fecha_pago) ? $r->fecha_pago : null;
+						$anioCobro = $fechaPago ? (int) date('Y', strtotime((string) $fechaPago)) : (int) date('Y');
+						$fechaCobro = $fechaPago ? date('Y-m-d H:i:s', strtotime((string)$fechaPago)) : date('Y-m-d H:i:s');
+
+						if ($dryRun) {
+							$this->markSyncCobro($source, 'material_adicional', $sourcePk, $codCeta, $codPensumLocal, $gestionRow, $r, null, null, ($dryRun && !$trace), 'DRY_OK', null);
+							$inserted++;
+							continue;
+						}
+
+						$insQ = DB::table('inscripciones')
+							->where('carrera', $carreraLabel)
+							->where('cod_ceta', (int) $codCeta)
+							->where('cod_pensum', (string) $codPensumLocal)
+							->where('gestion', (string) $gestionRow);
+						if (Schema::hasColumn('inscripciones', 'tipo_inscripcion')) {
+							$insQ->where('tipo_inscripcion', $tipoIns);
+						}
+						$insRow = $insQ->orderByDesc('cod_inscrip')->first(['cod_inscrip']);
+						if (!$insRow || !isset($insRow->cod_inscrip)) {
+							$skippedMissingInscripcion++;
+							$this->markSyncCobro($source, 'material_adicional', $sourcePk, $codCeta, $codPensumLocal, $gestionRow, $r, null, null, ($dryRun && !$trace), 'ERROR', 'No existe inscripcion local para cod_ceta/cod_pensum/gestion/tipo_inscripcion');
+							continue;
+						}
+						$codInsLocal = (int) $insRow->cod_inscrip;
+
+						$maxNroCobroRetries = 25;
+						$nroCobro = null;
+						for ($attempt = 1; $attempt <= $maxNroCobroRetries; $attempt++) {
+							$candidate = $this->nextDocCounter('COBRO:' . $anioCobro);
+							$exists = DB::table('cobro')
+								->where('cod_ceta', (int) $codCeta)
+								->where('cod_pensum', (string) $codPensumLocal)
+								->where('tipo_inscripcion', (string) $tipoIns)
+								->where('nro_cobro', (int) $candidate)
+								->exists();
+							if (!$exists) { $nroCobro = $candidate; break; }
+						}
+						if ($nroCobro === null) {
+							throw new \RuntimeException('No se pudo encontrar nro_cobro libre para (' . $codCeta . ', ' . $codPensumLocal . ', ' . $tipoIns . ') tras ' . $maxNroCobroRetries . ' intentos (PK cobro colisiona por contador por-anio_cobro)');
+						}
+
+						$isEfectivo = ($idFormaCobro === 'E');
+						$isBancario = in_array($idFormaCobro, ['B','C','D','L','O'], true);
+						$nrCorrelativo = null;
+						$nbCorrelativo = null;
+						if ($isEfectivo && Schema::hasTable('nota_reposicion')) {
+							$nrCorrelativo = $this->nextDocCounter('NOTA_REPOSICION');
+						}
+						if ($isBancario && Schema::hasTable('nota_bancaria')) {
+							$nbCorrelativo = $this->nextDocCounter('NOTA_BANCARIA');
+						}
+
+						DB::transaction(function () use ($source, $gestionRow, $now, $anioCobro, $nroCobro, $fechaCobro, $codCeta, $codPensumLocal, $tipoIns, $codInsLocal, $monto, $cobroCompleto, $idUsuario, $idFormaCobro, $nroFactura, $nroRecibo, $r, $sourcePk, $nrCorrelativo, $nbCorrelativo, $isEfectivo, $isBancario, $razon, $nroDocumentoPago, $orden, $codTipoCobroMaterial, $idItem, $concepto, &$inserted) {
+							$cobroData = [
+								'cod_ceta' => $codCeta,
+								'cod_pensum' => $codPensumLocal,
+								'tipo_inscripcion' => $tipoIns,
+								'cod_inscrip' => $codInsLocal,
+								'id_cuota' => null,
+								'gestion' => $gestionRow,
+								'nro_cobro' => $nroCobro,
+								'anio_cobro' => $anioCobro,
+								'monto' => $monto,
+								'fecha_cobro' => $fechaCobro,
+								'cobro_completo' => $cobroCompleto,
+								'observaciones' => isset($r->observaciones) ? (string) $r->observaciones : null,
+								'concepto' => $concepto,
+								'cod_tipo_cobro' => $codTipoCobroMaterial,
+								'id_usuario' => $idUsuario,
+								'id_forma_cobro' => $idFormaCobro,
+								'tipo_documento' => null,
+								'medio_doc' => null,
+								'pu_mensualidad' => 0,
+								'order' => max(0, (int) $orden) % 128,
+								'descuento' => 0,
+								'id_cuentas_bancarias' => null,
+								'nro_factura' => $nroFactura,
+								'nro_recibo' => $nroRecibo,
+								'id_item' => $idItem,
+								'id_asignacion_costo' => null,
+								'created_at' => $now,
+								'updated_at' => $now,
+							];
+							if (Schema::hasColumn('cobro', 'qr_alias')) {
+								$cobroData['qr_alias'] = null;
+							}
+							if (Schema::hasColumn('cobro', 'reposicion_factura')) {
+								$cobroData['reposicion_factura'] = false;
+							}
+							if (!Schema::hasColumn('cobro', 'id_cuentas_bancarias')) {
+								unset($cobroData['id_cuentas_bancarias']);
+							}
+							DB::table('cobro')->insert($cobroData);
+
+							try {
+								if ($nroRecibo && Schema::hasTable('recibo')) {
+									$recKeys = [
+										'nro_recibo' => (int) $nroRecibo,
+										'anio' => (int) $anioCobro,
+									];
+									$recData = [
+										'id_usuario' => (string) $idUsuario,
+										'id_forma_cobro' => (string) $idFormaCobro,
+										'cod_ceta' => $codCeta ?: null,
+										'monto_total' => (float) $monto,
+										'estado' => 'VIGENTE',
+										'updated_at' => $now,
+										'created_at' => $now,
+									];
+									if (Schema::hasColumn('recibo', 'cliente')) {
+										$recData['cliente'] = $razon;
+									}
+									if (Schema::hasColumn('recibo', 'nro_documento_cobro')) {
+										$recData['nro_documento_cobro'] = $nroDocumentoPago;
+									}
+									if (Schema::hasColumn('recibo', 'periodo_facturado')) {
+										$recData['periodo_facturado'] = $gestionRow;
+									}
+									if (Schema::hasColumn('recibo', 'cod_tipo_doc_identidad')) {
+										$recData['cod_tipo_doc_identidad'] = null;
+									}
+									DB::table('recibo')->updateOrInsert($recKeys, $recData);
+								}
+							} catch (\Throwable $e) {}
+
+							try {
+								if ($nroFactura && Schema::hasTable('factura')) {
+									$anioFac = (int) $anioCobro;
+									$sucursalFac = $source === 'sga_mec' ? 1 : 0;
+									$pvFac = '0';
+									$factKeys = [
+										'nro_factura' => (int) $nroFactura,
+										'anio' => $anioFac,
+										'codigo_sucursal' => $sucursalFac,
+										'codigo_punto_venta' => (string) $pvFac,
+									];
+									$factData = [
+										'tipo' => 'C',
+										'fecha_emision' => $fechaCobro,
+										'cod_ceta' => $codCeta ?: null,
+										'id_usuario' => (int) $idUsuario,
+										'id_forma_cobro' => (string) $idFormaCobro,
+										'monto_total' => (float) $monto,
+										'estado' => 'VIGENTE',
+										'updated_at' => $now,
+										'created_at' => $now,
+									];
+									if (Schema::hasColumn('factura', 'codigo_cufd')) {
+										$factData['codigo_cufd'] = null;
+									}
+									if (Schema::hasColumn('factura', 'cuf')) {
+										$factData['cuf'] = null;
+									}
+									if (Schema::hasColumn('factura', 'periodo_facturado')) {
+										$factData['periodo_facturado'] = $gestionRow;
+									}
+									if (Schema::hasColumn('factura', 'cliente')) {
+										$factData['cliente'] = $razon;
+									}
+									if (Schema::hasColumn('factura', 'nro_documento_cobro')) {
+										$factData['nro_documento_cobro'] = $nroDocumentoPago;
+									}
+									if (!Schema::hasColumn('factura', 'cod_ceta')) {
+										unset($factData['cod_ceta']);
+									}
+									DB::table('factura')->updateOrInsert($factKeys, $factData);
+								}
+							} catch (\Throwable $e) {}
+
+							try {
+								$usuarioNick = trim((string) ($r->usuario ?? ''));
+								if ($usuarioNick === '' && Schema::hasTable('usuarios')) {
+									$usuarioNick = (string) (DB::table('usuarios')->where('id_usuario', (int) $idUsuario)->value('nickname') ?? '');
+								}
+								$detalle = $concepto !== '' ? $concepto : 'Material Extra';
+								$obsOriginal = isset($r->observaciones) ? (string) $r->observaciones : null;
+								$fechaNota = substr((string) $fechaCobro, 0, 10);
+								$anioFull = $anioCobro;
+								$anio2 = (int) date('y', strtotime((string) $fechaCobro));
+								$prefijoCarrera = 'E';
+
+								if ($isEfectivo && $nrCorrelativo && Schema::hasTable('nota_reposicion')) {
+									$nrData = [
+										'correlativo' => (int) $nrCorrelativo,
+										'usuario' => $usuarioNick,
+										'cod_ceta' => $codCeta,
+										'monto' => $monto,
+										'concepto_adm' => $detalle,
+										'fecha_nota' => $fechaNota,
+										'prefijo_carrera' => $prefijoCarrera,
+										'anio_reposicion' => $anio2,
+										'nro_recibo' => $nroRecibo ? (string) $nroRecibo : null,
+										'tipo_ingreso' => null,
+									];
+									if (Schema::hasColumn('nota_reposicion', 'concepto_est')) {
+										$nrData['concepto_est'] = $detalle;
+									}
+									if (Schema::hasColumn('nota_reposicion', 'observaciones')) {
+										$nrData['observaciones'] = $obsOriginal;
+									}
+									if (Schema::hasColumn('nota_reposicion', 'anulado')) {
+										$nrData['anulado'] = false;
+									}
+									if (Schema::hasColumn('nota_reposicion', 'cont')) {
+										$nrData['cont'] = 2;
+									}
+									DB::table('nota_reposicion')->insert($nrData);
+								}
+
+								if ($isBancario && $nbCorrelativo && Schema::hasTable('nota_bancaria')) {
+									$fechaDeposito = '';
+									try {
+										$fechaDeposito = (string) ($r->fecha_deposito ?? $r->fecha_pago ?? '');
+										$fechaDeposito = trim($fechaDeposito);
+										if ($fechaDeposito !== '') {
+											$fechaDeposito = substr((string) date('Y-m-d', strtotime($fechaDeposito)), 0, 10);
+										}
+									} catch (\Throwable $e) { $fechaDeposito = ''; }
+									$nroDeposito = '';
+									try {
+										$nroDeposito = (string) ($r->nro_deposito ?? '');
+										$nroDeposito = trim($nroDeposito);
+									} catch (\Throwable $e) { $nroDeposito = ''; }
+									$nroCuenta = '';
+									try {
+										$nroCuenta = (string) ($r->nro_cuenta ?? '');
+										$nroCuenta = trim($nroCuenta);
+									} catch (\Throwable $e) { $nroCuenta = ''; }
+									$idCuenta = null;
+									$bancoDest = '';
+									try {
+										if ($nroCuenta !== '' && Schema::hasTable('cuentas_bancarias')) {
+											$needle = preg_replace('/\s+/', '', $nroCuenta);
+											$cb = DB::table('cuentas_bancarias')
+												->whereRaw("REPLACE(REPLACE(REPLACE(TRIM(numero_cuenta), ' ', ''), '-', ''), '.', '') = ?", [
+													preg_replace('/\s+/', '', str_replace(['-','.',' '], '', $needle)),
+												])
+												->first();
+											if ($cb) {
+												$idCuenta = (int) ($cb->id_cuentas_bancarias ?? 0) ?: null;
+												$bancoDest = trim((string) ($cb->banco ?? '')) . ' - ' . trim((string) ($cb->numero_cuenta ?? ''));
+											}
+										}
+									} catch (\Throwable $e) {}
+
+									if ($idCuenta && Schema::hasColumn('cobro', 'id_cuentas_bancarias')) {
+										DB::table('cobro')->where('nro_cobro', (int) $nroCobro)->update(['id_cuentas_bancarias' => (int) $idCuenta]);
+									}
+
+									$nbData = [
+										'correlativo' => (int) $nbCorrelativo,
+										'usuario' => $usuarioNick,
+										'cod_ceta' => $codCeta,
+										'monto' => $monto,
+										'nro_factura' => $nroFactura ? (string) $nroFactura : '',
+										'nro_recibo' => $nroRecibo ? (string) $nroRecibo : '',
+										'banco' => $bancoDest,
+										'fecha_deposito' => $fechaDeposito,
+										'tipo_nota' => (string) $idFormaCobro,
+									];
+									if (Schema::hasColumn('nota_bancaria', 'anio_deposito')) {
+										$nbData['anio_deposito'] = $anioFull;
+									}
+									if (Schema::hasColumn('nota_bancaria', 'fecha_nota')) {
+										$nbData['fecha_nota'] = $fechaNota;
+									}
+									if (Schema::hasColumn('nota_bancaria', 'concepto')) {
+										$nbData['concepto'] = $detalle;
+									}
+									if (Schema::hasColumn('nota_bancaria', 'nro_transaccion')) {
+										$nbData['nro_transaccion'] = $nroDeposito;
+									}
+									if (Schema::hasColumn('nota_bancaria', 'prefijo_carrera')) {
+										$nbData['prefijo_carrera'] = $prefijoCarrera;
+									}
+									if (Schema::hasColumn('nota_bancaria', 'concepto_est')) {
+										$nbData['concepto_est'] = $detalle;
+									}
+									if (Schema::hasColumn('nota_bancaria', 'observacion')) {
+										$nbData['observacion'] = $obsOriginal;
+									}
+									if (Schema::hasColumn('nota_bancaria', 'anulado')) {
+										$nbData['anulado'] = false;
+									}
+									if (Schema::hasColumn('nota_bancaria', 'banco_origen')) {
+										$nbData['banco_origen'] = isset($r->banco_origen) ? (string) $r->banco_origen : '';
+									}
+									if (Schema::hasColumn('nota_bancaria', 'nro_tarjeta')) {
+										$nbData['nro_tarjeta'] = isset($r->nro_tarjeta) ? (string) $r->nro_tarjeta : null;
+									}
+									DB::table('nota_bancaria')->insert($nbData);
+								}
+							} catch (\Throwable $e) {}
+
+							$this->markSyncCobro($source, 'material_adicional', $sourcePk, $codCeta, $codPensumLocal, $gestionRow, $r, $nroCobro, $anioCobro, false, 'OK', null);
+							$inserted++;
+						});
+					} catch (\Throwable $e) {
+						$errors++;
+						$codCeta = (int) ($r->cod_ceta ?? 0);
+						$codPensum = trim((string) ($r->cod_pensum ?? ''));
+						$sourcePk = $this->makeMaterialAdicionalSourcePk($r);
+						try {
+							Log::error('SGA sync cobros material: insert failed', [
+								'source' => $source,
+								'gestion' => $gestion ?? 'ALL',
+								'cod_ceta' => $codCeta,
+								'cod_pensum' => $codPensum,
+								'source_pk' => $sourcePk,
+								'error' => $e->getMessage(),
+							]);
+						} catch (\Throwable $e2) {}
+						if ($sourcePk !== '') {
+							$this->markSyncCobro($source, 'material_adicional', $sourcePk, $codCeta, $codPensum, (string) ($gestion ?? ''), $r, null, null, ($dryRun && !$trace), ($dryRun ? 'DRY_ERROR' : 'ERROR'), $e->getMessage());
+						}
+					}
+				}
+			});
+
+		return compact('source','gestion','total','inserted','skipped','errors','skippedSynced','skippedMissingUser','skippedMissingInscripcion','skippedMissingItem');
+	}
+
+	private function makeMaterialAdicionalSourcePk($r): string
+	{
+		$codCeta = (string) (isset($r->cod_ceta) ? $r->cod_ceta : '');
+		$codPensum = (string) (isset($r->cod_pensum) ? $r->cod_pensum : '');
+		$codIns = (string) (isset($r->cod_inscrip) ? $r->cod_inscrip : '');
+		$kardex = (string) (isset($r->kardex_economico) ? $r->kardex_economico : '');
+		$numPagoMat = (string) (isset($r->num_pago_mat) ? $r->num_pago_mat : '');
+		$pk = trim($codCeta) . '|' . trim($codPensum) . '|' . trim($codIns) . '|' . trim($kardex) . '|' . trim($numPagoMat);
+		return $pk === '||||' ? '' : $pk;
+	}
 }
