@@ -59,18 +59,21 @@ export class AuthService {
 			.pipe(
 				tap((response: AuthResponse) => {
 					if (response.success && response.token && response.usuario) {
-						if (typeof localStorage !== 'undefined') {
-							localStorage.setItem(this.tokenKey, response.token);
-							if (response.expires_at) {
-								localStorage.setItem(this.expiresAtKey, response.expires_at);
-							}
-							localStorage.setItem(this.userKey, JSON.stringify(response.usuario));
-						}
-						this.currentUserSubject.next(response.usuario);
-						if (this.expirationCheckInterval) {
-							clearInterval(this.expirationCheckInterval);
-						}
-						this.startExpirationCheck();
+						this.persistSession(response.token, response.usuario, response.expires_at);
+					}
+				})
+			);
+	}
+
+	loginWithSsoToken(ssoToken: string): Observable<AuthResponse> {
+		const token = (ssoToken || '').toString().trim();
+		const headers = new HttpHeaders({ Authorization: `Bearer ${token}` });
+
+		return this.http.post<AuthResponse>(`${this.apiUrl}/verify`, {}, { headers })
+			.pipe(
+				tap((response: AuthResponse) => {
+					if (response.success && response.usuario && token) {
+						this.persistSession(token, response.usuario, response.expires_at);
 					}
 				})
 			);
@@ -204,6 +207,24 @@ export class AuthService {
 				});
 			}
 		}, 10000); // 10 segundos (más frecuente para detectar más rápido)
+	}
+
+	private persistSession(token: string, usuario: Usuario, expiresAt?: string): void {
+		if (typeof localStorage !== 'undefined') {
+			localStorage.setItem(this.tokenKey, token);
+			localStorage.setItem(this.userKey, JSON.stringify(usuario));
+			if (expiresAt) {
+				localStorage.setItem(this.expiresAtKey, expiresAt);
+			} else {
+				localStorage.removeItem(this.expiresAtKey);
+			}
+		}
+
+		this.currentUserSubject.next(usuario);
+		if (this.expirationCheckInterval) {
+			clearInterval(this.expirationCheckInterval);
+		}
+		this.startExpirationCheck();
 	}
 
 	// Método para cambiar la contraseña

@@ -1964,6 +1964,69 @@ export class CobrosComponent implements OnInit {
   }
 
   ngOnInit(): void {
+    // === FLUJO SSO: Detectar y validar token si existe ===
+    const urlParams = new URLSearchParams(window.location.search);
+    const ssoToken = urlParams.get('sso_token');
+    
+    if (ssoToken) {
+      console.info('[Cobros][SSO] Token detectado en URL, procesando autenticación', {
+        tokenLength: ssoToken.length
+      });
+      
+      // Iniciar autenticación SSO inmediatamente
+      this.loading = true;
+      this.auth.loginWithSsoToken(ssoToken).subscribe({
+        next: (response: any) => {
+          this.loading = false;
+          
+          if (!response?.success) {
+            console.error('[Cobros][SSO] Validación de token fallida', response?.message);
+            this.showAlert(response?.message || 'Token SSO inválido', 'error');
+            return;
+          }
+          
+          console.info('[Cobros][SSO] Token validado exitosamente, usuario autenticado');
+          
+          // Limpiar token de la URL después de autenticarse
+          this.removeSsoTokenFromBrowserUrl();
+          
+          // Extraer cod_ceta: primero desde la respuesta del backend (token SSO la codifica),
+          // después desde la URL si SGA la envió directamente
+          const codCetaFromResponse = (response?.cod_ceta || '').toString().trim();
+          const codCetaFromUrl = (urlParams.get('cod_ceta') || '').toString().trim() ||
+                                 (urlParams.get('codCeta') || '').toString().trim() ||
+                                 (urlParams.get('cod_estudiante') || '').toString().trim();
+          const codCeta = codCetaFromResponse || codCetaFromUrl;
+          
+          console.info('[Cobros][SSO] Datos SSO recibidos', {
+            codCetaFromResponse: codCetaFromResponse || null,
+            codCetaFromUrl: codCetaFromUrl || null,
+            codCetaFinal: codCeta || null
+          });
+
+          if (codCeta) {
+            console.info('[Cobros][SSO] Cod_ceta encontrado, cargando resumen', { codCeta });
+            this.searchForm.patchValue({ cod_ceta: codCeta }, { emitEvent: false });
+            // Pequeño delay para asegurar que la UI se actualizó
+            setTimeout(() => this.loadResumen(), 500);
+          } else {
+            console.warn('[Cobros][SSO] No se encontró cod_ceta ni en respuesta ni en URL. SGA debe incluirlo.');
+          }
+        },
+        error: (error: any) => {
+          this.loading = false;
+          console.error('[Cobros][SSO] Error en autenticación SSO', {
+            status: error?.status,
+            message: error?.error?.message || error?.message
+          });
+          this.showAlert(error?.error?.message || 'Error al validar token SSO', 'error');
+        }
+      });
+      
+      return; // No continuar con el resto del init hasta completar SSO
+    }
+    
+    // === FIN FLUJO SSO ===
     // Suscripciones del modal: actualizar UI del documento según tipo
     this.modalIdentidadForm.get('tipo_identidad')?.valueChanges.subscribe((v: number) => {
       this.updateModalTipoUI(Number(v || 1));
@@ -2072,13 +2135,34 @@ export class CobrosComponent implements OnInit {
     // Leer cod_ceta (y gestion) desde querystring para soportar deep-link desde SGA
     try {
       this.route.queryParamMap.subscribe((params) => {
-        const cod = (params.get('cod_ceta') || '').toString().trim();
+        const hasSsoToken = params.has('sso_token');
+        const cod = this.extractCodCetaFromQueryParams(params);
         const ges = (params.get('gestion') || '').toString().trim();
+
+        console.info('[Cobros][SSO] Query params detectados', {
+          hasSsoToken,
+          codCeta: cod || null,
+          gestion: ges || null,
+          keys: params.keys
+        });
+
+        if (hasSsoToken) {
+          this.removeSsoTokenFromBrowserUrl();
+        }
+
+        if (hasSsoToken && !cod) {
+          console.warn('[Cobros][SSO] Se recibio sso_token pero NO cod_ceta. Revisar envio desde SGA.');
+        }
+
         if (cod) {
           this.searchForm.patchValue({ cod_ceta: cod }, { emitEvent: false });
           if (ges) {
             this.searchForm.patchValue({ gestion: ges }, { emitEvent: false });
           }
+          console.info('[Cobros][SSO] Ejecutando busqueda automatica por cod_ceta', {
+            codCeta: cod,
+            gestion: ges || null
+          });
           this.loadResumen();
         }
       });
@@ -2214,9 +2298,20 @@ export class CobrosComponent implements OnInit {
 
   // Acciones
   loadResumen(): void {
-    if (!this.searchForm.valid) return;
+    if (!this.searchForm.valid) {
+      console.warn('[Cobros] loadResumen bloqueado por formulario invalido', {
+        errorsCodCeta: this.searchForm.get('cod_ceta')?.errors || null,
+        codCetaActual: (this.searchForm.get('cod_ceta')?.value || '').toString().trim() || null
+      });
+      return;
+    }
     this.loading = true;
     const { cod_ceta, gestion } = this.searchForm.value;
+
+    console.info('[Cobros] loadResumen()', {
+      codCeta: cod_ceta || null,
+      gestion: gestion || null
+    });
 
     // Obtener cod_pensum del formulario de cabecera si está disponible
     const cabecera = this.batchForm.get('cabecera') as FormGroup;
@@ -2410,6 +2505,12 @@ export class CobrosComponent implements OnInit {
                 this.loading = false;
               },
               error: (e2) => {
+                console.error('[Cobros] Error en loadResumen()', {
+                  status: e2?.status,
+                  message: e2?.error?.message || e2?.message || null,
+                  codCeta: cod_ceta || null,
+                  gestion: gestion || null
+                });
                 this.resumen = null; this.reincorporacion = null; this.showOpciones = false;
                 this.showAlert((e2?.error?.message || 'Error al obtener resumen (fallback)') as string, 'error');
                 this.loading = false;
@@ -2441,6 +2542,33 @@ export class CobrosComponent implements OnInit {
         this.loading = false;
       }
     });
+  }
+
+  private extractCodCetaFromQueryParams(params: any): string {
+    const candidates = ['cod_ceta', 'codCeta', 'codceta', 'codigo_ceta', 'codigoCeta', 'cod_estudiante'];
+    for (const key of candidates) {
+      const value = (params.get(key) || '').toString().trim();
+      if (value) {
+        return value;
+      }
+    }
+    return '';
+  }
+
+  private removeSsoTokenFromBrowserUrl(): void {
+    try {
+      if (typeof window === 'undefined') return;
+      const current = new URL(window.location.href);
+      if (!current.searchParams.has('sso_token')) return;
+
+      current.searchParams.delete('sso_token');
+      const qs = current.searchParams.toString();
+      const nextUrl = `${current.pathname}${qs ? `?${qs}` : ''}${current.hash || ''}`;
+      window.history.replaceState({}, document.title, nextUrl);
+      console.info('[Cobros][SSO] sso_token removido de la URL por seguridad');
+    } catch {
+      // no-op
+    }
   }
 
   get inscripcionesParaGrupos(): any[] {

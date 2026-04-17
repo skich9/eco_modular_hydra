@@ -41,6 +41,8 @@ export interface AuthResponse {
 	token?: string;
 	expires_at?: string;
 	usuario?: Usuario;
+	// Retornado cuando el token SSO fue generado con cod_ceta codificado
+	cod_ceta?: string;
 }
 
 export interface LoginRequest {
