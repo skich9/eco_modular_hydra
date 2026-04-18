@@ -2348,7 +2348,7 @@ export class CobrosComponent implements OnInit {
           // Mostrar advertencias de backend si existen (fallback de gestión u otros)
           const warnings = (this.resumen?.warnings || []) as string[];
           if (Array.isArray(warnings) && warnings.length) {
-            this.showAlert(warnings.join(' | '), 'warning');
+            this.showAlert(warnings.join(' | '), 'success');
           }
           // Prefill identidad/razón social
           const est = this.resumen?.estudiante || {};
@@ -2484,7 +2484,7 @@ export class CobrosComponent implements OnInit {
                 if (res2?.success) {
                   this.resumen = res2.data;
                   this.showOpciones = true;
-                  this.showAlert('Se usó la última inscripción del estudiante', 'warning');
+                  this.showAlert('Se usó la última inscripción del estudiante', 'success');
                   // Prefill cabecera con la nueva respuesta
                   const est = this.resumen?.estudiante || {};
                   const ins = this.resumen?.inscripcion || {};
