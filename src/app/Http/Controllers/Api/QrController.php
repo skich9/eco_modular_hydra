@@ -5,6 +5,7 @@ namespace App\Http\Controllers\Api;
 use App\Http\Controllers\Controller;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\Log;
+use App\Models\Usuario;
 use App\Models\QrTransaction;
 use App\Services\Qr\QrGatewayService;
 use App\Services\Qr\QrSocketNotifier;
@@ -1167,7 +1168,19 @@ class QrController extends Controller
         $limit = max(1, min(200, (int)$request->query('limit', 50)));
         $page = max(1, (int)$request->query('page', 1));
         $q = DB::table('qr_transacciones');
-        if ($request->filled('id_usuario')) { $q->where('id_usuario', (int)$request->query('id_usuario')); }
+
+        $authUserId = auth('sanctum')->id();
+        $authUser = $authUserId ? Usuario::with('rol')->find((int) $authUserId) : null;
+        $esAdmin = false;
+        if ($authUser) {
+            $rolNombre = strtolower((string) optional($authUser->rol)->nombre);
+            $esAdmin = str_contains($rolNombre, 'admin') || strtolower((string) $authUser->nickname) === 'admin';
+        }
+        if ($authUser && ! $esAdmin) {
+            $q->where('id_usuario', (int) $authUser->id_usuario);
+        } elseif ($request->filled('id_usuario')) {
+            $q->where('id_usuario', (int) $request->query('id_usuario'));
+        }
         if ($request->filled('cod_ceta')) { $q->where('cod_ceta', (int)$request->query('cod_ceta')); }
         if ($request->filled('alias')) { $q->where('alias', $request->query('alias')); }
         if ($request->filled('estado')) { $q->where('estado', $request->query('estado')); }

@@ -68,6 +68,8 @@ export interface Usuario {
 	id_usuario: string;
 	nombre?: string;
 	nickname?: string;
+	/** Activo en tabla `usuarios` (1 / true). */
+	estado?: boolean | number | string;
 }
 
 @Injectable({
@@ -117,12 +119,18 @@ export class LibroDiarioService {
 				const usuarios = res?.data || res || [];
 				const usuariosArray = Array.isArray(usuarios) ? usuarios : [];
 
+				const activos = usuariosArray.filter((user: any) => {
+					const e = user?.estado;
+					return e === true || e === 1 || e === '1';
+				});
+
 				return {
 					success: true,
-					data: usuariosArray.map((user: any) => ({
+					data: activos.map((user: any) => ({
 						id_usuario: String(user.id_usuario ?? user),
 						nombre: user.nombre || user.id_usuario || user,
-						nickname: user.nickname || user.nombre || user.id_usuario || ''
+						nickname: user.nickname || user.nombre || user.id_usuario || '',
+						estado: user.estado
 					}))
 				};
 			}),
@@ -206,6 +214,21 @@ export class LibroDiarioService {
 						const datosFacturas = facturas?.data || facturas || [];
 						const datosTransactions = transactions?.data?.items || transactions?.items || [];
 						const todosLosRecibos = recibos?.data || recibos || [];
+						const esDelUsuario = (registro: any): boolean => {
+							const id = String(idUsuario || '').trim();
+							if (!id) return true;
+							const candidatos = [
+								registro?.id_usuario,
+								registro?.usuario_id,
+								registro?.cod_usuario,
+								registro?.usuario?.id_usuario
+							]
+								.filter((v: any) => v !== undefined && v !== null && String(v).trim() !== '')
+								.map((v: any) => String(v).trim());
+							// Si no trae campo de usuario, no bloquear para mantener compatibilidad de fuentes legadas.
+							if (candidatos.length === 0) return true;
+							return candidatos.includes(id);
+						};
 
 						// Mapa de facturas (usamos facturas filtradas por fecha - evita cargar toda la BD)
 						const mapaFacturas = new Map();
@@ -229,23 +252,37 @@ export class LibroDiarioService {
 							}
 						});
 
+						/** Montos por nro_factura: si el cobro trae `monto` 0/null, se usa el de la factura. */
+						const mapaMontosFactura = new Map<string, number>();
+						(datosFacturas || []).forEach((factura: any) => {
+							if (!factura.nro_factura) {
+								return;
+							}
+							const nro = String(factura.nro_factura);
+							const m = this.parseMontoFlexible(
+								factura.monto_total ?? factura.total ?? factura.importe ?? factura.monto
+							);
+							if (m > 0) {
+								mapaMontosFactura.set(nro, m);
+							}
+						});
+
 						const datosFacturasFiltrados = datosFacturas.filter((factura: any) => {
-							const fechaFactura = factura.fecha_emision ? factura.fecha_emision.split(' ')[0] : '';
+							const fechaFactura = factura.fecha_emision
+								? this.fechaYmdLocal(factura.fecha_emision)
+								: '';
 							const nroFactura = factura.nro_factura ? String(factura.nro_factura) : '';
 							// Solo considerar facturas con número válido (>0) para el libro diario
 							if (!nroFactura || nroFactura === '0') {
 								return false;
 							}
 							// Filtrar por rango de fechas si está disponible
-							return this.estaEnRango(fechaFactura, fechaDesde, fechaHasta);
+							return this.estaEnRango(fechaFactura, fechaDesde, fechaHasta) && esDelUsuario(factura);
 						});
 
 						const datosCobroFiltrados = datosCobro.filter((cobro: any) => {
-							let fechaCobro = '';
-							if (cobro.fecha_cobro) {
-								fechaCobro = cobro.fecha_cobro.substring(0, 10);
-							}
-							return this.estaEnRango(fechaCobro, fechaDesde, fechaHasta);
+							const fechaCobro = cobro.fecha_cobro ? this.fechaYmdLocal(cobro.fecha_cobro) : '';
+							return this.estaEnRango(fechaCobro, fechaDesde, fechaHasta) && esDelUsuario(cobro);
 						});
 
 						// Evitar duplicados: si una factura ya tiene un cobro asociado con el mismo nro_factura,
@@ -267,8 +304,10 @@ export class LibroDiarioService {
 						});
 
 						const datosTransactionsFiltrados = datosTransactions.filter((transaction: any) => {
-							const fechaTransaction = transaction.fecha_generacion ? transaction.fecha_generacion.split(' ')[0] : '';
-							return this.estaEnRango(fechaTransaction, fechaDesde, fechaHasta);
+							const fechaTransaction = transaction.fecha_generacion
+								? this.fechaYmdLocal(transaction.fecha_generacion)
+								: '';
+							return this.estaEnRango(fechaTransaction, fechaDesde, fechaHasta) && esDelUsuario(transaction);
 						});
 
 						const todasLasTransacciones = [
@@ -346,8 +385,10 @@ export class LibroDiarioService {
 									razon: datosCliente?.razon_social || 'SIN DATOS',
 									nit: datosCliente?.nit || '0',
 									cod_ceta: trans.cod_ceta || '0',
-									hora: trans.fecha_emision ? new Date(trans.fecha_emision).toTimeString().substring(0, 8) : '',
-									ingreso: parseFloat(trans.monto_total || 0),
+									hora: this.horaHmsLocal(trans.fecha_emision),
+									ingreso: this.parseMontoFlexible(
+										trans.monto_total ?? trans.total ?? trans.monto ?? trans.importe
+									),
 									egreso: 0,
 									tipo_doc: 'F',
 									tipo_pago: tipoPagoFactura,
@@ -448,8 +489,8 @@ export class LibroDiarioService {
 									razon: datosCliente?.razon_social || '',
 									nit: datosCliente?.nit || '',
 									cod_ceta: String(trans.cod_ceta || '0'),
-									hora: trans.fecha_cobro ? String(trans.fecha_cobro).substring(11, 19) : '',
-									ingreso: parseFloat(trans.monto || 0),
+									hora: this.horaHmsLocal(trans.fecha_cobro),
+									ingreso: this.montoIngresoCobro(trans, mapaMontosFactura),
 									egreso: 0,
 									tipo_doc: ((): string => {
 										const raw = (trans.tipo_documento || '').toString().toUpperCase();
@@ -485,8 +526,10 @@ export class LibroDiarioService {
 									razon: datosCliente?.razon_social || 'SIN DATOS',
 									nit: datosCliente?.nit || '0',
 									cod_ceta: String(trans.cod_ceta || '0'),
-									hora: trans.fecha_generacion ? new Date(trans.fecha_generacion).toTimeString().substring(0, 8) : '',
-									ingreso: parseFloat(trans.monto_total || 0),
+									hora: this.horaHmsLocal(trans.fecha_generacion),
+									ingreso: this.parseMontoFlexible(
+										trans.monto_total ?? trans.total ?? trans.monto ?? trans.importe
+									),
 									egreso: 0,
 									tipo_pago: trans.metodo_pago === 'TARJETA' ? 'L' : 'E', // L = Tarjeta, E = Efectivo
 									tipo_doc: 'F',
@@ -635,8 +678,11 @@ export class LibroDiarioService {
 					razon: fact.razon_social || fact.nombre_cliente || fact.cliente || '',
 					nit: fact.nit || fact.ci || fact.documento || '0',
 					cod_ceta: fact.cod_ceta || fact.ceta || '0',
-					hora: fact.fecha_emision ? new Date(fact.fecha_emision).toTimeString().substring(0, 8) :
-						 fact.fecha ? new Date(fact.fecha).toTimeString().substring(0, 8) : '',
+					hora: fact.fecha_emision
+						? this.horaHmsLocal(fact.fecha_emision)
+						: fact.fecha
+							? this.horaHmsLocal(fact.fecha)
+							: '',
 					ingreso: parseFloat(fact.total || fact.monto || fact.importe || 0),
 					egreso: 0
 				}));
@@ -668,6 +714,101 @@ export class LibroDiarioService {
 				} as LibroDiarioResponse;
 			})
 		);
+	}
+
+	/**
+	 * Convierte un monto desde API (número o string con coma/punto) a número finito.
+	 */
+	private parseMontoFlexible(val: any): number {
+		if (val === null || val === undefined || val === '') {
+			return 0;
+		}
+		if (typeof val === 'number') {
+			return Number.isFinite(val) ? val : 0;
+		}
+		const s = String(val).trim().replace(/\s/g, '');
+		if (s === '') {
+			return 0;
+		}
+		// Formato tipo 1.234,56 (miles con punto, decimal con coma)
+		if (/^\d{1,3}(\.\d{3})*(,\d+)?$/.test(s)) {
+			const n = parseFloat(s.replace(/\./g, '').replace(',', '.'));
+			return Number.isFinite(n) ? n : 0;
+		}
+		const n2 = parseFloat(s.replace(',', '.'));
+		return Number.isFinite(n2) ? n2 : 0;
+	}
+
+	/**
+	 * Monto para filas de cobro: usa `cobro.monto`; si falta o es 0, la factura enlazada o el mapa del listado.
+	 */
+	private montoIngresoCobro(trans: any, mapaMontosFactura: Map<string, number>): number {
+		let m = this.parseMontoFlexible(trans.monto);
+		if (m > 0) {
+			return m;
+		}
+		const nested = trans.factura;
+		if (nested) {
+			m = this.parseMontoFlexible(nested.monto_total ?? nested.total ?? nested.monto ?? nested.importe);
+			if (m > 0) {
+				return m;
+			}
+		}
+		const nro = trans.nro_factura != null ? String(trans.nro_factura) : '';
+		if (nro && nro !== '0') {
+			const fromMap = mapaMontosFactura.get(nro);
+			if (fromMap !== undefined && fromMap > 0) {
+				return fromMap;
+			}
+		}
+		return this.parseMontoFlexible(trans.monto);
+	}
+
+	/**
+	 * Fecha calendario Y-m-d en la zona horaria **local** del navegador.
+	 * No usar `substring(0, 10)` sobre ISO UTC: un cobro a las 21:10 local puede ser
+	 * `...T01:10:00.000Z` del día siguiente en UTC y filtrarse mal.
+	 */
+	private fechaYmdLocal(raw: string | null | undefined): string {
+		if (raw === null || raw === undefined) {
+			return '';
+		}
+		const s = String(raw).trim();
+		if (!s) {
+			return '';
+		}
+		const d = new Date(s);
+		if (!isNaN(d.getTime())) {
+			const y = d.getFullYear();
+			const m = String(d.getMonth() + 1).padStart(2, '0');
+			const day = String(d.getDate()).padStart(2, '0');
+			return `${y}-${m}-${day}`;
+		}
+		const m2 = s.match(/^(\d{4}-\d{2}-\d{2})/);
+		return m2 ? m2[1] : '';
+	}
+
+	/** Hora HH:mm:ss en zona horaria local (coherente con `fechaYmdLocal`). */
+	private horaHmsLocal(raw: string | null | undefined): string {
+		if (raw === null || raw === undefined) {
+			return '';
+		}
+		const s = String(raw).trim();
+		if (!s) {
+			return '';
+		}
+		const d = new Date(s);
+		if (!isNaN(d.getTime())) {
+			const hh = String(d.getHours()).padStart(2, '0');
+			const mm = String(d.getMinutes()).padStart(2, '0');
+			const ss = String(d.getSeconds()).padStart(2, '0');
+			return `${hh}:${mm}:${ss}`;
+		}
+		const m = s.match(/(\d{1,2}):(\d{2}):(\d{2})/);
+		if (m) {
+			return `${m[1].padStart(2, '0')}:${m[2]}:${m[3]}`;
+		}
+		return '';
 	}
 
 	// Obtener solo el nombre del banco (sin número de cuenta) para libro diario

@@ -4,6 +4,7 @@ namespace App\Http\Controllers\Api;
 
 use App\Http\Controllers\Controller;
 use App\Models\Cobro;
+use App\Models\Usuario;
 use App\Models\Estudiante;
 use App\Models\Inscripcion;
 use App\Models\AsignacionCostos;
@@ -36,11 +37,22 @@ class CobroController extends Controller
 	public function index(Request $request)
 	{
 		try {
+			$authUserId = auth('sanctum')->id();
+			$authUser = $authUserId ? Usuario::with('rol')->find((int) $authUserId) : null;
+			if (!$authUser) {
+				return response()->json([
+					'success' => false,
+					'message' => 'No autenticado'
+				], 401);
+			}
+			$rolNombre = strtolower((string) optional($authUser->rol)->nombre);
+			$esAdmin = str_contains($rolNombre, 'admin') || strtolower((string) $authUser->nickname) === 'admin';
+
 			// Cargar cobros con relaciones básicas y aplicar filtros opcionales
 			$query = Cobro::with(['usuario', 'cuota', 'formaCobro', 'cuentaBancaria', 'itemCobro', 'detalleRegular', 'detalleMulta', 'recibo', 'factura']);
 
 			// Filtro por id_usuario (usado por el libro diario)
-			$idUsuario = $request->query('id_usuario');
+			$idUsuario = $esAdmin ? $request->query('id_usuario') : (string) $authUser->id_usuario;
 			if ($idUsuario !== null && $idUsuario !== '') {
 				$query->where('id_usuario', (int) $idUsuario);
 			}
