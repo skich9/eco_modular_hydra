@@ -50,6 +50,7 @@ class SgaSyncRepository
 
 		DB::connection($source)
 			->table('usuario')
+			->whereIn('activo', [1, '1', 't', 'T'])
 			->orderBy('id_usuario')
 			->chunk($chunk, function ($rows) use (&$total, &$inserted, &$updated, &$skipped, $dryRun, $idRolSecretaria) {
 				$total += count($rows);
@@ -82,6 +83,18 @@ class SgaSyncRepository
 						'updated_at' => $now,
 					];
 				}
+
+				//Primer registro de nick name gane en el chunk, los demás se saltan por duplicados
+				$payloadDeduped = [];
+				foreach ($payload as $row) {
+					$key = (string) $row['nickname'];
+					if (!isset($payloadDeduped[$key])) {
+						$payloadDeduped[$key] = $row;
+					} else {
+						$skipped++;
+					}
+				}
+				$payload = array_values($payloadDeduped);
 
 				if ($dryRun || empty($payload)) {
 					return;
