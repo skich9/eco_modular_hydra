@@ -10,6 +10,7 @@ import { RolesListComponent } from './components/roles/roles-list/roles-list.com
 import { RolFormComponent } from './components/roles/rol-form/rol-form.component';
 import { authGuard, publicOnlyGuard } from './guards/auth.guard';
 import { permissionGuard } from './guards/permission.guard';
+import { ssoGuard } from './guards/sso.guard';
 
 export const routes: Routes = [
 	// Rutas públicas
@@ -143,10 +144,11 @@ export const routes: Routes = [
 				data: { requiredPermission: 'configuracion_costos_creditos' }
 			},
 			// Ruta para Cobros (resumen y registro por lote)
+			// Usa ssoGuard para permitir acceso con sso_token sin necesidad de auth previa
 			{
 				path: 'cobros',
 				loadComponent: () => import('./components/pages/cobros/cobros.component').then(m => m.CobrosComponent),
-				canActivate: [permissionGuard],
+				canActivate: [ssoGuard],
 				data: { requiredPermission: 'cobros_gestionar' }
 			},
 			// Reimpresión: Facturación posterior

@@ -128,7 +128,7 @@
 										<label class="form-label">Grupos</label>
 										<div class="form-control-plaintext border rounded px-2 py-2">
 											<ng-container
-												*ngIf="(inscripcionesParaGrupos?.length || 0) > 0; else noInscripciones">
+												*ngIf="(inscripcionesParaGrupos.length || 0) > 0; else noInscripciones">
 												<div class="d-flex flex-column gap-2">
 													<div class="d-flex align-items-center gap-2"
 														*ngFor="let ins of inscripcionesParaGrupos">

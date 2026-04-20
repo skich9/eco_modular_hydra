@@ -167,6 +167,19 @@ class ProcesarMoraDiaria extends Command
 						continue;
 					}
 
+					if (!$semestre) {
+						if (in_array($asignacion->id_asignacion_costo, $debugIds)) {
+							Log::info('[MORA_DIARIA][DEBUG] skip: sin semestre determinable', [
+								'id_asignacion_costo' => (int)$asignacion->id_asignacion_costo,
+								'cod_pensum' => (string)$codPensum,
+								'cod_curso' => (string)(isset($asignacion->inscripcion->cod_curso) ? $asignacion->inscripcion->cod_curso : ''),
+								'gestion' => (string)$gestion,
+							]);
+						}
+						$progressBar->advance();
+						continue;
+					}
+
 					$grupoKey = $this->buildGrupoMoraKey($asignacion, $gestion);
 					$idsGrupo = ($grupoKey && isset($asignacionesPorGrupo[$grupoKey]))
 						? $asignacionesPorGrupo[$grupoKey]
@@ -174,8 +187,7 @@ class ProcesarMoraDiaria extends Command
 
 					$esDuplicado = count($idsGrupo) > 1;
 
-					// Buscar configuración de mora aplicable por gestión, pensum y cuota.
-					// El semestre es opcional para evitar perder coincidencias por normalización.
+					// Buscar configuración de mora aplicable por gestión, pensum, cuota y semestre exacto.
 					$codPensumNormalizado = $this->normalizarCodPensum($codPensum);
 					$pensumsBusqueda = [$codPensum];
 					if ($codPensumNormalizado !== '' && $codPensumNormalizado !== $codPensum) {
@@ -184,14 +196,11 @@ class ProcesarMoraDiaria extends Command
 
 					$queryCfg = DatosMoraDetalle::whereIn('cod_pensum', array_values(array_unique($pensumsBusqueda)))
 						->where('cuota', $numeroCuota)
+						->where('semestre', $semestre)
 						->where('activo', true)
 						->whereHas('datosMora', function($query) use ($gestion) {
 							$query->where('gestion', $gestion);
 						});
-
-					if (!empty($semestre)) {
-						$queryCfg->where('semestre', $semestre);
-					}
 
 					$configuracionMora = $queryCfg->with('datosMora')->orderBy('semestre', 'asc')->first();
 
@@ -795,12 +804,6 @@ class ProcesarMoraDiaria extends Command
 			return (string) ((int) $inscripcion->nro_semestre);
 		}
 
-		if (isset($inscripcion->gestion) && is_string($inscripcion->gestion)) {
-			if (preg_match('/-(\d+)/', $inscripcion->gestion, $m)) {
-				return (string) ((int) $m[1]);
-			}
-		}
-
 		if (isset($inscripcion->cod_curso)) {
 			$sem = $this->extraerSemestreDeCurso($inscripcion->cod_curso);
 			if ($sem !== null && $sem !== '') {
@@ -819,19 +822,21 @@ class ProcesarMoraDiaria extends Command
 	 */
 	private function extraerSemestreDeCurso($codCurso)
 	{
-		if (!$codCurso) {
+		$raw = trim((string) $codCurso);
+		if ($raw === '') {
 			return null;
 		}
 
-		if (preg_match('/(\d{3})/', $codCurso, $m)) {
-			$n = (int) $m[1];
-			if ($n >= 200) {
-				return '2';
+		$parts = explode('-', strtoupper($raw));
+		$suffix = trim((string) end($parts));
+		if ($suffix !== '') {
+			$first = substr($suffix, 0, 1);
+			if ($first !== false && preg_match('/^[1-9]$/', $first)) {
+				return (string) $first;
 			}
-			return '1';
 		}
 
-		if (preg_match('/(\d)/', $codCurso, $m)) {
+		if (preg_match('/(\d)/', $raw, $m)) {
 			return (string) ((int) $m[1]);
 		}
 

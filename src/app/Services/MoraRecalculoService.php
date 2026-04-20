@@ -562,9 +562,20 @@ class MoraRecalculoService
 					'gestion' => $gestion,
 					'hoy' => $hoy->toDateString(),
 				]);
+				if (!$semestre) {
+					$this->debugLog('crearMorasFaltantes skip: sin semestre determinable', [
+						'id_asignacion_costo' => $idAsign,
+						'cuota' => $cuotaN,
+						'pensum' => $codPensum,
+						'gestion' => $gestion,
+						'cod_curso' => (string)(isset($c->cod_curso) ? $c->cod_curso : ''),
+					]);
+					continue;
+				}
 				$queryCfg = DatosMoraDetalle::query()
 					->vigente($hoy)
 					->where('cuota', $cuotaN)
+					->where('semestre', $semestre)
 					->where('activo', true)
 					->where(function($q) use ($pensumsBusqueda) {
 						$q->whereIn('cod_pensum', $pensumsBusqueda)
@@ -573,10 +584,6 @@ class MoraRecalculoService
 					->whereHas('datosMora', function($q) use ($gestion) {
 						$q->where('gestion', $gestion);
 					});
-
-				if (!empty($semestre)) {
-					$queryCfg->where('semestre', $semestre);
-				}
 
 				$configuracion = $queryCfg->with('datosMora')
 					->orderBy('semestre', 'asc')
@@ -721,22 +728,18 @@ class MoraRecalculoService
 		if (isset($row->nro_semestre) && $row->nro_semestre !== null && $row->nro_semestre !== '') {
 			return (string)((int)$row->nro_semestre);
 		}
-		if (isset($row->gestion) && is_string($row->gestion)) {
-			$g = trim((string)$row->gestion);
-			if (preg_match('/^\s*(\d+)\s*\//', $g, $m)) {
-				return (string)((int)$m[1]);
-			}
-			if (preg_match('/-(\d+)/', $g, $m)) {
-				return (string)((int)$m[1]);
-			}
-		}
 		if (isset($row->cod_curso) && $row->cod_curso) {
-			$cc = (string)$row->cod_curso;
-			if (preg_match('/(\d+)/', $cc, $m)) {
-				$n = (int)$m[1];
-				if ($n > 0) {
-					return (string)$n;
+			$raw = trim((string)$row->cod_curso);
+			$parts = explode('-', strtoupper($raw));
+			$suffix = trim((string) end($parts));
+			if ($suffix !== '') {
+				$first = substr($suffix, 0, 1);
+				if ($first !== false && preg_match('/^[1-9]$/', $first)) {
+					return (string)$first;
 				}
+			}
+			if (preg_match('/(\d)/', $raw, $m)) {
+				return (string)((int)$m[1]);
 			}
 		}
 		return null;

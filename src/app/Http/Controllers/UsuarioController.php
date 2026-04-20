@@ -27,7 +27,30 @@ class UsuarioController extends Controller
     public function index()
     {
         try {
-            $usuarios = Usuario::with(['rol', 'funciones'])->get();
+            $authUserId = auth('sanctum')->id();
+            $authUser = $authUserId ? Usuario::with('rol')->find((int) $authUserId) : null;
+            if (!$authUser) {
+                return response()->json([
+                    'success' => false,
+                    'message' => 'No autenticado'
+                ], 401);
+            }
+
+            $rolNombre = strtolower((string) optional($authUser->rol)->nombre);
+            $esAdmin = str_contains($rolNombre, 'admin') || strtolower((string) $authUser->nickname) === 'admin';
+
+            $query = Usuario::with(['rol', 'funciones'])
+                ->where('estado', 1);
+
+            if (!$esAdmin) {
+                $query->where('id_usuario', (int) $authUser->id_usuario);
+            }
+
+            $usuarios = $query
+                ->orderBy('nombre')
+                ->orderBy('ap_paterno')
+                ->orderBy('ap_materno')
+                ->get();
             return response()->json([
                 'success' => true,
                 'data' => $usuarios,

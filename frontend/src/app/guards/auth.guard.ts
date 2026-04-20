@@ -10,8 +10,12 @@ export const authGuard: CanActivateFn = (route, state) => {
 		return true;
 	}
 	
-	// Redirigir al login si no está autenticado
-	return router.parseUrl('/login');
+	// Redirigir al login preservando la URL original para retomar flujo (incluye query params).
+	return router.createUrlTree(['/login'], {
+		queryParams: {
+			returnUrl: state.url
+		}
+	});
 };
 
 export const publicOnlyGuard: CanActivateFn = (route, state) => {
