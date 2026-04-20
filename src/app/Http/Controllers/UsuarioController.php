@@ -11,8 +11,17 @@ use Illuminate\Http\Response;
 use Illuminate\Support\Facades\Hash;
 use Illuminate\Validation\Rule;
 
+use App\Services\PermissionService;
+
 class UsuarioController extends Controller
 {
+    protected $permissionService;
+
+    public function __construct(PermissionService $permissionService)
+    {
+        $this->permissionService = $permissionService;
+    }
+
     /**
      * Display a listing of the resource.
      *
@@ -105,6 +114,14 @@ class UsuarioController extends Controller
             ]);
 
             $usuario = Usuario::create($validated);
+            
+            // Sincronizar funciones del rol inicial
+            $this->permissionService->copyRoleFunctionsToUser(
+                $usuario->id_usuario,
+                $validated['id_rol'],
+                true
+            );
+
             $usuario->load(['rol', 'funciones']);
 
             return response()->json([
@@ -186,7 +203,18 @@ class UsuarioController extends Controller
                 'id_rol' => 'sometimes|exists:rol,id_rol'
             ]);
 
+            $oldRolId = $usuario->id_rol;
             $usuario->update($validated);
+
+            // Si el rol cambió, sincronizar funciones
+            if (isset($validated['id_rol']) && $validated['id_rol'] != $oldRolId) {
+                $this->permissionService->copyRoleFunctionsToUser(
+                    $usuario->id_usuario,
+                    $validated['id_rol'],
+                    true
+                );
+            }
+
             $usuario->load(['rol', 'funciones']);
 
             return response()->json([
