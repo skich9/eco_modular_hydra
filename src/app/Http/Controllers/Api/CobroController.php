@@ -534,6 +534,22 @@ class CobroController extends Controller
 			}
 
 			// Lógica de cálculo estricta por tipos de materias (NORMAL / ARRASTRE)
+			$paramMonto = null;        // MONTO_SEMESTRAL_FIJO (pre-cargado antes del primer uso)
+			$paramNroCuotas = null;    // NRO_CUOTAS
+			if (!$costoSemestral && $gestionToUse) {
+				if (Schema::hasColumn('parametros_costos', 'nombre') && Schema::hasColumn('parametros_costos', 'valor')) {
+					$pcQuery = ParametroCosto::query();
+					if (Schema::hasColumn('parametros_costos', 'gestion')) {
+						$pcQuery->where('gestion', $gestionToUse);
+					}
+					$pcQuery->where('nombre', 'MONTO_SEMESTRAL_FIJO');
+					if (Schema::hasColumn('parametros_costos', 'estado')) {
+						$pcQuery->where('estado', true);
+					}
+					$paramMonto = $pcQuery->first();
+				}
+			}
+
 			$montoTotalNormal = 0;
 			$montoTotalArrastreCalculado = $countMateriasArrastre * 160 * 5;
 
@@ -874,21 +890,6 @@ class CobroController extends Controller
 			}
 
 			// Parámetros y cálculo de monto/nro_cuotas/pu
-			$paramMonto = null;        // MONTO_SEMESTRAL_FIJO
-			$paramNroCuotas = null;    // NRO_CUOTAS
-			if (!$costoSemestral && $gestionToUse) {
-				if (Schema::hasColumn('parametros_costos', 'nombre') && Schema::hasColumn('parametros_costos', 'valor')) {
-					$pcQuery = ParametroCosto::query();
-					if (Schema::hasColumn('parametros_costos', 'gestion')) {
-						$pcQuery->where('gestion', $gestionToUse);
-					}
-					$pcQuery->where('nombre', 'MONTO_SEMESTRAL_FIJO');
-					if (Schema::hasColumn('parametros_costos', 'estado')) {
-						$pcQuery->where('estado', true);
-					}
-					$paramMonto = $pcQuery->first();
-				}
-			}
 			// Calcular NRO_CUOTAS con prioridad desde asignacion_costos y fallback a parametros_costos/cuotas
 			$paramNroCuotas = null;
 			$nroCuotasFromTable = 0;
@@ -2917,6 +2918,16 @@ class CobroController extends Controller
 
 				// IMPORTANTE: Detectar si es un item de MORA/NIVELACION para NO derivar id_asignacion_costo ni id_cuota
 				$codTipoCobroCheck = isset($item['cod_tipo_cobro']) ? strtoupper(trim((string)$item['cod_tipo_cobro'])) : '';
+				if ($codTipoCobroCheck === '') {
+					$detalleTipoRaw = strtoupper(trim((string)(isset($item['detalle']) ? $item['detalle'] : '')));
+					$obsTipoRaw = strtoupper(trim((string)(isset($item['observaciones']) ? $item['observaciones'] : '')));
+					$idAsignMoraCheck = isset($item['id_asignacion_mora']) ? (int)$item['id_asignacion_mora'] : 0;
+					if (strpos($detalleTipoRaw, 'NIVEL') !== false || strpos($obsTipoRaw, 'NIVEL') !== false) {
+						$codTipoCobroCheck = 'NIVELACION';
+					} elseif ($idAsignMoraCheck > 0 || strpos($detalleTipoRaw, 'MORA') !== false || strpos($detalleTipoRaw, 'MULTA') !== false || strpos($obsTipoRaw, 'MORA') !== false || strpos($obsTipoRaw, 'MULTA') !== false) {
+						$codTipoCobroCheck = 'MORA';
+					}
+				}
 				$isMoraONivelacion = in_array($codTipoCobroCheck, ['MORA', 'NIVELACION']);
 
 				// NO derivar id_asignacion_costo ni id_cuota para items de MORA/NIVELACION
@@ -3039,12 +3050,15 @@ class CobroController extends Controller
 				if (!$codTipoCobroItem) {
 					$obsCheck = (string)(isset($item['observaciones']) ? $item['observaciones'] : (isset($request->observaciones) ? $request->observaciones : ''));
 					$hasItem = isset($item['id_item']) && !empty($item['id_item']);
+					$idAsignMora = isset($item['id_asignacion_mora']) ? (int)$item['id_asignacion_mora'] : 0;
 					$isRezagado = ($obsCheck !== '') ? (preg_match('/\[\s*REZAGADO\s*\]/i', $obsCheck) === 1) : false;
 					$isRecuperacion = ($obsCheck !== '') ? (preg_match('/\[\s*PRUEBA\s+DE\s+RECUPERACI[OÓ]N\s*\]/i', $obsCheck) === 1) : false;
 					$isReincorporacion = ($obsCheck !== '') ? (preg_match('/\[\s*REINCORPORACI[OÓ]N\s*\]/i', $obsCheck) === 1) : false;
 					$detRaw = strtoupper(trim((string)(isset($detalle) ? $detalle : '')));
 					if (!$isReincorporacion && $detRaw !== '' && strpos($detRaw, 'REINCORPOR') !== false) { $isReincorporacion = true; }
-					if ($hasItem) { $codTipoCobroItem = 'MATERIAL_EXTRA'; }
+					if (strpos($detRaw, 'NIVEL') !== false || strpos(strtoupper($obsCheck), 'NIVEL') !== false) { $codTipoCobroItem = 'NIVELACION'; }
+					elseif ($idAsignMora > 0 || strpos($detRaw, 'MORA') !== false || strpos($detRaw, 'MULTA') !== false || strpos(strtoupper($obsCheck), 'MORA') !== false || strpos(strtoupper($obsCheck), 'MULTA') !== false) { $codTipoCobroItem = 'MORA'; }
+					elseif ($hasItem) { $codTipoCobroItem = 'MATERIAL_EXTRA'; }
 					elseif ($isRezagado) { $codTipoCobroItem = 'REZAGADOS'; }
 					elseif ($isRecuperacion) { $codTipoCobroItem = 'PRUEBA_RECUPERACION'; }
 					elseif ($isReincorporacion) { $codTipoCobroItem = 'REINCORPORACION'; }
@@ -3052,6 +3066,13 @@ class CobroController extends Controller
 					else { $codTipoCobroItem = 'MENSUALIDAD'; }
 
 					\Log::info('[CobroController] cod_tipo_cobro derivado:', ['cod_tipo_cobro' => $codTipoCobroItem]);
+				}
+
+				// Priorizar tipo_pago cuando identifica mora explícita (evita mapear a NIVELACION por etiqueta legacy).
+				$tipoPagoItem = strtoupper(trim((string)(isset($item['tipo_pago']) ? $item['tipo_pago'] : '')));
+				$idAsignMoraItem = isset($item['id_asignacion_mora']) ? (int)$item['id_asignacion_mora'] : 0;
+				if ($tipoPagoItem === 'MORA' && $idAsignMoraItem > 0 && strtoupper((string)$codTipoCobroItem) !== 'MORA') {
+					$codTipoCobroItem = 'MORA';
 				}
 
 					// Actualizar tipo_inscripcion en composite si es ARRASTRE
@@ -3235,6 +3256,34 @@ class CobroController extends Controller
                         \Log::info('[CobroController] Detalle transformado', ['detalle_final' => $detalleDesc]);
                     }
 
+                    // Transformar "Mensualidad - Cuota X (Mes)" a "Mens. [Mes]" - IGUAL QUE EN PDF
+                    if (preg_match('/Mensualidad\s*-\s*Cuota\s*(\d+)(\s*\(Parcial\))?/i', $detalleDesc, $matches)) {
+                        $numeroCuota = (int)$matches[1];
+                        $parcialTexto = isset($matches[2]) ? $matches[2] : '';
+                        $gestion = isset($request->gestion) ? (string)$request->gestion : '';
+                        
+                        $meses = [];
+                        // Determinar meses según gestión
+                        if (strpos($gestion, '1/') === 0) {
+                            // Gestión 1: Cuota 1=Febrero, 2=Marzo, 3=Abril, 4=Mayo, 5=Junio
+                            $meses = [1 => 'Febrero', 2 => 'Marzo', 3 => 'Abril', 4 => 'Mayo', 5 => 'Junio'];
+                        } elseif (strpos($gestion, '2/') === 0) {
+                            // Gestión 2: Cuota 1=Julio, 2=Agosto, 3=Septiembre, 4=Octubre, 5=Noviembre
+                            $meses = [1 => 'Julio', 2 => 'Agosto', 3 => 'Septiembre', 4 => 'Octubre', 5 => 'Noviembre'];
+                        }
+
+                        if (isset($meses[$numeroCuota])) {
+                            $detalleDesc = preg_replace('/Mensualidad\s*-\s*Cuota\s*\d+(\s*\(Parcial\))?/i', 'Mens. ' . $meses[$numeroCuota] . $parcialTexto, $detalleDesc);
+                        }
+                    }
+
+                    // Normalizar meses: quitar paréntesis solo si el contenido es un mes
+                    $detalleDesc = preg_replace('/\((Enero|Febrero|Marzo|Abril|Mayo|Junio|Julio|Agosto|Septiembre|Octubre|Noviembre|Diciembre)\)/i', ' $1', $detalleDesc);
+                    // Evitar duplicación del mes
+                    $detalleDesc = preg_replace('/\b(Enero|Febrero|Marzo|Abril|Mayo|Junio|Julio|Agosto|Septiembre|Octubre|Noviembre|Diciembre)\b\s+\1\b/i', '$1', $detalleDesc);
+                    // Normalizar espacios múltiples
+                    $detalleDesc = trim(preg_replace('/\s{2,}/', ' ', (string)$detalleDesc));
+
                     // Usar valores PRE-CALCULADOS de descuento prorrateado
                     $precioBruto = 0.0;
                     $descuentoMonto = 0.0;
@@ -3264,29 +3313,47 @@ class CobroController extends Controller
                             'usando_descuentoMonto' => $descuentoMonto,
                             'usando_precioNeto' => $precioNeto
                         ]);
-                    } catch (\Throwable $e) {}
+                    } catch (\Throwable $e) {
+                        Log::error('batchStore: error en log construyendo factDetalle', ['error' => $e->getMessage()]);
+                    }
 
                     $codigoSin = 99100; // Default para SIN
                     $codigoInterno = null; // Default para PDF
                     $actividadEconomica = 853000; // Default
                     $unidadMedida = 58; // Default
 
-                    // Mapeo de palabras clave a nombre_servicio en items_cobro
-                    $textoDetalle = strtolower($detalleDesc);
+					// Resolver nombre_servicio desde el tipo real del cobro antes de usar heurísticas de texto.
                     $nombreServicio = null;
 
-                    if (strpos($textoDetalle, 'mensualidad') !== false) {
+					if ($codTipoCobroItem === 'MENSUALIDAD') {
                         $nombreServicio = 'mensualidad_factura';
-                    } elseif (strpos($textoDetalle, 'rezagado') !== false || strpos($textoDetalle, '[rezagado]') !== false) {
+					} elseif ($codTipoCobroItem === 'ARRASTRE' || $codTipoCobroItem === 'NIVELACION') {
+						$nombreServicio = 'arrastre';
+					} elseif ($codTipoCobroItem === 'MORA') {
+						$nombreServicio = 'multa';
+					} elseif ($codTipoCobroItem === 'REZAGADOS') {
                         $nombreServicio = 'rezagado';
-                    } elseif (strpos($textoDetalle, 'arrastre') !== false || strpos($textoDetalle, 'nivelacion') !== false || strpos($textoDetalle, 'nivelación') !== false) {
-                        $nombreServicio = 'arrastre';
-                    } elseif (strpos($textoDetalle, 'multa') !== false || strpos($textoDetalle, 'niv') !== false) {
-                        $nombreServicio = 'multa';
-                    } elseif (strpos($textoDetalle, 'reincorporacion') !== false || strpos($textoDetalle, 'reincorporación') !== false) {
+					} elseif ($codTipoCobroItem === 'REINCORPORACION') {
                         $nombreServicio = 'reincorporacion';
-                    } elseif (strpos($textoDetalle, 'carnet') !== false) {
-                        $nombreServicio = 'E9';
+					}
+
+					// Fallback por texto para casos legacy o items sin cod_tipo_cobro consistente.
+					if (!$nombreServicio) {
+						$textoDetalle = strtolower(trim($detalle . ' ' . $detalleDesc . ' ' . $conceptoOut));
+
+						if (strpos($textoDetalle, 'mensualidad') !== false || strpos($textoDetalle, 'mens.') !== false) {
+							$nombreServicio = 'mensualidad_factura';
+						} elseif (strpos($textoDetalle, 'rezagado') !== false || strpos($textoDetalle, '[rezagado]') !== false) {
+							$nombreServicio = 'rezagado';
+						} elseif (strpos($textoDetalle, 'arrastre') !== false || strpos($textoDetalle, 'nivelacion') !== false || strpos($textoDetalle, 'nivelación') !== false) {
+							$nombreServicio = 'arrastre';
+						} elseif (strpos($textoDetalle, 'multa') !== false || strpos($textoDetalle, ' mora') !== false || strpos($textoDetalle, 'mora ') !== false) {
+							$nombreServicio = 'multa';
+						} elseif (strpos($textoDetalle, 'reincorporacion') !== false || strpos($textoDetalle, 'reincorporación') !== false) {
+							$nombreServicio = 'reincorporacion';
+						} elseif (strpos($textoDetalle, 'carnet') !== false) {
+							$nombreServicio = 'E9';
+						}
                     }
 
                     // Buscar en items_cobro por nombre_servicio
@@ -3306,7 +3373,7 @@ class CobroController extends Controller
                     $factDetalles[] = [
                         'codigo_sin' => $codigoSin, // Para enviar al SIN
                         'codigo_interno' => $codigoInterno, // Para mostrar en PDF
-                        'codigo' => 'ITEM-' . (int)$nroCobro,
+                        'codigo' => ($codigoInterno !== null && (int)$codigoInterno > 0) ? (string)$codigoInterno : (string)$codigoSin,
                         'descripcion' => $detalleDesc,
                         'cantidad' => 1,
                         'unidad_medida' => $unidadMedida,
@@ -3342,7 +3409,9 @@ class CobroController extends Controller
                             'es_pago_parcial' => $descuentosCalculados[$idx]['es_pago_parcial'],
                             'monto_pagado_previo' => $descuentosCalculados[$idx]['monto_pagado_previo']
                         ]);
-                    } catch (\Throwable $e) {}
+                    } catch (\Throwable $e) {
+                        Log::error('batchStore: error en log pre-calculados', ['error' => $e->getMessage()]);
+                    }
                 }
 
                 // Determinar cod_inscrip correcto según el tipo de cobro
@@ -3360,6 +3429,19 @@ class CobroController extends Controller
                     // Para otros tipos de cobro, usar cod_inscrip de la inscripción primaria
                     $codInscripToUse = (int)$primaryInscripcion->cod_inscrip;
                 }
+
+				$codTipoCobroPersist = strtoupper(trim((string)$codTipoCobroItem));
+				if ($codTipoCobroPersist !== '' && Schema::hasTable('tipo_cobro')) {
+					$existsCodTipo = DB::table('tipo_cobro')->where('cod_tipo_cobro', $codTipoCobroPersist)->exists();
+					if (!$existsCodTipo) {
+						// En algunas BD legacy no existe MORA y se registra históricamente como NIVELACION.
+						if ($codTipoCobroPersist === 'MORA' && DB::table('tipo_cobro')->where('cod_tipo_cobro', 'NIVELACION')->exists()) {
+							$codTipoCobroPersist = 'NIVELACION';
+						} else {
+							$codTipoCobroPersist = '';
+						}
+					}
+				}
 
                 $payload = array_merge($composite, [
                     'monto' => $item['monto'],
@@ -3382,7 +3464,7 @@ class CobroController extends Controller
                     'medio_doc' => $medioDoc,
                     'gestion' => isset($request->gestion) ? $request->gestion : null,
                     'cod_inscrip' => $codInscripToUse,
-                    'cod_tipo_cobro' => $codTipoCobroItem,
+					'cod_tipo_cobro' => $codTipoCobroPersist !== '' ? $codTipoCobroPersist : null,
                     'concepto' => $conceptoOut,
                     'reposicion_factura' => $isReposicionFactura,
                 ]);

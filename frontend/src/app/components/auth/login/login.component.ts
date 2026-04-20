@@ -116,6 +116,7 @@ export class LoginComponent implements OnInit {
 	sessionExpiredMessage = '';
 	showPassword = false;
 	currentYear = new Date().getFullYear();
+	private targetUrlAfterLogin = '/dashboard';
 
 	constructor(
 		private fb: FormBuilder,
@@ -140,6 +141,31 @@ export class LoginComponent implements OnInit {
 					this.sessionExpiredMessage = '';
 				}, 10000);
 			}
+
+			const returnUrl = (params['returnUrl'] || '').toString();
+			this.targetUrlAfterLogin = returnUrl || '/dashboard';
+
+			const directSsoToken = (params['sso_token'] || '').toString().trim();
+			const directCodCeta = (params['cod_ceta'] || '').toString().trim();
+			const directGestion = (params['gestion'] || '').toString().trim();
+
+			const returnUrlData = this.parseReturnUrl(returnUrl);
+			const ssoToken = directSsoToken || returnUrlData.ssoToken;
+			const codCeta = directCodCeta || returnUrlData.codCeta;
+			const gestion = directGestion || returnUrlData.gestion;
+
+			console.info('[Login][SSO] Query recibido', {
+				hasSsoToken: !!ssoToken,
+				ssoTokenLength: ssoToken ? ssoToken.length : 0,
+				codCeta: codCeta || null,
+				gestion: gestion || null,
+				returnUrl: returnUrl || null,
+				returnBasePath: returnUrlData.basePath || null
+			});
+
+			if (ssoToken) {
+				this.autoLoginWithSsoToken(ssoToken, codCeta, gestion, returnUrlData.basePath);
+			}
 		});
 	}
 
@@ -163,7 +189,7 @@ export class LoginComponent implements OnInit {
 			next: (response) => {
 				this.isLoading = false;
 				if (response.success) {
-					this.router.navigate(['/dashboard']);
+					this.router.navigateByUrl(this.targetUrlAfterLogin || '/dashboard');
 				} else {
 					this.errorMessage = response.message || 'Error de autenticación';
 				}
@@ -174,5 +200,82 @@ export class LoginComponent implements OnInit {
 				console.error('Error de login:', error);
 			}
 		});
+	}
+
+	private autoLoginWithSsoToken(ssoToken: string, codCeta: string, gestion: string, returnBasePath: string): void {
+		if (this.isLoading) {
+			return;
+		}
+
+		this.isLoading = true;
+		this.errorMessage = '';
+		console.info('[Login][SSO] Iniciando validacion de token', {
+			ssoTokenLength: ssoToken ? ssoToken.length : 0,
+			codCeta: codCeta || null,
+			gestion: gestion || null,
+			returnBasePath: returnBasePath || '/cobros'
+		});
+
+		// Evitar conflicto con cualquier token previo durante validación SSO.
+		this.authService.clearSession();
+
+		this.authService.loginWithSsoToken(ssoToken).subscribe({
+			next: (response) => {
+				this.isLoading = false;
+				if (!response?.success) {
+					console.warn('[Login][SSO] Token rechazado por backend', {
+						hasResponse: !!response,
+						message: response?.message || null
+					});
+					this.errorMessage = response?.message || 'Token SSO inválido o expirado';
+					return;
+				}
+
+				const targetBase = returnBasePath || '/cobros';
+				const queryParams: any = {};
+				if (codCeta) queryParams.cod_ceta = codCeta;
+				if (gestion) queryParams.gestion = gestion;
+
+				this.router.navigate([targetBase], {
+					queryParams,
+					replaceUrl: true
+				});
+				console.info('[Login][SSO] Login OK, redirigiendo', {
+					targetBase,
+					codCeta: codCeta || null,
+					gestion: gestion || null
+				});
+			},
+			error: (error) => {
+				this.isLoading = false;
+				console.error('[Login][SSO] Error en validacion de token', {
+					status: error?.status,
+					message: error?.error?.message || error?.message || null
+				});
+				this.errorMessage = error?.error?.message || 'No se pudo validar el token SSO';
+			}
+		});
+	}
+
+	private parseReturnUrl(returnUrl: string): { ssoToken: string; codCeta: string; gestion: string; basePath: string } {
+		const fallback = { ssoToken: '', codCeta: '', gestion: '', basePath: '' };
+		if (!returnUrl) {
+			return fallback;
+		}
+
+		try {
+			const tree = this.router.parseUrl(returnUrl);
+			const primary = tree.root.children['primary'];
+			const basePath = primary ? `/${primary.segments.map(s => s.path).join('/')}` : '';
+
+			return {
+				ssoToken: (tree.queryParams['sso_token'] || '').toString().trim(),
+				codCeta: (tree.queryParams['cod_ceta'] || '').toString().trim(),
+				gestion: (tree.queryParams['gestion'] || '').toString().trim(),
+				basePath
+			};
+		} catch {
+			return fallback;
+		}
 	}
 }

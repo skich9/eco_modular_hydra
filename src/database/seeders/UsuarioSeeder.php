@@ -25,8 +25,5 @@ class UsuarioSeeder extends Seeder
             'estado' => true,
             'id_rol' => 1 // ID del rol Administrador
         ]);
-
-        // Usuarios de prueba
-        Usuario::factory()->count(15)->create();
     }
 }

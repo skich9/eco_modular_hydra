@@ -3,6 +3,7 @@
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\Route;
 use Illuminate\Support\Facades\Http;
+use Illuminate\Support\Facades\Log;
 use App\Http\Controllers\Api\EstudianteController;
 use App\Http\Controllers\Api\ParametrosEconomicosController;
 use App\Http\Controllers\Api\ItemsCobroController;
@@ -115,6 +116,7 @@ Route::match(['get','post'], 'sga/eco_hydra/Reincorporacion/estado', function (R
 
 // Rutas de autenticación
 Route::post('/login', [\App\Http\Controllers\Api\AuthController::class, 'login']);
+Route::post('/sso/exchange-token', [\App\Http\Controllers\Api\AuthController::class, 'exchangeSsoToken']);
 
 // PDF notas otros ingresos (URL firmada; no depende de /storage ni del symlink — evita 403 del servidor web)
 Route::get('/economico/otros-ingresos/nota-pdf/{filename}', [OtrosIngresosController::class, 'descargarNotaPdf'])

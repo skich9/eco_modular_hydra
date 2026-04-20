@@ -579,7 +579,9 @@ class FacturaPayloadBuilder
                 if ($dirRow && isset($dirRow->direccion) && $dirRow->direccion !== '') {
                     $direccion = (string)$dirRow->direccion;
                 }
-            } catch (\Throwable $e) {}
+            } catch (\Throwable $e) {
+                Log::error('FacturaPayloadBuilder: error buscando dirección en sin_cufd', ['error' => $e->getMessage()]);
+            }
         }
         if ($direccion === '') { $direccion = 'S/D'; }
 

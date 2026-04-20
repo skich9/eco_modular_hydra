@@ -10,7 +10,8 @@ export const authInterceptor: HttpInterceptorFn = (req, next) => {
 	const token = authService.getToken();
 
 	let clonedReq = req;
-	if (token) {
+	const hasAuthHeader = req.headers.has('Authorization');
+	if (token && !hasAuthHeader) {
 		clonedReq = req.clone({
 			headers: req.headers.set('Authorization', `Bearer ${token}`)
 		});
@@ -36,8 +37,9 @@ export const authInterceptor: HttpInterceptorFn = (req, next) => {
 	// Manejar la respuesta y capturar errores
 	return next(clonedReq).pipe(
 		catchError((error: HttpErrorResponse) => {
+			const hasSessionToken = !!authService.getToken();
 			// Si es error 401 (No autorizado) o 419 (Token expirado en Laravel)
-			if (error.status === 401 || error.status === 419) {
+			if ((error.status === 401 || error.status === 419) && hasSessionToken) {
 				console.warn('[AuthInterceptor] Token inválido o expirado (401/419). Cerrando sesión...');
 
 				// Limpiar sesión
