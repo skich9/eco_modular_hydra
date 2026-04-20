@@ -4,12 +4,20 @@ namespace App\Http\Controllers;
 
 use App\Models\Rol;
 use App\Models\Usuario;
+use App\Services\PermissionService;
 use Illuminate\Http\Request;
 use Illuminate\Http\Response;
 use Illuminate\Validation\Rule;
 
 class RolController extends Controller
 {
+    protected $permissionService;
+
+    public function __construct(PermissionService $permissionService)
+    {
+        $this->permissionService = $permissionService;
+    }
+
     /**
      * Display a listing of the resource.
      */
@@ -287,6 +295,12 @@ class RolController extends Controller
             // Sincronizar funciones (reemplaza las existentes)
             $rol->funciones()->sync($validated['funciones']);
 
+            // Sincronizar automáticamente a todos los usuarios del rol
+            $this->permissionService->syncRoleFunctionsToAllUsers(
+                $rol->id_rol,
+                $request->user()->id_usuario ?? null
+            );
+
             return response()->json([
                 'success' => true,
                 'data' => $rol->funciones()->get(),
@@ -322,6 +336,12 @@ class RolController extends Controller
             }
 
             $rol->funciones()->detach($funcionId);
+
+            // Sincronizar automáticamente a todos los usuarios del rol
+            $this->permissionService->syncRoleFunctionsToAllUsers(
+                $rol->id_rol,
+                $request->user()->id_usuario ?? null
+            );
 
             return response()->json([
                 'success' => true,
