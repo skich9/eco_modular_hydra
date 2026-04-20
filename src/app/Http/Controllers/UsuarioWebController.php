@@ -34,6 +34,12 @@ class UsuarioWebController extends Controller
 		}
 
 		try {
+			if ($request->has('nickname')) {
+				$request->merge([
+					'nickname' => Usuario::normalizeNickname($request->input('nickname')),
+				]);
+			}
+
 			$validated = $request->validate([
 				'nickname' => 'required|string|max:40|unique:usuarios,nickname',
 				'nombre' => 'required|string|max:30',
@@ -69,6 +75,12 @@ class UsuarioWebController extends Controller
 
 		try {
 			$usuario = Usuario::findOrFail($id);
+
+			if ($request->has('nickname')) {
+				$request->merge([
+					'nickname' => Usuario::normalizeNickname($request->input('nickname')),
+				]);
+			}
 
 			$validated = $request->validate([
 				'nickname' => 'required|string|max:40|unique:usuarios,nickname,' . $id . ',id_usuario',

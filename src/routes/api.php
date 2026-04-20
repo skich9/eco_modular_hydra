@@ -39,6 +39,7 @@ use App\Http\Controllers\Api\FacturaAnulacionController;
 use App\Http\Controllers\Api\FacturaPdfController;
 use App\Http\Controllers\Api\SgaSyncController;
 use App\Http\Controllers\Api\ReporteLibroDiarioController;
+use App\Http\Controllers\Api\LibroDiarioController;
 use App\Http\Controllers\Api\Economico\OtrosIngresosController;
 use App\Http\Controllers\Api\Economico\ModOtrosIngresosController;
 
@@ -209,6 +210,7 @@ Route::post('cobros/marcar-recibo-repuesto', [CobroController::class, 'marcarRec
 Route::post('cobros/cerrar-caja', [CobroController::class, 'cerrarCaja']);
 
 // Reportes: Libro Diario
+Route::get('reportes/libro-diario', [LibroDiarioController::class, 'index']);
 Route::post('reportes/libro-diario/imprimir', [ReporteLibroDiarioController::class, 'imprimir']);
 Route::get('cobros/{cod_ceta}/{cod_pensum}/{tipo_inscripcion}/{nro_cobro}', [CobroController::class, 'show']);
 Route::put('cobros/{cod_ceta}/{cod_pensum}/{tipo_inscripcion}/{nro_cobro}', [CobroController::class, 'update']);

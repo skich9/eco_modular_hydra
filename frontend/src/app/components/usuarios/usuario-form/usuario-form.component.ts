@@ -196,8 +196,11 @@ export class UsuarioFormComponent implements OnInit {
 
 		// Patrón: requerido
 		translated = translated.replace(/The ([^ ]+) field is required\./i, `El ${label} es requerido.`);
-		// Patrón: ya en uso (unique)
-		if (/has already been taken/i.test(translated)) {
+		// Patrón: ya en uso (unique) — inglés (Laravel por defecto) y español común
+		if (
+			/has already been taken/i.test(translated) ||
+			/ya ha sido registrado|ya está en uso|ya existe/i.test(translated)
+		) {
 			translated = `${label} ya está en uso.`;
 		}
 		// Patrón: mínimo de caracteres

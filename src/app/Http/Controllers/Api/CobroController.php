@@ -30,6 +30,7 @@ use App\Services\Siat\FacturaPayloadBuilder;
 use App\Services\Qr\QrSocketNotifier;
 use App\Services\MoraRecalculoService;
 use App\Services\LibroDiarioIdentificadorHelper;
+use App\Services\Reportes\LibroDiarioAccessService;
 use Carbon\Carbon;
 
 class CobroController extends Controller
@@ -4660,6 +4661,21 @@ class CobroController extends Controller
 
 			// Normalizar usuario a id_usuario entero
 			$idUsuario = (int)$usuarioRaw;
+
+			$authUserIdCaja = auth('sanctum')->id();
+			$authUserCaja = $authUserIdCaja ? Usuario::query()->find((int) $authUserIdCaja) : null;
+			if (!$authUserCaja) {
+				return response()->json([
+					'success' => false,
+					'message' => 'No autenticado',
+				], 401);
+			}
+			if (!LibroDiarioAccessService::puedeConsultarLibroDiarioDe($authUserCaja, $idUsuario)) {
+				return response()->json([
+					'success' => false,
+					'message' => 'No está autorizado para cerrar la caja de ese usuario. Solo la propia caja o roles con visión global (rector, tesorería, contabilidad, sistemas).',
+				], 403);
+			}
 
 			// Normalizar fecha a Y-m-d
 			$fechaYmd = null;
