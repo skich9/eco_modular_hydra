@@ -2684,6 +2684,10 @@ class CobroController extends Controller
 				$nroReciboBatch = null; $anioReciboBatch = null;
 				// Control para agrupar Recibo/Nota bancaria cuando se emite FACTURA con forma de cobro bancario
 				$nroReciboFacturaBatch = null; $anioReciboFacturaBatch = null;
+				// Consolidación de nota_traspaso: una sola fila por transacción con cuotas destino en CSV
+				$notaTraspasoAnio = null;
+				$notaTraspasoCorrelativo = null;
+				$notaTraspasoCuotasDestino = [];
 				foreach ($items as $idx => $item) {
 					// Asignar SIEMPRE un correlativo atómico global para garantizar unicidad
 					$anioItem = (int) date('Y', strtotime((string)(isset($item['fecha_cobro']) ? $item['fecha_cobro'] : date('Y-m-d'))));
@@ -2998,6 +3002,8 @@ class CobroController extends Controller
 				$detalleFromFront = (string)(isset($item['detalle']) ? $item['detalle'] : '');
 				$detalle = (string)(isset($item['observaciones']) ? $item['observaciones'] : '');
 				$obsOriginal = $detalle;
+				$obsUsuarioRaw = $obsOriginal;
+				$obsCobro = $obsOriginal;
 
 				// Si viene detalle del frontend, usarlo y no sobrescribirlo
 				if ($detalleFromFront !== '') {
@@ -3076,6 +3082,15 @@ class CobroController extends Controller
 					$codTipoCobroItem = 'MORA';
 				}
 
+				// Para forma de pago TRASPASO, prefijar observación del cobro con "Traspaso: " SIEMPRE (incluso si está vacío)
+				if (str_contains($formaNombre, 'TRASPASO')) {
+					$obsTrim = trim((string)$obsCobro);
+					// Si no esta agregado se agrea aun asi si obsTrim es vacío, para dejar el prefijo "Traspaso: " aunque no haya texto adicional
+					if (preg_match('/^Traspaso\s*:/i', $obsTrim) !== 1) {
+						$obsCobro = 'Traspaso: ' . $obsTrim;
+					}
+				}
+
 					// Actualizar tipo_inscripcion en composite si es ARRASTRE
 					if ($codTipoCobroItem === 'ARRASTRE') {
 						$composite['tipo_inscripcion'] = 'ARRASTRE';
@@ -3144,7 +3159,7 @@ class CobroController extends Controller
 
                 // Inserción en notas SGA usando el detalle correcto
                 try {
-                    $fechaNota = (string)(isset($item['fecha_cobro']) ? $item['fecha_cobro'] : date('Y-m-d'));
+					$fechaNota = (string)$fechaCobroSave;
                     $anioFull = (int) date('Y', strtotime($fechaNota));
                     $anio2 = (int) date('y', strtotime($fechaNota));
                     $prefijoCarrera = 'E';
@@ -3152,6 +3167,7 @@ class CobroController extends Controller
                     $monto = (float) $item['monto'];
                     $isEfectivo = ($formaNombre === 'EFECTIVO');
                     $isBancario = in_array($formaNombre, ['TARJETA','CHEQUE','DEPOSITO','TRANSFERENCIA','QR']) || in_array($formaCode, ['O']);
+                    $isTraspaso = str_contains($formaNombre, 'TRASPASO');
 
                     if ($isEfectivo) {
                         DB::statement(
@@ -3222,6 +3238,189 @@ class CobroController extends Controller
                             'nro_tarjeta' => $nroTarjetaFull,
                         ]);
                     }
+
+					if ($isTraspaso) {
+						$fechaOrigenRaw = isset($item['traspaso_fecha_origen']) ? $item['traspaso_fecha_origen'] : null;
+						$cuotaDestinoNow = (isset($item['numero_cuota']) && $item['numero_cuota'])
+							? (string)((int)$item['numero_cuota'])
+							: (isset($item['traspaso_cuota_destino']) ? trim((string)$item['traspaso_cuota_destino']) : null);
+						if ($cuotaDestinoNow !== null && $cuotaDestinoNow !== '') {
+							$notaTraspasoCuotasDestino[] = $cuotaDestinoNow;
+							$notaTraspasoCuotasDestino = array_values(array_unique($notaTraspasoCuotasDestino));
+						}
+
+						$carreraOrigen = isset($item['traspaso_carrera_origen']) ? trim((string)$item['traspaso_carrera_origen']) : '';
+						$carreraDestino = trim((string)(isset($primaryInscripcion->carrera) ? $primaryInscripcion->carrera : ''));
+						$tipoTraspaso = strtoupper(trim((string)(isset($item['traspaso_tipo']) ? $item['traspaso_tipo'] : '')));
+
+						$normalizeCarrera = static function (string $txt): string {
+							$txt = strtoupper(trim((string)preg_replace('/\s+/', ' ', $txt)));
+							return strtr($txt, [
+								'Á' => 'A', 'À' => 'A', 'Ä' => 'A', 'Â' => 'A', 'Ã' => 'A',
+								'É' => 'E', 'È' => 'E', 'Ë' => 'E', 'Ê' => 'E',
+								'Í' => 'I', 'Ì' => 'I', 'Ï' => 'I', 'Î' => 'I',
+								'Ó' => 'O', 'Ò' => 'O', 'Ö' => 'O', 'Ô' => 'O', 'Õ' => 'O',
+								'Ú' => 'U', 'Ù' => 'U', 'Ü' => 'U', 'Û' => 'U',
+								'Ñ' => 'N',
+							]);
+						};
+						$prefByCarrera = static function (string $carreraNorm): string {
+							if ($carreraNorm === '') return '';
+							// EEA ~ Electrónica / Electricidad
+							if (strpos($carreraNorm, 'ELECTRON') !== false || strpos($carreraNorm, 'ELECTRIC') !== false) return 'EEA';
+							// MEA ~ Mecánica Automotriz
+							if (strpos($carreraNorm, 'MECAN') !== false || strpos($carreraNorm, 'AUTOMOTR') !== false) return 'MEA';
+							return '';
+						};
+						$carreraOrigenNorm = $normalizeCarrera($carreraOrigen);
+						$carreraDestinoNorm = $normalizeCarrera($carreraDestino);
+						$prefCarreraOrigen = $prefByCarrera($carreraOrigenNorm);
+						$prefCarreraDestino = $prefByCarrera($carreraDestinoNorm);
+
+						$prefPensumDestino = strtoupper(substr(trim((string)$codPensumCtx), 0, 3));
+						$prefPensumOrigen = '';
+						$codEstOrigenRaw = isset($item['traspaso_cod_est']) ? trim((string)$item['traspaso_cod_est']) : '';
+						$gestionOrigen = isset($item['traspaso_gestion']) ? trim((string)$item['traspaso_gestion']) : '';
+						if ($codEstOrigenRaw !== '') {
+							try {
+								$insOrigBase = DB::table('inscripciones')->where('cod_ceta', $codEstOrigenRaw);
+								$codPensumOrigen = '';
+								if ($gestionOrigen !== '') {
+									$codPensumOrigen = (string)((clone $insOrigBase)
+										->where('gestion', $gestionOrigen)
+										->orderByDesc('fecha_inscripcion')
+										->orderByDesc('created_at')
+										->value('cod_pensum') ?? '');
+								}
+								if ($codPensumOrigen === '') {
+									$codPensumOrigen = (string)($insOrigBase
+										->orderByDesc('fecha_inscripcion')
+										->orderByDesc('created_at')
+										->value('cod_pensum') ?? '');
+								}
+
+								// Fallback 1: resolver por estudiantes.cod_pensum cuando no haya inscripción origen
+								if ($codPensumOrigen === '') {
+									$codPensumOrigen = (string)(DB::table('estudiantes')
+										->where('cod_ceta', $codEstOrigenRaw)
+										->value('cod_pensum') ?? '');
+								}
+
+								if ($codPensumOrigen === '' && ctype_digit($codEstOrigenRaw)) {
+									$codPensumOrigen = (string)(DB::table('estudiantes')
+										->where('cod_ceta', (int)$codEstOrigenRaw)
+										->value('cod_pensum') ?? '');
+								}
+								$prefPensumOrigen = strtoupper(substr(trim($codPensumOrigen), 0, 3));
+							} catch (\Throwable $e) {
+								$prefPensumOrigen = '';
+								try { Log::warning('batchStore: lookup pensum origen traspaso fallido', ['err' => $e->getMessage(), 'cod_est' => $codEstOrigenRaw]); } catch (\Throwable $e2) {}
+							}
+						}
+
+						// Fallback 2: inferir prefijo desde carrera origen cuando no hay match por código
+						if ($prefPensumOrigen === '' && $carreraOrigen !== '') {
+							$prefPensumOrigen = $prefCarreraOrigen;
+						}
+
+					// Derive tipo: PRIORIDAD a la carrera seleccionada (select origen/destino), luego pensum, luego nombre completo
+					if ($prefCarreraOrigen !== '' && $prefCarreraDestino !== '') {
+						$tipoTraspaso = ($prefCarreraOrigen === $prefCarreraDestino) ? 'T' : 'M';
+					} elseif (in_array($prefPensumOrigen, ['EEA', 'MEA'], true) && in_array($prefPensumDestino, ['EEA', 'MEA'], true)) {
+						$tipoTraspaso = ($prefPensumOrigen === $prefPensumDestino) ? 'T' : 'M';
+					} else {
+						$tipoTraspaso = ($carreraOrigenNorm !== '' && $carreraDestinoNorm !== '' && $carreraOrigenNorm === $carreraDestinoNorm) ? 'T' : 'M';
+					}
+
+					$documentoOrigen = isset($item['traspaso_documento']) ? trim((string)$item['traspaso_documento']) : '';
+					$fechaOrigenTxt = $fechaOrigenRaw ? trim((string)$fechaOrigenRaw) : '';
+					$conceptoTraspaso = ($tipoTraspaso === 'M')
+						? 'Traspaso de pago entre carreras segun documento: "' . $documentoOrigen . '" en "' . $fechaOrigenTxt . '"'
+						: 'Traspaso de mensualidad segun documento: "' . $documentoOrigen . '" en "' . $fechaOrigenTxt . '"';
+
+					$gestionDestino = (isset($item['traspaso_gestion_destino']) && trim((string)$item['traspaso_gestion_destino']) !== '')
+						? trim((string)$item['traspaso_gestion_destino'])
+						: trim((string)(isset($request->gestion) ? $request->gestion : ''));
+
+					$prefijoNota = 'E';
+					$carreraDestinoNorm = strtoupper($carreraDestino);
+						if ($carreraDestinoNorm !== '' && strpos($carreraDestinoNorm, 'MECAN') !== false) {
+							$prefijoNota = 'M';
+						}
+
+						if ($notaTraspasoCorrelativo === null || $notaTraspasoAnio !== $anioFull) {
+							DB::statement(
+								"INSERT INTO doc_counter (scope, last, created_at, updated_at) VALUES (?, 1, NOW(), NOW())\n"
+								. "ON DUPLICATE KEY UPDATE last = LAST_INSERT_ID(last + 1), updated_at = NOW()",
+								['NOTA_TRASPASO:' . $anioFull]
+							);
+							$rowNt = DB::selectOne('SELECT LAST_INSERT_ID() AS id');
+							$notaTraspasoCorrelativo = (int)(isset($rowNt->id) ? $rowNt->id : 0);
+							$notaTraspasoAnio = $anioFull;
+
+							DB::table('nota_traspaso')->insert([
+								'anio'             => $anioFull,
+								'correlativo'      => $notaTraspasoCorrelativo,
+								'usuario'          => $usuarioNick,
+								'cod_ceta'         => $codCeta,
+								'monto'            => $monto,
+								'concepto'         => $conceptoTraspaso,
+								'tipo'             => $tipoTraspaso,
+								'cuota_origen'     => isset($item['traspaso_nro_cuota']) ? (string)$item['traspaso_nro_cuota'] : null,
+								'documento_origen' => $documentoOrigen !== '' ? $documentoOrigen : null,
+								'fecha_origen'     => $fechaOrigenTxt !== '' ? $fechaOrigenTxt : null,
+								'carrera_origen'   => $carreraOrigen !== '' ? $carreraOrigen : null,
+								'fecha_nota'       => $fechaNota,
+								'cuota_destino'    => implode(',', $notaTraspasoCuotasDestino),
+								'prefijo_carrera'  => $prefijoNota,
+								'nro_recibo'       => ($nroRecibo !== null) ? (string)((int)$nroRecibo) : '0',
+								'nro_factura'      => $nroFactura ? (string)$nroFactura : null,
+								'observacion'      => $obsUsuarioRaw,
+								'gestion_origen'   => isset($item['traspaso_gestion']) ? trim((string)$item['traspaso_gestion']) : null,
+								'est_origen'       => isset($item['traspaso_cod_est']) ? trim((string)$item['traspaso_cod_est']) : null,
+								'gestion_destino'  => $gestionDestino !== '' ? $gestionDestino : null,
+							]);
+						} else {
+							DB::table('nota_traspaso')
+								->where('anio', $notaTraspasoAnio)
+								->where('correlativo', $notaTraspasoCorrelativo)
+								->update([
+									'monto'            => DB::raw('monto + ' . ((float)$monto)),
+									'concepto'         => $conceptoTraspaso,
+									'tipo'             => $tipoTraspaso,
+									'cuota_destino'    => implode(',', $notaTraspasoCuotasDestino),
+									'documento_origen' => $documentoOrigen !== '' ? $documentoOrigen : null,
+									'fecha_origen'     => $fechaOrigenTxt !== '' ? $fechaOrigenTxt : null,
+									'carrera_origen'   => $carreraOrigen !== '' ? $carreraOrigen : null,
+									'gestion_origen'   => isset($item['traspaso_gestion']) ? trim((string)$item['traspaso_gestion']) : null,
+									'est_origen'       => isset($item['traspaso_cod_est']) ? trim((string)$item['traspaso_cod_est']) : null,
+									'gestion_destino'  => $gestionDestino !== '' ? $gestionDestino : null,
+									'observacion'      => $obsUsuarioRaw,
+									'fecha_nota'       => $fechaNota,
+								]);
+						}
+
+						try {
+							Log::info('batchStore: nota_traspaso consolidada', [
+								'anio' => $notaTraspasoAnio,
+								'correlativo' => $notaTraspasoCorrelativo,
+								'cuotas_destino' => implode(',', $notaTraspasoCuotasDestino),
+								'tipo' => $tipoTraspaso,
+								'pref_pensum_origen' => $prefPensumOrigen,
+								'pref_pensum_destino' => $prefPensumDestino,
+								'pref_carrera_origen' => $prefCarreraOrigen,
+								'pref_carrera_destino' => $prefCarreraDestino,
+								'carrera_origen' => $carreraOrigen,
+								'carrera_destino' => $carreraDestino,
+								'concepto' => $conceptoTraspaso,
+								'gestion_origen' => isset($item['traspaso_gestion']) ? $item['traspaso_gestion'] : null,
+								'est_origen' => isset($item['traspaso_cod_est']) ? $item['traspaso_cod_est'] : null,
+								'gestion_destino' => $gestionDestino,
+							]);
+						} catch (
+							\Throwable $e
+						) {}
+					}
                 } catch (\Throwable $e) {
                     \Log::warning('batchStore: nota insert failed', [ 'err' => $e->getMessage() ]);
                 }
@@ -3448,7 +3647,7 @@ class CobroController extends Controller
                     'monto' => $item['monto'],
                     'fecha_cobro' => $fechaCobroSave,
                     'cobro_completo' => isset($item['cobro_completo']) ? $item['cobro_completo'] : null,
-                    'observaciones' => isset($item['observaciones']) ? $item['observaciones'] : null,
+					'observaciones' => $obsCobro !== '' ? $obsCobro : null,
                     'detalle' => $detalle,
                     'id_usuario' => $idUsuarioReposicion ?: (int)$request->id_usuario,
                     'id_forma_cobro' => isset($item['id_forma_cobro']) ? $item['id_forma_cobro'] : $formaIdItem,
