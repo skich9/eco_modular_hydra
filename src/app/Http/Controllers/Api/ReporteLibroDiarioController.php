@@ -3,8 +3,11 @@
 namespace App\Http\Controllers\Api;
 
 use App\Http\Controllers\Controller;
+use App\Models\Usuario;
 use App\Services\LibroDiarioPdfService;
 use App\Services\LibroDiarioIdentificadorHelper;
+use App\Services\Reportes\LibroDiarioAccessService;
+use App\Services\Reportes\LibroDiarioAggregatorService;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Log;
@@ -71,6 +74,56 @@ class ReporteLibroDiarioController extends Controller
             $fecha = (string)$request->input('fecha', '');
             $resumen = $request->input('resumen', []) ?: [];
             $horaApertura = (string)($resumen['hora_apertura'] ?? $request->input('hora_apertura', ''));
+
+            $authUserId = auth('sanctum')->id();
+            $authUser = $authUserId ? Usuario::query()->find((int) $authUserId) : null;
+            if (!$authUser) {
+                return response()->json(['success' => false, 'message' => 'No autenticado'], 401);
+            }
+            $idUsuarioPdf = (int) $usuario;
+            if ($idUsuarioPdf > 0 && !LibroDiarioAccessService::puedeConsultarLibroDiarioDe($authUser, $idUsuarioPdf)) {
+                return response()->json([
+                    'success' => false,
+                    'message' => 'No está autorizado para generar el Libro Diario de ese usuario. Solo su propio libro o roles con visión global (rector, tesorería, contabilidad, sistemas).',
+                ], 403);
+            }
+
+            // Opción B: si no llegan `datos` del cliente, reconsultar del backend con el agregador único.
+            if ((!is_array($datos) || count($datos) === 0) && (int) $usuario > 0) {
+                $fechaFiltro = $fecha !== '' ? $fecha : '';
+                $fechaInicio = (string) $request->input('fecha_inicio', $fechaFiltro);
+                $fechaFin = (string) $request->input('fecha_fin', $fechaFiltro);
+                $codigoCarrera = (string) ($resumen['codigo_carrera'] ?? $request->input('codigo_carrera', ''));
+                try {
+                    /** @var LibroDiarioAggregatorService $agg */
+                    $agg = app(LibroDiarioAggregatorService::class);
+                    $res = $agg->build([
+                        'id_usuario' => (int) $usuario,
+                        'fecha_inicio' => $fechaInicio,
+                        'fecha_fin' => $fechaFin,
+                        'codigo_carrera' => $codigoCarrera,
+                        'usuario_display' => $usuarioDisplay,
+                    ]);
+                    $datos = $res['datos'] ?? [];
+                    if (!is_array($resumen) || empty($resumen)) {
+                        $resumen = $res['resumen'] ?? [];
+                        if ($codigoCarrera !== '' && !isset($resumen['codigo_carrera'])) {
+                            $resumen['codigo_carrera'] = $codigoCarrera;
+                        }
+                    }
+                    if ($horaApertura === '' && !empty($res['usuario_info']['hora_apertura'])) {
+                        $horaApertura = (string) $res['usuario_info']['hora_apertura'];
+                    }
+                    if ($contenido === '') {
+                        // Marcador para pasar la validación aguas abajo; el cuerpo real se genera desde `datos`.
+                        $contenido = '<!-- generado por LibroDiarioAggregatorService -->';
+                    }
+                } catch (\Throwable $e) {
+                    Log::warning('[ReporteLibroDiarioController] fallback a agregador falló', [
+                        'error' => $e->getMessage(),
+                    ]);
+                }
+            }
 
             $resumen = is_array($resumen) ? $resumen : [];
             $fmt = function ($v) {

@@ -10,6 +10,16 @@ use Illuminate\Support\Facades\Schema;
 class SgaSyncRepository
 {
 	/**
+	 * Normaliza un nickname a minúsculas y sin espacios, truncado a 40 chars.
+	 * Debe usarse SIEMPRE que se persista o busque por `usuarios.nickname` desde
+	 * este repositorio (usa DB::table y no pasa por el mutator del modelo).
+	 */
+	private function normalizeNickname($value): string
+	{
+		return mb_substr(mb_strtolower(trim((string) $value)), 0, 40);
+	}
+
+	/**
 	 * Sincroniza usuarios desde SGA (tabla usuario) hacia usuarios (MySQL)
 	 *
 	 * Match:
@@ -58,7 +68,7 @@ class SgaSyncRepository
 				$now = now();
 				$payload = [];
 				foreach ($rows as $r) {
-					$nickname = trim((string) ($r->id_usuario ?? ''));
+					$nickname = $this->normalizeNickname($r->id_usuario ?? '');
 					if ($nickname === '') { $skipped++; continue; }
 					$nombre = trim((string) ($r->nombre ?? ''));
 					$apP = trim((string) ($r->ap_paterno ?? ''));
@@ -69,7 +79,7 @@ class SgaSyncRepository
 					$activo = (bool) (($r->activo ?? false) === true || ($r->activo ?? 0) === 1 || ($r->activo ?? '') === '1' || ($r->activo ?? '') === 't' || ($r->activo ?? '') === 'T');
 
 					$payload[] = [
-						'nickname' => mb_substr($nickname, 0, 40),
+						'nickname' => $nickname,
 						'nombre' => mb_substr($nombre, 0, 30),
 						'ap_paterno' => mb_substr($apP, 0, 40),
 						'ap_materno' => mb_substr($apM, 0, 40),
@@ -240,7 +250,7 @@ class SgaSyncRepository
 					$sourcePk = $this->makePagoSourcePk($r);
 					if ($sourcePk !== '') { $sourcePks[] = $sourcePk; }
 					$userNick = trim((string) ($r->usuario ?? ''));
-					if ($userNick !== '') { $nicknames[] = mb_substr($userNick, 0, 40); }
+					if ($userNick !== '') { $nicknames[] = $this->normalizeNickname($userNick); }
 					$sgaCod = (int) ($r->cod_inscrip ?? 0);
 					if ($sgaCod > 0) { $sgaCodIns[] = $sgaCod; }
 				}
@@ -328,8 +338,8 @@ class SgaSyncRepository
 
 						$userNick = trim((string) ($r->usuario ?? ''));
 						$idUsuario = $defaultUserId;
-						if ($userNick !== '' && isset($userMap[$userNick])) {
-							$idUsuario = (int) $userMap[$userNick];
+						if ($userNick !== '' && isset($userMap[$this->normalizeNickname($userNick)])) {
+							$idUsuario = (int) $userMap[$this->normalizeNickname($userNick)];
 						} else {
 							$skippedMissingUser++;
 							if ($userNick === '') {
@@ -995,7 +1005,7 @@ class SgaSyncRepository
 					$sourcePk = $this->makePagoMultaSourcePk($r);
 					if ($sourcePk !== '') { $sourcePks[] = $sourcePk; }
 					$userNick = trim((string) ($r->usuario ?? ''));
-					if ($userNick !== '') { $nicknames[] = mb_substr($userNick, 0, 40); }
+					if ($userNick !== '') { $nicknames[] = $this->normalizeNickname($userNick); }
 				}
 				$sourcePks = array_values(array_unique(array_filter($sourcePks)));
 				$nicknames = array_values(array_unique(array_filter($nicknames)));
@@ -1034,8 +1044,8 @@ class SgaSyncRepository
 
 						$userNick = trim((string) ($r->usuario ?? ''));
 						$idUsuario = $defaultUserId;
-						if ($userNick !== '' && isset($userMap[$userNick])) {
-							$idUsuario = (int) $userMap[$userNick];
+						if ($userNick !== '' && isset($userMap[$this->normalizeNickname($userNick)])) {
+							$idUsuario = (int) $userMap[$this->normalizeNickname($userNick)];
 						} else {
 							$skippedMissingUser++;
 						}
@@ -1617,7 +1627,7 @@ class SgaSyncRepository
 					$sourcePk = $this->makeRezagadoSourcePk($r);
 					if ($sourcePk !== '') { $sourcePks[] = $sourcePk; }
 					$userNick = trim((string) ($r->usuario ?? ''));
-					if ($userNick !== '') { $nicknames[] = mb_substr($userNick, 0, 40); }
+					if ($userNick !== '') { $nicknames[] = $this->normalizeNickname($userNick); }
 				}
 				$sourcePks = array_values(array_unique(array_filter($sourcePks)));
 				$nicknames = array_values(array_unique(array_filter($nicknames)));
@@ -1656,8 +1666,8 @@ class SgaSyncRepository
 
 						$userNick = trim((string) ($r->usuario ?? ''));
 						$idUsuario = $defaultUserId;
-						if ($userNick !== '' && isset($userMap[$userNick])) {
-							$idUsuario = (int) $userMap[$userNick];
+						if ($userNick !== '' && isset($userMap[$this->normalizeNickname($userNick)])) {
+							$idUsuario = (int) $userMap[$this->normalizeNickname($userNick)];
 						} else {
 							$skippedMissingUser++;
 						}
@@ -4642,7 +4652,7 @@ class SgaSyncRepository
 					$sourcePk = $this->makeMaterialAdicionalSourcePk($r);
 					if ($sourcePk !== '') { $sourcePks[] = $sourcePk; }
 					$userNick = trim((string) ($r->usuario ?? ''));
-					if ($userNick !== '') { $nicknames[] = mb_substr($userNick, 0, 40); }
+					if ($userNick !== '') { $nicknames[] = $this->normalizeNickname($userNick); }
 					$cp = trim((string) ($r->cod_pensum ?? ''));
 					if ($cp !== '') { $sgaPensums[] = mb_substr($cp, 0, 50); }
 					$lib = mb_strtolower(trim((string) ($r->nombre_libro ?? '')));
@@ -4716,8 +4726,8 @@ class SgaSyncRepository
 
 						$userNick = trim((string) ($r->usuario ?? ''));
 						$idUsuario = $defaultUserId;
-						if ($userNick !== '' && isset($userMap[$userNick])) {
-							$idUsuario = (int) $userMap[$userNick];
+						if ($userNick !== '' && isset($userMap[$this->normalizeNickname($userNick)])) {
+							$idUsuario = (int) $userMap[$this->normalizeNickname($userNick)];
 						} else {
 							$skippedMissingUser++;
 						}

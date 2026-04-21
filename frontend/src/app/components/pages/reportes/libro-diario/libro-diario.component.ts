@@ -177,7 +177,7 @@ export class LibroDiarioComponent implements OnInit {
 
   /** Sincroniza el texto visible a partir del id almacenado en el formulario. */
   syncUsuarioLiteralDesdeId(id: string): void {
-    if (!this.esUsuarioAdmin()) {
+    if (!this.puedeElegirUsuarioLibroDiario()) {
       return;
     }
     if (!id) {
@@ -193,7 +193,7 @@ export class LibroDiarioComponent implements OnInit {
    * (Selección datalist, blur o antes de buscar.)
    */
   resolverUsuarioLiteral(): void {
-    if (!this.esUsuarioAdmin()) {
+    if (!this.puedeElegirUsuarioLibroDiario()) {
       return;
     }
     const ctrl = this.filtroForm.get('usuario');
@@ -248,7 +248,7 @@ export class LibroDiarioComponent implements OnInit {
    * tras un tick para que `ngModel` ya tenga el id.
    */
   onUsuarioInputEvent(ev: Event): void {
-    if (!this.esUsuarioAdmin()) {
+    if (!this.puedeElegirUsuarioLibroDiario()) {
       return;
     }
     const ie = ev as InputEvent;
@@ -262,7 +262,7 @@ export class LibroDiarioComponent implements OnInit {
   }
 
   buscarLibroDiario(): void {
-    if (this.esUsuarioAdmin()) {
+    if (this.puedeElegirUsuarioLibroDiario()) {
       this.resolverUsuarioLiteral();
     }
     if (this.filtroForm.invalid) {
@@ -274,11 +274,16 @@ export class LibroDiarioComponent implements OnInit {
     this.mostrarResultados = true;
 
     const { usuario, fecha, carrera } = this.filtroForm.getRawValue();
-    const usuarioFiltro = this.esUsuarioAdmin() ? usuario : (this.usuarioActual || usuario);
-    if (!this.esUsuarioAdmin() && String(usuarioFiltro) !== String(this.usuarioActual)) {
+    const usuarioFiltro = this.puedeElegirUsuarioLibroDiario()
+      ? usuario
+      : (this.usuarioActual || usuario);
+    if (!this.usuarioPermitidoParaLibroDiario(String(usuarioFiltro))) {
       this.loading = false;
       this.mostrarResultados = false;
-      this.mostrarAlerta('No puede consultar el Libro Diario de otro usuario.', 'warning');
+      this.mostrarAlerta(
+        'No puede consultar el Libro Diario de ese usuario. Su rol solo permite el propio libro, salvo rector, tesorería, contabilidad o sistemas.',
+        'warning'
+      );
       return;
     }
     const fechaSGA = this.formatearFechaSGA(fecha);
@@ -316,6 +321,9 @@ export class LibroDiarioComponent implements OnInit {
           this.datosLibroDiario = [];
           this.totales = { ingresos: 0, egresos: 0 };
           this.recalcularResumenMetodosPago();
+          if (response.message) {
+            this.mostrarAlerta(response.message, 'warning');
+          }
         }
         this.loading = false;
       },
@@ -372,9 +380,14 @@ export class LibroDiarioComponent implements OnInit {
     }
 
     const { usuario, fecha: fechaValue, carrera: codigoCarrera } = this.filtroForm.getRawValue();
-    const usuarioFiltro = this.esUsuarioAdmin() ? usuario : (this.usuarioActual || usuario);
-    if (!this.esUsuarioAdmin() && String(usuarioFiltro) !== String(this.usuarioActual)) {
-      this.mostrarAlerta('No puede imprimir el Libro Diario de otro usuario.', 'warning');
+    const usuarioFiltro = this.puedeElegirUsuarioLibroDiario()
+      ? usuario
+      : (this.usuarioActual || usuario);
+    if (!this.usuarioPermitidoParaLibroDiario(String(usuarioFiltro))) {
+      this.mostrarAlerta(
+        'No puede imprimir el Libro Diario de ese usuario. Su rol solo permite el propio libro, salvo rector, tesorería, contabilidad o sistemas.',
+        'warning'
+      );
       return;
     }
 
@@ -505,10 +518,18 @@ export class LibroDiarioComponent implements OnInit {
     });
   }
 
-  esUsuarioAdmin(): boolean {
-    const rol = String(this.currentUser?.rol?.nombre || '').toLowerCase();
-    const nickname = String(this.currentUser?.nickname || '').toLowerCase();
-    return rol.includes('admin') || nickname === 'admin';
+  /**
+   * La API devolvió más de un usuario (p. ej. rol con visión global: rector, tesorería, contabilidad, sistemas).
+   */
+  puedeElegirUsuarioLibroDiario(): boolean {
+    return this.usuarios.length > 1;
+  }
+
+  private usuarioPermitidoParaLibroDiario(idUsuario: string): boolean {
+    if (!idUsuario) {
+      return false;
+    }
+    return this.usuarios.some((u) => String(u.id_usuario) === String(idUsuario));
   }
 
   /** Etiqueta legible para usuario no admin (solo lectura). */
@@ -530,7 +551,7 @@ export class LibroDiarioComponent implements OnInit {
       return;
     }
 
-    if (this.esUsuarioAdmin()) {
+    if (this.puedeElegirUsuarioLibroDiario()) {
       usuarioCtrl.enable({ emitEvent: false });
       this.syncUsuarioLiteralDesdeId(String(this.filtroForm.get('usuario')?.value ?? ''));
       return;
