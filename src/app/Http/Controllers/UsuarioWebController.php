@@ -7,8 +7,17 @@ use App\Models\Rol;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\Session;
 
+use App\Services\PermissionService;
+
 class UsuarioWebController extends Controller
 {
+	protected $permissionService;
+
+	public function __construct(PermissionService $permissionService)
+	{
+		$this->permissionService = $permissionService;
+	}
+
 	/**
 	 * Display a listing of the resource.
 	 */
@@ -34,6 +43,12 @@ class UsuarioWebController extends Controller
 		}
 
 		try {
+			if ($request->has('nickname')) {
+				$request->merge([
+					'nickname' => Usuario::normalizeNickname($request->input('nickname')),
+				]);
+			}
+
 			$validated = $request->validate([
 				'nickname' => 'required|string|max:40|unique:usuarios,nickname',
 				'nombre' => 'required|string|max:30',
@@ -48,7 +63,14 @@ class UsuarioWebController extends Controller
 			// Asegurar que estado sea boolean
 			$validated['estado'] = $request->has('estado') ? true : false;
 
-			Usuario::create($validated);
+			$usuario = Usuario::create($validated);
+
+			// Sincronizar funciones del rol inicial
+			$this->permissionService->copyRoleFunctionsToUser(
+				$usuario->id_usuario,
+				$validated['id_rol'],
+				true
+			);
 
 			return redirect()->route('usuarios.index')->with('success', 'Usuario creado exitosamente');
 		} catch (\Illuminate\Validation\ValidationException $e) {
@@ -69,6 +91,12 @@ class UsuarioWebController extends Controller
 
 		try {
 			$usuario = Usuario::findOrFail($id);
+
+			if ($request->has('nickname')) {
+				$request->merge([
+					'nickname' => Usuario::normalizeNickname($request->input('nickname')),
+				]);
+			}
 
 			$validated = $request->validate([
 				'nickname' => 'required|string|max:40|unique:usuarios,nickname,' . $id . ',id_usuario',
@@ -91,7 +119,17 @@ class UsuarioWebController extends Controller
 			// Asegurar que estado sea boolean
 			$validated['estado'] = $request->has('estado') ? true : false;
 
+			$oldRolId = $usuario->id_rol;
 			$usuario->update($validated);
+
+			// Si el rol cambió, sincronizar funciones
+			if (isset($validated['id_rol']) && $validated['id_rol'] != $oldRolId) {
+				$this->permissionService->copyRoleFunctionsToUser(
+					$usuario->id_usuario,
+					$validated['id_rol'],
+					true
+				);
+			}
 
 			return redirect()->route('usuarios.index')->with('success', 'Usuario actualizado exitosamente');
 		} catch (\Illuminate\Validation\ValidationException $e) {

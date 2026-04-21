@@ -3,6 +3,7 @@
 namespace App\Http\Controllers\Api;
 
 use App\Http\Controllers\Controller;
+use App\Models\Usuario;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Log;
@@ -21,6 +22,16 @@ class FacturaEstadoController extends Controller
             $sucursal = $request->query('sucursal');
             $fechaInicio = $request->query('fecha_inicio');
             $fechaFin = $request->query('fecha_fin');
+            /** Día único Y-m-d (Libro Diario envía `fecha` junto a `id_usuario`) */
+            $fechaCorta = $request->query('fecha');
+
+            $authUserId = auth('sanctum')->id();
+            $authUser = $authUserId ? Usuario::with('rol')->find((int) $authUserId) : null;
+            $esAdmin = false;
+            if ($authUser) {
+                $rolNombre = strtolower((string) optional($authUser->rol)->nombre);
+                $esAdmin = str_contains($rolNombre, 'admin') || strtolower((string) $authUser->nickname) === 'admin';
+            }
 
             $q = DB::table('factura as f')
                 ->leftJoin('usuarios as u', 'u.id_usuario', '=', 'f.id_usuario')
@@ -32,6 +43,7 @@ class FacturaEstadoController extends Controller
                     'f.cuf',
                     'f.codigo_recepcion',
                     'f.codigo_sucursal',
+                    'f.id_usuario',
                     // Datos adicionales para libro diario y otras UIs
                     'f.cliente',
                     'f.nro_documento_cobro',
@@ -44,6 +56,17 @@ class FacturaEstadoController extends Controller
             if ($sucursal !== null && $sucursal !== '') { $q->where('f.codigo_sucursal', (int)$sucursal); }
             if ($fechaInicio) { $q->where('f.fecha_emision', '>=', $fechaInicio . ' 00:00:00'); }
             if ($fechaFin)    { $q->where('f.fecha_emision', '<=', $fechaFin    . ' 23:59:59'); }
+            if ($fechaCorta && preg_match('/^\d{4}-\d{2}-\d{2}$/', (string) $fechaCorta)) {
+                $q->where('f.fecha_emision', '>=', $fechaCorta . ' 00:00:00');
+                $q->where('f.fecha_emision', '<=', $fechaCorta . ' 23:59:59');
+            }
+
+            if ($authUser && ! $esAdmin) {
+                $q->where('f.id_usuario', (int) $authUser->id_usuario);
+            } elseif ($request->filled('id_usuario')) {
+                $q->where('f.id_usuario', (int) $request->query('id_usuario'));
+            }
+
             $q->orderBy('f.anio', 'desc')->orderBy('f.nro_factura', 'desc');
 
             $total = $q->count();
@@ -127,6 +150,7 @@ class FacturaEstadoController extends Controller
                     'monto_total' => $montoTotal,
                     'codigo_sucursal' => isset($r->codigo_sucursal) ? (int)$r->codigo_sucursal : 0,
                     'nombre_usuario' => isset($r->nombre_usuario) ? trim((string)$r->nombre_usuario) : '',
+                    'id_usuario' => isset($r->id_usuario) ? (int) $r->id_usuario : 0,
                 ];
             }
 

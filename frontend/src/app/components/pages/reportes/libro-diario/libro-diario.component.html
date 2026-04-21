@@ -28,16 +28,40 @@
 					<form [formGroup]="filtroForm" (ngSubmit)="buscarLibroDiario()">
 						<div class="row g-3 justify-content-center align-items-end">
 							<div class="col-12 col-sm-6 col-md-4 col-lg-3">
-								<label class="form-label">Usuario</label>
-								<select class="form-select" id="usuario" formControlName="usuario">
-									<option value="">Seleccione un usuario</option>
-									<option *ngFor="let user of usuarios" [value]="user.id_usuario">
-										{{ user.id_usuario }} - {{ user.nickname || user.nombre || user.id_usuario }}
-									</option>
-								</select>
-								<div *ngIf="filtroForm.get('usuario')?.invalid && filtroForm.get('usuario')?.touched" 
-									 class="invalid-feedback">
+								<label class="form-label" for="usuarioLibroDiario">Usuario</label>
+								<ng-container *ngIf="puedeElegirUsuarioLibroDiario(); else usuarioSoloLectura">
+									<input type="hidden" formControlName="usuario">
+									<input
+										id="usuarioLibroDiario"
+										type="text"
+										class="form-control"
+										[(ngModel)]="usuarioLiteral"
+										[ngModelOptions]="{ standalone: true }"
+										[class.is-invalid]="filtroForm.get('usuario')?.invalid && filtroForm.get('usuario')?.touched"
+										placeholder="Escriba para filtrar o elija de la lista"
+										autocomplete="off"
+										list="libroDiarioListaUsuarios"
+										(input)="onUsuarioInputEvent($event)"
+										(change)="onUsuarioDatalistChange()"
+										(blur)="onUsuarioInputBlur()"
+									>
+									<datalist id="libroDiarioListaUsuarios">
+										<option *ngFor="let u of usuarios" [value]="u.id_usuario">
+											{{ u.nickname || u.nombre || u.id_usuario }}
+										</option>
+									</datalist>
+								</ng-container>
+								<ng-template #usuarioSoloLectura>
+									<input type="hidden" formControlName="usuario">
+									<div class="form-control bg-light text-body-secondary">{{ etiquetaUsuarioSesion }}</div>
+								</ng-template>
+								<div *ngIf="filtroForm.get('usuario')?.errors?.['required'] && filtroForm.get('usuario')?.touched"
+									 class="invalid-feedback d-block">
 									Debe seleccionar un usuario
+								</div>
+								<div *ngIf="filtroForm.get('usuario')?.errors?.['usuarioNoEnLista'] && filtroForm.get('usuario')?.touched"
+									 class="invalid-feedback d-block">
+									Elija un usuario de la lista o escriba el ID correcto
 								</div>
 							</div>
 							<div class="col-12 col-sm-6 col-md-4 col-lg-3">
@@ -239,9 +263,9 @@
 						<div class="text-muted mb-3">
 							<i class="fas fa-inbox fa-3x"></i>
 						</div>
-						<h5 class="text-muted">No existen Movimientos</h5>
+						<h5 class="text-muted">No existen movimientos</h5>
 						<p class="text-muted">
-							No se encontraron movimientos para la fecha y usuario seleccionados.
+							No se encontraron movimientos para la fecha, carrera y usuario seleccionados, o su rol no permite ver el libro de ese usuario (solo el propio, salvo rector, tesorería, contabilidad o sistemas).
 						</p>
 						<div class="mt-3">
 							<button class="btn btn-outline-primary" (click)="limpiarFiltros()">

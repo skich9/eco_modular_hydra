@@ -1,0 +1,90 @@
+/* ===== ESTILO DEL MODULO RECEPCION INGRESOS ===== */
+
+/* Paneles y Tarjetas */
+.config-panel {
+  background-color: #fcfcfc;
+  border: 1px solid #e9ecef !important;
+  border-left: 4px solid #0d6efd !important;
+}
+
+.receipt-config-panel {
+  background-color: #ffffff;
+  border: 1px solid #e9ecef !important;
+  border-left: 4px solid #6f42c1 !important;
+}
+
+.result-panel {
+  border: 1px solid #ebedef !important;
+}
+
+/* Colores personalizados */
+.bg-purple {
+  background-color: #6f42c1;
+}
+.border-purple {
+  border-color: #6f42c1 !important;
+}
+
+/* Tabla de Recibo */
+.receipt-table {
+  font-size: 0.85rem;
+}
+.receipt-table thead th {
+  text-transform: uppercase;
+  font-size: 0.75rem;
+  letter-spacing: 0.5px;
+  color: #555;
+  border-bottom-width: 2px;
+}
+.receipt-table tbody td {
+  padding: 0.6rem 0.5rem;
+}
+
+/* Modal Vista Previa (Impresión) */
+.print-table {
+  font-size: 0.85rem;
+  border-color: #333 !important;
+}
+.print-table thead th {
+  background-color: #f1f1f1 !important;
+  border-color: #333 !important;
+  font-size: 0.75rem;
+}
+.print-table td, .print-table th {
+  border-color: #333 !important;
+}
+
+.signature-line {
+  border-bottom: 1.5px solid #000;
+  min-height: 2.5rem;
+  display: flex;
+  align-items: flex-end;
+  justify-content: center;
+  font-weight: 600;
+  text-transform: uppercase;
+  padding-bottom: 0.2rem;
+  font-size: 0.95em;
+}
+
+.signature-role {
+  margin-top: 0.4rem;
+  font-size: 0.75rem;
+  font-weight: 700;
+  letter-spacing: 0.5px;
+  color: #555;
+}
+
+/* ==== MEDIOS DE IMPRESION ==== */
+@media print {
+  /* Ocultar elementos de UI principal que no sena modal */
+  body > *:not(app-root) { display: none !important; }
+  .modal { background: none !important; position: static !important; }
+  .modal-dialog { max-width: 100% !important; margin: 0 !important; }
+  .modal-content { border: none !important; box-shadow: none !important; }
+  .modal-header, .modal-footer { display: none !important; }
+  
+  /* Reset al contenedor para impresion */
+  #print-area {
+    padding: 0 !important;
+  }
+}

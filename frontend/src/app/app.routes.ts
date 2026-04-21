@@ -198,6 +198,13 @@ export const routes: Routes = [
 				canActivate: [permissionGuard],
 				data: { requiredPermission: 'economico_mod_otros_ingresos' }
 			},
+			// Recepción de Ingresos
+			{
+				path: 'cobros/recepcion-ingresos',
+				loadComponent: () => import('./components/pages/cobros/recepcion-ingresos/recepcion-ingresos.component').then(m => m.RecepcionIngresosComponent),
+				canActivate: [permissionGuard],
+				data: { requiredPermission: 'economico_recepcion_ingresos' }
+			},
 			// Compatibilidad: rutas antiguas bajo /economico/...
 			{ path: 'economico/otros-ingresos', redirectTo: 'cobros/otros-ingresos', pathMatch: 'full' },
 			{ path: 'economico/mod-otros-ingresos', redirectTo: 'cobros/mod-otros-ingresos', pathMatch: 'full' },

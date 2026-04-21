@@ -39,8 +39,10 @@ use App\Http\Controllers\Api\FacturaAnulacionController;
 use App\Http\Controllers\Api\FacturaPdfController;
 use App\Http\Controllers\Api\SgaSyncController;
 use App\Http\Controllers\Api\ReporteLibroDiarioController;
+use App\Http\Controllers\Api\LibroDiarioController;
 use App\Http\Controllers\Api\Economico\OtrosIngresosController;
 use App\Http\Controllers\Api\Economico\ModOtrosIngresosController;
+use App\Http\Controllers\Api\Economico\RecepcionIngresoController;
 
 // Búsqueda de estudiantes
 Route::get('/estudiantes/search', [EstudianteController::class, 'search']);
@@ -150,6 +152,17 @@ Route::middleware('auth:sanctum')->group(function () {
 		Route::post('eliminar', [ModOtrosIngresosController::class, 'eliminar']);
 		Route::post('registrar-mod', [ModOtrosIngresosController::class, 'registrarMod']);
 	});
+
+	// Económico — Recepción de Ingresos
+	Route::prefix('economico/recepcion-ingresos')->group(function () {
+		Route::get('initial', [RecepcionIngresoController::class, 'initialData']);
+		Route::get('siguiente-num-documento', [RecepcionIngresoController::class, 'siguienteNumDocumento']);
+		Route::get('listar', [RecepcionIngresoController::class, 'listar']);
+		Route::post('registrar', [RecepcionIngresoController::class, 'registrar']);
+		Route::post('generar-reporte', [RecepcionIngresoController::class, 'generarReporte']);
+		Route::get('{id}', [RecepcionIngresoController::class, 'show'])->where('id', '[0-9]+');
+		Route::post('{id}/anular', [RecepcionIngresoController::class, 'anular'])->where('id', '[0-9]+');
+	});
 });
 
 // Ruta de prueba
@@ -209,6 +222,7 @@ Route::post('cobros/marcar-recibo-repuesto', [CobroController::class, 'marcarRec
 Route::post('cobros/cerrar-caja', [CobroController::class, 'cerrarCaja']);
 
 // Reportes: Libro Diario
+Route::get('reportes/libro-diario', [LibroDiarioController::class, 'index']);
 Route::post('reportes/libro-diario/imprimir', [ReporteLibroDiarioController::class, 'imprimir']);
 Route::get('cobros/{cod_ceta}/{cod_pensum}/{tipo_inscripcion}/{nro_cobro}', [CobroController::class, 'show']);
 Route::put('cobros/{cod_ceta}/{cod_pensum}/{tipo_inscripcion}/{nro_cobro}', [CobroController::class, 'update']);
@@ -551,3 +565,4 @@ Route::get('qr/respuestas', [QrController::class, 'respuestasList']);
 
 // ===================== Socket =====================
 Route::get('socket/port', [SocketController::class, 'port']);
+Route::get('actividades-economicas', [\App\Http\Controllers\Api\ActividadEconomicaController::class, 'index']);

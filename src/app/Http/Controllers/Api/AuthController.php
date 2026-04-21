@@ -38,13 +38,14 @@ class AuthController extends Controller
 				], 422);
 			}
 
-			// Buscar usuario activo por nickname o CI (case sensitive: debe coincidir exactamente)
+			// nickname: comparación exacta (sensible a mayúsculas/minúsculas) vía BINARY frente a collations _ci.
+			// ci: comparación exacta al valor enviado en el mismo campo de login.
 			$inputLogin = trim((string) $request->nickname);
 
 			$candidatos = Usuario::with('rol')
 				->where('estado', true)
 				->where(function ($query) use ($inputLogin) {
-					$query->where('nickname', $inputLogin)
+					$query->whereRaw('BINARY `usuarios`.`nickname` = ?', [$inputLogin])
 						->orWhere('ci', $inputLogin);
 				})
 				->get();
@@ -829,7 +830,7 @@ class AuthController extends Controller
 
 		if ($nickname !== '') {
 			$usuario = Usuario::with('rol')
-				->where('nickname', $nickname)
+				->whereRaw('BINARY `usuarios`.`nickname` = ?', [$nickname])
 				->first();
 
 			if ($usuario) {

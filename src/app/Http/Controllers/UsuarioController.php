@@ -5,20 +5,76 @@ namespace App\Http\Controllers;
 use App\Models\Usuario;
 use App\Models\Rol;
 use App\Models\Funcion;
+use App\Services\Reportes\LibroDiarioAccessService;
 use Illuminate\Http\Request;
 use Illuminate\Http\Response;
 use Illuminate\Support\Facades\Hash;
 use Illuminate\Validation\Rule;
 
+use App\Services\PermissionService;
+
 class UsuarioController extends Controller
 {
+    protected $permissionService;
+
+    public function __construct(PermissionService $permissionService)
+    {
+        $this->permissionService = $permissionService;
+    }
+
     /**
      * Display a listing of the resource.
+     *
+     * Query `para=libro_diario`: usuarios activos elegibles en el Libro Diario.
+     * Si el rol del autenticado puede ver todos los libros (rector, tesorería, contabilidad, sistemas),
+     * se listan todos los activos; en caso contrario solo el propio usuario.
      */
-    public function index()
+    public function index(Request $request)
     {
         try {
-            $usuarios = Usuario::with(['rol', 'funciones'])->get();
+            $authUserId = auth('sanctum')->id();
+            $authUser = $authUserId ? Usuario::with('rol')->find((int) $authUserId) : null;
+            if (!$authUser) {
+                return response()->json([
+                    'success' => false,
+                    'message' => 'No autenticado'
+                ], 401);
+            }
+
+            if ((string) $request->query('para', '') === 'libro_diario') {
+                $query = Usuario::query()
+                    ->select(['id_usuario', 'nombre', 'nickname', 'estado', 'ap_paterno', 'ap_materno'])
+                    ->where('estado', 1);
+                if (!LibroDiarioAccessService::rolPuedeVerTodosLosLibrosDiarios($authUser)) {
+                    $query->where('id_usuario', (int) $authUser->id_usuario);
+                }
+                $usuarios = $query
+                    ->orderBy('nombre')
+                    ->orderBy('ap_paterno')
+                    ->orderBy('ap_materno')
+                    ->get();
+                return response()->json([
+                    'success' => true,
+                    'data' => $usuarios,
+                    'message' => 'Usuarios obtenidos exitosamente',
+                ], 200);
+            }
+
+            $rolNombre = strtolower((string) optional($authUser->rol)->nombre);
+            $esAdmin = str_contains($rolNombre, 'admin') || strtolower((string) $authUser->nickname) === 'admin';
+
+            $query = Usuario::with(['rol', 'funciones'])
+                ->where('estado', 1);
+
+            if (!$esAdmin) {
+                $query->where('id_usuario', (int) $authUser->id_usuario);
+            }
+
+            $usuarios = $query
+                ->orderBy('nombre')
+                ->orderBy('ap_paterno')
+                ->orderBy('ap_materno')
+                ->get();
             return response()->json([
                 'success' => true,
                 'data' => $usuarios,
@@ -38,18 +94,35 @@ class UsuarioController extends Controller
     public function store(Request $request)
     {
         try {
+            // Normalizar nickname (trim + lower) ANTES de validar para que la regla unique
+            // compare contra el mismo valor que se persistirá (ver mutator en Usuario).
+            if ($request->has('nickname')) {
+                $request->merge([
+                    'nickname' => Usuario::normalizeNickname($request->input('nickname')),
+                ]);
+            }
+
             $validated = $request->validate([
-                'nickname' => 'required|string|max:255|unique:usuarios,nickname',
+                'nickname' => 'required|string|max:40|unique:usuarios,nickname',
                 'nombre' => 'required|string|max:255',
                 'ap_paterno' => 'required|string|max:255',
                 'ap_materno' => 'nullable|string|max:255',
                 'contrasenia' => 'required|string|min:6',
-                'ci' => 'required|string|unique:usuarios,ci',
+                'ci' => 'required|string|max:25|unique:usuarios,ci',
                 'estado' => 'required|boolean',
-                'id_rol' => 'required|exists:rol,id_rol'
+                'id_rol' => 'required|exists:rol,id_rol',
+                'id_actividad_economica' => 'nullable|exists:actividades_economicas,id_actividad_economica'
             ]);
 
             $usuario = Usuario::create($validated);
+            
+            // Sincronizar funciones del rol inicial
+            $this->permissionService->copyRoleFunctionsToUser(
+                $usuario->id_usuario,
+                $validated['id_rol'],
+                true
+            );
+
             $usuario->load(['rol', 'funciones']);
 
             return response()->json([
@@ -114,18 +187,36 @@ class UsuarioController extends Controller
                 ], 404);
             }
 
+            if ($request->has('nickname')) {
+                $request->merge([
+                    'nickname' => Usuario::normalizeNickname($request->input('nickname')),
+                ]);
+            }
+
             $validated = $request->validate([
-                'nickname' => ['sometimes', 'string', 'max:255', Rule::unique('usuarios')->ignore($id, 'id_usuario')],
+                'nickname' => ['sometimes', 'string', 'max:40', Rule::unique('usuarios')->ignore($id, 'id_usuario')],
                 'nombre' => 'sometimes|string|max:255',
                 'ap_paterno' => 'sometimes|string|max:255',
                 'ap_materno' => 'nullable|string|max:255',
                 'contrasenia' => 'sometimes|string|min:6',
-                'ci' => ['sometimes', 'string', Rule::unique('usuarios')->ignore($id, 'id_usuario')],
+                'ci' => ['sometimes', 'string', 'max:25', Rule::unique('usuarios')->ignore($id, 'id_usuario')],
                 'estado' => 'sometimes|boolean',
-                'id_rol' => 'sometimes|exists:rol,id_rol'
+                'id_rol' => 'sometimes|exists:rol,id_rol',
+                'id_actividad_economica' => 'nullable|exists:actividades_economicas,id_actividad_economica'
             ]);
 
+            $oldRolId = $usuario->id_rol;
             $usuario->update($validated);
+
+            // Si el rol cambió, sincronizar funciones
+            if (isset($validated['id_rol']) && $validated['id_rol'] != $oldRolId) {
+                $this->permissionService->copyRoleFunctionsToUser(
+                    $usuario->id_usuario,
+                    $validated['id_rol'],
+                    true
+                );
+            }
+
             $usuario->load(['rol', 'funciones']);
 
             return response()->json([

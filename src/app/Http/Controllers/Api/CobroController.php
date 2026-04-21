@@ -4,6 +4,7 @@ namespace App\Http\Controllers\Api;
 
 use App\Http\Controllers\Controller;
 use App\Models\Cobro;
+use App\Models\Usuario;
 use App\Models\Estudiante;
 use App\Models\Inscripcion;
 use App\Models\AsignacionCostos;
@@ -29,6 +30,7 @@ use App\Services\Siat\FacturaPayloadBuilder;
 use App\Services\Qr\QrSocketNotifier;
 use App\Services\MoraRecalculoService;
 use App\Services\LibroDiarioIdentificadorHelper;
+use App\Services\Reportes\LibroDiarioAccessService;
 use Carbon\Carbon;
 
 class CobroController extends Controller
@@ -36,11 +38,22 @@ class CobroController extends Controller
 	public function index(Request $request)
 	{
 		try {
+			$authUserId = auth('sanctum')->id();
+			$authUser = $authUserId ? Usuario::with('rol')->find((int) $authUserId) : null;
+			if (!$authUser) {
+				return response()->json([
+					'success' => false,
+					'message' => 'No autenticado'
+				], 401);
+			}
+			$rolNombre = strtolower((string) optional($authUser->rol)->nombre);
+			$esAdmin = str_contains($rolNombre, 'admin') || strtolower((string) $authUser->nickname) === 'admin';
+
 			// Cargar cobros con relaciones básicas y aplicar filtros opcionales
 			$query = Cobro::with(['usuario', 'cuota', 'formaCobro', 'cuentaBancaria', 'itemCobro', 'detalleRegular', 'detalleMulta', 'recibo', 'factura']);
 
 			// Filtro por id_usuario (usado por el libro diario)
-			$idUsuario = $request->query('id_usuario');
+			$idUsuario = $esAdmin ? $request->query('id_usuario') : (string) $authUser->id_usuario;
 			if ($idUsuario !== null && $idUsuario !== '') {
 				$query->where('id_usuario', (int) $idUsuario);
 			}
@@ -4847,6 +4860,21 @@ class CobroController extends Controller
 
 			// Normalizar usuario a id_usuario entero
 			$idUsuario = (int)$usuarioRaw;
+
+			$authUserIdCaja = auth('sanctum')->id();
+			$authUserCaja = $authUserIdCaja ? Usuario::query()->find((int) $authUserIdCaja) : null;
+			if (!$authUserCaja) {
+				return response()->json([
+					'success' => false,
+					'message' => 'No autenticado',
+				], 401);
+			}
+			if (!LibroDiarioAccessService::puedeConsultarLibroDiarioDe($authUserCaja, $idUsuario)) {
+				return response()->json([
+					'success' => false,
+					'message' => 'No está autorizado para cerrar la caja de ese usuario. Solo la propia caja o roles con visión global (rector, tesorería, contabilidad, sistemas).',
+				], 403);
+			}
 
 			// Normalizar fecha a Y-m-d
 			$fechaYmd = null;

@@ -164,4 +164,25 @@ class PermissionService
 
 		return $grouped;
 	}
+
+	/**
+	 * Sincroniza las funciones de un rol para TODOS los usuarios que tienen ese rol asignado.
+	 */
+	public function syncRoleFunctionsToAllUsers(int $rolId, ?int $asignadoPor = null): bool
+	{
+		$usuarios = Usuario::where('id_rol', $rolId)
+			->where('estado', true)
+			->get();
+
+		foreach ($usuarios as $usuario) {
+			$this->copyRoleFunctionsToUser(
+				$usuario->id_usuario,
+				$rolId,
+				true, // Reemplazar funciones existentes
+				$asignadoPor
+			);
+		}
+
+		return true;
+	}
 }

@@ -1,6 +1,6 @@
 import { Component, OnInit } from '@angular/core';
 import { CommonModule } from '@angular/common';
-import { FormsModule, ReactiveFormsModule, FormBuilder, FormGroup, Validators } from '@angular/forms';
+import { FormsModule, ReactiveFormsModule, FormBuilder, FormGroup, Validators, AbstractControl, ValidationErrors, ValidatorFn } from '@angular/forms';
 import { LibroDiarioService, LibroDiarioRequest, LibroDiarioItem, Usuario, Carrera } from '../../../../services/reportes/libro-diario.service';
 import { AuthService } from '../../../../services/auth.service';
 
@@ -14,6 +14,8 @@ import { AuthService } from '../../../../services/auth.service';
 export class LibroDiarioComponent implements OnInit {
   filtroForm: FormGroup;
   usuarios: Usuario[] = [];
+  /** Texto visible (solo nickname/nombre); el id va en `usuario` del formulario. */
+  usuarioLiteral = '';
   carreras: Carrera[] = [];
   datosLibroDiario: LibroDiarioItem[] = [];
   totales = { ingresos: 0, egresos: 0 };
@@ -42,10 +44,28 @@ export class LibroDiarioComponent implements OnInit {
     private authService: AuthService
   ) {
     this.filtroForm = this.fb.group({
-      usuario: [{ value: '', disabled: false }, Validators.required],
+      usuario: [
+        { value: '', disabled: false },
+        [Validators.required, this.usuarioDeListaValidator()]
+      ],
       fecha: [{ value: new Date().toISOString().split('T')[0], disabled: false }, Validators.required],
       carrera: [{ value: '', disabled: false }, Validators.required]
     });
+  }
+
+  /** Valida que el valor sea un id_usuario presente en la lista cargada (combinado con input+datalist). */
+  private usuarioDeListaValidator(): ValidatorFn {
+    return (control: AbstractControl): ValidationErrors | null => {
+      const v = String(control.value ?? '').trim();
+      if (!v) {
+        return null;
+      }
+      if (!this.usuarios.length) {
+        return null;
+      }
+      const ok = this.usuarios.some((u) => String(u.id_usuario) === v);
+      return ok ? null : { usuarioNoEnLista: true };
+    };
   }
 
   ngOnInit(): void {
@@ -58,7 +78,9 @@ export class LibroDiarioComponent implements OnInit {
   cargarCarreras(): void {
     this.libroDiarioService.getCarreras().subscribe({
       next: (response) => {
-        this.carreras = response.data || [];
+        this.carreras = (response.data || []).sort((a, b) =>
+          (a.nombre || '').localeCompare((b.nombre || ''), 'es', { sensitivity: 'base' })
+        );
       },
       error: () => {
         this.carreras = [];
@@ -98,11 +120,13 @@ export class LibroDiarioComponent implements OnInit {
     this.authService.currentUser$.subscribe(user => {
       if (user) {
         this.currentUser = user;
-        this.usuarioActual = String(user.nombre || user.id_usuario || '');
-        // Pre-seleccionar el usuario actual si está en la lista
+        // El select usa id_usuario como value, no nombre.
+        this.usuarioActual = String(user.id_usuario ?? '');
         if (this.usuarioActual) {
           this.filtroForm.patchValue({ usuario: this.usuarioActual });
+          this.syncUsuarioLiteralDesdeId(this.usuarioActual);
         }
+        this.aplicarRestriccionUsuario();
       }
     });
   }
@@ -116,16 +140,18 @@ export class LibroDiarioComponent implements OnInit {
 
     this.libroDiarioService.getUsuarios().subscribe({
       next: (response) => {
-        this.usuarios = response.data || [];
+        this.usuarios = this.ordenarUsuariosPorNombre(response.data || []);
         // Si no hay usuarios en la respuesta, usar el usuario actual
         if (this.usuarios.length === 0 && this.usuarioActual) {
           this.usuarios = [{ id_usuario: this.usuarioActual, nombre: this.usuarioActual }];
           this.filtroForm.patchValue({ usuario: this.usuarioActual });
         }
+        this.filtroForm.get('usuario')?.updateValueAndValidity({ emitEvent: false });
         this.loading = false;
-        this.filtroForm.get('usuario')?.enable();
         this.filtroForm.get('fecha')?.enable();
         this.filtroForm.get('carrera')?.enable();
+        this.aplicarRestriccionUsuario();
+        this.syncUsuarioLiteralDesdeId(String(this.filtroForm.getRawValue().usuario ?? ''));
       },
       error: (error) => {
         console.error('Error al cargar usuarios:', error);
@@ -134,14 +160,111 @@ export class LibroDiarioComponent implements OnInit {
           this.filtroForm.patchValue({ usuario: this.usuarioActual });
         }
         this.loading = false;
-        this.filtroForm.get('usuario')?.enable();
         this.filtroForm.get('fecha')?.enable();
         this.filtroForm.get('carrera')?.enable();
+        this.filtroForm.get('usuario')?.updateValueAndValidity({ emitEvent: false });
+        this.aplicarRestriccionUsuario();
+        this.syncUsuarioLiteralDesdeId(String(this.filtroForm.getRawValue().usuario ?? ''));
       }
     });
   }
 
+  /** Nickname o nombre para mostrar (sin prefijo numérico). */
+  textoLiteralUsuario(u: Usuario): string {
+    const n = String(u.nickname || u.nombre || '').trim();
+    return n || String(u.id_usuario);
+  }
+
+  /** Sincroniza el texto visible a partir del id almacenado en el formulario. */
+  syncUsuarioLiteralDesdeId(id: string): void {
+    if (!this.puedeElegirUsuarioLibroDiario()) {
+      return;
+    }
+    if (!id) {
+      this.usuarioLiteral = '';
+      return;
+    }
+    const u = this.usuarios.find((x) => String(x.id_usuario) === String(id));
+    this.usuarioLiteral = u ? this.textoLiteralUsuario(u) : String(id);
+  }
+
+  /**
+   * Resuelve id_usuario desde el texto visible y actualiza el control oculto.
+   * (Selección datalist, blur o antes de buscar.)
+   */
+  resolverUsuarioLiteral(): void {
+    if (!this.puedeElegirUsuarioLibroDiario()) {
+      return;
+    }
+    const ctrl = this.filtroForm.get('usuario');
+    if (!ctrl) {
+      return;
+    }
+    const raw = this.usuarioLiteral.trim();
+    if (!raw) {
+      ctrl.patchValue('', { emitEvent: false });
+      ctrl.updateValueAndValidity({ emitEvent: false });
+      return;
+    }
+    if (!this.usuarios.length) {
+      return;
+    }
+    if (this.usuarios.some((u) => String(u.id_usuario) === raw)) {
+      const u = this.usuarios.find((x) => String(x.id_usuario) === raw)!;
+      this.usuarioLiteral = this.textoLiteralUsuario(u);
+      ctrl.patchValue(String(u.id_usuario), { emitEvent: false });
+      ctrl.updateValueAndValidity({ emitEvent: false });
+      return;
+    }
+    const porLiteralExacto = this.usuarios.find(
+      (u) => this.textoLiteralUsuario(u).toLowerCase() === raw.toLowerCase()
+    );
+    if (porLiteralExacto) {
+      this.usuarioLiteral = this.textoLiteralUsuario(porLiteralExacto);
+      ctrl.patchValue(String(porLiteralExacto.id_usuario), { emitEvent: false });
+      ctrl.updateValueAndValidity({ emitEvent: false });
+      return;
+    }
+    const coincidencias = this.usuarios.filter((u) => {
+      const lit = this.textoLiteralUsuario(u).toLowerCase();
+      const conId = `${u.id_usuario} - ${u.nickname || u.nombre || u.id_usuario}`.toLowerCase();
+      return lit.includes(raw.toLowerCase()) || conId.includes(raw.toLowerCase());
+    });
+    if (coincidencias.length === 1) {
+      const u = coincidencias[0];
+      this.usuarioLiteral = this.textoLiteralUsuario(u);
+      ctrl.patchValue(String(u.id_usuario), { emitEvent: false });
+      ctrl.updateValueAndValidity({ emitEvent: false });
+    }
+  }
+
+  onUsuarioInputBlur(): void {
+    this.resolverUsuarioLiteral();
+  }
+
+  /**
+   * Al elegir una opción del datalist, el navegador pone el `value` (id numérico) en el input.
+   * Suele dispararse `input` con inputType `insertReplacementText`; sustituimos por el texto literal
+   * tras un tick para que `ngModel` ya tenga el id.
+   */
+  onUsuarioInputEvent(ev: Event): void {
+    if (!this.puedeElegirUsuarioLibroDiario()) {
+      return;
+    }
+    const ie = ev as InputEvent;
+    if (ie.inputType === 'insertReplacementText') {
+      setTimeout(() => this.resolverUsuarioLiteral());
+    }
+  }
+
+  onUsuarioDatalistChange(): void {
+    setTimeout(() => this.resolverUsuarioLiteral());
+  }
+
   buscarLibroDiario(): void {
+    if (this.puedeElegirUsuarioLibroDiario()) {
+      this.resolverUsuarioLiteral();
+    }
     if (this.filtroForm.invalid) {
       this.filtroForm.markAllAsTouched();
       return;
@@ -150,11 +273,23 @@ export class LibroDiarioComponent implements OnInit {
     this.loading = true;
     this.mostrarResultados = true;
 
-    const { usuario, fecha, carrera } = this.filtroForm.value;
+    const { usuario, fecha, carrera } = this.filtroForm.getRawValue();
+    const usuarioFiltro = this.puedeElegirUsuarioLibroDiario()
+      ? usuario
+      : (this.usuarioActual || usuario);
+    if (!this.usuarioPermitidoParaLibroDiario(String(usuarioFiltro))) {
+      this.loading = false;
+      this.mostrarResultados = false;
+      this.mostrarAlerta(
+        'No puede consultar el Libro Diario de ese usuario. Su rol solo permite el propio libro, salvo rector, tesorería, contabilidad o sistemas.',
+        'warning'
+      );
+      return;
+    }
     const fechaSGA = this.formatearFechaSGA(fecha);
 
     const request: LibroDiarioRequest = {
-      usuario,
+      usuario: usuarioFiltro,
       codigo_carrera: carrera || undefined,
       fecha: fechaSGA,
       fecha_inicio: fechaSGA,
@@ -186,6 +321,9 @@ export class LibroDiarioComponent implements OnInit {
           this.datosLibroDiario = [];
           this.totales = { ingresos: 0, egresos: 0 };
           this.recalcularResumenMetodosPago();
+          if (response.message) {
+            this.mostrarAlerta(response.message, 'warning');
+          }
         }
         this.loading = false;
       },
@@ -206,6 +344,7 @@ export class LibroDiarioComponent implements OnInit {
       fecha: new Date().toISOString().split('T')[0],
       carrera: ''
     });
+    this.usuarioLiteral = '';
     this.mostrarResultados = false;
     this.datosLibroDiario = [];
     this.usuarioInfo = {};
@@ -240,7 +379,17 @@ export class LibroDiarioComponent implements OnInit {
       return;
     }
 
-    const { usuario, fecha: fechaValue, carrera: codigoCarrera } = this.filtroForm.value;
+    const { usuario, fecha: fechaValue, carrera: codigoCarrera } = this.filtroForm.getRawValue();
+    const usuarioFiltro = this.puedeElegirUsuarioLibroDiario()
+      ? usuario
+      : (this.usuarioActual || usuario);
+    if (!this.usuarioPermitidoParaLibroDiario(String(usuarioFiltro))) {
+      this.mostrarAlerta(
+        'No puede imprimir el Libro Diario de ese usuario. Su rol solo permite el propio libro, salvo rector, tesorería, contabilidad o sistemas.',
+        'warning'
+      );
+      return;
+    }
 
     if (!fechaValue) {
       this.mostrarAlerta('Debe seleccionar una fecha para imprimir el Libro Diario.', 'warning');
@@ -255,10 +404,10 @@ export class LibroDiarioComponent implements OnInit {
     const carreraSel = this.carreras.find(c => c.codigo_carrera === codigoCarrera);
     const carreraNombre = carreraSel?.nombre || codigoCarrera;
 
-    const selectedUser = this.usuarios.find(u => String(u.id_usuario) === String(usuario));
+    const selectedUser = this.usuarios.find(u => String(u.id_usuario) === String(usuarioFiltro));
     const usuarioDisplay = selectedUser
       ? `${selectedUser.id_usuario} - ${selectedUser.nickname || selectedUser.nombre || selectedUser.id_usuario}`
-      : usuario;
+      : usuarioFiltro;
 
     // Mostrar confirmación (como lo hace el SGA)
     if (confirm('¿Está seguro de imprimir el Libro Diario? Se cerrará la caja y se finalizará la sesión.')) {
@@ -268,7 +417,7 @@ export class LibroDiarioComponent implements OnInit {
       this.loading = true;
 
       // Primero cerrar la caja (obtiene id_libro_diario_cierre / orden_cierre para RD-{carrera}-{mes}-{correlativo})
-      this.libroDiarioService.cerrarCaja({ usuario, fecha, codigo_carrera: codigoCarrera })
+      this.libroDiarioService.cerrarCaja({ usuario: usuarioFiltro, fecha, codigo_carrera: codigoCarrera })
       .subscribe({
         next: (cierreResponse) => {
           if (cierreResponse.success) {
@@ -310,7 +459,7 @@ export class LibroDiarioComponent implements OnInit {
             const request = {
               contenido: this.generarContenidoHTML(),
               datos: this.datosLibroDiario,
-              usuario,
+              usuario: usuarioFiltro,
               usuario_display: usuarioDisplay,
               fecha,
               t_ingresos: this.totales.ingresos.toFixed(2),
@@ -359,6 +508,67 @@ export class LibroDiarioComponent implements OnInit {
         }
       });
     }
+  }
+
+  private ordenarUsuariosPorNombre(usuarios: Usuario[]): Usuario[] {
+    return [...usuarios].sort((a, b) => {
+      const nombreA = String(a.nickname || a.nombre || a.id_usuario || '');
+      const nombreB = String(b.nickname || b.nombre || b.id_usuario || '');
+      return nombreA.localeCompare(nombreB, 'es', { sensitivity: 'base' });
+    });
+  }
+
+  /**
+   * La API devolvió más de un usuario (p. ej. rol con visión global: rector, tesorería, contabilidad, sistemas).
+   */
+  puedeElegirUsuarioLibroDiario(): boolean {
+    return this.usuarios.length > 1;
+  }
+
+  private usuarioPermitidoParaLibroDiario(idUsuario: string): boolean {
+    if (!idUsuario) {
+      return false;
+    }
+    return this.usuarios.some((u) => String(u.id_usuario) === String(idUsuario));
+  }
+
+  /** Etiqueta legible para usuario no admin (solo lectura). */
+  get etiquetaUsuarioSesion(): string {
+    const id = this.usuarioActual;
+    if (!id) {
+      return '';
+    }
+    const u = this.usuarios.find((x) => String(x.id_usuario) === String(id));
+    if (u) {
+      return this.textoLiteralUsuario(u);
+    }
+    return id;
+  }
+
+  private aplicarRestriccionUsuario(): void {
+    const usuarioCtrl = this.filtroForm.get('usuario');
+    if (!usuarioCtrl) {
+      return;
+    }
+
+    if (this.puedeElegirUsuarioLibroDiario()) {
+      usuarioCtrl.enable({ emitEvent: false });
+      this.syncUsuarioLiteralDesdeId(String(this.filtroForm.get('usuario')?.value ?? ''));
+      return;
+    }
+
+    this.usuarioLiteral = '';
+
+    if (this.usuarioActual) {
+      const idActual = String(this.usuarioActual);
+      this.usuarios = this.usuarios.filter(u => String(u.id_usuario) === idActual);
+      if (this.usuarios.length === 0) {
+        this.usuarios = [{ id_usuario: idActual, nombre: this.currentUser?.nombre || idActual }];
+      }
+      this.filtroForm.patchValue({ usuario: idActual }, { emitEvent: false });
+    }
+
+    usuarioCtrl.disable({ emitEvent: false });
   }
 
   /**
