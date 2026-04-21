@@ -24,7 +24,8 @@ class Usuario extends Authenticatable
         'ci',
         'estado',
         'id_rol',
-        'apoyoCobranzas'
+        'apoyoCobranzas',
+        'id_actividad_economica'
     ];
 
     protected $hidden = [

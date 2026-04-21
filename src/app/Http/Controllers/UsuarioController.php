@@ -112,7 +112,8 @@ class UsuarioController extends Controller
                 'contrasenia' => 'required|string|min:6',
                 'ci' => 'required|string|max:25|unique:usuarios,ci',
                 'estado' => 'required|boolean',
-                'id_rol' => 'required|exists:rol,id_rol'
+                'id_rol' => 'required|exists:rol,id_rol',
+                'id_actividad_economica' => 'nullable|exists:actividades_economicas,id_actividad_economica'
             ]);
 
             $usuario = Usuario::create($validated);
@@ -202,7 +203,8 @@ class UsuarioController extends Controller
                 'contrasenia' => 'sometimes|string|min:6',
                 'ci' => ['sometimes', 'string', 'max:25', Rule::unique('usuarios')->ignore($id, 'id_usuario')],
                 'estado' => 'sometimes|boolean',
-                'id_rol' => 'sometimes|exists:rol,id_rol'
+                'id_rol' => 'sometimes|exists:rol,id_rol',
+                'id_actividad_economica' => 'nullable|exists:actividades_economicas,id_actividad_economica'
             ]);
 
             $oldRolId = $usuario->id_rol;

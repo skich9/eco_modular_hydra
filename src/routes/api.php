@@ -42,6 +42,7 @@ use App\Http\Controllers\Api\ReporteLibroDiarioController;
 use App\Http\Controllers\Api\LibroDiarioController;
 use App\Http\Controllers\Api\Economico\OtrosIngresosController;
 use App\Http\Controllers\Api\Economico\ModOtrosIngresosController;
+use App\Http\Controllers\Api\Economico\RecepcionIngresoController;
 
 // Búsqueda de estudiantes
 Route::get('/estudiantes/search', [EstudianteController::class, 'search']);
@@ -150,6 +151,17 @@ Route::middleware('auth:sanctum')->group(function () {
 		Route::post('buscar', [ModOtrosIngresosController::class, 'buscar']);
 		Route::post('eliminar', [ModOtrosIngresosController::class, 'eliminar']);
 		Route::post('registrar-mod', [ModOtrosIngresosController::class, 'registrarMod']);
+	});
+
+	// Económico — Recepción de Ingresos
+	Route::prefix('economico/recepcion-ingresos')->group(function () {
+		Route::get('initial', [RecepcionIngresoController::class, 'initialData']);
+		Route::get('siguiente-num-documento', [RecepcionIngresoController::class, 'siguienteNumDocumento']);
+		Route::get('listar', [RecepcionIngresoController::class, 'listar']);
+		Route::post('registrar', [RecepcionIngresoController::class, 'registrar']);
+		Route::post('generar-reporte', [RecepcionIngresoController::class, 'generarReporte']);
+		Route::get('{id}', [RecepcionIngresoController::class, 'show'])->where('id', '[0-9]+');
+		Route::post('{id}/anular', [RecepcionIngresoController::class, 'anular'])->where('id', '[0-9]+');
 	});
 });
 
@@ -553,3 +565,4 @@ Route::get('qr/respuestas', [QrController::class, 'respuestasList']);
 
 // ===================== Socket =====================
 Route::get('socket/port', [SocketController::class, 'port']);
+Route::get('actividades-economicas', [\App\Http\Controllers\Api\ActividadEconomicaController::class, 'index']);
