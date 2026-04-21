@@ -7,6 +7,7 @@ export interface Usuario {
 	ci: string;
 	estado: boolean;
 	id_rol: number;
+	id_actividad_economica?: number | null;
 	apoyoCobranzas?: boolean;
 	rol?: Rol;
 	nombre_completo?: string;

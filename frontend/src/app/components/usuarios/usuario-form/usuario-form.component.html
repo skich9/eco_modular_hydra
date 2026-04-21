@@ -103,6 +103,26 @@
       </div>
     </div>
 
+    <!-- Actividad Económica -->
+    <div class="form-row">
+      <div class="form-group">
+        <label for="id_actividad_economica">Actividad Económica (Caja)</label>
+        <select
+          id="id_actividad_economica"
+          formControlName="id_actividad_economica"
+          class="form-control"
+        >
+          <option [ngValue]="null">Ninguna (Cajero inactivo)</option>
+          <option *ngFor="let act of actividadesEconomicas" [ngValue]="act.id_actividad_economica">
+            {{ act.nombre }}
+          </option>
+        </select>
+        <small class="form-text text-muted">
+          Requerida si el usuario realiza cobros en el módulo de Recepción de Ingresos.
+        </small>
+      </div>
+    </div>
+
     <!-- Contraseñas en creación -->
     <div class="form-row" *ngIf="!isEditMode">
       <div class="form-group">

@@ -6,6 +6,8 @@ import { Usuario, Rol } from '../../../models/usuario.model';
 import { UsuarioService } from '../../../services/usuario.service';
 import { RolService } from '../../../services/rol.service';
 import { FuncionService } from '../../../services/funcion.service';
+import { HttpClient } from '@angular/common/http';
+import { environment } from '../../../../environments/environment';
 
 @Component({
 	selector: 'app-usuario-form',
@@ -24,6 +26,7 @@ export class UsuarioFormComponent implements OnInit {
 	usuarioId: number | null = null;
 	showPassword = false;
 	showConfirmPassword = false;
+	actividadesEconomicas: any[] = [];
 
 	// Gestión de funciones
 	showFuncionesModal = false;
@@ -49,7 +52,8 @@ export class UsuarioFormComponent implements OnInit {
 		private rolService: RolService,
 		private funcionService: FuncionService,
 		private router: Router,
-		private route: ActivatedRoute
+		private route: ActivatedRoute,
+		private http: HttpClient
 	) {
 		this.usuarioForm = this.formBuilder.group({
 			nickname: ['', Validators.required],
@@ -58,6 +62,7 @@ export class UsuarioFormComponent implements OnInit {
 			ap_materno: [''],
 			ci: ['', Validators.required],
 			id_rol: [null],
+			id_actividad_economica: [null],
 			estado: [true],
 			apoyoCobranzas: [false],
 			contrasenia: ['', [Validators.required, Validators.minLength(6)]],
@@ -70,6 +75,7 @@ export class UsuarioFormComponent implements OnInit {
 
 	ngOnInit(): void {
 		this.loadRoles();
+		this.loadActividadesEconomicas();
 
 		// Verificar si estamos en modo edición (por ruta o por @Input)
 		const idFromRoute = this.route.snapshot.paramMap.get('id');
@@ -125,6 +131,17 @@ export class UsuarioFormComponent implements OnInit {
 		});
 	}
 
+	loadActividadesEconomicas(): void {
+		this.http.get<any>(`${environment.apiUrl}/actividades-economicas`).subscribe({
+			next: (res) => {
+				if (res.success && res.data) {
+					this.actividadesEconomicas = res.data;
+				}
+			},
+			error: (err) => console.error('Error al cargar actividades económicas', err)
+		});
+	}
+
 	loadUsuario(id: number): void {
 		this.usuarioService.getById(id).subscribe({
 			next: (response: { success: boolean; data: Usuario }) => {
@@ -137,8 +154,9 @@ export class UsuarioFormComponent implements OnInit {
 						ap_materno: usuario.ap_materno,
 						ci: usuario.ci,
 						id_rol: usuario.id_rol,
+						id_actividad_economica: usuario.id_actividad_economica,
 						estado: usuario.estado,
-            apoyoCobranzas: usuario.apoyoCobranzas || false
+            			apoyoCobranzas: usuario.apoyoCobranzas || false
 					});
 				}
 			},
