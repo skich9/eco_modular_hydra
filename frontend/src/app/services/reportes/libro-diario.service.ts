@@ -45,6 +45,10 @@ export interface LibroDiarioItem {
 	tipo_doc?: string; // 'F' factura, 'R' recibo, u otro
 	tipo_pago?: string; // E, L, etc.
 	observaciones?: string; // Efectivo, Tarjeta, etc.
+	/** Backend marca true si cod_tipo_cobro es MORA/RECARGO/INTERES/PENALIDAD/NIVELACION. */
+	es_mora?: boolean;
+	/** Monto de mora de la fila (igual a `ingreso` si `es_mora`, 0 en caso contrario). */
+	monto_mora?: number;
 }
 
 export interface LibroDiarioResponse {

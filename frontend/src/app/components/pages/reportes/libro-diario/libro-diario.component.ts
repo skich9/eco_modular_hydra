@@ -24,10 +24,14 @@ export class LibroDiarioComponent implements OnInit {
     [metodo: string]: {
       factura: number;
       recibo: number;
+      mora_factura: number;
+      mora_recibo: number;
     };
   } = {};
   totalParcialRecibo = 0;
   totalParcialFactura = 0;
+  totalParcialMoraFactura = 0;
+  totalParcialMoraRecibo = 0;
   totalEfectivo = 0;
   totalGeneral = 0;
   loading = false;
@@ -406,8 +410,8 @@ export class LibroDiarioComponent implements OnInit {
 
     const selectedUser = this.usuarios.find(u => String(u.id_usuario) === String(usuarioFiltro));
     const usuarioDisplay = selectedUser
-      ? `${selectedUser.id_usuario} - ${selectedUser.nickname || selectedUser.nombre || selectedUser.id_usuario}`
-      : usuarioFiltro;
+      ? String(selectedUser.nickname || selectedUser.nombre || selectedUser.id_usuario)
+      : String(usuarioFiltro);
 
     // Mostrar confirmación (como lo hace el SGA)
     if (confirm('¿Está seguro de imprimir el Libro Diario? Se cerrará la caja y se finalizará la sesión.')) {
@@ -430,16 +434,24 @@ export class LibroDiarioComponent implements OnInit {
             this.usuarioInfo = { ...this.usuarioInfo, hora_cierre: horaCierre };
 
             // Resumen: correlativo = id de libro_diario_cierre (único); orden_cierre ayuda a localizar la fila
+            const resumenMetodo = (m: string) => ({
+              factura: this.resumenMetodosPago?.[m]?.factura ?? 0,
+              recibo: this.resumenMetodosPago?.[m]?.recibo ?? 0,
+              mora_factura: this.resumenMetodosPago?.[m]?.mora_factura ?? 0,
+              mora_recibo: this.resumenMetodosPago?.[m]?.mora_recibo ?? 0,
+            });
             const resumen = {
-              traspaso: { factura: this.resumenMetodosPago?.['traspaso']?.factura ?? 0, recibo: this.resumenMetodosPago?.['traspaso']?.recibo ?? 0 },
-              deposito: { factura: this.resumenMetodosPago?.['deposito']?.factura ?? 0, recibo: this.resumenMetodosPago?.['deposito']?.recibo ?? 0 },
-              efectivo: { factura: this.resumenMetodosPago?.['efectivo']?.factura ?? 0, recibo: this.resumenMetodosPago?.['efectivo']?.recibo ?? 0 },
-              cheque: { factura: this.resumenMetodosPago?.['cheque']?.factura ?? 0, recibo: this.resumenMetodosPago?.['cheque']?.recibo ?? 0 },
-              tarjeta: { factura: this.resumenMetodosPago?.['tarjeta']?.factura ?? 0, recibo: this.resumenMetodosPago?.['tarjeta']?.recibo ?? 0 },
-              transferencia: { factura: this.resumenMetodosPago?.['transferencia']?.factura ?? 0, recibo: this.resumenMetodosPago?.['transferencia']?.recibo ?? 0 },
-              otro: { factura: this.resumenMetodosPago?.['otro']?.factura ?? 0, recibo: this.resumenMetodosPago?.['otro']?.recibo ?? 0 },
+              traspaso: resumenMetodo('traspaso'),
+              deposito: resumenMetodo('deposito'),
+              efectivo: resumenMetodo('efectivo'),
+              cheque: resumenMetodo('cheque'),
+              tarjeta: resumenMetodo('tarjeta'),
+              transferencia: resumenMetodo('transferencia'),
+              otro: resumenMetodo('otro'),
               total_factura: this.totalParcialFactura,
               total_recibo: this.totalParcialRecibo,
+              total_mora_factura: this.totalParcialMoraFactura,
+              total_mora_recibo: this.totalParcialMoraRecibo,
               total_efectivo: this.totalEfectivo,
               total_general: this.totalGeneral,
               hora_apertura: this.usuarioInfo?.hora_apertura || '',
@@ -659,7 +671,7 @@ export class LibroDiarioComponent implements OnInit {
         esMetodoPagoCorrecto = true;
       }
 
-      // Si es el método de pago correcto, filtrar por tipo de comprobante
+      // Si es el método de pago correcto, filtrar por tipo de comprobante y por mora
       if (esMetodoPagoCorrecto) {
         const tipoDocRaw = (item as any).tipo_doc ? String((item as any).tipo_doc).toUpperCase() : '';
         const tieneFacturaValida = !!item.factura && item.factura !== '0' && item.factura !== '';
@@ -672,7 +684,6 @@ export class LibroDiarioComponent implements OnInit {
         } else if (tipoDocRaw === 'R') {
           esReciboDoc = true;
         } else {
-          // Fallback: si no tenemos tipo_doc, usar la presencia de factura válida
           if (tieneFacturaValida) {
             esFacturaDoc = true;
           } else {
@@ -680,10 +691,20 @@ export class LibroDiarioComponent implements OnInit {
           }
         }
 
-        if (tipoComprobante === 'factura' && esFacturaDoc) {
-          total += item.ingreso;
-        } else if (tipoComprobante === 'recibo' && esReciboDoc) {
-          total += item.ingreso;
+        const esMora = !!item.es_mora;
+        const ing = Number(item.ingreso) || 0;
+        const mInf = Number(item.monto_mora) || 0;
+        const mMora = esMora ? ing : Math.min(Math.max(0, mInf), ing);
+        const mCapital = esMora ? 0 : Math.max(0, ing - mMora);
+
+        if (tipoComprobante === 'factura' && esFacturaDoc && !esMora) {
+          total += mCapital;
+        } else if (tipoComprobante === 'recibo' && esReciboDoc && !esMora) {
+          total += mCapital;
+        } else if (tipoComprobante === 'mora_factura' && esFacturaDoc && (esMora || mMora > 0.00001)) {
+          total += esMora ? ing : mMora;
+        } else if (tipoComprobante === 'mora_recibo' && esReciboDoc && (esMora || mMora > 0.00001)) {
+          total += esMora ? ing : mMora;
         }
       }
     });
@@ -697,40 +718,37 @@ export class LibroDiarioComponent implements OnInit {
    */
   private recalcularResumenMetodosPago(): void {
     const metodos = ['traspaso', 'deposito', 'efectivo', 'cheque', 'tarjeta', 'transferencia', 'otro'];
-    const resumen: any = {};
+    const resumen: { [m: string]: { factura: number; recibo: number; mora_factura: number; mora_recibo: number } } = {} as any;
 
     metodos.forEach(m => {
       resumen[m] = {
         recibo: this.getMetodoPagoTotalByType(m, 'recibo'),
-        factura: this.getMetodoPagoTotalByType(m, 'factura')
+        factura: this.getMetodoPagoTotalByType(m, 'factura'),
+        mora_factura: this.getMetodoPagoTotalByType(m, 'mora_factura'),
+        mora_recibo: this.getMetodoPagoTotalByType(m, 'mora_recibo')
       };
     });
 
     this.resumenMetodosPago = resumen;
 
-    this.totalParcialRecibo =
-      (resumen['traspaso']?.recibo || 0) +
-      (resumen['deposito']?.recibo || 0) +
-      (resumen['efectivo']?.recibo || 0) +
-      (resumen['cheque']?.recibo || 0) +
-      (resumen['tarjeta']?.recibo || 0) +
-      (resumen['transferencia']?.recibo || 0) +
-      (resumen['otro']?.recibo || 0);
+    const sumar = (campo: 'factura' | 'recibo' | 'mora_factura' | 'mora_recibo'): number =>
+      metodos.reduce((acc, m) => acc + (resumen[m]?.[campo] || 0), 0);
 
-    this.totalParcialFactura =
-      (resumen['traspaso']?.factura || 0) +
-      (resumen['deposito']?.factura || 0) +
+    this.totalParcialRecibo = sumar('recibo');
+    this.totalParcialFactura = sumar('factura');
+    this.totalParcialMoraFactura = sumar('mora_factura');
+    this.totalParcialMoraRecibo = sumar('mora_recibo');
+
+    // Total Efectivo: solo factura/recibo en efectivo, sin mora.
+    this.totalEfectivo =
       (resumen['efectivo']?.factura || 0) +
-      (resumen['cheque']?.factura || 0) +
-      (resumen['tarjeta']?.factura || 0) +
-      (resumen['transferencia']?.factura || 0) +
-      (resumen['otro']?.factura || 0);
-
-    this.totalEfectivo = resumen['efectivo'].recibo + resumen['efectivo'].factura;
+      (resumen['efectivo']?.recibo || 0);
 
     this.totalGeneral =
+      this.totalParcialFactura +
       this.totalParcialRecibo +
-      this.totalParcialFactura;
+      this.totalParcialMoraFactura +
+      this.totalParcialMoraRecibo;
   }
 
   /**

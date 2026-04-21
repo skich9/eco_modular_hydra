@@ -180,16 +180,17 @@
 							</table>
 						</div>
 						
-						<!-- Resumen de métodos de pago -->
-						<div class="p-3 border-top d-flex justify-content-end">
-							<div style="width: 50%;">
+						<!-- Resumen: tabla principal hasta Total Parcial; totales finales en caja a la derecha -->
+						<div class="p-3 border-top w-100">
 								<h6 class="mb-3">Resumen de Métodos de Pago</h6>
-								<table class="table table-sm table-bordered">
+								<table class="table table-sm table-bordered w-100 mb-0">
 									<thead class="table-light">
 										<tr>
-											<th>Tipo de pago</th>
-											<th class="text-end">Recibo</th>
-											<th class="text-end">Factura</th>
+											<th class="small fw-bold text-uppercase">Tipo de pago</th>
+											<th class="text-end small fw-bold text-uppercase">Recibo</th>
+											<th class="text-end small fw-bold text-uppercase">Factura</th>
+											<th class="text-end small fw-bold text-uppercase">Mora Fac</th>
+											<th class="text-end small fw-bold text-uppercase">Mora Rec</th>
 										</tr>
 									</thead>
 								<tbody>
@@ -197,60 +198,74 @@
 										<td>Traspaso</td>
 										<td class="text-end fw-bold">{{ resumenMetodosPago['traspaso']?.recibo | number:'1.2-2' }}</td>
 										<td class="text-end fw-bold">{{ resumenMetodosPago['traspaso']?.factura | number:'1.2-2' }}</td>
+										<td class="text-end fw-bold">{{ resumenMetodosPago['traspaso']?.mora_factura | number:'1.2-2' }}</td>
+										<td class="text-end fw-bold">{{ resumenMetodosPago['traspaso']?.mora_recibo | number:'1.2-2' }}</td>
 									</tr>
 									<tr>
 										<td>Depósito</td>
 										<td class="text-end fw-bold">{{ resumenMetodosPago['deposito']?.recibo | number:'1.2-2' }}</td>
 										<td class="text-end fw-bold">{{ resumenMetodosPago['deposito']?.factura | number:'1.2-2' }}</td>
+										<td class="text-end fw-bold">{{ resumenMetodosPago['deposito']?.mora_factura | number:'1.2-2' }}</td>
+										<td class="text-end fw-bold">{{ resumenMetodosPago['deposito']?.mora_recibo | number:'1.2-2' }}</td>
 									</tr>
 									<tr>
 										<td>Efectivo</td>
 										<td class="text-end fw-bold">{{ resumenMetodosPago['efectivo']?.recibo | number:'1.2-2' }}</td>
 										<td class="text-end fw-bold">{{ resumenMetodosPago['efectivo']?.factura | number:'1.2-2' }}</td>
+										<td class="text-end fw-bold">{{ resumenMetodosPago['efectivo']?.mora_factura | number:'1.2-2' }}</td>
+										<td class="text-end fw-bold">{{ resumenMetodosPago['efectivo']?.mora_recibo | number:'1.2-2' }}</td>
 									</tr>
 									<tr>
 										<td>Cheque</td>
 										<td class="text-end fw-bold">{{ resumenMetodosPago['cheque']?.recibo | number:'1.2-2' }}</td>
 										<td class="text-end fw-bold">{{ resumenMetodosPago['cheque']?.factura | number:'1.2-2' }}</td>
+										<td class="text-end fw-bold">{{ resumenMetodosPago['cheque']?.mora_factura | number:'1.2-2' }}</td>
+										<td class="text-end fw-bold">{{ resumenMetodosPago['cheque']?.mora_recibo | number:'1.2-2' }}</td>
 									</tr>
 									<tr>
 										<td>Tarjeta</td>
 										<td class="text-end fw-bold">{{ resumenMetodosPago['tarjeta']?.recibo | number:'1.2-2' }}</td>
 										<td class="text-end fw-bold">{{ resumenMetodosPago['tarjeta']?.factura | number:'1.2-2' }}</td>
+										<td class="text-end fw-bold">{{ resumenMetodosPago['tarjeta']?.mora_factura | number:'1.2-2' }}</td>
+										<td class="text-end fw-bold">{{ resumenMetodosPago['tarjeta']?.mora_recibo | number:'1.2-2' }}</td>
 									</tr>
 									<tr>
 										<td>Transferencia Bancaria</td>
 										<td class="text-end fw-bold">{{ resumenMetodosPago['transferencia']?.recibo | number:'1.2-2' }}</td>
 										<td class="text-end fw-bold">{{ resumenMetodosPago['transferencia']?.factura | number:'1.2-2' }}</td>
+										<td class="text-end fw-bold">{{ resumenMetodosPago['transferencia']?.mora_factura | number:'1.2-2' }}</td>
+										<td class="text-end fw-bold">{{ resumenMetodosPago['transferencia']?.mora_recibo | number:'1.2-2' }}</td>
 									</tr>
 									<tr>
 										<td>Otro</td>
 										<td class="text-end fw-bold">{{ resumenMetodosPago['otro']?.recibo | number:'1.2-2' }}</td>
 										<td class="text-end fw-bold">{{ resumenMetodosPago['otro']?.factura | number:'1.2-2' }}</td>
+										<td class="text-end fw-bold">{{ resumenMetodosPago['otro']?.mora_factura | number:'1.2-2' }}</td>
+										<td class="text-end fw-bold">{{ resumenMetodosPago['otro']?.mora_recibo | number:'1.2-2' }}</td>
 									</tr>
 									<tr class="table-info fw-bold">
 										<td>Total Parcial</td>
 										<td class="text-end">{{ totalParcialRecibo | number:'1.2-2' }}</td>
 										<td class="text-end">{{ totalParcialFactura | number:'1.2-2' }}</td>
-									</tr>
-									<!-- Separador visual entre totales parciales y totales finales -->
-									<tr>
-										<td colspan="3"></td>
-									</tr>
-									<tr class="table-success fw-bold">
-										<td>Total Efectivo</td>
-										<td class="text-end" colspan="2">
-											{{ totalEfectivo | number:'1.2-2' }}
-										</td>
-									</tr>
-									<tr class="table-primary fw-bold">
-										<td>Total General</td>
-										<td class="text-end" colspan="2">
-											{{ totalGeneral | number:'1.2-2' }}
-										</td>
+										<td class="text-end">{{ totalParcialMoraFactura | number:'1.2-2' }}</td>
+										<td class="text-end">{{ totalParcialMoraRecibo | number:'1.2-2' }}</td>
 									</tr>
 								</tbody>
 							</table>
+								<div class="d-flex justify-content-end mt-3">
+									<table class="table table-sm table-bordered mb-0" style="width: auto; min-width: 16rem;">
+										<tbody>
+											<tr class="table-success fw-bold">
+												<td>Total Efectivo</td>
+												<td class="text-end text-nowrap">{{ totalEfectivo | number:'1.2-2' }}</td>
+											</tr>
+											<tr class="table-primary fw-bold">
+												<td>Total General</td>
+												<td class="text-end text-nowrap">{{ totalGeneral | number:'1.2-2' }}</td>
+											</tr>
+										</tbody>
+									</table>
+								</div>
 						</div>
 					</div>
 				</div>

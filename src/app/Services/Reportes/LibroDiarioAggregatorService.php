@@ -17,6 +17,115 @@ use Illuminate\Support\Facades\Schema;
  */
 class LibroDiarioAggregatorService
 {
+	/** Códigos en `cobro.cod_tipo_cobro` considerados mora/recargos para el resumen del Libro Diario. */
+	private const COD_TIPO_COBRO_MORA = ['MORA', 'RECARGO', 'INTERES', 'PENALIDAD', 'NIVELACION'];
+
+	/**
+	 * Suma subtotales de líneas de mora/multa por factura (clave "anio:nro_factura") desde `factura_detalle`.
+	 *
+	 * @param \Illuminate\Support\Collection<int,object>|\Illuminate\Support\Collection<int,mixed> $cobros
+	 * @param \Illuminate\Support\Collection<int,object>|\Illuminate\Support\Collection<int,mixed> $facturas
+	 * @return array<string,float>
+	 */
+	private function cargarMapaSubtotalMoraFacturaDetalle($cobros, $facturas): array
+	{
+		if (!Schema::hasTable('factura_detalle')) {
+			return [];
+		}
+		$claves = [];
+		foreach ($cobros as $c) {
+			$nf = (int) ($c->nro_factura ?? 0);
+			$an = (int) ($c->anio_cobro ?? 0);
+			if ($nf > 0 && $an > 0) {
+				$claves[$an . ':' . $nf] = [$an, $nf];
+			}
+		}
+		foreach ($facturas as $f) {
+			$nf = (int) ($f->nro_factura ?? 0);
+			$an = (int) ($f->anio ?? 0);
+			if ($nf > 0 && $an > 0) {
+				$claves[$an . ':' . $nf] = [$an, $nf];
+			}
+		}
+		if ($claves === []) {
+			return [];
+		}
+		$codigosMora = $this->mapaCodigosInternosItemsMora();
+		$out = [];
+		$rows = DB::table('factura_detalle')->where(function ($q) use ($claves) {
+			foreach ($claves as [$an, $nf]) {
+				$q->orWhere(function ($qq) use ($an, $nf) {
+					$qq->where('anio', $an)->where('nro_factura', $nf);
+				});
+			}
+		})->get(['anio', 'nro_factura', 'descripcion', 'codigo', 'subtotal']);
+		foreach ($rows as $row) {
+			if (!$this->esLineaFacturaDetalleMora($row, $codigosMora)) {
+				continue;
+			}
+			$k = (int) $row->anio . ':' . (int) $row->nro_factura;
+			$out[$k] = ($out[$k] ?? 0.0) + (float) ($row->subtotal ?? 0);
+		}
+		return $out;
+	}
+
+	/**
+	 * @param \Illuminate\Support\Collection<int,object>|\Illuminate\Support\Collection<int,mixed> $cobros
+	 * @return array<string,int> clave "anio:nro_factura" => cantidad de filas cobro
+	 */
+	private function construirConteoCobrosPorFactura($cobros): array
+	{
+		$out = [];
+		foreach ($cobros as $c) {
+			$nf = (string) ($c->nro_factura ?? '0');
+			$an = (int) ($c->anio_cobro ?? 0);
+			if ($nf === '' || $nf === '0' || $an <= 0) {
+				continue;
+			}
+			$k = $an . ':' . $nf;
+			$out[$k] = ($out[$k] ?? 0) + 1;
+		}
+		return $out;
+	}
+
+	/** @return array<string,bool> codigo_producto_interno (string) => true */
+	private function mapaCodigosInternosItemsMora(): array
+	{
+		if (!Schema::hasTable('items_cobro')) {
+			return [];
+		}
+		$codigos = DB::table('items_cobro')
+			->where('nombre_servicio', 'multa')
+			->pluck('codigo_producto_interno');
+		$map = [];
+		foreach ($codigos as $c) {
+			$s = trim((string) $c);
+			if ($s !== '') {
+				$map[$s] = true;
+			}
+		}
+		return $map;
+	}
+
+	/**
+	 * @param object $row factura_detalle row
+	 * @param array<string,bool> $codigosMoraSet
+	 */
+	private function esLineaFacturaDetalleMora($row, array $codigosMoraSet): bool
+	{
+		$desc = mb_strtolower((string) ($row->descripcion ?? ''), 'UTF-8');
+		foreach (['mora', 'multa', 'recargo', 'interés', 'interes', 'penalidad'] as $needle) {
+			if ($needle !== '' && str_contains($desc, $needle)) {
+				return true;
+			}
+		}
+		$cod = trim((string) ($row->codigo ?? ''));
+		if ($cod !== '' && isset($codigosMoraSet[$cod])) {
+			return true;
+		}
+		return false;
+	}
+
 	/**
 	 * @param array{id_usuario?:int|string,fecha_inicio?:string,fecha_fin?:string,codigo_carrera?:string,usuario_display?:string} $filters
 	 * @return array{datos:array<int,array<string,mixed>>,totales:array{ingresos:float,egresos:float},usuario_info:array{nombre:string,hora_apertura:string,hora_cierre:string},resumen:array<string,mixed>}
@@ -68,6 +177,9 @@ class LibroDiarioAggregatorService
 			}
 		}
 
+		$mapaMoraFacturaDetalle = $this->cargarMapaSubtotalMoraFacturaDetalle($cobros, $facturas);
+		$conteoCobrosPorFactura = $this->construirConteoCobrosPorFactura($cobros);
+
 		$items = [];
 
 		foreach ($facturas as $f) {
@@ -80,11 +192,18 @@ class LibroDiarioAggregatorService
 			if (isset($facturasConCobro[$claveFac]) || ($anioF <= 0 && isset($facturasConCobro[$nroFac]))) {
 				continue;
 			}
-			$items[] = $this->mapearFactura($f, $mapaFacturas);
+			$items[] = $this->mapearFactura($f, $mapaFacturas, $mapaMoraFacturaDetalle);
 		}
 
 		foreach ($cobros as $c) {
-			$items[] = $this->mapearCobro($c, $mapaFacturas, $recibosMap, $mapaMontosFactura);
+			$items[] = $this->mapearCobro(
+				$c,
+				$mapaFacturas,
+				$recibosMap,
+				$mapaMontosFactura,
+				$conteoCobrosPorFactura,
+				$mapaMoraFacturaDetalle
+			);
 		}
 
 		foreach ($qrs as $q) {
@@ -190,6 +309,7 @@ class LibroDiarioAggregatorService
 			'c.nro_cobro', 'c.anio_cobro', 'c.cod_ceta', 'c.cod_pensum', 'c.tipo_inscripcion',
 			'c.nro_factura', 'c.nro_recibo', 'c.monto',
 			'c.observaciones', 'c.concepto', 'c.fecha_cobro', 'c.id_forma_cobro',
+			'c.cod_tipo_cobro',
 			DB::raw('COALESCE(r.cliente, f.cliente) as cliente'),
 			DB::raw('COALESCE(r.nro_documento_cobro, f.nro_documento_cobro) as nro_documento_cobro'),
 			'fc.nombre as forma_cobro_nombre',
@@ -341,7 +461,7 @@ class LibroDiarioAggregatorService
 	 * @param array<string,array{razon_social:string,nit:string}> $mapaFacturas
 	 * @return array<string,mixed>
 	 */
-	private function mapearFactura($f, array $mapaFacturas): array
+	private function mapearFactura($f, array $mapaFacturas, array $mapaMoraFacturaDetalle = []): array
 	{
 		$nroFac = (string) ($f->nro_factura ?? '0');
 		$anioF = (int) ($f->anio ?? 0);
@@ -350,6 +470,13 @@ class LibroDiarioAggregatorService
 			'razon_social' => (string) ($f->cliente ?? ''),
 			'nit' => (string) ($f->nro_documento_cobro ?? '0'),
 		]);
+
+		$ingreso = (float) ($f->monto_total ?? 0);
+		$sumMoraDet = 0.0;
+		if ($anioF > 0 && $nroFac !== '' && $nroFac !== '0') {
+			$sumMoraDet = (float) ($mapaMoraFacturaDetalle[$claveFac] ?? 0.0);
+		}
+		$montoMora = ($sumMoraDet > 0 && $ingreso > 0) ? min($sumMoraDet, $ingreso) : 0.0;
 
 		return [
 			'numero' => 0,
@@ -360,11 +487,13 @@ class LibroDiarioAggregatorService
 			'nit' => $dc['nit'] ?: '0',
 			'cod_ceta' => (string) ($f->cod_ceta ?? '0'),
 			'hora' => $this->horaLocal((string) ($f->fecha_emision ?? '')),
-			'ingreso' => (float) ($f->monto_total ?? 0),
+			'ingreso' => $ingreso,
 			'egreso' => 0.0,
 			'tipo_doc' => 'F',
 			'tipo_pago' => $this->mapearTipoPago((string) ($f->id_forma_cobro ?? '')),
 			'observaciones' => (string) ($f->id_forma_cobro ?? 'Efectivo'),
+			'es_mora' => false,
+			'monto_mora' => $montoMora,
 		];
 	}
 
@@ -373,10 +502,18 @@ class LibroDiarioAggregatorService
 	 * @param array<string,array{razon_social:string,nit:string}> $mapaFacturas
 	 * @param array<string,object> $recibosMap
 	 * @param array<string,float> $mapaMontosFactura
+	 * @param array<string,int> $conteoCobrosPorFactura
+	 * @param array<string,float> $mapaMoraFacturaDetalle
 	 * @return array<string,mixed>
 	 */
-	private function mapearCobro($c, array $mapaFacturas, array $recibosMap, array $mapaMontosFactura): array
-	{
+	private function mapearCobro(
+		$c,
+		array $mapaFacturas,
+		array $recibosMap,
+		array $mapaMontosFactura,
+		array $conteoCobrosPorFactura,
+		array $mapaMoraFacturaDetalle
+	): array {
 		$nroFac = (string) ($c->nro_factura ?? '0');
 		$nroRec = (string) ($c->nro_recibo ?? '0');
 		$anioC = (int) ($c->anio_cobro ?? 0);
@@ -422,6 +559,19 @@ class LibroDiarioAggregatorService
 
 		$idForma = (string) ($c->id_forma_cobro ?? '');
 		$tipoDoc = ($nroFac !== '' && $nroFac !== '0') ? 'F' : 'R';
+		$codTipoCobro = strtoupper(trim((string) ($c->cod_tipo_cobro ?? '')));
+		$esMora = $codTipoCobro !== '' && in_array($codTipoCobro, self::COD_TIPO_COBRO_MORA, true);
+
+		$montoMoraReporte = $esMora ? $monto : 0.0;
+		if (!$esMora && $nroFac !== '' && $nroFac !== '0' && $anioC > 0) {
+			$ck = $anioC . ':' . $nroFac;
+			if (($conteoCobrosPorFactura[$ck] ?? 0) === 1) {
+				$sumMoraDet = (float) ($mapaMoraFacturaDetalle[$ck] ?? 0.0);
+				if ($sumMoraDet > 0 && $monto > 0) {
+					$montoMoraReporte = min($sumMoraDet, $monto);
+				}
+			}
+		}
 
 		return [
 			'numero' => 0,
@@ -437,6 +587,8 @@ class LibroDiarioAggregatorService
 			'tipo_doc' => $tipoDoc,
 			'tipo_pago' => $this->mapearTipoPago($idForma),
 			'observaciones' => $this->armarObservacionesExtendidas($c),
+			'es_mora' => $esMora,
+			'monto_mora' => $montoMoraReporte,
 		];
 	}
 
@@ -489,6 +641,8 @@ class LibroDiarioAggregatorService
 			'tipo_doc' => 'F',
 			'tipo_pago' => $tipoPago,
 			'observaciones' => $metodo !== '' ? $metodo : 'Efectivo',
+			'es_mora' => false,
+			'monto_mora' => 0.0,
 		];
 	}
 
@@ -529,6 +683,8 @@ class LibroDiarioAggregatorService
 			'tipo_doc' => $tipoDoc,
 			'tipo_pago' => $tipoPago,
 			'observaciones' => $obs,
+			'es_mora' => false,
+			'monto_mora' => 0.0,
 		];
 	}
 
@@ -687,31 +843,76 @@ class LibroDiarioAggregatorService
 		$resumen = [];
 		$map = ['E' => 'efectivo', 'L' => 'tarjeta', 'D' => 'deposito', 'C' => 'cheque', 'B' => 'transferencia', 'T' => 'traspaso', 'O' => 'otro'];
 		foreach ($map as $k => $v) {
-			$resumen[$v] = ['factura' => 0.0, 'recibo' => 0.0];
+			$resumen[$v] = [
+				'factura' => 0.0,
+				'recibo' => 0.0,
+				'mora_factura' => 0.0,
+				'mora_recibo' => 0.0,
+			];
 		}
 		$totalFactura = 0.0;
 		$totalRecibo = 0.0;
+		$totalMoraFactura = 0.0;
+		$totalMoraRecibo = 0.0;
 		$totalEfectivo = 0.0;
 		foreach ($items as $it) {
 			$tp = (string) ($it['tipo_pago'] ?? 'E');
 			$td = (string) ($it['tipo_doc'] ?? 'F');
 			$ing = (float) ($it['ingreso'] ?? 0);
+			$esMora = !empty($it['es_mora']);
+			$mMoraInf = (float) ($it['monto_mora'] ?? 0);
+			$mMora = $esMora ? $ing : min(max(0.0, $mMoraInf), $ing);
+			$mCapital = $esMora ? 0.0 : max(0.0, $ing - $mMora);
 			$key = $map[$tp] ?? 'otro';
-			if ($td === 'F') {
-				$resumen[$key]['factura'] += $ing;
-				$totalFactura += $ing;
+			if ($esMora) {
+				if ($td === 'F') {
+					$resumen[$key]['mora_factura'] += $ing;
+					$totalMoraFactura += $ing;
+				} else {
+					$resumen[$key]['mora_recibo'] += $ing;
+					$totalMoraRecibo += $ing;
+				}
+			} elseif ($mMora > 0.00001) {
+				if ($td === 'F') {
+					$resumen[$key]['factura'] += $mCapital;
+					$resumen[$key]['mora_factura'] += $mMora;
+					$totalFactura += $mCapital;
+					$totalMoraFactura += $mMora;
+				} else {
+					$resumen[$key]['recibo'] += $mCapital;
+					$resumen[$key]['mora_recibo'] += $mMora;
+					$totalRecibo += $mCapital;
+					$totalMoraRecibo += $mMora;
+				}
 			} else {
-				$resumen[$key]['recibo'] += $ing;
-				$totalRecibo += $ing;
+				if ($td === 'F') {
+					$resumen[$key]['factura'] += $ing;
+					$totalFactura += $ing;
+				} else {
+					$resumen[$key]['recibo'] += $ing;
+					$totalRecibo += $ing;
+				}
 			}
+			// Total Efectivo: solo capital en efectivo (factura/recibo), sin mora.
 			if ($tp === 'E') {
-				$totalEfectivo += $ing;
+				if ($esMora) {
+					// no sumar
+				} elseif ($mMora > 0.00001) {
+					$totalEfectivo += $mCapital;
+				} else {
+					$totalEfectivo += $ing;
+				}
 			}
 		}
 		$resumen['total_factura'] = round($totalFactura, 2);
 		$resumen['total_recibo'] = round($totalRecibo, 2);
+		$resumen['total_mora_factura'] = round($totalMoraFactura, 2);
+		$resumen['total_mora_recibo'] = round($totalMoraRecibo, 2);
 		$resumen['total_efectivo'] = round($totalEfectivo, 2);
-		$resumen['total_general'] = round($totalFactura + $totalRecibo, 2);
+		$resumen['total_general'] = round(
+			$totalFactura + $totalRecibo + $totalMoraFactura + $totalMoraRecibo,
+			2
+		);
 		return $resumen;
 	}
 

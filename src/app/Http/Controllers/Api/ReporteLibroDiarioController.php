@@ -88,6 +88,27 @@ class ReporteLibroDiarioController extends Controller
                 ], 403);
             }
 
+            $usuarioLibroPdf = $idUsuarioPdf > 0
+                ? Usuario::query()->with('rol')->find($idUsuarioPdf)
+                : null;
+            $pdfUsuarioNickname = $usuarioLibroPdf
+                ? trim((string) ($usuarioLibroPdf->nickname ?? ''))
+                : '';
+            $pdfFooterNombre = $usuarioLibroPdf
+                ? trim((string) ($usuarioLibroPdf->nombre ?? ''))
+                : '';
+            $pdfFooterCargo = '';
+            if ($usuarioLibroPdf && $usuarioLibroPdf->rol) {
+                $pdfFooterCargo = trim((string) ($usuarioLibroPdf->rol->nombre ?? ''));
+            }
+            if ($pdfUsuarioNickname === '' && $usuarioDisplay !== '') {
+                if (preg_match('/-\s*(.+)$/u', $usuarioDisplay, $m)) {
+                    $pdfUsuarioNickname = trim($m[1]);
+                } elseif (!ctype_digit(trim($usuarioDisplay))) {
+                    $pdfUsuarioNickname = trim($usuarioDisplay);
+                }
+            }
+
             // Opción B: si no llegan `datos` del cliente, reconsultar del backend con el agregador único.
             if ((!is_array($datos) || count($datos) === 0) && (int) $usuario > 0) {
                 $fechaFiltro = $fecha !== '' ? $fecha : '';
@@ -134,20 +155,36 @@ class ReporteLibroDiarioController extends Controller
             };
             $fTraspaso = $fmt($get('traspaso', 'factura'));
             $rTraspaso = $fmt($get('traspaso', 'recibo'));
+            $mfTraspaso = $fmt($get('traspaso', 'mora_factura'));
+            $mrTraspaso = $fmt($get('traspaso', 'mora_recibo'));
             $fDeposito = $fmt($get('deposito', 'factura'));
             $rDeposito = $fmt($get('deposito', 'recibo'));
+            $mfDeposito = $fmt($get('deposito', 'mora_factura'));
+            $mrDeposito = $fmt($get('deposito', 'mora_recibo'));
             $fEfectivo = $fmt($get('efectivo', 'factura'));
             $rEfectivo = $fmt($get('efectivo', 'recibo'));
+            $mfEfectivo = $fmt($get('efectivo', 'mora_factura'));
+            $mrEfectivo = $fmt($get('efectivo', 'mora_recibo'));
             $fCheque = $fmt($get('cheque', 'factura'));
             $rCheque = $fmt($get('cheque', 'recibo'));
+            $mfCheque = $fmt($get('cheque', 'mora_factura'));
+            $mrCheque = $fmt($get('cheque', 'mora_recibo'));
             $fTarjeta = $fmt($get('tarjeta', 'factura'));
             $rTarjeta = $fmt($get('tarjeta', 'recibo'));
+            $mfTarjeta = $fmt($get('tarjeta', 'mora_factura'));
+            $mrTarjeta = $fmt($get('tarjeta', 'mora_recibo'));
             $fTransferencia = $fmt($get('transferencia', 'factura'));
             $rTransferencia = $fmt($get('transferencia', 'recibo'));
+            $mfTransferencia = $fmt($get('transferencia', 'mora_factura'));
+            $mrTransferencia = $fmt($get('transferencia', 'mora_recibo'));
             $fOtro = $fmt($get('otro', 'factura'));
             $rOtro = $fmt($get('otro', 'recibo'));
+            $mfOtro = $fmt($get('otro', 'mora_factura'));
+            $mrOtro = $fmt($get('otro', 'mora_recibo'));
             $tFactura = $fmt($resumen['total_factura'] ?? 0);
             $tRecibo = $fmt($resumen['total_recibo'] ?? 0);
+            $tMoraFactura = $fmt($resumen['total_mora_factura'] ?? 0);
+            $tMoraRecibo = $fmt($resumen['total_mora_recibo'] ?? 0);
             $totalEfectivo = $fmt($resumen['total_efectivo'] ?? 0);
             $totalGeneral = $fmt($resumen['total_general'] ?? $request->input('totales', 0));
 
@@ -230,9 +267,20 @@ class ReporteLibroDiarioController extends Controller
                 );
             }
 
-            $headerHtml = $this->buildHeaderHtml($logoImg, $logoCellStyle, $carreraVal, $fechaLiteral, $usuarioDisplay, $horaApertura, $horaCierre, $numeracion, $styleBorder, $styleColor);
-            $totalesYFirmasHtml = $this->buildTotalesYFirmasHtml($fTraspaso, $rTraspaso, $fDeposito, $rDeposito, $fEfectivo, $rEfectivo, $fCheque, $rCheque, $fTarjeta, $rTarjeta, $fTransferencia, $rTransferencia, $fOtro, $rOtro, $tFactura, $tRecibo, $totalEfectivo, $totalGeneral, $styleBorder, $styleColor);
-            $footerHtml = $this->buildFooterHtml($usuarioDisplay, $fecha, $fechaHoraImp, $styleBorder, $styleColor);
+            $headerHtml = $this->buildHeaderHtml($logoImg, $logoCellStyle, $carreraVal, $fechaLiteral, $pdfUsuarioNickname, $horaApertura, $horaCierre, $numeracion, $styleBorder, $styleColor);
+            $totalesYFirmasHtml = $this->buildTotalesYFirmasHtml(
+                $fTraspaso, $rTraspaso, $mfTraspaso, $mrTraspaso,
+                $fDeposito, $rDeposito, $mfDeposito, $mrDeposito,
+                $fEfectivo, $rEfectivo, $mfEfectivo, $mrEfectivo,
+                $fCheque, $rCheque, $mfCheque, $mrCheque,
+                $fTarjeta, $rTarjeta, $mfTarjeta, $mrTarjeta,
+                $fTransferencia, $rTransferencia, $mfTransferencia, $mrTransferencia,
+                $fOtro, $rOtro, $mfOtro, $mrOtro,
+                $tFactura, $tRecibo, $tMoraFactura, $tMoraRecibo,
+                $totalEfectivo, $totalGeneral,
+                $styleBorder, $styleColor
+            );
+            $footerHtml = $this->buildFooterHtml($pdfFooterNombre, $pdfFooterCargo, $fecha, $fechaHoraImp, $styleBorder, $styleColor);
 
             $offsetTop = (int) $request->input('body_vertical_offset_pt', 0);
             $offsetTop = max(-6, min(6, $offsetTop));
@@ -419,7 +467,7 @@ HTML;
     }
 
     /**
-     * Código RD-[CARRERA]-[MM]-[NNN]: NNN correlativo global con mínimo 3 dígitos (ceros a la izquierda).
+     * Código RD-[CARRERA]-[MM]-[NNN]: NNN correlativo por carrera y mes (001… cada mes; ceros a la izquierda).
      * Prioriza codigo_rd almacenado en libro_diario_cierre o enviado en resumen/request.
      */
     private function generarNumeracionLibroDiario($request, array $resumen, string $fechaCorta, string $usuario): string
@@ -483,7 +531,7 @@ HTML;
         if ($rowCierre && isset($rowCierre->correlativo) && (int) $rowCierre->correlativo > 0) {
             $corrNum = (int) $rowCierre->correlativo;
         } elseif ($rowCierre && isset($rowCierre->id)) {
-            $corrNum = max(1, (int) $rowCierre->id);
+            $corrNum = max(1, LibroDiarioIdentificadorHelper::maxCorrelativoRegistradoParaMes($codigoCarrera, $mes) + 1);
         } else {
             $corrNum = max(1, (int) ($resumen['correlativo'] ?? $request->input('correlativo', 0)));
             if ($corrNum < 1) {
@@ -559,11 +607,11 @@ HTML;
         return $html;
     }
 
-    private function buildHeaderHtml(string $logoImg, string $logoCellStyle, string $carreraVal, string $fechaLiteral, string $usuarioDisplay, string $horaApertura, string $horaCierre, string $numeracion, string $styleBorder, string $styleColor): string
+    private function buildHeaderHtml(string $logoImg, string $logoCellStyle, string $carreraVal, string $fechaLiteral, string $usuarioNickname, string $horaApertura, string $horaCierre, string $numeracion, string $styleBorder, string $styleColor): string
     {
         $carreraVal = htmlspecialchars($carreraVal, ENT_QUOTES, 'UTF-8');
         $fechaLiteral = htmlspecialchars($fechaLiteral, ENT_QUOTES, 'UTF-8');
-        $usuarioDisplay = htmlspecialchars($usuarioDisplay, ENT_QUOTES, 'UTF-8');
+        $usuarioNickname = htmlspecialchars($usuarioNickname !== '' ? $usuarioNickname : '______________________', ENT_QUOTES, 'UTF-8');
         $horaAperturaDisplay = $horaApertura !== '' ? htmlspecialchars($this->formatearHora($horaApertura), ENT_QUOTES, 'UTF-8') : '____________';
         $horaCierreDisplay = $horaCierre !== '' ? htmlspecialchars($this->formatearHora($horaCierre), ENT_QUOTES, 'UTF-8') : '____________';
         $numeracion = htmlspecialchars($numeracion, ENT_QUOTES, 'UTF-8');
@@ -592,7 +640,7 @@ HTML;
 <table width="100%" style="border-collapse:collapse;margin-top:10px;padding:0;font-size:8pt;font-weight:normal;color:#000;line-height:1.12;">
   <tr><td style="padding:0 0 1px 0;width:92px;vertical-align:middle;"><strong>Carrera:</strong></td><td style="padding:0 0 1px 0;vertical-align:middle;">{$carreraVal}</td></tr>
   <tr><td style="padding:0 0 1px 0;vertical-align:middle;"><strong>Fecha:</strong></td><td style="padding:0 0 1px 0;vertical-align:middle;">{$fechaLiteral}</td></tr>
-  <tr><td style="padding:0 0 1px 0;vertical-align:middle;"><strong>Usuario:</strong></td><td style="padding:0 0 1px 0;vertical-align:middle;">{$usuarioDisplay}</td></tr>
+  <tr><td style="padding:0 0 1px 0;vertical-align:middle;"><strong>Usuario:</strong></td><td style="padding:0 0 1px 0;vertical-align:middle;">{$usuarioNickname}</td></tr>
   <tr><td style="padding:0 0 1px 0;vertical-align:middle;"><strong>Hora Apertura:</strong></td><td style="padding:0 0 1px 0;vertical-align:middle;">{$horaAperturaDisplay}</td></tr>
   <tr><td style="padding:0 0 1px 0;vertical-align:middle;"><strong>Hora de Cierre:</strong></td><td style="padding:0 0 1px 0;vertical-align:middle;">{$horaCierreDisplay}</td></tr>
 </table>
@@ -647,9 +695,16 @@ HTML;
     }
 
     /** Tabla de firmas: se muestra en el pie de página de cada hoja */
-    private function buildFooterHtml(string $usuarioDisplay, string $fecha, string $fechaHoraImp, string $styleBorder, string $styleColor): string
+    private function buildFooterHtml(string $nombreResponsable, string $cargoResponsable, string $fecha, string $fechaHoraImp, string $styleBorder, string $styleColor): string
     {
         $fechaHoraImp = htmlspecialchars($fechaHoraImp, ENT_QUOTES, 'UTF-8');
+        $fechaEsc = htmlspecialchars($fecha, ENT_QUOTES, 'UTF-8');
+        $nombreHtml = $nombreResponsable !== ''
+            ? htmlspecialchars($nombreResponsable, ENT_QUOTES, 'UTF-8')
+            : '______________________';
+        $cargoHtml = $cargoResponsable !== ''
+            ? htmlspecialchars($cargoResponsable, ENT_QUOTES, 'UTF-8')
+            : '______________________';
 
         // Misma tipografía que la numeración PDF (LibroDiarioPdfService): DejaVu Sans, 7.5pt, normal, line-height 1.1, #000
         $footerType = 'font-family:DejaVu Sans,sans-serif;font-size:7.5pt;font-weight:normal;line-height:1.1;color:#000;';
@@ -665,8 +720,8 @@ HTML;
         <td style="{$styleBorder}padding:1px 3px;{$footerHdr}text-align:center;width:25%;vertical-align:middle;">Aprobado</td>
     </tr>
     <tr>
-        <td style="{$styleBorder}padding:1px 3px;{$footerType}vertical-align:top;">Firma: ____________________<br>Nombre: {$usuarioDisplay}<br>Cargo: ____________________<br>Fecha: {$fecha}</td>
-        <td style="{$styleBorder}padding:1px 3px;{$footerType}vertical-align:top;">Firma: ____________________</td>
+        <td style="{$styleBorder}padding:1px 3px;{$footerType}vertical-align:top;">Firma: ____________________<br>Nombre: {$nombreHtml}<br>Cargo: {$cargoHtml}<br>Fecha: {$fechaEsc}</td>
+        <td style="{$styleBorder}padding:3px 1px;{$footerType}vertical-align:top;">Firma: ____________________</td>
         <td style="{$styleBorder}padding:1px 3px;{$footerType}vertical-align:top;">Firma: ____________________</td>
         <td style="{$styleBorder}padding:1px 3px;{$footerType}vertical-align:top;">Firma: ____________________</td>
     </tr>
@@ -682,25 +737,37 @@ HTML;
     }
 
     /** Totales: solo en la última página (fluyen al final del contenido) */
-    private function buildTotalesYFirmasHtml(string $fTraspaso, string $rTraspaso, string $fDeposito, string $rDeposito, string $fEfectivo, string $rEfectivo, string $fCheque, string $rCheque, string $fTarjeta, string $rTarjeta, string $fTransferencia, string $rTransferencia, string $fOtro, string $rOtro, string $tFactura, string $tRecibo, string $totalEfectivo, string $totalGeneral, string $styleBorder, string $styleColor): string
-    {
+    private function buildTotalesYFirmasHtml(
+        string $fTraspaso, string $rTraspaso, string $mfTraspaso, string $mrTraspaso,
+        string $fDeposito, string $rDeposito, string $mfDeposito, string $mrDeposito,
+        string $fEfectivo, string $rEfectivo, string $mfEfectivo, string $mrEfectivo,
+        string $fCheque, string $rCheque, string $mfCheque, string $mrCheque,
+        string $fTarjeta, string $rTarjeta, string $mfTarjeta, string $mrTarjeta,
+        string $fTransferencia, string $rTransferencia, string $mfTransferencia, string $mrTransferencia,
+        string $fOtro, string $rOtro, string $mfOtro, string $mrOtro,
+        string $tFactura, string $tRecibo, string $tMoraFactura, string $tMoraRecibo,
+        string $totalEfectivo, string $totalGeneral,
+        string $styleBorder, string $styleColor
+    ): string {
         return <<<HTML
-<table style="border-collapse: collapse; {$styleBorder}; width: 55%; margin-left: auto; font-size: 8pt;">
+<table style="border-collapse: collapse; {$styleBorder}; width: 70%; margin-left: auto; font-size: 8pt;">
     <tr>
         <td style="{$styleBorder}"></td>
         <td class="center" style="{$styleBorder} {$styleColor}">Factura</td>
         <td class="center" style="{$styleBorder} {$styleColor}">Recibo</td>
+        <td class="center" style="{$styleBorder} {$styleColor}">Mora Fac</td>
+        <td class="center" style="{$styleBorder} {$styleColor}">Mora Rec</td>
     </tr>
-    <tr><td style="{$styleBorder}">Traspaso</td><td class="right" style="{$styleBorder}">{$fTraspaso}</td><td class="right" style="{$styleBorder}">{$rTraspaso}</td></tr>
-    <tr><td style="{$styleBorder}">Depósito</td><td class="right" style="{$styleBorder}">{$fDeposito}</td><td class="right" style="{$styleBorder}">{$rDeposito}</td></tr>
-    <tr><td style="{$styleBorder}">Efectivo</td><td class="right" style="{$styleBorder}">{$fEfectivo}</td><td class="right" style="{$styleBorder}">{$rEfectivo}</td></tr>
-    <tr><td style="{$styleBorder}">Cheque</td><td class="right" style="{$styleBorder}">{$fCheque}</td><td class="right" style="{$styleBorder}">{$rCheque}</td></tr>
-    <tr><td style="{$styleBorder}">Tarjeta</td><td class="right" style="{$styleBorder}">{$fTarjeta}</td><td class="right" style="{$styleBorder}">{$rTarjeta}</td></tr>
-    <tr><td style="{$styleBorder}">Transferencia Bancaria</td><td class="right" style="{$styleBorder}">{$fTransferencia}</td><td class="right" style="{$styleBorder}">{$rTransferencia}</td></tr>
-    <tr><td style="{$styleBorder}">Otro</td><td class="right" style="{$styleBorder}">{$fOtro}</td><td class="right" style="{$styleBorder}">{$rOtro}</td></tr>
-    <tr><td style="{$styleBorder} {$styleColor}">Total Parcial</td><td class="right" style="{$styleBorder}">{$tFactura}</td><td class="right" style="{$styleBorder}">{$tRecibo}</td></tr>
-    <tr style="background:#e8ecf4;"><td style="{$styleBorder} {$styleColor}">Total Efectivo</td><td colspan="2" class="right" style="{$styleBorder}">{$totalEfectivo}</td></tr>
-    <tr><td style="{$styleBorder} {$styleColor}">Total General</td><td colspan="2" class="right" style="{$styleBorder} {$styleColor}">{$totalGeneral}</td></tr>
+    <tr><td style="{$styleBorder}">Traspaso</td><td class="right" style="{$styleBorder}">{$fTraspaso}</td><td class="right" style="{$styleBorder}">{$rTraspaso}</td><td class="right" style="{$styleBorder}">{$mfTraspaso}</td><td class="right" style="{$styleBorder}">{$mrTraspaso}</td></tr>
+    <tr><td style="{$styleBorder}">Depósito</td><td class="right" style="{$styleBorder}">{$fDeposito}</td><td class="right" style="{$styleBorder}">{$rDeposito}</td><td class="right" style="{$styleBorder}">{$mfDeposito}</td><td class="right" style="{$styleBorder}">{$mrDeposito}</td></tr>
+    <tr><td style="{$styleBorder}">Efectivo</td><td class="right" style="{$styleBorder}">{$fEfectivo}</td><td class="right" style="{$styleBorder}">{$rEfectivo}</td><td class="right" style="{$styleBorder}">{$mfEfectivo}</td><td class="right" style="{$styleBorder}">{$mrEfectivo}</td></tr>
+    <tr><td style="{$styleBorder}">Cheque</td><td class="right" style="{$styleBorder}">{$fCheque}</td><td class="right" style="{$styleBorder}">{$rCheque}</td><td class="right" style="{$styleBorder}">{$mfCheque}</td><td class="right" style="{$styleBorder}">{$mrCheque}</td></tr>
+    <tr><td style="{$styleBorder}">Tarjeta</td><td class="right" style="{$styleBorder}">{$fTarjeta}</td><td class="right" style="{$styleBorder}">{$rTarjeta}</td><td class="right" style="{$styleBorder}">{$mfTarjeta}</td><td class="right" style="{$styleBorder}">{$mrTarjeta}</td></tr>
+    <tr><td style="{$styleBorder}">Transferencia Bancaria</td><td class="right" style="{$styleBorder}">{$fTransferencia}</td><td class="right" style="{$styleBorder}">{$rTransferencia}</td><td class="right" style="{$styleBorder}">{$mfTransferencia}</td><td class="right" style="{$styleBorder}">{$mrTransferencia}</td></tr>
+    <tr><td style="{$styleBorder}">Otro</td><td class="right" style="{$styleBorder}">{$fOtro}</td><td class="right" style="{$styleBorder}">{$rOtro}</td><td class="right" style="{$styleBorder}">{$mfOtro}</td><td class="right" style="{$styleBorder}">{$mrOtro}</td></tr>
+    <tr><td style="{$styleBorder} {$styleColor}">Total Parcial</td><td class="right" style="{$styleBorder}">{$tFactura}</td><td class="right" style="{$styleBorder}">{$tRecibo}</td><td class="right" style="{$styleBorder}">{$tMoraFactura}</td><td class="right" style="{$styleBorder}">{$tMoraRecibo}</td></tr>
+    <tr style="background:#e8ecf4;"><td style="{$styleBorder} {$styleColor}">Total Efectivo</td><td colspan="4" class="right" style="{$styleBorder}">{$totalEfectivo}</td></tr>
+    <tr><td style="{$styleBorder} {$styleColor}">Total General</td><td colspan="4" class="right" style="{$styleBorder} {$styleColor}">{$totalGeneral}</td></tr>
 </table>
 HTML;
     }
