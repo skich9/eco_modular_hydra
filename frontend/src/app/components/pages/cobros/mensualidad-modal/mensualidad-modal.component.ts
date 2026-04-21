@@ -27,6 +27,8 @@ export class MensualidadModalComponent implements OnInit, OnChanges, AfterViewIn
   @Input() formasCobro: any[] = [];
   @Input() cuentasBancarias: any[] = [];
   @Input() morasPendientes: any[] = [];
+  @Input() gestionesActivas: any[] = [];
+  @Input() carreras: any[] = [];
   @Input() tipo: 'mensualidad' | 'rezagado' | 'recuperacion' | 'arrastre' | 'reincorporacion' | 'mora' = 'mensualidad';
   // Nota: también soporta 'reincorporacion' como tipo adicional
   @Input() pendientes = 0;
@@ -298,7 +300,14 @@ export class MensualidadModalComponent implements OnInit, OnChanges, AfterViewIn
       tarjeta_first4: [''],
       tarjeta_last4: [''],
       fecha_deposito: [''],
-      nro_deposito: ['']
+      nro_deposito: [''],
+      // Campos para TRASPASO
+      traspaso_gestion: [''],
+      traspaso_nro_cuota: [''],
+      traspaso_cod_est: [''],
+      traspaso_fecha_origen: [''],
+      traspaso_carrera_origen: [''],
+      traspaso_documento: [''],
     });
   }
 
@@ -699,6 +708,13 @@ export class MensualidadModalComponent implements OnInit, OnChanges, AfterViewIn
       nro_deposito: this.form.get('nro_deposito')?.value || null,
       tarjeta_first4: this.form.get('tarjeta_first4')?.value || null,
       tarjeta_last4: this.form.get('tarjeta_last4')?.value || null,
+      traspaso_gestion: this.form.get('traspaso_gestion')?.value || null,
+      traspaso_nro_cuota: this.form.get('traspaso_nro_cuota')?.value || null,
+      traspaso_cod_est: this.form.get('traspaso_cod_est')?.value || null,
+      traspaso_fecha_origen: this.form.get('traspaso_fecha_origen')?.value || null,
+      traspaso_carrera_origen: this.form.get('traspaso_carrera_origen')?.value || null,
+      traspaso_documento: this.form.get('traspaso_documento')?.value || null,
+      ...this.buildTraspasoComputedFields(),
       descuento: Number(mora?.monto_descuento || 0) || 0,
     };
 
@@ -2415,6 +2431,44 @@ export class MensualidadModalComponent implements OnInit, OnChanges, AfterViewIn
     } catch { return ''; }
   }
 
+  /**
+   * Calcula los campos adicionales de traspaso (tipo, concepto, gestion_destino)
+   * para incluir en cada item de pago que se envía al backend.
+   */
+  private buildTraspasoComputedFields(): { traspaso_tipo: string; traspaso_concepto: string; traspaso_gestion_destino: string } {
+    const carreraOrigen = (this.form.get('traspaso_carrera_origen')?.value || '').toString().trim().toUpperCase();
+    const carreraActual = (this.resumen?.estudiante?.carrera || '').toString().trim().toUpperCase();
+    const tipo = (carreraOrigen && carreraActual && carreraOrigen !== carreraActual) ? 'M' : 'T';
+    const documento = (this.form.get('traspaso_documento')?.value || '').toString().trim();
+    const fechaOrigen = (this.form.get('traspaso_fecha_origen')?.value || '').toString().trim();
+    const concepto = tipo === 'M'
+      ? `Traspaso de pago entre carreras segun documento: "${documento}" en "${fechaOrigen}"`
+      : `Traspaso de mensualidad segun documento: "${documento}" en "${fechaOrigen}"`;
+    return {
+      traspaso_tipo: tipo,
+      traspaso_concepto: concepto,
+      traspaso_gestion_destino: (this.resumen?.gestion || '').toString(),
+    };
+  }
+
+  get isTraspaso(): boolean {
+    try {
+      const f = this.getSelectedForma();
+      const nameRaw = (f?.descripcion_sin ?? f?.nombre ?? f?.name ?? f?.descripcion ?? f?.label ?? '').toString().trim().toUpperCase();
+      if (!nameRaw) return false;
+      const nombre = nameRaw.normalize('NFD').replace(/\p{Diacritic}/gu, '');
+      return nombre.includes('TRASPASO');
+    } catch { return false; }
+  }
+
+  get gestionesActivasFiltradas(): any[] {
+    return this.gestionesActivas.filter(g => g.activo === true || g.activo === 1);
+  }
+
+  get carrerasActivas(): any[] {
+    return this.carreras.filter(c => c.estado === true || c.estado === 1);
+  }
+
   get showBancarioBlock(): boolean {
     return this.isCheque || this.isDeposito || this.isTransferenciaBancaria;
   }
@@ -2442,7 +2496,22 @@ export class MensualidadModalComponent implements OnInit, OnChanges, AfterViewIn
       setReq('banco_origen', false);
       setReq('tarjeta_first4', false);
       setReq('tarjeta_last4', false);
+      setReq('traspaso_gestion', false);
+      setReq('traspaso_nro_cuota', false);
+      setReq('traspaso_cod_est', false);
+      setReq('traspaso_fecha_origen', false);
+      setReq('traspaso_carrera_origen', false);
+      setReq('traspaso_documento', false);
 
+      if (this.isTraspaso) {
+        setReq('traspaso_gestion', true);
+        setReq('traspaso_nro_cuota', true);
+        setReq('traspaso_cod_est', true);
+        setReq('traspaso_fecha_origen', true);
+        setReq('traspaso_carrera_origen', true);
+        setReq('traspaso_documento', true);
+        return;
+      }
       if (this.isTarjeta) {
         setReq('id_cuentas_bancarias', true);
         setReq('fecha_deposito', true);
@@ -2660,6 +2729,13 @@ export class MensualidadModalComponent implements OnInit, OnChanges, AfterViewIn
           nro_deposito: this.form.get('nro_deposito')?.value || null,
           tarjeta_first4: this.form.get('tarjeta_first4')?.value || null,
           tarjeta_last4: this.form.get('tarjeta_last4')?.value || null,
+          traspaso_gestion: this.form.get('traspaso_gestion')?.value || null,
+          traspaso_nro_cuota: this.form.get('traspaso_nro_cuota')?.value || null,
+          traspaso_cod_est: this.form.get('traspaso_cod_est')?.value || null,
+          traspaso_fecha_origen: this.form.get('traspaso_fecha_origen')?.value || null,
+          traspaso_carrera_origen: this.form.get('traspaso_carrera_origen')?.value || null,
+          traspaso_documento: this.form.get('traspaso_documento')?.value || null,
+          ...this.buildTraspasoComputedFields(),
           // opcionales
           descuento: this.form.get('descuento')?.value || null,
           nro_factura: this.form.get('comprobante')?.value === 'FACTURA' ? (this.form.get('nro_factura')?.value || null) : null,
@@ -2765,6 +2841,13 @@ export class MensualidadModalComponent implements OnInit, OnChanges, AfterViewIn
             nro_deposito: this.form.get('nro_deposito')?.value || null,
             tarjeta_first4: this.form.get('tarjeta_first4')?.value || null,
             tarjeta_last4: this.form.get('tarjeta_last4')?.value || null,
+            traspaso_gestion: this.form.get('traspaso_gestion')?.value || null,
+            traspaso_nro_cuota: this.form.get('traspaso_nro_cuota')?.value || null,
+            traspaso_cod_est: this.form.get('traspaso_cod_est')?.value || null,
+            traspaso_fecha_origen: this.form.get('traspaso_fecha_origen')?.value || null,
+            traspaso_carrera_origen: this.form.get('traspaso_carrera_origen')?.value || null,
+            traspaso_documento: this.form.get('traspaso_documento')?.value || null,
+            ...this.buildTraspasoComputedFields(),
             // opcionales
             descuento: this.form.get('descuento')?.value || null,
             nro_factura: this.form.get('comprobante')?.value === 'FACTURA' ? (this.form.get('nro_factura')?.value || null) : null,
@@ -2837,6 +2920,13 @@ export class MensualidadModalComponent implements OnInit, OnChanges, AfterViewIn
           nro_deposito: this.form.get('nro_deposito')?.value || null,
           tarjeta_first4: this.form.get('tarjeta_first4')?.value || null,
           tarjeta_last4: this.form.get('tarjeta_last4')?.value || null,
+          traspaso_gestion: this.form.get('traspaso_gestion')?.value || null,
+          traspaso_nro_cuota: this.form.get('traspaso_nro_cuota')?.value || null,
+          traspaso_cod_est: this.form.get('traspaso_cod_est')?.value || null,
+          traspaso_fecha_origen: this.form.get('traspaso_fecha_origen')?.value || null,
+          traspaso_carrera_origen: this.form.get('traspaso_carrera_origen')?.value || null,
+          traspaso_documento: this.form.get('traspaso_documento')?.value || null,
+          ...this.buildTraspasoComputedFields(),
           // Enviar el descuento prorrateado calculado
           descuento: descuentoProrrateado || null,
           nro_factura: this.form.get('comprobante')?.value === 'FACTURA' ? (this.form.get('nro_factura')?.value || null) : null,
@@ -3002,6 +3092,13 @@ export class MensualidadModalComponent implements OnInit, OnChanges, AfterViewIn
               nro_deposito: this.form.get('nro_deposito')?.value || null,
               tarjeta_first4: this.form.get('tarjeta_first4')?.value || null,
               tarjeta_last4: this.form.get('tarjeta_last4')?.value || null,
+              traspaso_gestion: this.form.get('traspaso_gestion')?.value || null,
+              traspaso_nro_cuota: this.form.get('traspaso_nro_cuota')?.value || null,
+              traspaso_cod_est: this.form.get('traspaso_cod_est')?.value || null,
+              traspaso_fecha_origen: this.form.get('traspaso_fecha_origen')?.value || null,
+              traspaso_carrera_origen: this.form.get('traspaso_carrera_origen')?.value || null,
+              traspaso_documento: this.form.get('traspaso_documento')?.value || null,
+              ...this.buildTraspasoComputedFields(),
               descuento: descUnit || null,
               nro_factura: this.form.get('comprobante')?.value === 'FACTURA' ? (this.form.get('nro_factura')?.value || null) : null,
               nro_recibo: this.form.get('comprobante')?.value === 'RECIBO' ? (this.form.get('nro_recibo')?.value || null) : null,
@@ -3085,6 +3182,13 @@ export class MensualidadModalComponent implements OnInit, OnChanges, AfterViewIn
               nro_deposito: this.form.get('nro_deposito')?.value || null,
               tarjeta_first4: this.form.get('tarjeta_first4')?.value || null,
               tarjeta_last4: this.form.get('tarjeta_last4')?.value || null,
+              traspaso_gestion: this.form.get('traspaso_gestion')?.value || null,
+              traspaso_nro_cuota: this.form.get('traspaso_nro_cuota')?.value || null,
+              traspaso_cod_est: this.form.get('traspaso_cod_est')?.value || null,
+              traspaso_fecha_origen: this.form.get('traspaso_fecha_origen')?.value || null,
+              traspaso_carrera_origen: this.form.get('traspaso_carrera_origen')?.value || null,
+              traspaso_documento: this.form.get('traspaso_documento')?.value || null,
+              ...this.buildTraspasoComputedFields(),
               descuento: 0,
               nro_factura: this.form.get('comprobante')?.value === 'FACTURA' ? (this.form.get('nro_factura')?.value || null) : null,
               nro_recibo: this.form.get('comprobante')?.value === 'RECIBO' ? (this.form.get('nro_recibo')?.value || null) : null,
@@ -3111,6 +3215,13 @@ export class MensualidadModalComponent implements OnInit, OnChanges, AfterViewIn
               nro_deposito: this.form.get('nro_deposito')?.value || null,
               tarjeta_first4: this.form.get('tarjeta_first4')?.value || null,
               tarjeta_last4: this.form.get('tarjeta_last4')?.value || null,
+              traspaso_gestion: this.form.get('traspaso_gestion')?.value || null,
+              traspaso_nro_cuota: this.form.get('traspaso_nro_cuota')?.value || null,
+              traspaso_cod_est: this.form.get('traspaso_cod_est')?.value || null,
+              traspaso_fecha_origen: this.form.get('traspaso_fecha_origen')?.value || null,
+              traspaso_carrera_origen: this.form.get('traspaso_carrera_origen')?.value || null,
+              traspaso_documento: this.form.get('traspaso_documento')?.value || null,
+              ...this.buildTraspasoComputedFields(),
               descuento: 0,
               nro_factura: this.form.get('comprobante')?.value === 'FACTURA' ? (this.form.get('nro_factura')?.value || null) : null,
               nro_recibo: this.form.get('comprobante')?.value === 'RECIBO' ? (this.form.get('nro_recibo')?.value || null) : null,
@@ -3143,6 +3254,13 @@ export class MensualidadModalComponent implements OnInit, OnChanges, AfterViewIn
         nro_deposito: this.form.get('nro_deposito')?.value || null,
         tarjeta_first4: this.form.get('tarjeta_first4')?.value || null,
         tarjeta_last4: this.form.get('tarjeta_last4')?.value || null,
+        traspaso_gestion: this.form.get('traspaso_gestion')?.value || null,
+        traspaso_nro_cuota: this.form.get('traspaso_nro_cuota')?.value || null,
+        traspaso_cod_est: this.form.get('traspaso_cod_est')?.value || null,
+        traspaso_fecha_origen: this.form.get('traspaso_fecha_origen')?.value || null,
+        traspaso_carrera_origen: this.form.get('traspaso_carrera_origen')?.value || null,
+        traspaso_documento: this.form.get('traspaso_documento')?.value || null,
+        ...this.buildTraspasoComputedFields(),
         // opcionales
         descuento: this.form.get('descuento')?.value || null,
         nro_factura: this.form.get('comprobante')?.value === 'FACTURA' ? (this.form.get('nro_factura')?.value || null) : null,
@@ -3175,6 +3293,13 @@ export class MensualidadModalComponent implements OnInit, OnChanges, AfterViewIn
           nro_deposito: this.form.get('nro_deposito')?.value || null,
           tarjeta_first4: this.form.get('tarjeta_first4')?.value || null,
           tarjeta_last4: this.form.get('tarjeta_last4')?.value || null,
+          traspaso_gestion: this.form.get('traspaso_gestion')?.value || null,
+          traspaso_nro_cuota: this.form.get('traspaso_nro_cuota')?.value || null,
+          traspaso_cod_est: this.form.get('traspaso_cod_est')?.value || null,
+          traspaso_fecha_origen: this.form.get('traspaso_fecha_origen')?.value || null,
+          traspaso_carrera_origen: this.form.get('traspaso_carrera_origen')?.value || null,
+          traspaso_documento: this.form.get('traspaso_documento')?.value || null,
+          ...this.buildTraspasoComputedFields(),
           descuento: 0,
           nro_factura: this.form.get('comprobante')?.value === 'FACTURA' ? (this.form.get('nro_factura')?.value || null) : null,
           nro_recibo: this.form.get('comprobante')?.value === 'RECIBO' ? (this.form.get('nro_recibo')?.value || null) : null,
@@ -3202,6 +3327,13 @@ export class MensualidadModalComponent implements OnInit, OnChanges, AfterViewIn
             nro_deposito: this.form.get('nro_deposito')?.value || null,
             tarjeta_first4: this.form.get('tarjeta_first4')?.value || null,
             tarjeta_last4: this.form.get('tarjeta_last4')?.value || null,
+            traspaso_gestion: this.form.get('traspaso_gestion')?.value || null,
+            traspaso_nro_cuota: this.form.get('traspaso_nro_cuota')?.value || null,
+            traspaso_cod_est: this.form.get('traspaso_cod_est')?.value || null,
+            traspaso_fecha_origen: this.form.get('traspaso_fecha_origen')?.value || null,
+            traspaso_carrera_origen: this.form.get('traspaso_carrera_origen')?.value || null,
+            traspaso_documento: this.form.get('traspaso_documento')?.value || null,
+            ...this.buildTraspasoComputedFields(),
             descuento: 0,
             nro_factura: this.form.get('comprobante')?.value === 'FACTURA' ? (this.form.get('nro_factura')?.value || null) : null,
             nro_recibo: this.form.get('comprobante')?.value === 'RECIBO' ? (this.form.get('nro_recibo')?.value || null) : null,
@@ -3229,6 +3361,13 @@ export class MensualidadModalComponent implements OnInit, OnChanges, AfterViewIn
         nro_deposito: this.form.get('nro_deposito')?.value || null,
         tarjeta_first4: this.form.get('tarjeta_first4')?.value || null,
         tarjeta_last4: this.form.get('tarjeta_last4')?.value || null,
+        traspaso_gestion: this.form.get('traspaso_gestion')?.value || null,
+        traspaso_nro_cuota: this.form.get('traspaso_nro_cuota')?.value || null,
+        traspaso_cod_est: this.form.get('traspaso_cod_est')?.value || null,
+        traspaso_fecha_origen: this.form.get('traspaso_fecha_origen')?.value || null,
+        traspaso_carrera_origen: this.form.get('traspaso_carrera_origen')?.value || null,
+        traspaso_documento: this.form.get('traspaso_documento')?.value || null,
+        ...this.buildTraspasoComputedFields(),
         descuento: this.form.get('descuento')?.value || null,
         nro_factura: this.form.get('comprobante')?.value === 'FACTURA' ? (this.form.get('nro_factura')?.value || null) : null,
         nro_recibo: this.form.get('comprobante')?.value === 'RECIBO' ? (this.form.get('nro_recibo')?.value || null) : null,
@@ -3286,6 +3425,9 @@ export class MensualidadModalComponent implements OnInit, OnChanges, AfterViewIn
     if (this.isTarjeta || this.isCheque || this.isDeposito || this.isTransferenciaBancaria) {
       this.resetTarjetaFields();
     }
+    if (this.isTraspaso) {
+      this.resetTraspasoFields();
+    }
     this.modalAlertMessage = '';
   }
 
@@ -3301,6 +3443,12 @@ export class MensualidadModalComponent implements OnInit, OnChanges, AfterViewIn
       tarjeta_last4: 'Nº Tarjeta (4 últimos)',
       cantidad: 'Cantidad',
       monto_parcial: this.tipo === 'reincorporacion' ? 'Saldo a pagar' : 'Monto parcial',
+      traspaso_gestion: 'Gestión',
+      traspaso_nro_cuota: 'Nro Cuota',
+      traspaso_cod_est: 'Código Est.',
+      traspaso_fecha_origen: 'Fecha Origen',
+      traspaso_carrera_origen: 'Carrera Origen',
+      traspaso_documento: 'Documento',
     };
     return map[name] || name;
   }
@@ -3336,6 +3484,8 @@ export class MensualidadModalComponent implements OnInit, OnChanges, AfterViewIn
       ['id_cuentas_bancarias', 'fecha_deposito', 'nro_deposito', 'banco_origen'].forEach(addIfMissing);
     } else if (this.isCheque || this.isDeposito) {
       ['id_cuentas_bancarias', 'fecha_deposito', 'nro_deposito'].forEach(addIfMissing);
+    } else if (this.isTraspaso) {
+      ['traspaso_gestion', 'traspaso_nro_cuota', 'traspaso_cod_est', 'traspaso_fecha_origen', 'traspaso_carrera_origen', 'traspaso_documento'].forEach(addIfMissing);
     }
     return out;
   }
@@ -3349,6 +3499,19 @@ export class MensualidadModalComponent implements OnInit, OnChanges, AfterViewIn
       c.setValue(v, { emitEvent: false });
       c.markAsPristine();
       c.markAsUntouched();
+      c.updateValueAndValidity({ emitEvent: false });
+    }
+  }
+
+  private resetTraspasoFields(): void {
+    const names = ['traspaso_gestion', 'traspaso_nro_cuota', 'traspaso_cod_est', 'traspaso_fecha_origen', 'traspaso_carrera_origen', 'traspaso_documento'];
+    for (const n of names) {
+      const c = this.form.get(n);
+      if (!c) continue;
+      c.setValue('', { emitEvent: false });
+      c.markAsPristine();
+      c.markAsUntouched();
+      c.clearValidators();
       c.updateValueAndValidity({ emitEvent: false });
     }
   }
@@ -3407,6 +3570,14 @@ export class MensualidadModalComponent implements OnInit, OnChanges, AfterViewIn
       fecha?.updateValueAndValidity({ emitEvent: false });
       nro?.updateValueAndValidity({ emitEvent: false });
       if (!idCuenta?.value || !fecha?.value || !nro?.value) return false;
+    }
+    if (this.isTraspaso) {
+      const trFields = ['traspaso_gestion', 'traspaso_nro_cuota', 'traspaso_cod_est', 'traspaso_fecha_origen', 'traspaso_carrera_origen', 'traspaso_documento'];
+      for (const n of trFields) {
+        const c = this.form.get(n);
+        c?.updateValueAndValidity({ emitEvent: false });
+        if (!c?.value) return false;
+      }
     }
     // QR: no exige fecha/nro/banco (autogestionado)
     // OTRO / VALES: no exige campos bancarios

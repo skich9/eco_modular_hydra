@@ -473,6 +473,25 @@ class FacturaPayloadBuilder
             if ($m && isset($m->codigo_sin)) {
                 $codigoMetodoPago = (int) $m->codigo_sin;
             }
+
+            // Regla negocio: si el método interno es TRASPASO,
+            // en el XML de impuestos debe enviarse como EFECTIVO (codigoMetodoPago=1).
+            try {
+                $formaId = (string)$args['id_forma_cobro'];
+                $forma = DB::table('formas_cobro')->where('id_forma_cobro', $formaId)->first();
+                $formaNombre = strtoupper(trim((string)(isset($forma->nombre) ? $forma->nombre : (isset($forma->descripcion) ? $forma->descripcion : ''))));
+                if ($formaNombre !== '') {
+                    $formaNombreAscii = @iconv('UTF-8', 'ASCII//TRANSLIT', $formaNombre);
+                    if (is_string($formaNombreAscii) && $formaNombreAscii !== '') {
+                        $formaNombre = $formaNombreAscii;
+                    }
+                }
+                if ($formaId === 'T' || strpos($formaNombre, 'TRASPASO') !== false) {
+                    $codigoMetodoPago = 1;
+                }
+            } catch (\Throwable $e) {
+                // No bloquear facturación por fallas de normalización/mapeo.
+            }
         }
         $numeroTarjetaXml = null;
         if ((int)$codigoMetodoPago === 2) {
