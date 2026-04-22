@@ -4553,8 +4553,11 @@ class SgaSyncRepository
 	 *  - Se replican factura/recibo y nota_reposicion/nota_bancaria igual que los otros sync (si WRITE).
 	 *
 	 * Idempotente vía sga_sync_cobros (source_table='material_adicional').
+	 *
+	 * @param  ?string  $fromFechaPago  Y-m-d: solo filas con material_adicional.fecha_pago >= (requiere columna fecha_pago).
+	 * @param  ?string  $untilFechaPago  Y-m-d: solo filas con fecha_pago <= (opcional).
 	 */
-	public function syncCobrosMaterialAdicional(string $source, ?string $gestion = null, int $chunk = 1000, bool $dryRun = false, ?int $codCetaFilter = null, ?string $codPensumFilter = null, bool $trace = false): array
+	public function syncCobrosMaterialAdicional(string $source, ?string $gestion = null, int $chunk = 1000, bool $dryRun = false, ?int $codCetaFilter = null, ?string $codPensumFilter = null, bool $trace = false, ?string $fromFechaPago = null, ?string $untilFechaPago = null): array
 	{
 		$source = in_array($source, ['sga_elec','sga_mec']) ? $source : 'sga_elec';
 		$gestion = $gestion !== null ? trim((string) $gestion) : null;
@@ -4577,10 +4580,22 @@ class SgaSyncRepository
 		$defaultUserId = (int) (env('SYNC_DEFAULT_USER_ID', 1));
 		$carreraLabel = $source === 'sga_elec' ? 'Electricidad y Electrónica Automotriz' : 'Mecánica Automotriz';
 
+		$fromFechaPago = $fromFechaPago !== null && trim($fromFechaPago) !== '' ? trim($fromFechaPago) : null;
+		$untilFechaPago = $untilFechaPago !== null && trim($untilFechaPago) !== '' ? trim($untilFechaPago) : null;
+		if ($fromFechaPago !== null || $untilFechaPago !== null) {
+			if (! Schema::connection($source)->hasColumn('material_adicional', 'fecha_pago')) {
+				throw new \InvalidArgumentException(
+					"Conexión [{$source}]: la tabla material_adicional no tiene columna fecha_pago; no se puede filtrar por --from-date/--until-date."
+				);
+			}
+		}
+
 		try {
 			Log::info('SGA sync cobros material: mode', [
 				'source' => $source,
 				'gestion' => $gestion ?? 'ALL',
+				'from_fecha_pago' => $fromFechaPago,
+				'until_fecha_pago' => $untilFechaPago,
 				'dry_run' => $dryRun,
 				'trace' => $trace,
 				'writes_cobro' => !$dryRun,
@@ -4618,6 +4633,15 @@ class SgaSyncRepository
 			})
 			->when($codPensumFilter !== null && trim((string)$codPensumFilter) !== '', function ($q) use ($codPensumFilter) {
 				$q->where('ma.cod_pensum', (string) $codPensumFilter);
+			})
+			->when($fromFechaPago !== null || $untilFechaPago !== null, function ($q) use ($fromFechaPago, $untilFechaPago) {
+				$q->whereNotNull('ma.fecha_pago');
+				if ($fromFechaPago !== null) {
+					$q->whereDate('ma.fecha_pago', '>=', $fromFechaPago);
+				}
+				if ($untilFechaPago !== null) {
+					$q->whereDate('ma.fecha_pago', '<=', $untilFechaPago);
+				}
 			});
 
 		try {
@@ -4625,6 +4649,8 @@ class SgaSyncRepository
 			Log::info('SGA sync cobros material: query count', [
 				'source' => $source,
 				'gestion' => $gestion ?? 'ALL',
+				'from_fecha_pago' => $fromFechaPago,
+				'until_fecha_pago' => $untilFechaPago,
 				'count' => $cnt,
 				'dry_run' => $dryRun,
 				'trace' => $trace,
