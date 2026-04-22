@@ -4001,6 +4001,10 @@ export class CobrosComponent implements OnInit {
               const v = (raw ?? '').toString().trim().toUpperCase();
               return ['B', 'C', 'D', 'L', 'O'].includes(v);
             };
+            const isFormaTraspaso = (raw: any): boolean => {
+              const v = (raw ?? '').toString().trim().toUpperCase();
+              return v === 'T' || v === 'TRASPASO';
+            };
             for (const it of items) {
               if ((it?.tipo_documento === 'R') && (it?.medio_doc === 'C') && it?.nro_recibo) {
                 const fecha = it?.cobro?.fecha_cobro || hoy;
@@ -4022,10 +4026,29 @@ export class CobrosComponent implements OnInit {
                 seen.add(key);
                 this.downloadFacturaPdfWithFallback(anioF, it.nro_factura, it);
 
+                // Si es FACTURA y método TRASPASO, también descargar NOTA DE TRASPASO.
+                try {
+                  const formaItem = it?.cobro?.id_forma_cobro ?? it?.cobro?.forma_cobro ?? it?.id_forma_cobro;
+                  const formaCabecera = this.batchForm?.get('cabecera.id_forma_cobro')?.value;
+                  const forma = formaItem ?? formaCabecera;
+                  if (isFormaTraspaso(forma)) {
+                    const keyNt = `NT:${anioF}:${it.nro_factura}`;
+                    if (!seen.has(keyNt)) {
+                      seen.add(keyNt);
+                      this.cobrosService.downloadNotaTraspasoPdfByFactura(anioF, it.nro_factura).subscribe({
+                        next: (blob: Blob) => saveBlobAsFile(blob, `nota_traspaso_${anioF}_${it.nro_factura}.pdf`),
+                        error: () => {}
+                      });
+                    }
+                  }
+                } catch { }
+
                 // Si es FACTURA y el método de pago es bancario, también descargar la NOTA BANCARIA.
                 // En este caso la nota se asocia al nro_factura (no existe recibo).
                 try {
-                  const forma = it?.cobro?.id_forma_cobro ?? it?.cobro?.forma_cobro ?? it?.id_forma_cobro;
+                  const formaItem = it?.cobro?.id_forma_cobro ?? it?.cobro?.forma_cobro ?? it?.id_forma_cobro;
+                  const formaCabecera = this.batchForm?.get('cabecera.id_forma_cobro')?.value;
+                  const forma = formaItem ?? formaCabecera;
                   if (isFormaBancaria(forma)) {
                     const keyNota = `NB:${anioF}:${it.nro_factura}`;
                     if (!seen.has(keyNota)) {
