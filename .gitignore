@@ -23,3 +23,6 @@ src/.env.example.docker
 
 frontend/src/environments/environment.ts.nodocker
 frontend/src/environments/environment.ts.docker
+
+
+src/public/reportes/libro_diario/*.pdf
