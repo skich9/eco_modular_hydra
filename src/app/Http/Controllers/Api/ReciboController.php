@@ -5,6 +5,7 @@ namespace App\Http\Controllers\Api;
 use App\Http\Controllers\Controller;
 use App\Models\Recibo;
 use App\Services\ReciboPdfService;
+use App\Services\NotaTraspasoPdfService;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\Log;
 
@@ -108,6 +109,38 @@ class ReciboController extends Controller
 				'success' => false,
 				'message' => 'No se pudo generar el PDF de la nota bancaria: ' . $e->getMessage(),
 			], 500);
+		}
+	}
+
+	/** GET /notas-traspaso/{anio}/{correlativo}/pdf */
+	public function notaTraspasoPdf($anio, $correlativo, NotaTraspasoPdfService $pdfService)
+	{
+		try {
+			$content  = $pdfService->buildPdf((int) $anio, (int) $correlativo);
+			$filename = sprintf('nota_traspaso_%d_%d.pdf', (int) $anio, (int) $correlativo);
+			return response($content, 200, [
+				'Content-Type'        => 'application/pdf',
+				'Content-Disposition' => 'attachment; filename="' . $filename . '"',
+			]);
+		} catch (\Throwable $e) {
+			Log::error('ReciboController.notaTraspasoPdf error', ['error' => $e->getMessage()]);
+			return response()->json(['success' => false, 'message' => 'No se pudo generar el PDF: ' . $e->getMessage()], 500);
+		}
+	}
+
+	/** GET /notas-traspaso-por-factura/{anio}/{nro_factura}/pdf */
+	public function notaTraspasoPdfByFactura($anio, $nro_factura, NotaTraspasoPdfService $pdfService)
+	{
+		try {
+			$content  = $pdfService->buildPdfByFactura((int) $anio, (int) $nro_factura);
+			$filename = sprintf('nota_traspaso_factura_%d_%d.pdf', (int) $anio, (int) $nro_factura);
+			return response($content, 200, [
+				'Content-Type'        => 'application/pdf',
+				'Content-Disposition' => 'attachment; filename="' . $filename . '"',
+			]);
+		} catch (\Throwable $e) {
+			Log::error('ReciboController.notaTraspasoPdfByFactura error', ['error' => $e->getMessage()]);
+			return response()->json(['success' => false, 'message' => 'No se pudo generar el PDF: ' . $e->getMessage()], 500);
 		}
 	}
 }
