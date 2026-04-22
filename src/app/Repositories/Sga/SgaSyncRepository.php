@@ -10,9 +10,18 @@ use Illuminate\Support\Facades\Schema;
 class SgaSyncRepository
 {
 	/**
+	 * Conserva el id_usuario de SGA sin cambios de mayúsculas/minúsculas.
+	 */
+	private function formatSgaUserNickname($value)
+	{
+		return mb_substr(trim((string) $value), 0, 40);
+	}
+
+	/**
 	 * Normaliza un nickname a minúsculas y sin espacios, truncado a 40 chars.
-	 * Debe usarse SIEMPRE que se persista o busque por `usuarios.nickname` desde
-	 * este repositorio (usa DB::table y no pasa por el mutator del modelo).
+	 * Se usa para matching case-insensitive en sincronizaciones legacy.
+	 * Para importar usuarios desde SGA hacia `usuarios.nickname`, usar
+	 * formatSgaUserNickname() para preservar el casing original.
 	 */
 	private function normalizeNickname($value): string
 	{
@@ -60,6 +69,7 @@ class SgaSyncRepository
 
 		DB::connection($source)
 			->table('usuario')
+			->whereIn('activo', [1, '1', 't', 'T'])
 			->orderBy('id_usuario')
 			->chunk($chunk, function ($rows) use (&$total, &$inserted, &$updated, &$skipped, $dryRun, $idRolSecretaria) {
 				$total += count($rows);
@@ -68,7 +78,7 @@ class SgaSyncRepository
 				$now = now();
 				$payload = [];
 				foreach ($rows as $r) {
-					$nickname = $this->normalizeNickname($r->id_usuario ?? '');
+					$nickname = $this->formatSgaUserNickname($r->id_usuario ?? '');
 					if ($nickname === '') { $skipped++; continue; }
 					$nombre = trim((string) ($r->nombre ?? ''));
 					$apP = trim((string) ($r->ap_paterno ?? ''));
@@ -92,6 +102,18 @@ class SgaSyncRepository
 						'updated_at' => $now,
 					];
 				}
+
+				//Primer registro de nick name gane en el chunk, los demás se saltan por duplicados
+				$payloadDeduped = [];
+				foreach ($payload as $row) {
+					$key = (string) $row['nickname'];
+					if (!isset($payloadDeduped[$key])) {
+						$payloadDeduped[$key] = $row;
+					} else {
+						$skipped++;
+					}
+				}
+				$payload = array_values($payloadDeduped);
 
 				if ($dryRun || empty($payload)) {
 					return;

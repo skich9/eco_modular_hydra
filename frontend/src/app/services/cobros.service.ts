@@ -192,6 +192,12 @@ export class CobrosService {
 		return this.http.get(url, { responseType: 'blob' });
 	}
 
+	// Nota de traspaso por FACTURA (cuando comprobante es Factura + método TRASPASO)
+	downloadNotaTraspasoPdfByFactura(anio: number, nroFactura: number): Observable<Blob> {
+		const url = `${this.apiUrl}/notas-traspaso-por-factura/${anio}/${nroFactura}/pdf`;
+		return this.http.get(url, { responseType: 'blob' });
+	}
+
 	// Obtener metadatos de factura (incluye CUF)
 	getFacturaMeta(anio: number, nroFactura: number): Observable<any> {
 		const url = `${this.apiUrl}/facturas/${anio}/${nroFactura}/meta`;

@@ -5,6 +5,7 @@ namespace App\Services;
 use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Log;
 use Dompdf\Dompdf;
+use App\Services\NotaTraspasoPdfService;
 
 class ReciboPdfService
 {
@@ -299,6 +300,14 @@ class ReciboPdfService
 		} catch (\Throwable $e) {
 			$formaId = '';
 			$formaNombre = '';
+		}
+
+		// ── TRASPASO: delegar a NotaTraspasoPdfService ──
+		$isTraspaso = ($formaId === 'T' || strpos($formaNombre, 'TRASPASO') !== false);
+		if ($isTraspaso) {
+			/** @var NotaTraspasoPdfService $ntSvc */
+			$ntSvc = app(NotaTraspasoPdfService::class);
+			return $ntSvc->buildPdfByRecibo((int) $anio, (int) $nroRecibo);
 		}
 
 		$formaCode = $formaId;

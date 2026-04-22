@@ -179,6 +179,59 @@
             </div>
           </ng-container>
 
+          <!-- Datos de Traspaso -->
+          <ng-container *ngIf="isTraspaso">
+            <div class="col-12">
+              <div class="border rounded p-3 mb-2">
+                <div class="row g-3 align-items-end">
+                  <div class="col-md-4">
+                    <label class="form-label">Gestión</label>
+                    <select class="form-select" formControlName="traspaso_gestion" [class.is-invalid]="form.get('traspaso_gestion')?.invalid && form.get('traspaso_gestion')?.touched">
+                      <option value="">-- Seleccione --</option>
+                      <option *ngFor="let g of gestionesActivasFiltradas" [value]="g.gestion">{{ g.gestion }}</option>
+                    </select>
+                    <div class="invalid-feedback">Seleccione la gestión de origen</div>
+                  </div>
+                  <div class="col-md-4">
+                    <label class="form-label">Nro Cuota</label>
+                    <select class="form-select" formControlName="traspaso_nro_cuota" [class.is-invalid]="form.get('traspaso_nro_cuota')?.invalid && form.get('traspaso_nro_cuota')?.touched">
+                      <option value="">-- Seleccione --</option>
+                      <option [value]="1">1</option>
+                      <option [value]="2">2</option>
+                      <option [value]="3">3</option>
+                      <option [value]="4">4</option>
+                      <option [value]="5">5</option>
+                    </select>
+                    <div class="invalid-feedback">Seleccione el Nro de Cuota</div>
+                  </div>
+                  <div class="col-md-4">
+                    <label class="form-label">Código Est.</label>
+                    <input class="form-control" formControlName="traspaso_cod_est" [class.is-invalid]="form.get('traspaso_cod_est')?.invalid && form.get('traspaso_cod_est')?.touched" />
+                    <div class="invalid-feedback">Ingrese el código del estudiante</div>
+                  </div>
+                  <div class="col-md-4">
+                    <label class="form-label">Fecha Origen</label>
+                    <input type="date" class="form-control" formControlName="traspaso_fecha_origen" [class.is-invalid]="form.get('traspaso_fecha_origen')?.invalid && form.get('traspaso_fecha_origen')?.touched" />
+                    <div class="invalid-feedback">Ingrese la fecha de origen</div>
+                  </div>
+                  <div class="col-md-4">
+                    <label class="form-label">Carrera Origen</label>
+                    <select class="form-select" formControlName="traspaso_carrera_origen" [class.is-invalid]="form.get('traspaso_carrera_origen')?.invalid && form.get('traspaso_carrera_origen')?.touched">
+                      <option value="">-- Seleccione --</option>
+                      <option *ngFor="let c of carrerasActivas" [value]="c.nombre">{{ c.nombre }}</option>
+                    </select>
+                    <div class="invalid-feedback">Seleccione la carrera de origen</div>
+                  </div>
+                  <div class="col-md-4">
+                    <label class="form-label">Documento</label>
+                    <input class="form-control" formControlName="traspaso_documento" [class.is-invalid]="form.get('traspaso_documento')?.invalid && form.get('traspaso_documento')?.touched" />
+                    <div class="invalid-feedback">Ingrese el documento de referencia</div>
+                  </div>
+                </div>
+              </div>
+            </div>
+          </ng-container>
+
           <ng-container *ngIf="tipo === 'mora'">
             <ng-container *ngIf="pendientes > 0; else noMorasPendientes">
               <div class="col-md-4">

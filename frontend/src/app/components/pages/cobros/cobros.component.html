@@ -571,6 +571,7 @@
 		[defaultMetodoPago]="modalFormasCobro[0]?.id_forma_cobro || selectedFormaCobroId"
 		[startCuotaOverride]="modalTipo === 'arrastre' ? null : getNextMensualidadStartCuota()"
 		[frontSaldos]="getFrontSaldos()" [detalleFactura]="pagos.value"
+		[gestionesActivas]="allGestiones" [carreras]="carreras"
 		(addPagos)="onAddPagosFromModal($event)"></app-mensualidad-modal>
 
 	<!-- Modal: Items de Cobro (Libros/Textos/Material) -->

@@ -64,6 +64,7 @@ export class CobrosComponent implements OnInit {
   resumen: any = null;
   allGestiones: any[] = [];
   gestiones: any[] = [];
+  carreras: any[] = [];
   formasCobro: any[] = [];
   sinDocsIdentidad: Array<{ codigo: number; descripcion: string }> = [];
   pensums: any[] = [];
@@ -522,6 +523,15 @@ export class CobrosComponent implements OnInit {
     } catch { this.allGestiones = []; this.gestiones = []; }
   }
 
+  private loadCarreras(): void {
+    this.cobrosService.getCarreras().subscribe({
+      next: (res) => {
+        this.carreras = Array.isArray(res?.data) ? res.data : [];
+      },
+      error: () => { this.carreras = []; }
+    });
+  }
+
   private sortGestionesDesc(arr: any[]): any[] {
     return arr.slice().sort((a: any, b: any) => {
       const parse = (s: string) => {
@@ -725,7 +735,7 @@ export class CobrosComponent implements OnInit {
       this.showAlert('No se encontró el costo de Reincorporación en costo_semestral', 'warning');
       return;
     }
-    if (!this.ensureMetodoPagoPermitido(['EFECTIVO', 'TARJETA', 'CHEQUE', 'DEPOSITO', 'TRANSFERENCIA', 'QR', 'OTRO'])) return;
+    if (!this.ensureMetodoPagoPermitido(['EFECTIVO', 'TARJETA', 'CHEQUE', 'DEPOSITO', 'TRANSFERENCIA', 'QR', 'OTRO', 'TRASPASO'])) return;
     this.computeModalFormasFromSelection();
     this.modalTipo = 'reincorporacion';
     // Abrir modal de Reincorporación
@@ -763,7 +773,7 @@ export class CobrosComponent implements OnInit {
       this.showAlert('Ya agregó Reincorporación al detalle', 'warning');
       return;
     }
-    if (!this.ensureMetodoPagoPermitido(['EFECTIVO', 'TARJETA', 'CHEQUE', 'DEPOSITO', 'TRANSFERENCIA', 'QR', 'OTRO'])) return;
+    if (!this.ensureMetodoPagoPermitido(['EFECTIVO', 'TARJETA', 'CHEQUE', 'DEPOSITO', 'TRANSFERENCIA', 'QR', 'OTRO', 'TRASPASO'])) return;
     const hoy = new Date().toISOString().slice(0, 10);
     const nro = this.getNextCobroNro();
     this.pagos.push(this.fb.group({
@@ -1328,7 +1338,7 @@ export class CobrosComponent implements OnInit {
       return;
     }
     // Permitir todos los métodos disponibles en el catálogo
-    if (!this.ensureMetodoPagoPermitido(['EFECTIVO', 'TARJETA', 'CHEQUE', 'DEPOSITO', 'TRANSFERENCIA', 'QR', 'OTRO'])) return;
+    if (!this.ensureMetodoPagoPermitido(['EFECTIVO', 'TARJETA', 'CHEQUE', 'DEPOSITO', 'TRANSFERENCIA', 'QR', 'OTRO', 'TRASPASO'])) return;
     // Recalcular lista filtrada para el modal según selección actual
     this.computeModalFormasFromSelection();
     // Abrir modal hijo
@@ -1429,7 +1439,7 @@ export class CobrosComponent implements OnInit {
       this.showAlert('No hay cuotas de arrastre pendientes', 'warning');
       return;
     }
-    if (!this.ensureMetodoPagoPermitido(['EFECTIVO', 'TARJETA', 'CHEQUE', 'DEPOSITO', 'TRANSFERENCIA', 'QR', 'OTRO'])) return;
+    if (!this.ensureMetodoPagoPermitido(['EFECTIVO', 'TARJETA', 'CHEQUE', 'DEPOSITO', 'TRANSFERENCIA', 'QR', 'OTRO', 'TRASPASO'])) return;
     // Definir tipo antes de propagar inputs al modal
     this.modalTipo = 'arrastre';
     // Configurar PU y pendientes para arrastre
@@ -2059,6 +2069,7 @@ export class CobrosComponent implements OnInit {
 
     this.cargarSucursalesUsuario();
     this.loadGestiones();
+    this.loadCarreras();
     // Documentos de identidad desde SIN
     this.cobrosService.getSinDocumentosIdentidad().subscribe({
       next: (res) => {
@@ -3103,7 +3114,7 @@ export class CobrosComponent implements OnInit {
       this.showAlert('Debe consultar primero un estudiante/gestión', 'warning');
       return;
     }
-    if (!this.ensureMetodoPagoPermitido(['EFECTIVO', 'TARJETA', 'CHEQUE', 'DEPOSITO', 'TRANSFERENCIA', 'QR', 'OTRO'])) return;
+    if (!this.ensureMetodoPagoPermitido(['EFECTIVO', 'TARJETA', 'CHEQUE', 'DEPOSITO', 'TRANSFERENCIA', 'QR', 'OTRO', 'TRASPASO'])) return;
     const pendFromNext = Number(this.resumen?.mensualidad_next?.pending_count ?? 0) || 0;
     const parcialesCnt = Number(this.resumen?.mensualidad_next?.parcial_count ?? 0) || 0;
     // Mostrar suma pedida por usuario (pendientes + parciales)
@@ -3210,7 +3221,7 @@ export class CobrosComponent implements OnInit {
       this.showAlert('Debe consultar primero un estudiante/gestión', 'warning');
       return;
     }
-    if (!this.ensureMetodoPagoPermitido(['EFECTIVO', 'TARJETA', 'CHEQUE', 'DEPOSITO', 'TRANSFERENCIA', 'QR', 'OTRO'])) return;
+    if (!this.ensureMetodoPagoPermitido(['EFECTIVO', 'TARJETA', 'CHEQUE', 'DEPOSITO', 'TRANSFERENCIA', 'QR', 'OTRO', 'TRASPASO'])) return;
     // Calcular lista de métodos permitidos en el modal según selección actual
     this.computeModalFormasFromSelection();
     this.modalTipo = 'rezagado';
@@ -3223,7 +3234,7 @@ export class CobrosComponent implements OnInit {
       this.showAlert('Debe consultar primero un estudiante/gestión', 'warning');
       return;
     }
-    if (!this.ensureMetodoPagoPermitido(['EFECTIVO', 'TARJETA', 'CHEQUE', 'DEPOSITO', 'TRANSFERENCIA', 'QR', 'OTRO'])) return;
+    if (!this.ensureMetodoPagoPermitido(['EFECTIVO', 'TARJETA', 'CHEQUE', 'DEPOSITO', 'TRANSFERENCIA', 'QR', 'OTRO', 'TRASPASO'])) return;
     // Calcular lista de métodos permitidos en el modal según selección actual
     this.computeModalFormasFromSelection();
     this.modalTipo = 'recuperacion';
@@ -3247,7 +3258,7 @@ export class CobrosComponent implements OnInit {
       this.showAlert('No hay moras pendientes para este estudiante', 'warning');
       return;
     }
-    if (!this.ensureMetodoPagoPermitido(['EFECTIVO', 'TARJETA', 'CHEQUE', 'DEPOSITO', 'TRANSFERENCIA', 'QR', 'OTRO'])) return;
+    if (!this.ensureMetodoPagoPermitido(['EFECTIVO', 'TARJETA', 'CHEQUE', 'DEPOSITO', 'TRANSFERENCIA', 'QR', 'OTRO', 'TRASPASO'])) return;
     this.computeModalFormasFromSelection();
 
     const modalEl = document.getElementById('moraModal');
@@ -3617,6 +3628,16 @@ export class CobrosComponent implements OnInit {
         nro_deposito: [p.nro_deposito ?? null],
         tarjeta_first4: [p.tarjeta_first4 ?? null],
         tarjeta_last4: [p.tarjeta_last4 ?? null],
+        // Campos traspaso para nota_traspaso
+        traspaso_gestion: [p.traspaso_gestion ?? null],
+        traspaso_nro_cuota: [p.traspaso_nro_cuota ?? null],
+        traspaso_cod_est: [p.traspaso_cod_est ?? null],
+        traspaso_fecha_origen: [p.traspaso_fecha_origen ?? null],
+        traspaso_carrera_origen: [p.traspaso_carrera_origen ?? null],
+        traspaso_documento: [p.traspaso_documento ?? null],
+        traspaso_tipo: [p.traspaso_tipo ?? null],
+        traspaso_concepto: [p.traspaso_concepto ?? null],
+        traspaso_gestion_destino: [p.traspaso_gestion_destino ?? null],
         // Campos UI para mostrar en la tabla como labels
         cantidad: [cant, [Validators.required, Validators.min(1)]],
         detalle: [detalle],
@@ -3980,6 +4001,10 @@ export class CobrosComponent implements OnInit {
               const v = (raw ?? '').toString().trim().toUpperCase();
               return ['B', 'C', 'D', 'L', 'O'].includes(v);
             };
+            const isFormaTraspaso = (raw: any): boolean => {
+              const v = (raw ?? '').toString().trim().toUpperCase();
+              return v === 'T' || v === 'TRASPASO';
+            };
             for (const it of items) {
               if ((it?.tipo_documento === 'R') && (it?.medio_doc === 'C') && it?.nro_recibo) {
                 const fecha = it?.cobro?.fecha_cobro || hoy;
@@ -4001,10 +4026,29 @@ export class CobrosComponent implements OnInit {
                 seen.add(key);
                 this.downloadFacturaPdfWithFallback(anioF, it.nro_factura, it);
 
+                // Si es FACTURA y método TRASPASO, también descargar NOTA DE TRASPASO.
+                try {
+                  const formaItem = it?.cobro?.id_forma_cobro ?? it?.cobro?.forma_cobro ?? it?.id_forma_cobro;
+                  const formaCabecera = this.batchForm?.get('cabecera.id_forma_cobro')?.value;
+                  const forma = formaItem ?? formaCabecera;
+                  if (isFormaTraspaso(forma)) {
+                    const keyNt = `NT:${anioF}:${it.nro_factura}`;
+                    if (!seen.has(keyNt)) {
+                      seen.add(keyNt);
+                      this.cobrosService.downloadNotaTraspasoPdfByFactura(anioF, it.nro_factura).subscribe({
+                        next: (blob: Blob) => saveBlobAsFile(blob, `nota_traspaso_${anioF}_${it.nro_factura}.pdf`),
+                        error: () => {}
+                      });
+                    }
+                  }
+                } catch { }
+
                 // Si es FACTURA y el método de pago es bancario, también descargar la NOTA BANCARIA.
                 // En este caso la nota se asocia al nro_factura (no existe recibo).
                 try {
-                  const forma = it?.cobro?.id_forma_cobro ?? it?.cobro?.forma_cobro ?? it?.id_forma_cobro;
+                  const formaItem = it?.cobro?.id_forma_cobro ?? it?.cobro?.forma_cobro ?? it?.id_forma_cobro;
+                  const formaCabecera = this.batchForm?.get('cabecera.id_forma_cobro')?.value;
+                  const forma = formaItem ?? formaCabecera;
                   if (isFormaBancaria(forma)) {
                     const keyNota = `NB:${anioF}:${it.nro_factura}`;
                     if (!seen.has(keyNota)) {
@@ -4347,7 +4391,7 @@ export class CobrosComponent implements OnInit {
       this.showAlert('No hay cuotas de arrastre pendientes', 'warning');
       return;
     }
-    if (!this.ensureMetodoPagoPermitido(['EFECTIVO', 'TARJETA', 'CHEQUE', 'DEPOSITO', 'TRANSFERENCIA', 'QR', 'OTRO'])) return;
+    if (!this.ensureMetodoPagoPermitido(['EFECTIVO', 'TARJETA', 'CHEQUE', 'DEPOSITO', 'TRANSFERENCIA', 'QR', 'OTRO', 'TRASPASO'])) return;
     const hoy = new Date().toISOString().slice(0, 10);
     const nro = this.getNextMensualidadNro();
     // Monto/PU de arrastre debe ser NETO (preferir datos de arrastre.asignacion_costos/asignaciones_arrastre)
