@@ -16,8 +16,6 @@ class DatabaseSeeder extends Seeder
             // Usuarios y permisos
             RolesFuncionesActualesSeeder::class,
             UsuarioSeeder::class,
-            // Tras existir usuarios: permiso de recepción (rol_funcion + asignacion_funcion)
-            RecepcionIngresosSeeder::class,
             // Asegurar que el admin tenga funciones asignadas para no bloquear el sistema
             AsignarFuncionesUsuarioAdminSeeder::class,
 

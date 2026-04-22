@@ -20,7 +20,7 @@ class RecepcionIngresoController extends Controller
      * GET /api/economico/recepcion-ingresos/initial
      *
      * Retorna catálogos para poblar los selects del formulario:
-     * carreras, actividades, usuarios de firma (misma lista en Entregue/Recibi, alineada a SGA) y códigos de libro.
+     * carreras, actividades económicas, tesoreros (rol=9) y usuarios activos.
      */
     public function initialData(): JsonResponse
     {

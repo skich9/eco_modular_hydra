@@ -31,7 +31,6 @@ use App\Services\Qr\QrSocketNotifier;
 use App\Services\MoraRecalculoService;
 use App\Services\LibroDiarioIdentificadorHelper;
 use App\Services\Reportes\LibroDiarioAccessService;
-use App\Services\Reportes\LibroDiarioCierreTotalesService;
 use Carbon\Carbon;
 
 class CobroController extends Controller
@@ -5042,18 +5041,6 @@ class CobroController extends Controller
 					});
 
 					if ($respuestaAnticipada !== null) {
-						$idEarly = (int) ($respuestaAnticipada['id_libro_diario_cierre'] ?? 0);
-						if ($idEarly > 0 && Schema::hasTable('libro_diario_cierre_totales')) {
-							try {
-								app(LibroDiarioCierreTotalesService::class)
-									->syncFromCierreId($idEarly, $codigoCarreraVal);
-							} catch (\Throwable $e) {
-								Log::warning('[CobroController] sync libro_diario_cierre_totales (reuso cierre)', [
-									'id_libro_diario_cierre' => $idEarly,
-									'error' => $e->getMessage(),
-								]);
-							}
-						}
 						return response()->json($respuestaAnticipada);
 					}
 				}
@@ -5082,18 +5069,6 @@ class CobroController extends Controller
 			}
 			if ($codigoRdOut !== null) {
 				$jsonOk['codigo_rd'] = $codigoRdOut;
-			}
-
-			if ($idLibroDiarioCierre !== null && Schema::hasTable('libro_diario_cierre_totales')) {
-				try {
-					app(LibroDiarioCierreTotalesService::class)
-						->syncFromCierreId((int) $idLibroDiarioCierre, $codigoCarreraVal);
-				} catch (\Throwable $e) {
-					Log::warning('[CobroController] sync libro_diario_cierre_totales', [
-						'id_libro_diario_cierre' => $idLibroDiarioCierre,
-						'error' => $e->getMessage(),
-					]);
-				}
 			}
 
 			return response()->json($jsonOk);

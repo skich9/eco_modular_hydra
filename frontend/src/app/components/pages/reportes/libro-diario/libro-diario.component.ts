@@ -42,12 +42,6 @@ export class LibroDiarioComponent implements OnInit {
   alertMessage: string = '';
   alertType: 'success' | 'error' | 'warning' = 'success';
 
-  /**
-   * Filas de datos por página en el PDF (sin contar la fila "Subtotal página").
-   * Backend acepta 5–80; valores fuera de rango se recortan.
-   */
-  readonly filasLibroDiarioPdfPorPagina = 50;
-
   constructor(
     private fb: FormBuilder,
     private libroDiarioService: LibroDiarioService,
@@ -483,8 +477,7 @@ export class LibroDiarioComponent implements OnInit {
               t_ingresos: this.totales.ingresos.toFixed(2),
               t_egresos: '0.00',
               totales: this.totalGeneral.toFixed(2),
-              resumen,
-              filas_por_pagina: this.filasLibroDiarioPdfPorPagina
+              resumen
             };
 
             // Luego generar el PDF

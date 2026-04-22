@@ -43,7 +43,6 @@ use App\Http\Controllers\Api\LibroDiarioController;
 use App\Http\Controllers\Api\Economico\OtrosIngresosController;
 use App\Http\Controllers\Api\Economico\ModOtrosIngresosController;
 use App\Http\Controllers\Api\Economico\RecepcionIngresoController;
-use App\Http\Controllers\Api\ReporteRecepcionIngresoDepositoController;
 
 // Búsqueda de estudiantes
 Route::get('/estudiantes/search', [EstudianteController::class, 'search']);
@@ -161,9 +160,6 @@ Route::middleware('auth:sanctum')->group(function () {
 		Route::get('listar', [RecepcionIngresoController::class, 'listar']);
 		Route::post('registrar', [RecepcionIngresoController::class, 'registrar']);
 		Route::post('generar-reporte', [RecepcionIngresoController::class, 'generarReporte']);
-		Route::post('imprimir-estructura-pdf', [ReporteRecepcionIngresoDepositoController::class, 'imprimirEstructura']);
-		Route::post('vista-previa-pdf', [ReporteRecepcionIngresoDepositoController::class, 'vistaPrevia']);
-		Route::post('{id}/documento-pdf', [ReporteRecepcionIngresoDepositoController::class, 'documentoRegistrado'])->where('id', '[0-9]+');
 		Route::get('{id}', [RecepcionIngresoController::class, 'show'])->where('id', '[0-9]+');
 		Route::post('{id}/anular', [RecepcionIngresoController::class, 'anular'])->where('id', '[0-9]+');
 	});

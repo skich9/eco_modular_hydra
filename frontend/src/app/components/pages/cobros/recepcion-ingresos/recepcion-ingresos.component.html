@@ -1,6 +1,11 @@
-<div class="container-fluid px-3 py-3 recepcion-sga">
+<div class="container-fluid px-3 py-3">
 
-  <h3 class="mb-3 page-header-sga"><b>Recepción de ingresos</b></h3>
+  <div class="d-flex justify-content-between align-items-center mb-4">
+    <div>
+      <h3 class="mb-0 fw-bold text-dark"><i class="bi bi-folder-check me-2 text-primary"></i>Recepción de Ingresos</h3>
+      <span class="text-muted small">Cierre y centralización de partes diarios</span>
+    </div>
+  </div>
 
   @if (alertMsg) {
     <div class="alert alert-dismissible" [class.alert-success]="alertOk" [class.alert-danger]="!alertOk" role="alert">
@@ -16,238 +21,306 @@
     </div>
   } @else {
 
-    <!-- Panel principal (equivalente SGA: Ingresos recibidos para la fecha) -->
-    <div class="row justify-content-center">
-      <div class="col-12 col-lg-10 col-xl-8">
-        <div class="card panel-sga-primary border-0 shadow-sm mb-4">
-          <div class="card-header panel-sga-heading text-white fw-bold">
-            Ingresos recibidos para la fecha:
+    <!-- ─── PARAMETRIZACIÓN DE BÚSQUEDA ─── -->
+    <div class="card shadow-sm border-0 mb-4 p-3 config-panel">
+      <h6 class="fw-bold mb-3 text-secondary"><i class="bi bi-search me-2"></i>1. Parámetros de Búsqueda de Libros Diarios</h6>
+      
+      <div class="row g-3 align-items-end">
+        <div class="col-md-3">
+          <label class="form-label mb-1 text-uppercase small fw-bold">Carrera <span class="text-danger">*</span></label>
+          <select class="form-select form-select-sm" [(ngModel)]="carrera">
+            <option value="">-- Seleccionar --</option>
+            @for (c of catalogos.carreras; track c.codigo) {
+              <option [value]="c.codigo">{{ c.nombre }}</option>
+            }
+          </select>
+        </div>
+        
+        <div class="col-md-3">
+          <label class="form-label mb-1 text-uppercase small fw-bold">Actividad Económica</label>
+          <select class="form-select form-select-sm" [(ngModel)]="idActividad">
+            <option [value]="null">-- Todas --</option>
+            @for (a of catalogos.actividades; track a.id) {
+              <option [value]="a.id">{{ a.descripcion }}</option>
+            }
+          </select>
+        </div>
+
+        <div class="col-md-2">
+          <label class="form-label mb-1 text-uppercase small fw-bold">Desde <span class="text-danger">*</span></label>
+          <input type="date" class="form-control form-control-sm" [(ngModel)]="fechaDesde" [max]="fechaHasta">
+        </div>
+        <div class="col-md-2">
+          <label class="form-label mb-1 text-uppercase small fw-bold">Hasta <span class="text-danger">*</span></label>
+          <input type="date" class="form-control form-control-sm" [(ngModel)]="fechaHasta" [min]="fechaDesde">
+        </div>
+
+        <div class="col-md-2">
+          <button class="btn btn-primary btn-sm w-100 fw-bold" (click)="generarReporte()" [disabled]="generando">
+            @if (generando) { <span class="spinner-border spinner-border-sm"></span> } 
+            @else { <i class="bi bi-list-check me-1"></i> Consultar }
+          </button>
+        </div>
+      </div>
+    </div>
+
+    <!-- ─── CONFIGURACIÓN DEL RECIBO FISICO Y FIRMAS ─── -->
+    @if (reporteGenerado) {
+    <div class="card shadow-sm border-0 mb-4 p-3 receipt-config-panel">
+      <h6 class="fw-bold mb-3 text-secondary"><i class="bi bi-pen me-2"></i>2. Configuración del Documento Físico</h6>
+      
+      <div class="row g-3">
+        <!-- Fecha de recepción y Observación -->
+        <div class="col-md-4 border-end pe-4">
+          <div class="mb-3">
+            <label class="form-label mb-1 text-uppercase small fw-bold">Fecha del Documento <span class="text-danger">*</span></label>
+            <input type="date" class="form-control form-control-sm" [(ngModel)]="fechaRecepcion">
           </div>
-          <div class="card-body">
-            <div class="row">
-              <div class="col-md-6">
-                <div class="mb-3 row align-items-center">
-                  <label class="col-sm-6 col-form-label col-form-label-sm">Fecha Recepción <span class="text-warning">*</span></label>
-                  <div class="col-sm-6">
-                    <input type="date" class="form-control form-control-sm" [(ngModel)]="fechaRecepcion">
-                  </div>
-                </div>
-                <div class="mb-3 row align-items-center">
-                  <label class="col-sm-6 col-form-label col-form-label-sm" for="nro_reportes">Nro Reportes Diarios</label>
-                  <div class="col-sm-6">
-                    <input type="text" class="form-control form-control-sm bg-light" id="nro_reportes" [value]="nroReportesDiarios" readonly tabindex="-1">
-                  </div>
-                </div>
-                <div class="mb-3 row align-items-center">
-                  <label class="col-sm-6 col-form-label col-form-label-sm">Fecha Inicial Libro <span class="text-warning">*</span></label>
-                  <div class="col-sm-6">
-                    <input type="date" class="form-control form-control-sm" [(ngModel)]="fechaDesde" [max]="fechaHasta">
-                  </div>
-                </div>
-                <div class="mb-3 row align-items-center">
-                  <label class="col-sm-6 col-form-label col-form-label-sm">Fecha Final Libro <span class="text-warning">*</span></label>
-                  <div class="col-sm-6">
-                    <input type="date" class="form-control form-control-sm" [(ngModel)]="fechaHasta" [min]="fechaDesde">
-                  </div>
-                </div>
-              </div>
-              <div class="col-md-6">
-                <div class="mb-3 row align-items-center">
-                  <label class="col-sm-4 col-form-label col-form-label-sm">Entregue 1 <span class="text-warning">*</span></label>
-                  <div class="col-sm-8">
-                    <select class="form-select form-select-sm" [(ngModel)]="entregue1">
-                      <option value="">Seleccione un usuario</option>
-                      @for (u of catalogos.usuarios_activos; track u.id_usuario) {
-                        <option [value]="u.nickname">{{ u.label }}</option>
-                      }
-                    </select>
-                  </div>
-                </div>
-                <div class="mb-3 row align-items-center">
-                  <label class="col-sm-4 col-form-label col-form-label-sm">Recibi 1 <span class="text-warning">*</span></label>
-                  <div class="col-sm-8">
-                    <select class="form-select form-select-sm" [(ngModel)]="recibi1">
-                      <option value="">Seleccione un usuario</option>
-                      @for (u of catalogos.usuarios_activos; track u.id_usuario) {
-                        <option [value]="u.nickname">{{ u.label }}</option>
-                      }
-                    </select>
-                  </div>
-                </div>
-                <div class="mb-3 row align-items-center">
-                  <label class="col-sm-4 col-form-label col-form-label-sm">Entregue 2</label>
-                  <div class="col-sm-8">
-                    <select class="form-select form-select-sm" [(ngModel)]="entregue2">
-                      <option value="">Seleccione un usuario</option>
-                      @for (u of catalogos.usuarios_activos; track u.id_usuario) {
-                        <option [value]="u.nickname">{{ u.label }}</option>
-                      }
-                    </select>
-                  </div>
-                </div>
-                <div class="mb-3 row align-items-center">
-                  <label class="col-sm-4 col-form-label col-form-label-sm">Recibi 2</label>
-                  <div class="col-sm-8">
-                    <select class="form-select form-select-sm" [(ngModel)]="recibi2">
-                      <option value="">Seleccione un usuario</option>
-                      @for (u of catalogos.usuarios_activos; track u.id_usuario) {
-                        <option [value]="u.nickname">{{ u.label }}</option>
-                      }
-                    </select>
-                  </div>
-                </div>
-              </div>
+          <div>
+            <label class="form-label mb-1 text-uppercase small fw-bold">Observaciones</label>
+            <textarea class="form-control form-control-sm bg-light" rows="3" [(ngModel)]="observacion" placeholder="Detalles adicionales sobre la recepción..."></textarea>
+          </div>
+        </div>
+
+        <!-- Participantes (Firmas) -->
+        <div class="col-md-8 ps-4">
+          <div class="row g-3">
+            <!-- Fila 1 -->
+            <div class="col-md-6">
+              <label class="form-label mb-1 text-uppercase small fw-bold d-flex justify-content-between">
+                <span>Entregue 1 <span class="text-danger">*</span></span>
+                <span class="badge bg-info text-dark rounded-pill">Por Defecto: Tú</span>
+              </label>
+              <select class="form-select form-select-sm border-info" [(ngModel)]="entregue1">
+                <option value="">Selecciona usuario...</option>
+                @for (u of catalogos.usuarios_activos; track u.id_usuario) {
+                  <option [value]="u.nickname">{{ u.label }}</option>
+                }
+              </select>
+            </div>
+            
+            <div class="col-md-6">
+              <label class="form-label mb-1 text-uppercase small fw-bold d-flex justify-content-between">
+                <span>Recibí 1 <span class="text-danger">*</span></span>
+                <span class="badge bg-purple text-white rounded-pill"><i class="bi bi-shield-lock me-1"></i>Tesorería</span>
+              </label>
+              <select class="form-select form-select-sm border-purple" [(ngModel)]="recibi1">
+                <option value="">Selecciona tesorero...</option>
+                @for (t of catalogos.tesoreros; track t.id_usuario) {
+                  <option [value]="t.nickname">{{ t.label }}</option>
+                }
+              </select>
             </div>
 
-            <div class="row">
-              <div class="col-12">
-                <div class="mb-3 row align-items-center">
-                  <label class="col-sm-3 col-md-2 col-form-label col-form-label-sm">Carrera <span class="text-warning">*</span></label>
-                  <div class="col-sm-9 col-md-4">
-                    <select class="form-select form-select-sm" [(ngModel)]="carrera">
-                      <option value="">Seleccione carrera</option>
-                      @for (c of catalogos.carreras; track c.codigo) {
-                        <option [value]="c.codigo">{{ c.nombre }}</option>
-                      }
-                    </select>
-                  </div>
-                </div>
-                <div class="mb-3 row align-items-center">
-                  <label class="col-sm-3 col-md-2 col-form-label col-form-label-sm">Actividad:</label>
-                  <div class="col-sm-9 col-md-4">
-                    <select class="form-select form-select-sm" [(ngModel)]="idActividad">
-                      <option [value]="null">Seleccione una Actividad</option>
-                      @for (a of catalogos.actividades; track a.id) {
-                        <option [value]="a.id">{{ a.descripcion }}</option>
-                      }
-                    </select>
-                  </div>
-                </div>
-                <div class="mb-0 row">
-                  <label class="col-sm-3 col-md-2 col-form-label col-form-label-sm">Observacion</label>
-                  <div class="col-sm-9 col-md-10">
-                    <textarea class="form-control form-control-sm" rows="3" [(ngModel)]="observacion" placeholder=""></textarea>
-                  </div>
-                </div>
-              </div>
+            <!-- Fila 2 -->
+            <div class="col-md-6">
+              <label class="form-label mb-1 text-uppercase small fw-bold text-muted">Entregue 2 <span class="fw-normal">(Opcional)</span></label>
+              <select class="form-select form-select-sm" [(ngModel)]="entregue2">
+                <option value="">-- Ninguno --</option>
+                @for (u of catalogos.usuarios_activos; track u.id_usuario) {
+                  <option [value]="u.nickname">{{ u.label }}</option>
+                }
+              </select>
             </div>
-
-            <div class="row g-2 mt-3 pt-2 border-top">
-              <div class="col-12 col-sm-4">
-                <button type="button" class="btn btn-primary w-100" (click)="generarReporte()" [disabled]="generando">
-                  @if (generando) { <span class="spinner-border spinner-border-sm"></span> }
-                  @else { <i class="bi bi-search me-1"></i> }
-                  Consultar
-                </button>
-              </div>
-              <div class="col-12 col-sm-4">
-                <button type="button" class="btn btn-warning w-100 text-dark" (click)="limpiar()">
-                  <i class="bi bi-trash me-1"></i> Limpiar
-                </button>
-              </div>
-              <div class="col-12 col-sm-4">
-                <a routerLink="/cobros" class="btn btn-danger w-100" role="button">
-                  <i class="bi bi-x-lg me-1"></i> Cancelar
-                </a>
-              </div>
+            
+            <div class="col-md-6">
+              <label class="form-label mb-1 text-uppercase small fw-bold text-muted">Recibí 2 <span class="fw-normal">(Opcional)</span></label>
+              <select class="form-select form-select-sm" [(ngModel)]="recibi2">
+                <option value="">-- Ninguno --</option>
+                @for (t of catalogos.tesoreros; track t.id_usuario) {
+                  <option [value]="t.nickname">{{ t.label }}</option>
+                }
+              </select>
             </div>
           </div>
         </div>
       </div>
     </div>
+    }
 
-    <!-- Tabla (SGA: Datos de recepción de ingresos) -->
-    <div class="row justify-content-center">
-      <div class="col-12 col-xl-10">
-        <div class="card panel-sga-primary border-0 shadow-sm">
-          <div class="card-header panel-sga-heading text-center text-white fw-bold">
-            Datos de recepción de ingresos
+    <!-- ─── RESULTADOS (LA TABLA CUMPLIENDO EL FORMATO) ─── -->
+    @if (reporteGenerado) {
+      <div class="card shadow-sm border-0 result-panel">
+        <div class="card-header bg-white py-3 border-bottom d-flex justify-content-between align-items-center">
+          <div class="d-flex align-items-center gap-2">
+            <h6 class="mb-0 fw-bold"><i class="bi bi-table me-2"></i>Detalle de la Recepción de Ingresos</h6>
+            <span class="badge bg-light border text-dark">{{ filas.length }} Cierres Encontrados</span>
           </div>
-          <div class="card-body p-0">
-            <div class="table-responsive">
-              <table class="table table-striped table-bordered table-sga-recepcion mb-0">
-                <thead class="text-center">
+          
+          <div class="d-flex gap-2">
+            <button class="btn btn-light btn-sm fw-bold border" (click)="limpiar()"><i class="bi bi-eraser me-1"></i>Limpiar Todo</button>
+            @if (filas.length > 0) {
+              <button class="btn btn-outline-primary btn-sm fw-bold px-3" (click)="abrirVistaPrevia()"><i class="bi bi-eye me-1"></i>Vista Previa</button>
+              <button class="btn btn-success btn-sm fw-bold px-3 shadow-sm" (click)="guardarRecepcion()"><i class="bi bi-save me-1"></i>Guardar Recepción</button>
+            }
+          </div>
+        </div>
+
+        <div class="card-body p-0">
+          <div class="table-responsive">
+            <table class="table table-hover table-bordered align-middle mb-0 receipt-table">
+              <thead>
+                <tr>
+                  <th style="min-width: 140px;">Libro Diario</th>
+                  <th style="min-width: 120px;">Cajero (Libro)</th>
+                  <th class="text-center" style="width: 100px;">Inicio</th>
+                  <th class="text-center" style="width: 100px;">Final</th>
+                  <th class="text-end" style="width: 110px;">Depósito</th>
+                  <th class="text-end" style="width: 110px;">Traspaso</th>
+                  <th class="text-end bg-light" style="width: 120px;">(a)<br><small>Recibos Bs.</small></th>
+                  <th class="text-end bg-light" style="width: 120px;">(b)<br><small>Facturas Bs.</small></th>
+                  <th class="text-end bg-success-subtle text-success-emphasis" style="width: 140px;">(a+b)<br>Total Entregado</th>
+                </tr>
+              </thead>
+              <tbody>
+                @if (filas.length === 0) {
                   <tr>
-                    <th>Fecha</th>
-                    <th>Entregado A:</th>
-                    <th>CodLibro :</th>
-                    <th>Total Deposito</th>
-                    <th>Total Traspaso</th>
-                    <th>(a)<br>TOTAL RECIBOS BS.</th>
-                    <th>(b)<br>TOTAL FACTURAS BS.</th>
-                    <th>(a+b)<br>TOTAL GENERAL EN BOLIVIANOS</th>
+                    <td colspan="9" class="text-center text-muted py-5">
+                      <i class="bi bi-inbox fs-2 d-block mb-3 text-black-50"></i>
+                      No se encontraron libros diarios cerrados para los criterios seleccionados.
+                    </td>
                   </tr>
-                </thead>
-                <tbody>
-                  @if (filas.length === 0) {
+                } @else {
+                  @for (f of filas; track $index) {
                     <tr>
-                      <td colspan="8" class="text-center text-muted py-4">
-                        @if (reporteGenerado) {
-                          No hay libros diarios en el periodo. Pulse Consultar tras elegir carrera y fechas.
-                        } @else {
-                          Pulse <strong>Consultar</strong> para cargar los totales del libro diario.
-                        }
+                      <td><span class="badge border text-dark bg-light font-monospace">{{ f.cod_libro_diario }}</span></td>
+                      <td class="fw-semibold">{{ f.usuario_libro }}</td>
+                      <td class="text-center small text-muted">{{ formatFecha(f.fecha_inicial) }}</td>
+                      <td class="text-center small text-muted">{{ formatFecha(f.fecha_final) }}</td>
+                      <td class="text-end tabular-nums">{{ f.total_deposito  | number:'1.2-2' }}</td>
+                      <td class="text-end tabular-nums">{{ f.total_traspaso  | number:'1.2-2' }}</td>
+                      <td class="text-end tabular-nums bg-light">{{ f.total_recibos   | number:'1.2-2' }}</td>
+                      <td class="text-end tabular-nums bg-light">{{ f.total_facturas  | number:'1.2-2' }}</td>
+                      <td class="text-end fw-bold tabular-nums bg-success-subtle text-success-emphasis">
+                        {{ f.total_entregado | number:'1.2-2' }}
                       </td>
                     </tr>
-                  } @else {
-                    @for (f of filas; track $index) {
-                      <tr>
-                        <td class="text-center small">
-                          {{ formatFecha(f.fecha_inicial) }}
-                          @if (f.fecha_final && f.fecha_final !== f.fecha_inicial) {
-                            <span class="d-block text-muted">al {{ formatFecha(f.fecha_final) }}</span>
-                          }
-                        </td>
-                        <td>{{ f.usuario_libro }}</td>
-                        <td class="text-center font-monospace small">{{ f.cod_libro_diario }}</td>
-                        <td class="text-end tabular-nums">{{ f.total_deposito  | number:'1.2-2' }}</td>
-                        <td class="text-end tabular-nums">{{ f.total_traspaso  | number:'1.2-2' }}</td>
-                        <td class="text-end tabular-nums">{{ f.total_recibos   | number:'1.2-2' }}</td>
-                        <td class="text-end tabular-nums">{{ f.total_facturas  | number:'1.2-2' }}</td>
-                        <td class="text-end fw-bold tabular-nums">{{ f.total_entregado | number:'1.2-2' }}</td>
-                      </tr>
-                    }
                   }
-                </tbody>
-                @if (filas.length > 0) {
-                  <tfoot>
-                    <tr class="table-active fw-bold">
-                      <td colspan="3" class="text-end">Totales</td>
-                      <td class="text-end">{{ totales.deposito | number:'1.2-2' }}</td>
-                      <td class="text-end">{{ totales.traspaso | number:'1.2-2' }}</td>
-                      <td class="text-end">{{ totales.recibos | number:'1.2-2' }}</td>
-                      <td class="text-end">{{ totales.facturas | number:'1.2-2' }}</td>
-                      <td class="text-end text-bg-success">{{ totalGeneral | number:'1.2-2' }}</td>
-                    </tr>
-                  </tfoot>
                 }
-              </table>
-            </div>
-          </div>
-        </div>
-
-        <div class="row justify-content-center my-3 g-2">
-          <div class="col-12 col-sm-6 col-md-4 col-lg-3">
-            <button
-              type="button"
-              class="btn btn-primary w-100"
-              (click)="abrirVistaPrevia()"
-              [disabled]="generando || filas.length === 0">
-              <i class="bi bi-printer me-1"></i> Vista Previa
-            </button>
-          </div>
-          <div class="col-12 col-sm-6 col-md-4 col-lg-3">
-            <button
-              type="button"
-              class="btn btn-primary w-100"
-              (click)="guardarRecepcion()"
-              [disabled]="generando || filas.length === 0 || !reporteGenerado">
-              <i class="bi bi-save me-1"></i> Imprimir y Cerrar
-            </button>
+              </tbody>
+              @if (filas.length > 0) {
+                <tfoot>
+                  <tr>
+                    <td colspan="4" class="text-end fw-bold">TOTALES DEL REPORTE:</td>
+                    <td class="text-end fw-bold">{{ totales.deposito | number:'1.2-2' }}</td>
+                    <td class="text-end fw-bold">{{ totales.traspaso | number:'1.2-2' }}</td>
+                    <td class="text-end fw-bold bg-light">{{ totales.recibos | number:'1.2-2' }}</td>
+                    <td class="text-end fw-bold bg-light">{{ totales.facturas | number:'1.2-2' }}</td>
+                    <td class="text-end fs-5 fw-bold bg-success text-white">
+                      {{ totalGeneral | number:'1.2-2' }}<small class="fs-6 fw-normal ms-1">Bs</small>
+                    </td>
+                  </tr>
+                </tfoot>
+              }
+            </table>
           </div>
         </div>
       </div>
-    </div>
+    }
 
   }<!-- end cargando -->
 </div>
+
+<!-- ─── MODAL VISTA PREVIA IMPRIMIER ─── -->
+@if (mostrarVistaPrevia) {
+  <div class="modal d-block" tabindex="-1" style="background: rgba(0,0,0,0.65);">
+    <div class="modal-dialog modal-xl modal-dialog-scrollable">
+      <div class="modal-content border-0 shadow-lg">
+        
+        <div class="modal-header bg-dark text-white border-0">
+          <h5 class="modal-title"><i class="bi bi-printer me-2"></i>Vista Previa de Impresión</h5>
+          <button type="button" class="btn-close btn-close-white" (click)="cerrarVistaPrevia()"></button>
+        </div>
+
+        <div class="modal-body p-5 bg-white position-relative" id="print-area">
+          <div class="print-header text-center mb-4 pb-3 border-bottom">
+            <h4 class="fw-bold mb-1">REPORTE DE RECEPCIÓN DE INGRESOS</h4>
+            <div class="d-flex justify-content-center gap-4 text-dark mt-2">
+              <span><strong>CARRERA:</strong> {{ carrera }}</span>
+              <span><strong>FECHA DOCUMENTO:</strong> {{ formatFecha(fechaRecepcion) }}</span>
+              <span><strong>PERÍODO LIBROS:</strong> {{ formatFecha(fechaDesde) }} AL {{ formatFecha(fechaHasta) }}</span>
+            </div>
+          </div>
+
+          <table class="table table-bordered table-sm print-table mb-4">
+            <thead class="bg-light text-center align-middle">
+              <tr>
+                <th>CÓD. LIBRO DIARIO</th>
+                <th>CAJERO</th>
+                <th>INICIO</th>
+                <th>FINAL</th>
+                <th>DEPÓSITO</th>
+                <th>TRASPASO</th>
+                <th>(a)<br>RECIBOS BS</th>
+                <th>(b)<br>FACTURAS BS</th>
+                <th>(a+b)<br>TOTAL ENTREGADO</th>
+              </tr>
+            </thead>
+            <tbody class="align-middle">
+              @for (f of filas; track $index) {
+                <tr>
+                  <td class="text-center font-monospace small px-2">{{ f.cod_libro_diario }}</td>
+                  <td class="px-2">{{ f.usuario_libro }}</td>
+                  <td class="text-center small">{{ formatFecha(f.fecha_inicial) }}</td>
+                  <td class="text-center small">{{ formatFecha(f.fecha_final) }}</td>
+                  <td class="text-end pe-2">{{ f.total_deposito  | number:'1.2-2' }}</td>
+                  <td class="text-end pe-2">{{ f.total_traspaso  | number:'1.2-2' }}</td>
+                  <td class="text-end pe-2">{{ f.total_recibos   | number:'1.2-2' }}</td>
+                  <td class="text-end pe-2">{{ f.total_facturas  | number:'1.2-2' }}</td>
+                  <td class="text-end pe-2 fw-bold text-success">{{ f.total_entregado | number:'1.2-2' }}</td>
+                </tr>
+              }
+            </tbody>
+            <tfoot class="bg-light fw-bold">
+              <tr>
+                <td colspan="4" class="text-end pe-3">TOTAL GENERAL</td>
+                <td class="text-end pe-2">{{ totales.deposito | number:'1.2-2' }}</td>
+                <td class="text-end pe-2">{{ totales.traspaso | number:'1.2-2' }}</td>
+                <td class="text-end pe-2">{{ totales.recibos | number:'1.2-2' }}</td>
+                <td class="text-end pe-2">{{ totales.facturas | number:'1.2-2' }}</td>
+                <td class="text-end pe-2 bg-success text-white">{{ totalGeneral | number:'1.2-2' }}</td>
+              </tr>
+            </tfoot>
+          </table>
+
+          @if (observacion) {
+            <div class="mb-5 p-2 bg-light border border-dashed rounded small text-dark">
+              <strong>Observaciones:</strong> {{ observacion }}
+            </div>
+          }
+
+          <div class="signatures-section mt-5 pt-3">
+            <div class="row text-center gx-5">
+              <div class="col-6">
+                <div class="signature-line">{{ entregue1 }}</div>
+                <div class="signature-role">ENTREGUE 1</div>
+              </div>
+              <div class="col-6">
+                <div class="signature-line">{{ recibi1 }}</div>
+                <div class="signature-role">RECIBÍ 1</div>
+              </div>
+            </div>
+            
+            @if (mostrarFirma2) {
+            <div class="row text-center gx-5 mt-5">
+              <div class="col-6">
+                <div class="signature-line">{{ entregue2 }}</div>
+                <div class="signature-role">ENTREGUE 2</div>
+              </div>
+              <div class="col-6">
+                <div class="signature-line">{{ recibi2 }}</div>
+                <div class="signature-role">RECIBÍ 2</div>
+              </div>
+            </div>
+            }
+          </div>
+        </div>
+
+        <div class="modal-footer border-0 bg-light">
+          <button class="btn btn-secondary px-4" (click)="cerrarVistaPrevia()">Volver</button>
+          <button class="btn btn-primary px-4 shadow-sm" (click)="imprimirYCerrar()"><i class="bi bi-printer-fill me-2"></i>Imprimir y Guardar</button>
+        </div>
+      </div>
+    </div>
+  </div>
+}

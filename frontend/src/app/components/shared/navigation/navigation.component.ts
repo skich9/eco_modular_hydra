@@ -94,7 +94,6 @@ export class NavigationComponent implements OnInit {
 			icon: 'fas fa-dollar-sign',
 			modulo: 'Económico',
 			submenu: [
-				{ name: 'Recepción de ingresos', icon: 'fa-inbox', route: '/cobros/recepcion-ingresos', permissionCode: 'economico_recepcion_ingresos' },
 				{ name: 'Prórroga Mora', icon: 'fa-calendar-times', route: '/prorroga-mora', permissionCode: 'economico_prorroga_mora' },
 				{ name: 'Descuento Mora', icon: 'fa-percent', route: '/descuento-mora', permissionCode: 'economico_descuento_mora' }
 			]

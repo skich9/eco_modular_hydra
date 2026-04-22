@@ -136,33 +136,6 @@ export class RecepcionIngresosService {
     return this.http.post<any>(`${this.base}/generar-reporte`, filtros);
   }
 
-  /** PDF ING-4 con datos persistidos (equivalente SGA «Imprimir y cerrar» tras grabar). */
-  documentoPdf(id: number): Observable<{ success: boolean; url: string; message?: string }> {
-    return this.http.post<{ success: boolean; url: string; message?: string }>(
-      `${this.base}/${id}/documento-pdf`,
-      {}
-    );
-  }
-
-  /** PDF vista previa ING-4 (sin persistir; mismo criterio que SGA con opcion=vista_previa). */
-  vistaPreviaPdf(body: {
-    fecha_recepcion: string;
-    fecha_inicial_libros: string;
-    fecha_final_libros: string;
-    detalles: RecepcionIngresoDetalle[];
-    observacion?: string;
-    usuario_entregue1: string;
-    usuario_recibi1: string;
-    usuario_entregue2?: string;
-    usuario_recibi2?: string;
-    id_actividad_economica?: number | null;
-  }): Observable<{ success: boolean; url: string; message?: string }> {
-    return this.http.post<{ success: boolean; url: string; message?: string }>(
-      `${this.base}/vista-previa-pdf`,
-      body
-    );
-  }
-
   /** Recupera una recepción con sus detalles */
   show(id: number): Observable<any> {
     return this.http.get<any>(`${this.base}/${id}`);
