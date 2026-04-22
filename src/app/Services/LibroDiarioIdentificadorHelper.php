@@ -7,7 +7,7 @@ use Illuminate\Support\Facades\Schema;
 
 /**
  * Numeración RD-[CARRERA]-[MM]-[NNN] para libro diario de ingresos.
- * NNN: correlativo global (mínimo 3 dígitos con ceros a la izquierda).
+ * NNN: correlativo por carrera y mes (se reinicia en 001 cada mes; mínimo 3 dígitos con ceros a la izquierda).
  */
 class LibroDiarioIdentificadorHelper
 {
@@ -47,29 +47,31 @@ class LibroDiarioIdentificadorHelper
     }
 
     /**
-     * Máximo entre correlativo almacenado, id (histórico) y valores parseados de codigo_rd.
+     * Mayor correlativo NNN ya usado para la misma carrera y el mismo mes (según codigo_rd guardado).
+     * Así cada mes reinicia en 001 (p. ej. RD-EEA-05-001 tras RD-EEA-04-099).
      */
-    public static function maxCorrelativoRegistrado(): int
+    public static function maxCorrelativoRegistradoParaMes(string $codigoCarrera, string $mesDosDigitos): int
     {
         if (! Schema::hasTable('libro_diario_cierre')) {
             return 0;
         }
 
-        $maxCorr = (int) DB::table('libro_diario_cierre')->max('correlativo');
+        $car = $codigoCarrera !== '' ? $codigoCarrera : 'S/N';
+        $mes = preg_match('/^\d{2}$/', $mesDosDigitos) ? $mesDosDigitos : date('m');
         $maxParsed = 0;
 
         try {
+            $pattern = '/^RD-' . preg_quote($car, '/') . '-' . preg_quote($mes, '/') . '-(\d+)$/i';
             $codes = DB::table('libro_diario_cierre')->whereNotNull('codigo_rd')->pluck('codigo_rd');
             foreach ($codes as $c) {
-                $v = self::extraerCorrelativoNumericoDeCodigoRd($c);
-                if ($v > $maxParsed) {
-                    $maxParsed = $v;
+                if (preg_match($pattern, trim((string) $c), $m)) {
+                    $maxParsed = max($maxParsed, (int) $m[1]);
                 }
             }
         } catch (\Throwable $e) {
         }
 
-        return max($maxCorr, $maxParsed);
+        return $maxParsed;
     }
 
     /**
@@ -84,7 +86,7 @@ class LibroDiarioIdentificadorHelper
         $mes = strlen($fechaYmd) >= 10 ? substr($fechaYmd, 5, 2) : date('m');
         $car = $codigoCarrera !== null && $codigoCarrera !== '' ? substr(trim($codigoCarrera), 0, 50) : 'S/N';
 
-        $siguiente = self::maxCorrelativoRegistrado() + 1;
+        $siguiente = self::maxCorrelativoRegistradoParaMes($car, $mes) + 1;
         $maxIntentos = 500;
 
         for ($i = 0; $i < $maxIntentos; $i++) {
