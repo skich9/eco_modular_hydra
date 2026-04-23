@@ -2646,8 +2646,15 @@ class CobroController extends Controller
 							$netoTotal = $puOriginal - $descOriginal;
 							$saldoRestante = max(0, $netoTotal - $montoPagadoPrevio);
 
-							// Determinar si es pago parcial
-							$esPagoParcial = ($estadoPagoActual === 'PARCIAL' && $montoPagadoPrevio > 0) || ($montoAPagar < $saldoRestante && $saldoRestante > 0);
+							// Determinar si el pago actual es parcial (no cubre todo el saldo restante)
+							$esPagoParcial = ($montoAPagar < $saldoRestante && $saldoRestante > 0);
+							// Si existe pago previo, la factura debe usar el saldo restante como base,
+							// incluso cuando el pago actual cancele todo ese saldo.
+							$requiereProrrateoSaldo = (
+								($montoPagadoPrevio > 0 && $saldoRestante > 0)
+								|| $esPagoParcial
+								|| ($estadoPagoActual === 'PARCIAL' && $saldoRestante > 0)
+							);
 
 							$descuentosCalculados[$idx]['descuento_original'] = $descOriginal;
 							$descuentosCalculados[$idx]['precio_bruto_original'] = $puOriginal;
@@ -2655,9 +2662,10 @@ class CobroController extends Controller
 							$descuentosCalculados[$idx]['saldo_restante'] = $saldoRestante;
 							$descuentosCalculados[$idx]['es_pago_parcial'] = $esPagoParcial;
 
-							if ($esPagoParcial && $saldoRestante > 0) {
+							if ($requiereProrrateoSaldo && $saldoRestante > 0 && $netoTotal > 0) {
 							// Pago parcial: prorratear según la proporción del pago actual
 							$proporcion = $montoAPagar / $saldoRestante;
+							$proporcion = max(0.0, min(1.0, $proporcion));
 
 							// Calcular precio bruto y descuento del saldo restante
 							$puRestante = $puOriginal - ($puOriginal * ($montoPagadoPrevio / $netoTotal));
