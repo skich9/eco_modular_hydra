@@ -48,14 +48,32 @@ class CobroController extends Controller
 			}
 			$rolNombre = strtolower((string) optional($authUser->rol)->nombre);
 			$esAdmin = str_contains($rolNombre, 'admin') || strtolower((string) $authUser->nickname) === 'admin';
+			$includeAllUsuarios = (bool) $request->boolean('include_all_usuarios', false)
+				&& ($request->filled('cod_ceta') || $request->filled('nro_factura') || $request->filled('nro_recibo'));
 
 			// Cargar cobros con relaciones básicas y aplicar filtros opcionales
 			$query = Cobro::with(['usuario', 'cuota', 'formaCobro', 'cuentaBancaria', 'itemCobro', 'detalleRegular', 'detalleMulta', 'recibo', 'factura']);
 
 			// Filtro por id_usuario (usado por el libro diario)
-			$idUsuario = $esAdmin ? $request->query('id_usuario') : (string) $authUser->id_usuario;
+			$idUsuario = ($esAdmin || $includeAllUsuarios) ? $request->query('id_usuario') : (string) $authUser->id_usuario;
 			if ($idUsuario !== null && $idUsuario !== '') {
 				$query->where('id_usuario', (int) $idUsuario);
+			}
+
+			// Filtros opcionales para búsquedas de reimpresión/facturación posterior
+			$codCeta = $request->query('cod_ceta');
+			if ($codCeta !== null && $codCeta !== '') {
+				$query->where('cod_ceta', (int) $codCeta);
+			}
+
+			$nroFactura = $request->query('nro_factura');
+			if ($nroFactura !== null && $nroFactura !== '') {
+				$query->where('nro_factura', (int) $nroFactura);
+			}
+
+			$nroRecibo = $request->query('nro_recibo');
+			if ($nroRecibo !== null && $nroRecibo !== '') {
+				$query->where('nro_recibo', (int) $nroRecibo);
 			}
 
 			// Filtro por fecha (Y-m-d) sobre fecha_cobro

@@ -158,6 +158,13 @@ export const routes: Routes = [
 				canActivate: [permissionGuard],
 				data: { requiredPermission: 'reimpresion_facturacion_posterior' }
 			},
+			// Reimpresión: Regenerar PDF de factura
+			{
+				path: 'reimpresion/regenerar-factura',
+				loadComponent: () => import('./components/pages/reimpresion/regenerar-factura/regenerar-factura.component').then(m => m.RegenerarFacturaComponent),
+				canActivate: [permissionGuard],
+				data: { requiredPermission: 'reimpresion_facturacion_posterior' }
+			},
 			// Ruta para Configuraciones Generales
 			{
 				path: 'configuraciones-generales',

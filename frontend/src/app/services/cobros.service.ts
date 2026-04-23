@@ -70,6 +70,19 @@ export class CobrosService {
 		);
 	}
 
+	searchCobrosReimpresion(params: { cod_ceta?: string | number; nro_factura?: string | number; nro_recibo?: string | number; fecha?: string }): Observable<any> {
+		let httpParams = new HttpParams();
+		Object.entries(params || {}).forEach(([k, v]) => {
+			if (v !== undefined && v !== null && String(v).trim() !== '') {
+				httpParams = httpParams.set(k, String(v));
+			}
+		});
+		httpParams = httpParams.set('include_all_usuarios', '1');
+		return this.http.get<any>(`${this.baseUrl}`, { params: httpParams }).pipe(
+			map((res: any) => ({ success: !!res?.success, data: res?.data || [], message: res?.message }))
+		);
+	}
+
 	// ===================== Estudiantes =====================
 	searchEstudiantes(params: { ap_paterno?: string; ap_materno?: string; nombres?: string; ci?: string; page?: number; per_page?: number }): Observable<any> {
 		let httpParams = new HttpParams();
@@ -192,9 +205,21 @@ export class CobrosService {
 		return this.http.get(url, { responseType: 'blob' });
 	}
 
+	// Nota bancaria asociada a RECIBO: PDF
+	downloadNotaBancariaPdfByRecibo(anio: number, nroRecibo: number): Observable<Blob> {
+		const url = `${this.apiUrl}/notas-bancarias-por-recibo/${anio}/${nroRecibo}/pdf`;
+		return this.http.get(url, { responseType: 'blob' });
+	}
+
 	// Nota de traspaso por FACTURA (cuando comprobante es Factura + método TRASPASO)
 	downloadNotaTraspasoPdfByFactura(anio: number, nroFactura: number): Observable<Blob> {
 		const url = `${this.apiUrl}/notas-traspaso-por-factura/${anio}/${nroFactura}/pdf`;
+		return this.http.get(url, { responseType: 'blob' });
+	}
+
+	// Nota de traspaso por RECIBO
+	downloadNotaTraspasoPdfByRecibo(anio: number, nroRecibo: number): Observable<Blob> {
+		const url = `${this.apiUrl}/notas-traspaso-por-recibo/${anio}/${nroRecibo}/pdf`;
 		return this.http.get(url, { responseType: 'blob' });
 	}
 

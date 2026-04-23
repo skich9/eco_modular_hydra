@@ -70,7 +70,8 @@ export class NavigationComponent implements OnInit {
 			icon: 'fas fa-print',
 			modulo: 'Reimpresión',
 			submenu: [
-				{ name: 'Facturación posterior', icon: 'fa-file-invoice-dollar', route: '/reimpresion/facturacion-posterior', permissionCode: 'reimpresion_facturacion_posterior' }
+				{ name: 'Facturación posterior', icon: 'fa-file-invoice-dollar', route: '/reimpresion/facturacion-posterior', permissionCode: 'reimpresion_facturacion_posterior' },
+				{ name: 'Regenerar PDF factura', icon: 'fa-file-pdf', route: '/reimpresion/regenerar-factura', permissionCode: 'reimpresion_regenerar_pdf' }
 			]
 		},
 		{

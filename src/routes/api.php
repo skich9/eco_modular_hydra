@@ -244,6 +244,10 @@ Route::get('recibos/{anio}/{nro_recibo}/pdf', [ReciboController::class, 'pdf'])
 Route::get('notas-bancarias/{anio}/{nro_factura}/pdf', [ReciboController::class, 'notaBancariaPdfByFactura'])
 	->where(['anio' => '\\d{4}', 'nro_factura' => '\\d+']);
 
+// Nota bancaria (por RECIBO): PDF
+Route::get('notas-bancarias-por-recibo/{anio}/{nro_recibo}/pdf', [ReciboController::class, 'notaBancariaPdfByRecibo'])
+    ->where(['anio' => '\\d{4}', 'nro_recibo' => '\\d+']);
+
 // Nota de traspaso: PDF por correlativo propio
 Route::get('notas-traspaso/{anio}/{correlativo}/pdf', [ReciboController::class, 'notaTraspasoPdf'])
 	->where(['anio' => '\\d{4}', 'correlativo' => '\\d+']);
@@ -251,6 +255,10 @@ Route::get('notas-traspaso/{anio}/{correlativo}/pdf', [ReciboController::class, 
 // Nota de traspaso: PDF asociado a una FACTURA (para cobros con comprobante Factura + método TRASPASO)
 Route::get('notas-traspaso-por-factura/{anio}/{nro_factura}/pdf', [ReciboController::class, 'notaTraspasoPdfByFactura'])
 	->where(['anio' => '\\d{4}', 'nro_factura' => '\\d+']);
+
+// Nota de traspaso: PDF asociado a un RECIBO
+Route::get('notas-traspaso-por-recibo/{anio}/{nro_recibo}/pdf', [ReciboController::class, 'notaTraspasoPdfByRecibo'])
+    ->where(['anio' => '\\d{4}', 'nro_recibo' => '\\d+']);
 
 // Facturas: meta (incluye CUF) para fallback del frontend
 Route::get('facturas/{anio}/{nro}/meta', [CobroController::class, 'facturaMeta'])

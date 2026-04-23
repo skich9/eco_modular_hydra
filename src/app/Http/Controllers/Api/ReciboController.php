@@ -112,6 +112,26 @@ class ReciboController extends Controller
 		}
 	}
 
+	public function notaBancariaPdfByRecibo($anio, $nro_recibo, ReciboPdfService $pdfService)
+	{
+		try {
+			$anio = (int) $anio;
+			$nroRecibo = (int) $nro_recibo;
+			$content = $pdfService->buildNotaBancariaPdfByRecibo($anio, $nroRecibo);
+			$filename = sprintf('nota_bancaria_recibo_%d_%d.pdf', $anio, $nroRecibo);
+			return response($content, 200, [
+				'Content-Type' => 'application/pdf',
+				'Content-Disposition' => 'attachment; filename="' . $filename . '"'
+			]);
+		} catch (\Throwable $e) {
+			Log::error('ReciboController.notaBancariaPdfByRecibo error', [ 'error' => $e->getMessage() ]);
+			return response()->json([
+				'success' => false,
+				'message' => 'No se pudo generar el PDF de la nota bancaria: ' . $e->getMessage(),
+			], 500);
+		}
+	}
+
 	/** GET /notas-traspaso/{anio}/{correlativo}/pdf */
 	public function notaTraspasoPdf($anio, $correlativo, NotaTraspasoPdfService $pdfService)
 	{
@@ -140,6 +160,22 @@ class ReciboController extends Controller
 			]);
 		} catch (\Throwable $e) {
 			Log::error('ReciboController.notaTraspasoPdfByFactura error', ['error' => $e->getMessage()]);
+			return response()->json(['success' => false, 'message' => 'No se pudo generar el PDF: ' . $e->getMessage()], 500);
+		}
+	}
+
+	/** GET /notas-traspaso-por-recibo/{anio}/{nro_recibo}/pdf */
+	public function notaTraspasoPdfByRecibo($anio, $nro_recibo, NotaTraspasoPdfService $pdfService)
+	{
+		try {
+			$content  = $pdfService->buildPdfByRecibo((int) $anio, (int) $nro_recibo);
+			$filename = sprintf('nota_traspaso_recibo_%d_%d.pdf', (int) $anio, (int) $nro_recibo);
+			return response($content, 200, [
+				'Content-Type'        => 'application/pdf',
+				'Content-Disposition' => 'attachment; filename="' . $filename . '"',
+			]);
+		} catch (\Throwable $e) {
+			Log::error('ReciboController.notaTraspasoPdfByRecibo error', ['error' => $e->getMessage()]);
 			return response()->json(['success' => false, 'message' => 'No se pudo generar el PDF: ' . $e->getMessage()], 500);
 		}
 	}

@@ -612,6 +612,159 @@ class ReciboPdfService
 		return $pdf;
 	}
 
+    public function buildNotaBancariaPdfByRecibo(int $anio, int $nroRecibo): string
+    {
+        $nb = DB::table('nota_bancaria')
+            ->where('anio_deposito', (int) $anio)
+            ->where('nro_recibo', (string) $nroRecibo)
+            ->orderByDesc('fecha_nota')
+            ->orderByDesc('correlativo')
+            ->first();
+        if (!$nb) {
+            $nb = DB::table('nota_bancaria')
+                ->where('nro_recibo', (string) $nroRecibo)
+                ->orderByDesc('fecha_nota')
+                ->orderByDesc('correlativo')
+                ->first();
+        }
+        if (!$nb) {
+            throw new \RuntimeException('Nota bancaria no encontrada');
+        }
+
+        $recibo = DB::table('recibo')
+            ->where('anio', (int) $anio)
+            ->where('nro_recibo', (int) $nroRecibo)
+            ->first();
+        if (!$recibo) {
+            $recibo = DB::table('recibo')
+                ->where('nro_recibo', (int) $nroRecibo)
+                ->orderByDesc('anio')
+                ->first();
+        }
+        if (!$recibo) {
+            throw new \RuntimeException('Recibo no encontrado');
+        }
+
+        $cobros = [];
+        try {
+            $cobros = DB::table('cobro')
+                ->where('anio_cobro', (int) $anio)
+                ->where('nro_recibo', (int) $nroRecibo)
+                ->orderBy('nro_cobro')
+                ->get()
+                ->all();
+        } catch (\Throwable $e) {
+            $cobros = [];
+        }
+        if (!$cobros) {
+            try {
+                $cobros = DB::table('cobro')
+                    ->where('nro_recibo', (int) $nroRecibo)
+                    ->orderByDesc('anio_cobro')
+                    ->orderBy('nro_cobro')
+                    ->get()
+                    ->all();
+            } catch (\Throwable $e) {
+                $cobros = [];
+            }
+        }
+
+        $est = null;
+        try {
+            $codCeta = (int) ($recibo->cod_ceta ?? 0);
+            if ($codCeta > 0) {
+                $est = DB::table('estudiantes')->where('cod_ceta', $codCeta)->first();
+            }
+        } catch (\Throwable $e) {
+            $est = null;
+        }
+
+        $formaId = strtoupper(trim((string) ($recibo->id_forma_cobro ?? '')));
+        $formaNombre = '';
+        try {
+            if ($formaId !== '') {
+                $forma = DB::table('formas_cobro')->where('id_forma_cobro', $formaId)->first();
+                $formaNombre = strtoupper(trim((string) ($forma->nombre ?? $forma->descripcion ?? $forma->label ?? '')));
+                if ($formaNombre === '') {
+                    $formaNombre = $formaId;
+                }
+            }
+        } catch (\Throwable $e) {
+            $formaNombre = $formaId;
+        }
+
+        $extras = [];
+        try {
+            $extras['fecha_dt'] = new \DateTime((string) ($nb->fecha_nota ?? $recibo->created_at ?? 'now'), new \DateTimeZone('America/La_Paz'));
+        } catch (\Throwable $e) {
+            $extras['fecha_dt'] = new \DateTime('now', new \DateTimeZone('America/La_Paz'));
+        }
+        try {
+            $codPensum = '';
+            if (!empty($cobros) && isset($cobros[0]) && isset($cobros[0]->cod_pensum)) {
+                $codPensum = (string) $cobros[0]->cod_pensum;
+            } elseif ($est && isset($est->cod_pensum)) {
+                $codPensum = (string) $est->cod_pensum;
+            }
+            $extras['carrera'] = $this->resolveCarreraNombre($codPensum);
+        } catch (\Throwable $e) {
+            $extras['carrera'] = '';
+        }
+        try {
+            $logoPath = public_path('img/logo.png');
+            if (is_string($logoPath) && $logoPath !== '' && file_exists($logoPath)) {
+                $raw = null;
+                try { $raw = file_get_contents($logoPath); } catch (\Throwable $e) { $raw = null; }
+                if (is_string($raw) && $raw !== '') {
+                    $extras['logo'] = 'data:image/png;base64,' . base64_encode($raw);
+                }
+            }
+        } catch (\Throwable $e) {}
+
+        $extras['nota'] = $nb;
+        $extras['e_numero'] = (string) ($nb->correlativo ?? $nroRecibo);
+        try {
+            $b = trim((string) ($nb->banco ?? ''));
+            if ($b !== '') {
+                $pos = strpos($b, ' - ');
+                if ($pos !== false) { $b = trim(substr($b, 0, $pos)); }
+                $extras['dest'] = (object) [ 'banco' => $b ];
+            }
+        } catch (\Throwable $e) {}
+
+        $html = '';
+        $formaCode = $formaId;
+        if ($formaNombre === 'COMBINADO' || count(array_unique(array_map(function ($x) {
+            return (string) ((is_object($x) && isset($x->id_forma_cobro)) ? $x->id_forma_cobro : '');
+        }, $cobros))) > 1) {
+            $html = $this->renderHtmlCombinado($recibo, $cobros, $est, $extras);
+        } elseif (strpos($formaNombre, 'TARJETA') !== false || $formaCode === 'L') {
+            $html = $this->renderHtmlTarjeta($recibo, $cobros, $est, $extras);
+        } elseif (strpos($formaNombre, 'TRANSFER') !== false || $formaCode === 'B') {
+            $html = $this->renderHtmlTransferencia($recibo, $cobros, $est, $extras);
+        } elseif (strpos($formaNombre, 'DEPOS') !== false || $formaCode === 'D') {
+            $html = $this->renderHtmlDeposito($recibo, $cobros, $est, $extras);
+        } elseif (strpos($formaNombre, 'CHEQUE') !== false || $formaCode === 'C') {
+            $html = $this->renderHtmlCheque($recibo, $cobros, $est, $extras);
+        } else {
+            $html = $this->renderHtmlOtro($recibo, $cobros, $est, $extras);
+        }
+
+        $dompdf = new Dompdf([
+            'isRemoteEnabled' => true,
+            'isHtml5ParserEnabled' => true,
+            'isPhpEnabled' => true,
+        ]);
+        $dompdf->loadHtml($html, 'UTF-8');
+        $dompdf->setPaper([8.5 * 72, 5.5 * 72]);
+        $dompdf->render();
+        $pdf = $dompdf->output();
+        if (empty($pdf)) {
+            throw new \RuntimeException('PDF generado está vacío');
+        }
+        return $pdf;
+    }
+
     private function renderHtmlTarjeta(object $recibo, array $cobros, ?object $est, array $extras = []): string
     {
         $fechaDT = isset($extras['fecha_dt']) && $extras['fecha_dt'] instanceof \DateTimeInterface ? $extras['fecha_dt'] : new \DateTime('now', new \DateTimeZone('America/La_Paz'));

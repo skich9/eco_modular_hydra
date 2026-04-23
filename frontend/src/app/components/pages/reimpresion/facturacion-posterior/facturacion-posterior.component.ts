@@ -213,13 +213,15 @@ export class FacturacionPosteriorComponent implements OnInit {
 
 		// Mapear cobros previos: usar SOLO mensualidad.items (ya incluye todo)
 		const listMens = Array.isArray(res?.data?.cobros?.mensualidad?.items) ? res.data.cobros.mensualidad.items : [];
+		this.setCobrosFromItems(listMens);
+	}
 
-		// Agrupar por nro_recibo
+	private setCobrosFromItems(items: any[]): void {
 		const byRecibo = new Map<string | number, {
 			glosa: string; gestion: string; fecha: string; factura: number | null; recibo: number | null; importe: number; usuario: string; selected: boolean; rawItems: any[];
 		}>();
 
-		for (const r of (listMens || [])) {
+		for (const r of (items || [])) {
 			// Filtrar solo RECIBOS (tipo_documento='R') con reposicion_factura = 1
 			const tipoDoc = String(r?.tipo_documento || '').toUpperCase();
 			if (tipoDoc === 'R' && (r?.reposicion_factura == 1 || r?.reposicion_factura === true)) {
@@ -228,7 +230,6 @@ export class FacturacionPosteriorComponent implements OnInit {
 
 			const fechaRaw = String(r?.fecha_cobro || r?.created_at || '');
 
-			// Extraer nickname del usuario correctamente
 			let usuario = '';
 			if (r?.usuario) {
 				if (typeof r.usuario === 'object') {
@@ -263,13 +264,11 @@ export class FacturacionPosteriorComponent implements OnInit {
 					rawItems: [r],
 				});
 			} else {
-				// actualizar agregados: fecha más reciente, sumar importe, setear factura si no hay
 				const prevTime = new Date(existing.fecha).getTime() || 0;
 				const curTime = new Date(fechaRaw).getTime() || 0;
 				if (curTime > prevTime) existing.fecha = fechaRaw;
 				if (existing.factura == null && factura != null) existing.factura = factura;
 				if (!existing.usuario && usuario) existing.usuario = usuario;
-				// si aparece un concepto válido y la glosa actual es genérica, actualizarla al nuevo formato solicitado
 				const conceptoVal2 = (r?.concepto ?? '').toString().trim();
 				if (conceptoVal2 && (!existing.glosa || existing.glosa.startsWith('Pago según') || existing.glosa.startsWith('Pago registrado'))) {
 					existing.glosa = `Pago de ${conceptoVal2} con Recibo: ${existing.recibo ?? ''}`.trim();
@@ -278,6 +277,7 @@ export class FacturacionPosteriorComponent implements OnInit {
 				existing.rawItems.push(r);
 			}
 		}
+
 		this.cobros = Array.from(byRecibo.values()).sort((a: any, b: any) => (new Date(b.fecha).getTime() - new Date(a.fecha).getTime()));
 	}
 

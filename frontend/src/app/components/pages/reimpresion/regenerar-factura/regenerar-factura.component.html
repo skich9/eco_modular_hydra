@@ -1,0 +1,110 @@
+<div class="container-fluid py-3">
+  <h4 class="mb-3">Reimpresión • Regenerar PDF de factura</h4>
+
+  <div class="card mb-3">
+    <div class="card-header">
+      <strong>Búsqueda</strong>
+    </div>
+    <div class="card-body">
+      <form [formGroup]="searchForm" (ngSubmit)="buscar()">
+        <div class="row g-3">
+          <div class="col-md-3">
+            <label class="form-label">Código CETA</label>
+            <input type="text" class="form-control" formControlName="cod_ceta" appSoloNumeros />
+          </div>
+          <div class="col-md-3">
+            <label class="form-label">Nro Factura</label>
+            <input type="text" class="form-control" formControlName="nro_factura" appSoloNumeros />
+          </div>
+          <div class="col-md-3">
+            <label class="form-label">Nro Recibo</label>
+            <input type="text" class="form-control" formControlName="nro_recibo" appSoloNumeros />
+          </div>
+          <div class="col-md-3">
+            <label class="form-label">Fecha</label>
+            <input type="date" class="form-control" formControlName="fecha" />
+          </div>
+        </div>
+        <div class="d-flex justify-content-end gap-2 mt-3">
+          <button type="button" class="btn btn-outline-danger" (click)="limpiar()">
+            <i class="fas fa-eraser me-1"></i>Limpiar
+          </button>
+          <button type="submit" class="btn btn-primary" [disabled]="loading">
+            <i class="fas fa-search me-1"></i>Buscar
+          </button>
+        </div>
+      </form>
+    </div>
+  </div>
+
+  <div *ngIf="message" class="alert" [ngClass]="{
+    'alert-success': messageType === 'success',
+    'alert-danger': messageType === 'danger',
+    'alert-warning': messageType === 'warning',
+    'alert-info': messageType === 'info'
+  }">
+    {{ message }}
+  </div>
+
+  <div class="card" *ngIf="rows.length > 0">
+    <div class="card-header">
+      <strong>Resultados</strong>
+    </div>
+    <div class="card-body">
+      <div class="table-responsive">
+        <table class="table table-sm table-striped align-middle">
+          <thead>
+            <tr>
+              <th>Código CETA</th>
+              <th>Factura</th>
+              <th>Recibo</th>
+              <th>Concepto</th>
+              <th>Observaciones</th>
+              <th class="text-end">Importe</th>
+              <th>Método de pago</th>
+              <th>Fecha</th>
+              <th>Usuario</th>
+              <th style="width: 340px;">Acciones</th>
+            </tr>
+          </thead>
+          <tbody>
+            <tr *ngFor="let r of rows">
+              <td>{{ r.cod_ceta || '' }}</td>
+              <td>{{ r.nro_factura || '' }}</td>
+              <td>{{ r.nro_recibo || '' }}</td>
+              <td>{{ r.concepto }}</td>
+              <td>{{ r.observaciones || '-' }}</td>
+              <td class="text-end">{{ r.monto | number:'1.2-2' }}</td>
+              <td>{{ r.metodo_pago || '-' }}</td>
+              <td>{{ r.fecha | date:'dd/MM/yyyy HH:mm:ss' }}</td>
+              <td>{{ r.usuario }}</td>
+              <td class="d-flex flex-wrap gap-1">
+                <button
+                  type="button"
+                  class="btn btn-sm btn-success"
+                  [disabled]="!r.nro_factura"
+                  (click)="regenerarPdf(r)">
+                  <i class="fas fa-file-pdf me-1"></i>Factura
+                </button>
+                <button
+                  type="button"
+                  class="btn btn-sm btn-primary"
+                  [disabled]="!r.nro_recibo"
+                  (click)="reimprimirRecibo(r)">
+                  <i class="fas fa-receipt me-1"></i>Recibo
+                </button>
+                <button
+                  type="button"
+                  class="btn btn-sm btn-outline-secondary"
+                  [disabled]="!canReimprimirNota(r)"
+                  (click)="reimprimirNota(r)">
+                  <i class="fas fa-file-signature me-1"></i>Nota
+                </button>
+              </td>
+            </tr>
+          </tbody>
+        </table>
+      </div>
+    </div>
+  </div>
+</div>
