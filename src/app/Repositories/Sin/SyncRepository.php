@@ -6,6 +6,7 @@ use App\Services\Siat\SyncService;
 use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Schema;
 use Exception;
+use Illuminate\Support\Facades\Log;
 
 class SyncRepository
 {

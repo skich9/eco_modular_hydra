@@ -31,6 +31,7 @@ use App\Services\Qr\QrSocketNotifier;
 use App\Services\MoraRecalculoService;
 use App\Services\LibroDiarioIdentificadorHelper;
 use App\Services\Reportes\LibroDiarioAccessService;
+use App\Services\Reportes\LibroDiarioCierreTotalesService;
 use Carbon\Carbon;
 
 class CobroController extends Controller
@@ -577,7 +578,7 @@ class CobroController extends Controller
 				$primeraAsignacionNormal = AsignacionCostos::where('cod_inscrip', $normalInscripcion->cod_inscrip)
 					->orderBy('numero_cuota')
 					->first();
-				
+
 				if ($primeraAsignacionNormal) {
 					$montoTotalNormal = (float)$primeraAsignacionNormal->monto * 5;
 				} else {
@@ -976,11 +977,11 @@ class CobroController extends Controller
 			// --- Lógica de Descuento por Semestre Completo (Parámetros de Sistema) ---
 			$pActivar = DB::table('parametros_economicos')->where('nombre', 'descuento_semestre_completo_activar')->first();
 			$pPorcentaje = DB::table('parametros_economicos')->where('nombre', 'descuento_semestre_completo_porcentaje')->first();
-			
+
 			if (optional($pActivar)->valor === 'true' && (float)optional($pPorcentaje)->valor > 0) {
 				$porcentajeSistemicos = (float)$pPorcentaje->valor;
 				$descuentoSistemicoCalculado = $montoSemestre * ($porcentajeSistemicos / 100);
-				
+
 				// Si el descuento calculado por sistema es mayor al que ya tenemos registrado,
 				// y el estudiante ya completó sus pagos (o para mostrar proyección), usamos el del sistema.
 				// Para 120251047, esto asegurará que se vea el 10% si los manuales fallan.
@@ -2294,6 +2295,14 @@ class CobroController extends Controller
                 $nick = DB::table('usuarios')->where('id_usuario', $usuarioId)->value('nickname');
                 $usuarioLabel = $nick ? (string) $nick : (string) $usuarioId;
 
+                Log::info('batchStore: starting sucursal/pv determination', [
+                    'id_usuario' => $usuarioId,
+                    'sucursal_input' => $sucursalInput,
+                    'punto_venta_input' => $puntoVentaInput,
+                    'nickname' => $nick,
+                    'codigo_ambiente' => $codigoAmbiente
+                ]);
+
                 if (!is_null($sucursalInput) && !is_null($puntoVentaInput)) {
                     // Usuario apoyoCobranzas=true: frontend envía sucursal y PV seleccionados
                     $respPuntoVenta = DB::table('sin_punto_venta_usuario')
@@ -2655,8 +2664,15 @@ class CobroController extends Controller
 							$netoTotal = $puOriginal - $descOriginal;
 							$saldoRestante = max(0, $netoTotal - $montoPagadoPrevio);
 
-							// Determinar si es pago parcial
-							$esPagoParcial = ($estadoPagoActual === 'PARCIAL' && $montoPagadoPrevio > 0) || ($montoAPagar < $saldoRestante && $saldoRestante > 0);
+							// Determinar si el pago actual es parcial (no cubre todo el saldo restante)
+							$esPagoParcial = ($montoAPagar < $saldoRestante && $saldoRestante > 0);
+							// Si existe pago previo, la factura debe usar el saldo restante como base,
+							// incluso cuando el pago actual cancele todo ese saldo.
+							$requiereProrrateoSaldo = (
+								($montoPagadoPrevio > 0 && $saldoRestante > 0)
+								|| $esPagoParcial
+								|| ($estadoPagoActual === 'PARCIAL' && $saldoRestante > 0)
+							);
 
 							$descuentosCalculados[$idx]['descuento_original'] = $descOriginal;
 							$descuentosCalculados[$idx]['precio_bruto_original'] = $puOriginal;
@@ -2664,9 +2680,10 @@ class CobroController extends Controller
 							$descuentosCalculados[$idx]['saldo_restante'] = $saldoRestante;
 							$descuentosCalculados[$idx]['es_pago_parcial'] = $esPagoParcial;
 
-							if ($esPagoParcial && $saldoRestante > 0) {
+							if ($requiereProrrateoSaldo && $saldoRestante > 0 && $netoTotal > 0) {
 							// Pago parcial: prorratear según la proporción del pago actual
 							$proporcion = $montoAPagar / $saldoRestante;
+							$proporcion = max(0.0, min(1.0, $proporcion));
 
 							// Calcular precio bruto y descuento del saldo restante
 							$puRestante = $puOriginal - ($puOriginal * ($montoPagadoPrevio / $netoTotal));
@@ -3479,7 +3496,7 @@ class CobroController extends Controller
                         $numeroCuota = (int)$matches[1];
                         $parcialTexto = isset($matches[2]) ? $matches[2] : '';
                         $gestion = isset($request->gestion) ? (string)$request->gestion : '';
-                        
+
                         $meses = [];
                         // Determinar meses según gestión
                         if (strpos($gestion, '1/') === 0) {
@@ -4445,7 +4462,7 @@ class CobroController extends Controller
 			// CUFD vigente o crear
 			$cufd = null;
 			try {
-                $cufd = $cufdRepo->getVigenteOrCreate2(0, 0, $pv);
+                $cufd = $cufdRepo->getVigenteOrCreate2($codigoAmbiente, 0, $pv);
 				$cufd = $cufdRepo->getVigenteOrCreate($pv);
 				Log::info('validar-impuestos: CUFD ok', [ 'codigo_cufd' => isset($cufd['codigo_cufd']) ? $cufd['codigo_cufd'] : null, 'fecha_vigencia' => isset($cufd['fecha_vigencia']) ? $cufd['fecha_vigencia'] : null ]);
 			} catch (\Throwable $e) {
@@ -5059,6 +5076,18 @@ class CobroController extends Controller
 					});
 
 					if ($respuestaAnticipada !== null) {
+						$idEarly = (int) ($respuestaAnticipada['id_libro_diario_cierre'] ?? 0);
+						if ($idEarly > 0 && Schema::hasTable('libro_diario_cierre_totales')) {
+							try {
+								app(LibroDiarioCierreTotalesService::class)
+									->syncFromCierreId($idEarly, $codigoCarreraVal);
+							} catch (\Throwable $e) {
+								Log::warning('[CobroController] sync libro_diario_cierre_totales (reuso cierre)', [
+									'id_libro_diario_cierre' => $idEarly,
+									'error' => $e->getMessage(),
+								]);
+							}
+						}
 						return response()->json($respuestaAnticipada);
 					}
 				}
@@ -5087,6 +5116,18 @@ class CobroController extends Controller
 			}
 			if ($codigoRdOut !== null) {
 				$jsonOk['codigo_rd'] = $codigoRdOut;
+			}
+
+			if ($idLibroDiarioCierre !== null && Schema::hasTable('libro_diario_cierre_totales')) {
+				try {
+					app(LibroDiarioCierreTotalesService::class)
+						->syncFromCierreId((int) $idLibroDiarioCierre, $codigoCarreraVal);
+				} catch (\Throwable $e) {
+					Log::warning('[CobroController] sync libro_diario_cierre_totales', [
+						'id_libro_diario_cierre' => $idLibroDiarioCierre,
+						'error' => $e->getMessage(),
+					]);
+				}
 			}
 
 			return response()->json($jsonOk);

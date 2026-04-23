@@ -45,6 +45,7 @@ return [
 	'verbose_log' => filter_var(env('SIN_VERBOSE_LOG', false), FILTER_VALIDATE_BOOL),
 
     'codigoAmbiente' => (int) env('SIN_AMBIENTE', 2),
+    'codigo_ambiente' => (int) env('CODIGO_AMBIENTE', 1),
 
 	// Etiquetas amigables para sucursales usadas en mensajes (configurables por entorno)
 	// Ejemplo: sucursal 0 = Electrónica Automotriz, sucursal 1 = Mecánica Automotriz

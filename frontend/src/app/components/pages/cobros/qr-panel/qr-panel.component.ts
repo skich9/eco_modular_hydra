@@ -105,7 +105,9 @@ export class QrPanelComponent implements OnDestroy, OnChanges {
 		});
 		this.errorMsg = '';
 		this.saveMsg = '';
-		const isFinal = this.status === 'completado' || this.status === 'cancelado' || this.status === 'expirado';
+    const isFinal = this.status === 'completado' || this.status === 'cancelado' || this.status === 'expirado';
+		// Bloquear el botón ANTES del await para evitar doble clic concurrente
+		this.loading = true;
 		await this.ensureFormasCobroLoaded();
 		try {
 			console.log('[QR-Panel] pre-check generar()', {
@@ -115,16 +117,15 @@ export class QrPanelComponent implements OnDestroy, OnChanges {
 			});
 		} catch {}
 		const cod = this.getCodCeta();
-		this.loading = true;
 		this.cobrosService.stateQrByCodCeta({ cod_ceta: cod }).subscribe({
 			next: (res: any) => {
-				this.loading = false;
 				const data = res?.data || null;
 				const est = (data?.estado || '').toString();
 				const saved = !!(data?.saved_by_user);
 				const alias = (data?.alias || '').toString();
 				if (['generado','procesando'].includes(est)) {
 					if (saved) {
+						this.loading = false;
 						this.warnMsg = 'QR guardado en espera. No se mostrará hasta su procesamiento.';
 						this.status = 'pendiente';
 						this.alias = '';
@@ -134,10 +135,12 @@ export class QrPanelComponent implements OnDestroy, OnChanges {
 						return;
 					}
 					// Confirmar con sync antes de abrir modal para evitar parpadeo si saved_by_user cambia
+					// loading permanece true durante el sync para mantener el botón bloqueado
 					try {
 						const id_usuario = (this.cabecera as FormGroup).get('id_usuario')?.value;
 						this.cobrosService.syncQrByCodCeta({ cod_ceta: cod, id_usuario }).subscribe({
 							next: (sx: any) => {
+								this.loading = false;
 								const sd = sx?.data || null;
 								const est2 = (sd?.estado || est).toString();
 								const saved2 = !!(sd?.saved_by_user);
@@ -155,6 +158,7 @@ export class QrPanelComponent implements OnDestroy, OnChanges {
 								this.showExisting(this.alias, '', 0, '', est2);
 							},
 							error: () => {
+								this.loading = false;
 								this.alias = alias;
 								this.savedByUser = false;
 								this.showExisting(this.alias, '', 0, '', est);
@@ -162,6 +166,7 @@ export class QrPanelComponent implements OnDestroy, OnChanges {
 						});
 						return;
 					} catch {
+						this.loading = false;
 						this.alias = alias;
 						this.savedByUser = false;
 						this.showExisting(this.alias, '', 0, '', est);
@@ -176,6 +181,7 @@ export class QrPanelComponent implements OnDestroy, OnChanges {
 				try {
 					const hasSession = !!sessionStorage.getItem(this.storageKey(cod));
 					if (hasSession && this.loadSession(cod)) {
+						this.loading = false;
 						if (this.savedByUser) {
 							this.warnMsg = 'QR guardado en espera. No se mostrará hasta su procesamiento.';
 							try { this.cerrar(); } catch {}

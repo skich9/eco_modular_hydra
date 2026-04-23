@@ -22,6 +22,9 @@ return new class extends Migration
 				$table->boolean('activo')->nullable();
 				$table->timestamp('fecha_creacion')->nullable();
 				$table->boolean('crear_cufd');
+                $table->integer('codigo_ambiente')->default(2);
+
+                $table->primary(['codigo_punto_venta', 'sucursal', 'codigo_ambiente']);
 			});
 			// Sin FKs adicionales en este punto según SQL fuente
 		}

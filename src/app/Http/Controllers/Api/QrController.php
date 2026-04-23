@@ -524,6 +524,9 @@ class QrController extends Controller
         ]);
         $cbUser = (string)config('qr.callback_basic_user');
         $cbPass = (string)config('qr.callback_basic_pass');
+
+        $cbUser2 = (string)config('qr.callback_basic_user2');
+        $cbPass2 = (string)config('qr.callback_basic_pass2');
         $envQr = (string)config('qr.environment', 'development');
         $hasCreds = (trim($cbUser) !== '') && (trim($cbPass) !== '');
         $isAppProd = app()->environment('production');
@@ -531,7 +534,11 @@ class QrController extends Controller
         $isLocal = in_array($ip, ['127.0.0.1', '::1'], true)
             || (preg_match('/^(10\.|192\.168\.|172\.(1[6-9]|2[0-9]|3[0-1])\.)/', $ip) === 1);
         $requireBasic = $isAppProd && $hasCreds && !$isLocal;
-        try { Log::info('QR callback auth gate', ['env_qr' => $envQr, 'app_env_prod' => $isAppProd, 'require_basic' => $requireBasic, 'has_creds' => $hasCreds, 'ip' => $ip, 'is_local' => $isLocal]); } catch (\Throwable $e) {}
+        try {
+            Log::info('QR callback auth gate', ['env_qr' => $envQr, 'app_env_prod' => $isAppProd, 'require_basic' => $requireBasic, 'has_creds' => $hasCreds, 'ip' => $ip, 'is_local' => $isLocal]);
+        } catch (Exception $e) {
+            Log::info('esta generando un excepcion al loguear el callback', ['err' => $e->getMessage()]);
+        }
         if ($requireBasic) {
             $auth = (string)$request->header('Authorization', '');
             if (!str_starts_with($auth, 'Basic ')) {
@@ -541,7 +548,8 @@ class QrController extends Controller
             $pair = explode(':', $raw, 2);
             $u = isset($pair[0]) ? $pair[0] : '';
             $p = isset($pair[1]) ? $pair[1] : '';
-            if (!hash_equals($cbUser, $u) || !hash_equals($cbPass, $p)) {
+
+            if ((!hash_equals($cbUser, $u) || !hash_equals($cbPass, $p)) && (!hash_equals($cbUser2, $u) || !hash_equals($cbPass2, $p))) {
                 return response()->json(['codigo' => '9999', 'mensaje' => 'Unauthorized'], 401);
             }
         }

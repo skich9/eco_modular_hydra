@@ -192,6 +192,8 @@ class PuntoVentaRepository
 				// Verificar si el punto de venta ya existe
 				$existe = DB::table('sin_punto_venta')
 					->where('codigo_punto_venta', $codigoPuntoVenta)
+                    ->where('codigo_ambiente', $codigoAmbiente)
+                    ->where('sucursal', $codigoSucursal)
 					->exists();
 
 				$data = [
@@ -213,6 +215,8 @@ class PuntoVentaRepository
 					// Actualizar punto de venta existente
 					DB::table('sin_punto_venta')
 						->where('codigo_punto_venta', $codigoPuntoVenta)
+                        ->where('codigo_ambiente', $codigoAmbiente)
+                        ->where('sucursal', $codigoSucursal)
 						->update($data);
 					$actualizados++;
 					Log::info('PuntoVentaRepository.sincronizarDesdeSiat: punto de venta actualizado', [

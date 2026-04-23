@@ -4,6 +4,7 @@ namespace App\Console\Commands;
 
 use Illuminate\Console\Command;
 use App\Repositories\Sin\SyncRepository;
+use Illuminate\Support\Facades\Log;
 
 class SinSyncMetodoPagoCommand extends Command
 {

@@ -38,19 +38,18 @@ class Usuario extends Authenticatable
         $this->attributes['contrasenia'] = Hash::make($value);
     }
 
-    // Normalización de nickname: trim + minúsculas + límite 40 chars.
-    // Garantiza unicidad "humana" (ignora espacios y diferencias de mayúsculas)
-    // y se aplica a todas las escrituras vía Eloquent (create/update/fill/assign).
+    // Normalización de nickname: trim + límite 40 chars. Conserva mayúsculas/minúsculas.
+    // Se aplica a todas las escrituras vía Eloquent (create/update/fill/assign).
     public function setNicknameAttribute($value)
     {
-        $normalized = mb_strtolower(trim((string) $value));
+        $normalized = trim((string) $value);
         $this->attributes['nickname'] = mb_substr($normalized, 0, 40);
     }
 
-    // Helper estático para normalizar nicknames fuera de Eloquent (p. ej. DB::table, búsquedas).
+    // Helper estático para normalizar nicknames fuera de Eloquent (p. ej. controladores, búsquedas).
     public static function normalizeNickname($value): string
     {
-        return mb_substr(mb_strtolower(trim((string) $value)), 0, 40);
+        return mb_substr(trim((string) $value), 0, 40);
     }
 
     // Método requerido por Authenticatable para usar 'contrasenia' en lugar de 'password'

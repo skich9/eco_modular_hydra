@@ -6,19 +6,29 @@ use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Schema;
 
 /**
- * Agrega el Libro Diario desde 5 fuentes (cobro, factura, qr_transacciones, recibo, otros_ingresos)
+ * Agrega el Libro Diario desde 4 fuentes (cobro, factura, recibo, otros_ingresos; sin `qr_transacciones`)
  * y devuelve items canónicos listos para la UI y el PDF.
  *
  * Reglas:
  * - Dedupe: si una factura está enlazada a un cobro, solo se incluye el cobro (evita doble conteo).
+ * - Si los cobros solo llevan nº de recibo (sin nº de factura) pero la suma por recibo y cod_ceta
+ *   coincide con una sola factura en el rango, esa factura no se lista en duplicado.
  * - `otros_ingresos`: se filtra por nickname del usuario (la tabla no guarda id_usuario).
  * - `valido='N'` (anulado) se excluye; `valido='A'` se preserva y se reporta como ingreso 0 opcionalmente.
  * - Las observaciones extendidas (banco/nro/fecha/correlativo) se arman en esta capa para el PDF.
+ * - Resumen: `id_forma_cobro` de `formas_cobro` (B, C, D, E, L, O, T) es la letra de columna; para ids
+ *   compuestos se usa el nombre o heurística de apoyo.
  */
 class LibroDiarioAggregatorService
 {
 	/** Códigos en `cobro.cod_tipo_cobro` considerados mora/recargos para el resumen del Libro Diario. */
 	private const COD_TIPO_COBRO_MORA = ['MORA', 'RECARGO', 'INTERES', 'PENALIDAD', 'NIVELACION'];
+
+	/** Letras alineadas con `formas_cobro` y el resumen (Transferencia, Cheque, Depósito, Efectivo, Tarjeta, Otro, Traspaso). */
+	private const LETRAS_RESUMEN = ['B', 'C', 'D', 'E', 'L', 'O', 'T'];
+
+	/** @var array<string, string>|null id_forma_cobro => E|L|D|C|B|T|O */
+	private ?array $mapaFormaCobroIdALetra = null;
 
 	/**
 	 * Suma subtotales de líneas de mora/multa por factura (clave "anio:nro_factura") desde `factura_detalle`.
@@ -88,6 +98,79 @@ class LibroDiarioAggregatorService
 		return $out;
 	}
 
+	/**
+	 * Claves "anio:nro_factura" (o solo nro) de facturas que ya se representan con líneas de cobro:
+	 * directamente por nº de factura en cobro, o por suma de montos de cobros con solo recibo = una factura.
+	 *
+	 * @param \Illuminate\Support\Collection<int,object>|\Illuminate\Support\Collection<int,mixed> $cobros
+	 * @param \Illuminate\Support\Collection<int,object>|\Illuminate\Support\Collection<int,mixed> $facturas
+	 * @return array<string, bool>
+	 */
+	private function clavesFacturaCubiertaPorCobro($cobros, $facturas): array
+	{
+		$out = [];
+		foreach ($cobros as $c) {
+			$nroFac = (string) ($c->nro_factura ?? '0');
+			if ($nroFac === '' || $nroFac === '0') {
+				continue;
+			}
+			$anioC = (int) ($c->anio_cobro ?? 0);
+			$out[$anioC > 0 ? ($anioC . ':' . $nroFac) : $nroFac] = true;
+		}
+
+		$grupos = [];
+		foreach ($cobros as $c) {
+			$nroFac = (string) ($c->nro_factura ?? '0');
+			if ($nroFac !== '' && $nroFac !== '0') {
+				continue;
+			}
+			$nr = (int) ($c->nro_recibo ?? 0);
+			$an = (int) ($c->anio_cobro ?? 0);
+			if ($nr <= 0 || $an <= 0) {
+				continue;
+			}
+			$k = $an . ':' . $nr;
+			if (!isset($grupos[$k])) {
+				$grupos[$k] = [
+					'sum' => 0.0,
+					'cod_ceta' => null,
+				];
+			}
+			$grupos[$k]['sum'] += (float) ($c->monto ?? 0);
+			if ($grupos[$k]['cod_ceta'] === null) {
+				$cc = $c->cod_ceta ?? null;
+				if ($cc !== null && (int) $cc > 0) {
+					$grupos[$k]['cod_ceta'] = (int) $cc;
+				}
+			}
+		}
+
+		foreach ($grupos as $g) {
+			$sum = round($g['sum'], 2);
+			$cetaC = (int) ($g['cod_ceta'] ?? 0);
+			$matches = [];
+			foreach ($facturas as $f) {
+				$nroF = (string) ($f->nro_factura ?? '0');
+				$anF = (int) ($f->anio ?? 0);
+				if ($nroF === '' || $nroF === '0' || $anF <= 0) {
+					continue;
+				}
+				$cetaF = (int) ($f->cod_ceta ?? 0);
+				if ($cetaC > 0 && $cetaF > 0 && $cetaC !== $cetaF) {
+					continue;
+				}
+				if (abs((float) ($f->monto_total ?? 0) - $sum) < 0.01) {
+					$matches[] = $anF . ':' . $nroF;
+				}
+			}
+			if (count($matches) === 1) {
+				$out[$matches[0]] = true;
+			}
+		}
+
+		return $out;
+	}
+
 	/** @return array<string,bool> codigo_producto_interno (string) => true */
 	private function mapaCodigosInternosItemsMora(): array
 	{
@@ -141,11 +224,12 @@ class LibroDiarioAggregatorService
 			return $this->respuestaVacia((string) ($filters['usuario_display'] ?? ''));
 		}
 
+		$this->mapaFormaCobroIdALetra = null;
+
 		$nickname = $this->resolverNicknameUsuario($idUsuario);
 
 		$cobros = $this->cargarCobros($idUsuario, $desde, $hasta, $codigoCarrera);
 		$facturas = $this->cargarFacturas($idUsuario, $desde, $hasta);
-		$qrs = $this->cargarQrs($idUsuario, $desde, $hasta, $codigoCarrera);
 		$recibosMap = $this->cargarRecibosMap($cobros);
 		$otros = $this->cargarOtrosIngresos($nickname, $desde, $hasta, $codigoCarrera);
 
@@ -168,14 +252,7 @@ class LibroDiarioAggregatorService
 			}
 		}
 
-		$facturasConCobro = [];
-		foreach ($cobros as $c) {
-			$nroFac = (string) ($c->nro_factura ?? '0');
-			if ($nroFac !== '' && $nroFac !== '0') {
-				$anioC = (int) ($c->anio_cobro ?? 0);
-				$facturasConCobro[$anioC > 0 ? ($anioC . ':' . $nroFac) : $nroFac] = true;
-			}
-		}
+		$clavesFacturaCubierta = $this->clavesFacturaCubiertaPorCobro($cobros, $facturas);
 
 		$mapaMoraFacturaDetalle = $this->cargarMapaSubtotalMoraFacturaDetalle($cobros, $facturas);
 		$conteoCobrosPorFactura = $this->construirConteoCobrosPorFactura($cobros);
@@ -189,7 +266,7 @@ class LibroDiarioAggregatorService
 			}
 			$anioF = (int) ($f->anio ?? 0);
 			$claveFac = $anioF > 0 ? ($anioF . ':' . $nroFac) : $nroFac;
-			if (isset($facturasConCobro[$claveFac]) || ($anioF <= 0 && isset($facturasConCobro[$nroFac]))) {
+			if (isset($clavesFacturaCubierta[$claveFac]) || ($anioF <= 0 && isset($clavesFacturaCubierta[$nroFac]))) {
 				continue;
 			}
 			$items[] = $this->mapearFactura($f, $mapaFacturas, $mapaMoraFacturaDetalle);
@@ -204,10 +281,6 @@ class LibroDiarioAggregatorService
 				$conteoCobrosPorFactura,
 				$mapaMoraFacturaDetalle
 			);
-		}
-
-		foreach ($qrs as $q) {
-			$items[] = $this->mapearQr($q, $mapaFacturas);
 		}
 
 		foreach ($otros as $o) {
@@ -371,23 +444,6 @@ class LibroDiarioAggregatorService
 				'id_forma_cobro', 'monto_total', 'fecha_emision', 'estado'
 			)
 			->get();
-	}
-
-	/** @return \Illuminate\Support\Collection<int,object> */
-	private function cargarQrs(int $idUsuario, string $desde, string $hasta, string $codigoCarrera)
-	{
-		$q = DB::table('qr_transacciones')
-			->where('id_usuario', $idUsuario)
-			->whereDate('fecha_generacion', '>=', $desde)
-			->whereDate('fecha_generacion', '<=', $hasta);
-
-		if ($codigoCarrera !== '') {
-			$q->whereIn('cod_pensum', function ($sub) use ($codigoCarrera) {
-				$sub->select('cod_pensum')->from('pensums')->where('codigo_carrera', $codigoCarrera);
-			});
-		}
-
-		return $q->get();
 	}
 
 	/**
@@ -593,60 +649,6 @@ class LibroDiarioAggregatorService
 	}
 
 	/**
-	 * @param object $q
-	 * @param array<string,array{razon_social:string,nit:string}> $mapaFacturas
-	 * @return array<string,mixed>
-	 */
-	private function mapearQr($q, array $mapaFacturas): array
-	{
-		$nroFac = (string) ($q->nro_factura ?? '0');
-		$anioQr = 0;
-		if (!empty($q->fecha_generacion)) {
-			try {
-				$anioQr = (int) (new \DateTime((string) $q->fecha_generacion))->format('Y');
-			} catch (\Throwable $e) {
-				$anioQr = 0;
-			}
-		}
-		$claveFac = ($anioQr > 0 && $nroFac !== '' && $nroFac !== '0') ? ($anioQr . ':' . $nroFac) : $nroFac;
-		$dc = null;
-		if ($nroFac !== '' && $nroFac !== '0') {
-			if (isset($mapaFacturas[$claveFac])) {
-				$dc = $mapaFacturas[$claveFac];
-			} elseif (isset($mapaFacturas[$nroFac])) {
-				$dc = $mapaFacturas[$nroFac];
-			}
-		}
-		if ($dc === null) {
-			$dc = [
-				'razon_social' => (string) ($q->cliente ?? ($q->nombre_cliente ?? 'SIN DATOS')),
-				'nit' => (string) ($q->nro_documento_cobro ?? ($q->nit ?? '0')),
-			];
-		}
-
-		$metodo = strtoupper((string) ($q->metodo_pago ?? ''));
-		$tipoPago = $metodo === 'TARJETA' ? 'L' : 'E';
-
-		return [
-			'numero' => 0,
-			'recibo' => (string) ($q->id_qr_transaccion ?? '0'),
-			'factura' => $nroFac !== '' ? $nroFac : '0',
-			'concepto' => (string) ($q->detalle_glosa ?? 'Transacción QR'),
-			'razon' => $dc['razon_social'] ?: 'SIN DATOS',
-			'nit' => $dc['nit'] ?: '0',
-			'cod_ceta' => (string) ($q->cod_ceta ?? '0'),
-			'hora' => $this->horaLocal((string) ($q->fecha_generacion ?? '')),
-			'ingreso' => (float) ($q->monto_total ?? ($q->monto ?? 0)),
-			'egreso' => 0.0,
-			'tipo_doc' => 'F',
-			'tipo_pago' => $tipoPago,
-			'observaciones' => $metodo !== '' ? $metodo : 'Efectivo',
-			'es_mora' => false,
-			'monto_mora' => 0.0,
-		];
-	}
-
-	/**
 	 * @param object $o
 	 * @return array<string,mixed>
 	 */
@@ -688,9 +690,83 @@ class LibroDiarioAggregatorService
 		];
 	}
 
-	private function mapearTipoPago(string $codigo): string
+	/**
+	 * Mapa id_forma_cobro => letra de resumen. Caso base (catálogo con B, C, D, E, L, O, T en id): la
+	 * letra es el propio id; ids largos usan el nombre o heurística.
+	 *
+	 * @return array<string, string> id => E|L|D|C|B|T|O
+	 */
+	private function mapaFormaCobroIdALetraResumen(): array
 	{
-		$c = strtoupper(trim($codigo));
+		if ($this->mapaFormaCobroIdALetra !== null) {
+			return $this->mapaFormaCobroIdALetra;
+		}
+		$this->mapaFormaCobroIdALetra = [];
+		if (!Schema::hasTable('formas_cobro')) {
+			return $this->mapaFormaCobroIdALetra;
+		}
+		$rows = DB::table('formas_cobro')->select('id_forma_cobro', 'nombre')->get();
+		foreach ($rows as $row) {
+			$id = trim((string) ($row->id_forma_cobro ?? ''));
+			if ($id === '') {
+				continue;
+			}
+			$this->mapaFormaCobroIdALetra[$id] = $this->letraResumenDesdeFormaCobro(
+				$id,
+				(string) ($row->nombre ?? '')
+			);
+		}
+		return $this->mapaFormaCobroIdALetra;
+	}
+
+	/**
+	 * 1) Id de una sola letra (catálogo estándar): es la letra del resumen.
+	 * 2) Id compuesto: pistas en `nombre` alineadas con formas_cobro.
+	 * 3) Fallback: heurística sobre el id.
+	 */
+	private function letraResumenDesdeFormaCobro(string $id, string $nombre): string
+	{
+		$u = strtoupper(trim($id));
+		if (strlen($u) === 1 && in_array($u, self::LETRAS_RESUMEN, true)) {
+			return $u;
+		}
+		$n = mb_strtolower($nombre, 'UTF-8');
+		$n = strtr($n, ['á' => 'a', 'é' => 'e', 'í' => 'i', 'ó' => 'o', 'ú' => 'u', 'ü' => 'u', 'ñ' => 'n']);
+
+		if (str_contains($n, 'traspaso')) {
+			return 'T';
+		}
+		if (str_contains($n, 'transfer') || (str_contains($n, 'qr') && (str_contains($n, 'banc') || str_contains($n, 'trans')))) {
+			return 'B';
+		}
+		if (str_contains($n, 'cheq')) {
+			return 'C';
+		}
+		if (str_contains($n, 'linea') && str_contains($n, 'dep')) {
+			return 'L';
+		}
+		if (str_contains($n, 'depo') || str_contains($n, 'posit') || (str_contains($n, 'dep') && str_contains($n, 'cuenta'))) {
+			return 'D';
+		}
+		if (str_contains($n, 'tarj')) {
+			return str_contains($n, 'efectiv') ? 'O' : 'L';
+		}
+		if (str_contains($n, 'vales') || str_contains($n, 'otro') || (str_contains($n, 'pago') && str_contains($n, 'posterior'))) {
+			return 'O';
+		}
+		if (str_contains($n, 'efectiv')) {
+			if (str_contains($n, 'tarj') || str_contains($n, 'transf') || str_contains($n, 'cheq') || str_contains($n, 'vales') || str_contains($n, 'dep') || str_contains($n, 'qr')) {
+				return 'O';
+			}
+			return 'E';
+		}
+
+		return $this->mapearTipoPagoHeuristicaSobreId($u);
+	}
+
+	/** Fallback cuando el id no está en el catálogo: mismas pistas anteriores sobre el string. */
+	private function mapearTipoPagoHeuristicaSobreId(string $c): string
+	{
 		if ($c === '') {
 			return 'E';
 		}
@@ -713,6 +789,30 @@ class LibroDiarioAggregatorService
 			return 'T';
 		}
 		return 'O';
+	}
+
+	private function mapearTipoPago(string $codigo): string
+	{
+		$k = trim($codigo);
+		if ($k === '') {
+			return 'E';
+		}
+		$mapa = $this->mapaFormaCobroIdALetraResumen();
+		if (isset($mapa[$k])) {
+			return $mapa[$k];
+		}
+		$c = strtoupper($k);
+		foreach ($mapa as $idCat => $letra) {
+			if (strtoupper((string) $idCat) === $c) {
+				return $letra;
+			}
+		}
+		// Misma convención que `formas_cobro.id_forma_cobro` (una letra).
+		if (strlen($c) === 1 && in_array($c, self::LETRAS_RESUMEN, true)) {
+			return $c;
+		}
+
+		return $this->mapearTipoPagoHeuristicaSobreId($c);
 	}
 
 	private function armarObservacionesExtendidas($c): string

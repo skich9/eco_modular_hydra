@@ -49,6 +49,7 @@ export class MensualidadModalComponent implements OnInit, OnChanges, AfterViewIn
   moraPendienteDetectada: any = null;
   private lastMorasLen: number = -1;
   botonDeshabilitado = false; // Se actualiza cuando cambia detalleFactura
+  private modalOpenListenerBound = false;
 
   private isMoraEstadoPendiente(estadoRaw: any): boolean {
     try {
@@ -282,7 +283,7 @@ export class MensualidadModalComponent implements OnInit, OnChanges, AfterViewIn
       costo_total: [{ value: 0, disabled: true }],
       descuento: [{ value: 0, disabled: true }],
       observaciones: [''],
-      comprobante: ['RECIBO', [Validators.required]], // FACTURA | RECIBO (siempre seleccionado)
+      comprobante: ['FACTURA', [Validators.required]], // FACTURA | RECIBO (siempre seleccionado)
       nro_factura: [''],
       nro_recibo: [''],
       computarizada: ['COMPUTARIZADA'], // COMPUTARIZADA | MANUAL
@@ -1202,6 +1203,33 @@ export class MensualidadModalComponent implements OnInit, OnChanges, AfterViewIn
     setTimeout(() => {
       this.actualizarEstadoBoton();
     }, 0);
+
+    this.bindComprobanteDefaultOnModalOpen();
+  }
+
+  private bindComprobanteDefaultOnModalOpen(): void {
+    if (this.modalOpenListenerBound) return;
+    const modalEl = document.getElementById('mensualidadModal');
+    if (!modalEl) return;
+
+    modalEl.addEventListener('show.bs.modal', () => {
+      // Reaplicar selección por defecto cada vez que se abre el modal.
+      // FACTURA por defecto; RECIBO solo cuando FACTURA está bloqueada por descuentos institucionales.
+      setTimeout(() => this.applyDefaultComprobanteOnOpen(), 0);
+    });
+
+    this.modalOpenListenerBound = true;
+  }
+
+  private applyDefaultComprobanteOnOpen(): void {
+    const ctrl = this.form.get('comprobante');
+    if (!ctrl) return;
+
+    const facturaBloqueada = this.facturaDeshabilitada;
+    const comprobanteDefault = facturaBloqueada ? 'RECIBO' : 'FACTURA';
+    if (ctrl.value !== comprobanteDefault) {
+      this.form.patchValue({ comprobante: comprobanteDefault }, { emitEvent: false });
+    }
   }
 
   ngOnChanges(changes: SimpleChanges): void {

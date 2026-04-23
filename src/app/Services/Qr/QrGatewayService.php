@@ -15,6 +15,7 @@ class QrGatewayService
             'password' => config('qr.password'),
             'username' => config('qr.username'),
         ];
+        Log::info('QRGW authenticate: starting authentication', ['url' => $url, 'payload' => $payload, 'key_present' => $key]);
         if (!$url || !$key) { return ['ok' => false, 'token' => null]; }
 
         $http = Http::withHeaders(['apikey' => $key])
@@ -27,12 +28,19 @@ class QrGatewayService
         if (config('qr.http_proxy')) { $options['proxy'] = config('qr.http_proxy'); }
         if (!empty($options)) { $http = $http->withOptions($options); }
 
-        Log::info('QRGW authenticate request', ['url' => $url]);
-        $resp = $http->post($url, $payload);
-        Log::info('QRGW authenticate response', ['status' => $resp->status(), 'ok' => $resp->ok()]);
+        try {
+            Log::info('antes de hacer la petición de autenticación al QRGW');
+            $resp = $http->post($url, $payload);
+            Log::info('después de hacer la petición de autenticación al QRGW', ['status' => $resp->status(), 'ok' => $resp->ok()]);
+        } catch (\Illuminate\Http\Client\ConnectionException $e) {
+            Log::error('QRGW authenticate connection failed', ['url' => $url, 'error' => $e->getMessage()]);
+            return ['ok' => false, 'token' => null];
+        }
+        Log::info('QRGW authenticate response', ['status' => $resp->status(), 'ok' => $resp->ok(), 'data' => $resp->json()]);
         if (!$resp->ok()) { return ['ok' => false, 'token' => null]; }
         $data = $resp->json();
         $token = $data['objeto']['token'] ?? null;
+        Log::info('el token que se genera es: ', ['token' => $token]);
         return ['ok' => (bool)$token, 'token' => $token];
     }
 
@@ -56,7 +64,12 @@ class QrGatewayService
         if (!empty($options)) { $http = $http->withOptions($options); }
 
         Log::info('QRGW createPayment request', ['url' => $url]);
-        $resp = $http->post($url, $data);
+        try {
+            $resp = $http->post($url, $data);
+        } catch (\Illuminate\Http\Client\ConnectionException $e) {
+            Log::error('QRGW createPayment connection failed', ['url' => $url, 'error' => $e->getMessage()]);
+            return ['ok' => false, 'error' => 'connection_timeout'];
+        }
         Log::info('QRGW createPayment response', ['status' => $resp->status(), 'ok' => $resp->ok()]);
         if (!$resp->ok()) { return ['ok' => false, 'status' => $resp->status(), 'body' => $resp->body()]; }
         $j = $resp->json();
@@ -83,7 +96,12 @@ class QrGatewayService
         if (!empty($options)) { $http = $http->withOptions($options); }
 
         Log::info('QRGW disablePayment request', ['url' => $url, 'alias' => $alias]);
-        $resp = $http->post($url, ['alias' => $alias]);
+        try {
+            $resp = $http->post($url, ['alias' => $alias]);
+        } catch (\Illuminate\Http\Client\ConnectionException $e) {
+            Log::error('QRGW disablePayment connection failed', ['url' => $url, 'error' => $e->getMessage()]);
+            return ['ok' => false, 'error' => 'connection_timeout'];
+        }
         Log::info('QRGW disablePayment response', ['status' => $resp->status(), 'ok' => $resp->ok()]);
         if (!$resp->ok()) { return ['ok' => false, 'status' => $resp->status(), 'body' => $resp->body()]; }
         $j = $resp->json();
@@ -110,7 +128,12 @@ class QrGatewayService
         if (config('qr.http_proxy')) { $options['proxy'] = config('qr.http_proxy'); }
         if (!empty($options)) { $http = $http->withOptions($options); }
 
-        $resp = $http->post($url, ['alias' => $alias]);
+        try {
+            $resp = $http->post($url, ['alias' => $alias]);
+        } catch (\Illuminate\Http\Client\ConnectionException $e) {
+            Log::error('QRGW getStatus connection failed', ['url' => $url, 'error' => $e->getMessage()]);
+            return ['ok' => false, 'error' => 'connection_timeout'];
+        }
         if (!$resp->ok()) { return ['ok' => false, 'status' => $resp->status(), 'body' => $resp->body()]; }
         $j = $resp->json();
         $code = $j['codigo'] ?? null;

@@ -20,6 +20,7 @@ final class LibroDiarioAccessService
 {
 	/**
 	 * Roles que pueden ver todos los libros diarios (rector, tesorería, contabilidad, sistemas).
+	 * Incluye sinónimos usados en {@see normalizarClaveRol} según nombres reales en `rol` (p. ej. Contador → contador).
 	 *
 	 * @var list<string> claves normalizadas con {@see normalizarClaveRol}
 	 */
@@ -27,6 +28,7 @@ final class LibroDiarioAccessService
 		'rector',
 		'tesoreria',
 		'contabilidad',
+        'contador',
 		'sistemas',
 	];
 

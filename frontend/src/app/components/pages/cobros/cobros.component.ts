@@ -1977,29 +1977,29 @@ export class CobrosComponent implements OnInit {
     // === FLUJO SSO: Detectar y validar token si existe ===
     const urlParams = new URLSearchParams(window.location.search);
     const ssoToken = urlParams.get('sso_token');
-    
+
     if (ssoToken) {
       console.info('[Cobros][SSO] Token detectado en URL, procesando autenticación', {
         tokenLength: ssoToken.length
       });
-      
+
       // Iniciar autenticación SSO inmediatamente
       this.loading = true;
       this.auth.loginWithSsoToken(ssoToken).subscribe({
         next: (response: any) => {
           this.loading = false;
-          
+
           if (!response?.success) {
             console.error('[Cobros][SSO] Validación de token fallida', response?.message);
             this.showAlert(response?.message || 'Token SSO inválido', 'error');
             return;
           }
-          
+
           console.info('[Cobros][SSO] Token validado exitosamente, usuario autenticado');
-          
+
           // Limpiar token de la URL después de autenticarse
           this.removeSsoTokenFromBrowserUrl();
-          
+
           // Extraer cod_ceta: primero desde la respuesta del backend (token SSO la codifica),
           // después desde la URL si SGA la envió directamente
           const codCetaFromResponse = (response?.cod_ceta || '').toString().trim();
@@ -2007,7 +2007,7 @@ export class CobrosComponent implements OnInit {
                                  (urlParams.get('codCeta') || '').toString().trim() ||
                                  (urlParams.get('cod_estudiante') || '').toString().trim();
           const codCeta = codCetaFromResponse || codCetaFromUrl;
-          
+
           console.info('[Cobros][SSO] Datos SSO recibidos', {
             codCetaFromResponse: codCetaFromResponse || null,
             codCetaFromUrl: codCetaFromUrl || null,
@@ -2032,10 +2032,10 @@ export class CobrosComponent implements OnInit {
           this.showAlert(error?.error?.message || 'Error al validar token SSO', 'error');
         }
       });
-      
+
       return; // No continuar con el resto del init hasta completar SSO
     }
-    
+
     // === FIN FLUJO SSO ===
     // Suscripciones del modal: actualizar UI del documento según tipo
     this.modalIdentidadForm.get('tipo_identidad')?.valueChanges.subscribe((v: number) => {
