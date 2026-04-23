@@ -146,12 +146,67 @@ return new class extends Migration
 	 */
 	public function down(): void
 	{
+		// Eliminar FKs externas que referencian datos_mora_detalle (bloquean drop de índices)
+		// $externalFKs = DB::select("
+		// 	SELECT TABLE_NAME, CONSTRAINT_NAME
+		// 	FROM information_schema.KEY_COLUMN_USAGE
+		// 	WHERE REFERENCED_TABLE_SCHEMA = DATABASE()
+		// 	AND REFERENCED_TABLE_NAME = 'datos_mora_detalle'
+		// 	AND CONSTRAINT_NAME != 'PRIMARY'
+		// ");
+		// foreach ($externalFKs as $fk) {
+		// 	try {
+		// 		DB::statement("ALTER TABLE `{$fk->TABLE_NAME}` DROP FOREIGN KEY `{$fk->CONSTRAINT_NAME}`");
+		// 	} catch (\Exception $e) {}
+		// }
+
 		Schema::table('datos_mora_detalle', function (Blueprint $table) {
-			// Eliminar índices y foreign key de cod_pensum
-			$table->dropForeign('fk_mora_detalle_pensum');
-			$table->dropUnique('uk_mora_detalle_config');
-			$table->dropIndex('idx_mora_detalle_pensum');
-			$table->dropColumn('cod_pensum');
+			// Eliminar FK de cod_pensum si existe
+			$fkExists = DB::select("
+				SELECT CONSTRAINT_NAME FROM information_schema.TABLE_CONSTRAINTS
+				WHERE TABLE_SCHEMA = DATABASE() AND TABLE_NAME = 'datos_mora_detalle'
+				AND CONSTRAINT_TYPE = 'FOREIGN KEY' AND CONSTRAINT_NAME = 'fk_mora_detalle_pensum'
+			");
+			if (!empty($fkExists)) {
+				$table->dropForeign('fk_mora_detalle_pensum');
+			}
+            $fkExists = DB::select("
+				SELECT CONSTRAINT_NAME FROM information_schema.TABLE_CONSTRAINTS
+				WHERE TABLE_SCHEMA = DATABASE() AND TABLE_NAME = 'datos_mora_detalle'
+				AND CONSTRAINT_TYPE = 'FOREIGN KEY' AND CONSTRAINT_NAME = 'fk_mora_detalle_datos_mora'
+			");
+			if (!empty($fkExists)) {
+				$table->dropForeign('fk_mora_detalle_datos_mora');
+			}
+
+            $indexExists = DB::select("
+                SELECT INDEX_NAME FROM information_schema.STATISTICS
+                WHERE TABLE_SCHEMA = DATABASE() AND TABLE_NAME = 'datos_mora_detalle'
+                AND INDEX_NAME = 'uk_mora_detalle_config'
+                LIMIT 1
+            ");
+            if (!empty($indexExists)) {
+                $table->dropUnique('uk_mora_detalle_config');
+            }
+
+            $indexExists = DB::select("
+                SELECT INDEX_NAME FROM information_schema.STATISTICS
+                WHERE TABLE_SCHEMA = DATABASE() AND TABLE_NAME = 'datos_mora_detalle'
+                AND INDEX_NAME = 'idx_mora_detalle_pensum'
+                LIMIT 1
+            ");
+            if (!empty($indexExists)) {
+                $table->dropIndex('idx_mora_detalle_pensum');
+            }
+
+			$codPensumExists = DB::select("
+				SELECT COLUMN_NAME FROM information_schema.COLUMNS
+				WHERE TABLE_SCHEMA = DATABASE() AND TABLE_NAME = 'datos_mora_detalle'
+				AND COLUMN_NAME = 'cod_pensum'
+			");
+			if (!empty($codPensumExists)) {
+				$table->dropColumn('cod_pensum');
+			}
 
 			// Renombrar cuota de vuelta a id_cuota
 			$table->renameColumn('cuota', 'id_cuota');

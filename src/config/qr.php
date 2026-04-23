@@ -9,11 +9,13 @@ return [
 	'url_transfer' => env('QR_URL_TRANSFER'),
 	'environment' => env('QR_ENVIRONMENT', 'development'),
 	'force_dummy' => env('QR_FORCE_DUMMY', false),
-	'callback_base' => env('QR_CALLBACK_BASE', env('APP_URL')), 
+	'callback_base' => env('QR_CALLBACK_BASE', env('APP_URL')),
 	'socket_url' => env('QR_SOCKET_URL'),
 	'accounts' => array_filter(array_map('trim', explode(',', env('QR_ACCOUNTS', '')))),
     'callback_basic_user' => env('QR_CB_BASIC_USER'),
     'callback_basic_pass' => env('QR_CB_BASIC_PASS'),
+    'callback_basic_user2' => env('QR_CB_BASIC_USER2'),
+    'callback_basic_pass2' => env('QR_CB_BASIC_PASS2'),
     'forma_cobro_id' => env('QR_FORMA_COBRO_ID', 'B'),
 
     // HTTP client options

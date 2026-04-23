@@ -17,12 +17,17 @@ brain/
 
 src/.env
 src/.env.development
+src/.env.development.ts
 src/.env.production
 src/.env.example.docker
+src/.env.development.local
+src/.env.segundadb
+
 
 
 frontend/src/environments/environment.ts.nodocker
 frontend/src/environments/environment.ts.docker
+frontend/src/environments/environment.production.ts
 
 
 src/public/reportes/libro_diario/*.pdf

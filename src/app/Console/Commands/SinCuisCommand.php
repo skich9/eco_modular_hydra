@@ -13,8 +13,9 @@ class SinCuisCommand extends Command
 	public function handle(CuisRepository $repo): int
 	{
 		$pv = (int) $this->argument('pv');
+		$codigoAmbiente = (int) config('sin.codigo_ambiente');
 		try {
-			$data = $repo->getVigenteOrCreate2(2,0,$pv);
+			$data = $repo->getVigenteOrCreate2($codigoAmbiente,0,$pv);
 			$this->info('CUIS OK');
 			$this->line(json_encode($data, JSON_PRETTY_PRINT | JSON_UNESCAPED_UNICODE));
 			return self::SUCCESS;

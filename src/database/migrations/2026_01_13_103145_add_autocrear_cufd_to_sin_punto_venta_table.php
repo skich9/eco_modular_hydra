@@ -14,7 +14,7 @@ return new class extends Migration
         Schema::table('sin_punto_venta', function (Blueprint $table) {
             //
             $table->boolean('autocrear_cufd')->default(false);
-            $table->integer('codigo_ambiente')->default(2);
+
         });
     }
 
@@ -26,7 +26,6 @@ return new class extends Migration
         Schema::table('sin_punto_venta', function (Blueprint $table) {
             //
             $table->dropColumn('autocrear_cufd');
-            $table->dropColumn('codigo_ambiente');
         });
     }
 };

@@ -1,4 +1,8 @@
 export const environment = {
-  production: false,
-  apiUrl: 'http://localhost:8000/api'
+    production: false,
+    // Valor por defecto; en runtime el servicio ajustará host/puerto si está en navegador
+    apiUrl: 'http://192.168.0.229:8000/api',
+    apiPort: '8000',
+    // URL base para generar códigos QR del SIN
+    qrSinUrl: 'https://pilotosiat.impuestos.gob.bo/consulta/QR?',
 };

@@ -24,7 +24,15 @@ return new class extends Migration
 	public function down(): void
 	{
 		Schema::table('asignacion_funcion', function (Blueprint $table) {
-			$table->dropForeign(['asignado_por']);
+            $fkExists = DB::select("
+				SELECT CONSTRAINT_NAME FROM information_schema.TABLE_CONSTRAINTS
+				WHERE TABLE_SCHEMA = DATABASE() AND TABLE_NAME = 'asignacion_funcion'
+				AND CONSTRAINT_TYPE = 'FOREIGN KEY' AND CONSTRAINT_NAME = 'asignado_por'
+			");
+			if (!empty($fkExists)) {
+				$table->dropForeign('asignado_por');
+			}
+			// $table->dropForeign(['asignado_por']);
 			$table->dropColumn(['activo', 'observaciones', 'asignado_por']);
 		});
 	}

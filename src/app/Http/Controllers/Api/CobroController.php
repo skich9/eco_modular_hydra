@@ -560,7 +560,7 @@ class CobroController extends Controller
 				$primeraAsignacionNormal = AsignacionCostos::where('cod_inscrip', $normalInscripcion->cod_inscrip)
 					->orderBy('numero_cuota')
 					->first();
-				
+
 				if ($primeraAsignacionNormal) {
 					$montoTotalNormal = (float)$primeraAsignacionNormal->monto * 5;
 				} else {
@@ -959,11 +959,11 @@ class CobroController extends Controller
 			// --- Lógica de Descuento por Semestre Completo (Parámetros de Sistema) ---
 			$pActivar = DB::table('parametros_economicos')->where('nombre', 'descuento_semestre_completo_activar')->first();
 			$pPorcentaje = DB::table('parametros_economicos')->where('nombre', 'descuento_semestre_completo_porcentaje')->first();
-			
+
 			if (optional($pActivar)->valor === 'true' && (float)optional($pPorcentaje)->valor > 0) {
 				$porcentajeSistemicos = (float)$pPorcentaje->valor;
 				$descuentoSistemicoCalculado = $montoSemestre * ($porcentajeSistemicos / 100);
-				
+
 				// Si el descuento calculado por sistema es mayor al que ya tenemos registrado,
 				// y el estudiante ya completó sus pagos (o para mostrar proyección), usamos el del sistema.
 				// Para 120251047, esto asegurará que se vea el 10% si los manuales fallan.
@@ -2277,6 +2277,14 @@ class CobroController extends Controller
                 $nick = DB::table('usuarios')->where('id_usuario', $usuarioId)->value('nickname');
                 $usuarioLabel = $nick ? (string) $nick : (string) $usuarioId;
 
+                Log::info('batchStore: starting sucursal/pv determination', [
+                    'id_usuario' => $usuarioId,
+                    'sucursal_input' => $sucursalInput,
+                    'punto_venta_input' => $puntoVentaInput,
+                    'nickname' => $nick,
+                    'codigo_ambiente' => $codigoAmbiente
+                ]);
+
                 if (!is_null($sucursalInput) && !is_null($puntoVentaInput)) {
                     // Usuario apoyoCobranzas=true: frontend envía sucursal y PV seleccionados
                     $respPuntoVenta = DB::table('sin_punto_venta_usuario')
@@ -3462,7 +3470,7 @@ class CobroController extends Controller
                         $numeroCuota = (int)$matches[1];
                         $parcialTexto = isset($matches[2]) ? $matches[2] : '';
                         $gestion = isset($request->gestion) ? (string)$request->gestion : '';
-                        
+
                         $meses = [];
                         // Determinar meses según gestión
                         if (strpos($gestion, '1/') === 0) {
@@ -4428,7 +4436,7 @@ class CobroController extends Controller
 			// CUFD vigente o crear
 			$cufd = null;
 			try {
-                $cufd = $cufdRepo->getVigenteOrCreate2(0, 0, $pv);
+                $cufd = $cufdRepo->getVigenteOrCreate2($codigoAmbiente, 0, $pv);
 				$cufd = $cufdRepo->getVigenteOrCreate($pv);
 				Log::info('validar-impuestos: CUFD ok', [ 'codigo_cufd' => isset($cufd['codigo_cufd']) ? $cufd['codigo_cufd'] : null, 'fecha_vigencia' => isset($cufd['fecha_vigencia']) ? $cufd['fecha_vigencia'] : null ]);
 			} catch (\Throwable $e) {
