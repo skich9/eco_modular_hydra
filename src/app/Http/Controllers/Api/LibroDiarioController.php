@@ -10,7 +10,7 @@ use Illuminate\Http\JsonResponse;
 use Illuminate\Http\Request;
 
 /**
- * Endpoint único del Libro Diario: agrega cobros, facturas, QR, recibos y otros ingresos en backend.
+ * Endpoint único del Libro Diario: agrega cobros, facturas, recibos y otros ingresos en backend (sin QR).
  * El front pasa a tener una sola llamada; el PDF también consume estos mismos datos.
  */
 class LibroDiarioController extends Controller

@@ -6,14 +6,13 @@ use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Schema;
 
 /**
- * Agrega el Libro Diario desde 5 fuentes (cobro, factura, qr_transacciones, recibo, otros_ingresos)
+ * Agrega el Libro Diario desde 4 fuentes (cobro, factura, recibo, otros_ingresos; sin `qr_transacciones`)
  * y devuelve items canónicos listos para la UI y el PDF.
  *
  * Reglas:
  * - Dedupe: si una factura está enlazada a un cobro, solo se incluye el cobro (evita doble conteo).
  * - Si los cobros solo llevan nº de recibo (sin nº de factura) pero la suma por recibo y cod_ceta
  *   coincide con una sola factura en el rango, esa factura no se lista en duplicado.
- * - `qr_transacciones` no se agrega si ya hay cobro con la misma clave de factura (año:nro); el cobro es la fila canónica.
  * - `otros_ingresos`: se filtra por nickname del usuario (la tabla no guarda id_usuario).
  * - `valido='N'` (anulado) se excluye; `valido='A'` se preserva y se reporta como ingreso 0 opcionalmente.
  * - Las observaciones extendidas (banco/nro/fecha/correlativo) se arman en esta capa para el PDF.
@@ -164,30 +163,6 @@ class LibroDiarioAggregatorService
 		return $out;
 	}
 
-	/**
-	 * Clave alineada con mapeo de factura/QR, o null si no hay nº de factura.
-	 */
-	private function claveFacturaDesdeFilaQr($q): ?string
-	{
-		$nroFac = (string) ($q->nro_factura ?? '0');
-		if ($nroFac === '' || $nroFac === '0') {
-			return null;
-		}
-		$anio = 0;
-		if (!empty($q->fecha_generacion)) {
-			try {
-				$anio = (int) (new \DateTime((string) $q->fecha_generacion))->format('Y');
-			} catch (\Throwable $e) {
-				$anio = 0;
-			}
-		}
-		if ($anio > 0) {
-			return $anio . ':' . $nroFac;
-		}
-
-		return $nroFac;
-	}
-
 	/** @return array<string,bool> codigo_producto_interno (string) => true */
 	private function mapaCodigosInternosItemsMora(): array
 	{
@@ -245,7 +220,6 @@ class LibroDiarioAggregatorService
 
 		$cobros = $this->cargarCobros($idUsuario, $desde, $hasta, $codigoCarrera);
 		$facturas = $this->cargarFacturas($idUsuario, $desde, $hasta);
-		$qrs = $this->cargarQrs($idUsuario, $desde, $hasta, $codigoCarrera);
 		$recibosMap = $this->cargarRecibosMap($cobros);
 		$otros = $this->cargarOtrosIngresos($nickname, $desde, $hasta, $codigoCarrera);
 
@@ -297,14 +271,6 @@ class LibroDiarioAggregatorService
 				$conteoCobrosPorFactura,
 				$mapaMoraFacturaDetalle
 			);
-		}
-
-		foreach ($qrs as $q) {
-			$claveQr = $this->claveFacturaDesdeFilaQr($q);
-			if ($claveQr !== null && isset($clavesFacturaCubierta[$claveQr])) {
-				continue;
-			}
-			$items[] = $this->mapearQr($q, $mapaFacturas);
 		}
 
 		foreach ($otros as $o) {
@@ -468,23 +434,6 @@ class LibroDiarioAggregatorService
 				'id_forma_cobro', 'monto_total', 'fecha_emision', 'estado'
 			)
 			->get();
-	}
-
-	/** @return \Illuminate\Support\Collection<int,object> */
-	private function cargarQrs(int $idUsuario, string $desde, string $hasta, string $codigoCarrera)
-	{
-		$q = DB::table('qr_transacciones')
-			->where('id_usuario', $idUsuario)
-			->whereDate('fecha_generacion', '>=', $desde)
-			->whereDate('fecha_generacion', '<=', $hasta);
-
-		if ($codigoCarrera !== '') {
-			$q->whereIn('cod_pensum', function ($sub) use ($codigoCarrera) {
-				$sub->select('cod_pensum')->from('pensums')->where('codigo_carrera', $codigoCarrera);
-			});
-		}
-
-		return $q->get();
 	}
 
 	/**
@@ -690,60 +639,6 @@ class LibroDiarioAggregatorService
 	}
 
 	/**
-	 * @param object $q
-	 * @param array<string,array{razon_social:string,nit:string}> $mapaFacturas
-	 * @return array<string,mixed>
-	 */
-	private function mapearQr($q, array $mapaFacturas): array
-	{
-		$nroFac = (string) ($q->nro_factura ?? '0');
-		$anioQr = 0;
-		if (!empty($q->fecha_generacion)) {
-			try {
-				$anioQr = (int) (new \DateTime((string) $q->fecha_generacion))->format('Y');
-			} catch (\Throwable $e) {
-				$anioQr = 0;
-			}
-		}
-		$claveFac = ($anioQr > 0 && $nroFac !== '' && $nroFac !== '0') ? ($anioQr . ':' . $nroFac) : $nroFac;
-		$dc = null;
-		if ($nroFac !== '' && $nroFac !== '0') {
-			if (isset($mapaFacturas[$claveFac])) {
-				$dc = $mapaFacturas[$claveFac];
-			} elseif (isset($mapaFacturas[$nroFac])) {
-				$dc = $mapaFacturas[$nroFac];
-			}
-		}
-		if ($dc === null) {
-			$dc = [
-				'razon_social' => (string) ($q->cliente ?? ($q->nombre_cliente ?? 'SIN DATOS')),
-				'nit' => (string) ($q->nro_documento_cobro ?? ($q->nit ?? '0')),
-			];
-		}
-
-		$metodo = strtoupper((string) ($q->metodo_pago ?? ''));
-		$tipoPago = $this->mapearTipoPagoDesdeMetodoQr($metodo);
-
-		return [
-			'numero' => 0,
-			'recibo' => (string) ($q->id_qr_transaccion ?? '0'),
-			'factura' => $nroFac !== '' ? $nroFac : '0',
-			'concepto' => (string) ($q->detalle_glosa ?? 'Transacción QR'),
-			'razon' => $dc['razon_social'] ?: 'SIN DATOS',
-			'nit' => $dc['nit'] ?: '0',
-			'cod_ceta' => (string) ($q->cod_ceta ?? '0'),
-			'hora' => $this->horaLocal((string) ($q->fecha_generacion ?? '')),
-			'ingreso' => (float) ($q->monto_total ?? ($q->monto ?? 0)),
-			'egreso' => 0.0,
-			'tipo_doc' => 'F',
-			'tipo_pago' => $tipoPago,
-			'observaciones' => $metodo !== '' ? $metodo : 'Efectivo',
-			'es_mora' => false,
-			'monto_mora' => 0.0,
-		];
-	}
-
-	/**
 	 * @param object $o
 	 * @return array<string,mixed>
 	 */
@@ -783,35 +678,6 @@ class LibroDiarioAggregatorService
 			'es_mora' => false,
 			'monto_mora' => 0.0,
 		];
-	}
-
-	/** Tipo pago letra para filas de `qr_transacciones` (metodo_pago en texto). */
-	private function mapearTipoPagoDesdeMetodoQr(string $metodo): string
-	{
-		$m = strtoupper(trim($metodo));
-		if ($m === '') {
-			return 'E';
-		}
-		if (str_contains($m, 'TARJ') || $m === 'L' || $m === 'TA' || $m === 'TC') {
-			return 'L';
-		}
-		if (str_contains($m, 'DEPOS') || $m === 'D' || $m === 'DE') {
-			return 'D';
-		}
-		if (str_contains($m, 'CHEQ') || $m === 'C' || $m === 'CH') {
-			return 'C';
-		}
-		if (str_contains($m, 'TRASP') || $m === 'T') {
-			return 'T';
-		}
-		if (str_contains($m, 'TRANS') || str_contains($m, 'BANC') || str_contains($m, 'QR')) {
-			return 'B';
-		}
-		if (str_contains($m, 'VAL')) {
-			return 'O';
-		}
-
-		return 'E';
 	}
 
 	private function mapearTipoPago(string $codigo): string
