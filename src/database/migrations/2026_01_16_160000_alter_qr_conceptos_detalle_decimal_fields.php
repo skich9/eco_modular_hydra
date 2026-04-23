@@ -25,7 +25,7 @@ return new class extends Migration
 		Schema::table('qr_conceptos_detalle', function (Blueprint $table) {
 			DB::statement('ALTER TABLE qr_conceptos_detalle MODIFY descuento INT NULL');
 			DB::statement('ALTER TABLE qr_conceptos_detalle MODIFY multa INT NULL');
-			// DB::statement('ALTER TABLE qr_conceptos_detalle MODIFY monto_saldo INT NULL');
+			DB::statement('ALTER TABLE qr_conceptos_detalle MODIFY monto_saldo INT NULL');
 		});
 	}
 };

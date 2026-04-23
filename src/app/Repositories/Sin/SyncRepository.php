@@ -162,22 +162,20 @@ class SyncRepository
 	 */
 	public function syncTipoMetodoPago(int $puntoVenta = 0): array
 	{
-        Log::info('syncTipoMetodoPago');
         $codigoAmbiente = (int) config('sin.ambiente');
         $sucursal = 0; /// se realiza la sincorinzacion para sucursal
 		// Aseguramos CUIS vigente
 		$cuisData = $this->cuisRepo->getVigenteOrCreate2($codigoAmbiente, $sucursal, $puntoVenta);
 		$cuis = $cuisData['codigo_cuis'];
-        Log::info('syncTipoMetodoPago 1');
+
 		$resp = $this->sync->parametrica('sincronizarParametricaTipoMetodoPago', $cuis, $puntoVenta);
-        Log::info('syncTipoMetodoPago 2');
 		$body = $resp['RespuestaListaParametricas'] ?? null;
 		if (!$body) {
 			throw new Exception('Respuesta inválida de sincronizarParametricaTipoMetodoPago: ' . json_encode($resp));
 		}
 		$lista = $body['listaCodigos'] ?? [];
 		$items = $this->normalizeLista($lista);
-        Log::info('syncTipoMetodoPago 2');
+
 		// Construir mapa de formas_cobro (nombre => id)
 		$map = [];
 		$defaultOtro = null;
@@ -191,7 +189,7 @@ class SyncRepository
 				}
 			}
 		}
-        Log::info('syncTipoMetodoPago 3');
+
 		$rows = [];
 		foreach ($items as $it) {
 			$codigoSin = (int) ($it['codigoClasificador'] ?? 0);
@@ -212,7 +210,7 @@ class SyncRepository
 				'updated_at' => now(),
 			];
 		}
-        Log::info('syncTipoMetodoPago 4');
+
 		if ($rows) {
 			DB::table('sin_forma_cobro')->upsert(
 				$rows,
@@ -220,7 +218,6 @@ class SyncRepository
 				['descripcion_sin', 'id_forma_cobro', 'activo', 'updated_at']
 			);
 		}
-        Log::info('syncTipoMetodoPago 5');
 
 		return [
 			'count' => count($rows),
