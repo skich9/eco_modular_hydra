@@ -1,13 +1,12 @@
 import { Component, OnInit } from '@angular/core';
 import { CommonModule, DecimalPipe } from '@angular/common';
 import { FormsModule } from '@angular/forms';
+import { RouterModule } from '@angular/router';
 import { firstValueFrom } from 'rxjs';
 import {
   RecepcionIngresosService,
   InitialData,
 } from '../../../../services/recepcion-ingresos.service';
-import { AuthService } from '../../../../services/auth.service';
-
 export interface FilaReporte {
   usuario_libro: string;
   cod_libro_diario: string;
@@ -23,7 +22,7 @@ export interface FilaReporte {
 @Component({
   selector: 'app-recepcion-ingresos',
   standalone: true,
-  imports: [CommonModule, FormsModule, DecimalPipe],
+  imports: [CommonModule, FormsModule, RouterModule, DecimalPipe],
   templateUrl: './recepcion-ingresos.component.html',
   styleUrls: ['./recepcion-ingresos.component.scss'],
 })
@@ -58,13 +57,9 @@ export class RecepcionIngresosComponent implements OnInit {
   // Reporte
   filas: FilaReporte[] = [];
   reporteGenerado = false;
-  
-  // Vista previa
-  mostrarVistaPrevia = false;
 
   constructor(
     private readonly svc: RecepcionIngresosService,
-    private readonly auth: AuthService,
   ) {}
 
   ngOnInit(): void {
@@ -80,11 +75,6 @@ export class RecepcionIngresosComponent implements OnInit {
     try {
       const res = await firstValueFrom(this.svc.initialData());
       this.catalogos = res.data;
-
-      const usr = this.auth.getCurrentUser();
-      if (usr) {
-        this.entregue1 = usr.nickname ?? usr.nombre ?? '';
-      }
     } catch {
       this.toast('Error al cargar datos iniciales.', false);
     } finally {
@@ -149,7 +139,7 @@ export class RecepcionIngresosComponent implements OnInit {
 
     this.generando = true;
     try {
-      await firstValueFrom(
+      const reg = await firstValueFrom(
         this.svc.registrar({
           codigo_carrera: this.carrera,
           fecha_recepcion: this.fechaRecepcion,
@@ -172,7 +162,18 @@ export class RecepcionIngresosComponent implements OnInit {
           })),
         })
       );
-      this.toast('Recepción guardada exitosamente.', true);
+      const nuevoId = reg?.data?.id;
+      if (nuevoId != null) {
+        const pdf = await firstValueFrom(this.svc.documentoPdf(Number(nuevoId)));
+        if (pdf?.success && pdf.url) {
+          window.open(pdf.url, '_blank', 'noopener');
+          this.toast('Recepción registrada. Revise la descarga o pestaña del PDF.', true);
+        } else {
+          this.toast(pdf?.message ?? 'Recepción guardada, pero no se pudo generar el PDF.', false);
+        }
+      } else {
+        this.toast('Recepción guardada, pero no se recibió el id del registro.', false);
+      }
     } catch (err: any) {
       this.toast(err?.error?.message ?? 'Error al guardar.', false);
     } finally {
@@ -183,14 +184,13 @@ export class RecepcionIngresosComponent implements OnInit {
   // ─── Utilidades ─────────────────────────────────────────────────────────
 
   limpiar(): void {
-    const usr = this.auth.getCurrentUser();
     this.carrera = '';
     this.idActividad = null;
     this.fechaRecepcion = this.hoyIso();
     this.fechaDesde = this.hoyIso();
     this.fechaHasta = this.hoyIso();
-    
-    this.entregue1 = usr?.nickname ?? usr?.nombre ?? '';
+
+    this.entregue1 = '';
     this.recibi1 = '';
     this.entregue2 = '';
     this.recibi2 = '';
@@ -208,7 +208,7 @@ export class RecepcionIngresosComponent implements OnInit {
   }
   
   private validarFirmas(): boolean {
-    if (!this.entregue1 || !this.recibi1) { this.toast('Las firmas 1 (Entregue y Recibí) son obligatorias.', false); return false; }
+    if (!this.entregue1 || !this.recibi1) { this.toast('Entregue 1 y Recibi 1 son obligatorios.', false); return false; }
     if (!this.fechaRecepcion) { this.toast('La fecha de recepción es requerida para el documento.', false); return false; }
     return true;
   }
@@ -223,14 +223,55 @@ export class RecepcionIngresosComponent implements OnInit {
     };
   }
 
-  get mostrarFirma2(): boolean { return !!(this.entregue2 && this.recibi2); }
-
-  abrirVistaPrevia(): void {
-    if (!this.validarFirmas()) return;
-    this.mostrarVistaPrevia = true; 
+  /** Igual criterio que SGA: nº de filas / cierres cargados en la tabla. */
+  get nroReportesDiarios(): number {
+    return this.filas.length;
   }
-  cerrarVistaPrevia(): void { this.mostrarVistaPrevia = false; }
-  imprimirYCerrar(): void { window.print(); }
+
+  async abrirVistaPrevia(): Promise<void> {
+    if (this.filas.length === 0) {
+      this.toast('No hay datos de recepción. Ejecute Consultar primero.', false);
+      return;
+    }
+    if (!this.validarFirmas()) return;
+    this.generando = true;
+    try {
+      const res = await firstValueFrom(
+        this.svc.vistaPreviaPdf({
+          fecha_recepcion: this.fechaRecepcion,
+          fecha_inicial_libros: this.fechaDesde,
+          fecha_final_libros: this.fechaHasta,
+          observacion: this.observacion,
+          usuario_entregue1: this.entregue1,
+          usuario_recibi1: this.recibi1,
+          usuario_entregue2: this.entregue2 || undefined,
+          usuario_recibi2: this.recibi2 || undefined,
+          id_actividad_economica: this.idActividad ?? null,
+          detalles: this.filas.map(f => ({
+            usuario_libro: f.usuario_libro,
+            cod_libro_diario: f.cod_libro_diario,
+            fecha_inicial_libros: f.fecha_inicial,
+            fecha_final_libros: f.fecha_final,
+            total_deposito: f.total_deposito,
+            total_traspaso: f.total_traspaso,
+            total_recibos: f.total_recibos,
+            total_facturas: f.total_facturas,
+            total_entregado: f.total_entregado,
+          })),
+        })
+      );
+      if (res?.success && res.url) {
+        window.open(res.url, '_blank', 'noopener');
+        this.toast('Vista previa generada. Revise la pestaña del PDF.', true);
+      } else {
+        this.toast(res?.message ?? 'No se pudo generar la vista previa.', false);
+      }
+    } catch (err: any) {
+      this.toast(err?.error?.message ?? 'Error al generar vista previa PDF.', false);
+    } finally {
+      this.generando = false;
+    }
+  }
 
   hoyIso(): string {
     const d = new Date();

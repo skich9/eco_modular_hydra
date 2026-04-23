@@ -1,46 +1,47 @@
-/* ===== ESTILO DEL MODULO RECEPCION INGRESOS ===== */
+/* Alineado visual con SGA: panel primary + rejilla de formulario */
 
-/* Paneles y Tarjetas */
-.config-panel {
-  background-color: #fcfcfc;
-  border: 1px solid #e9ecef !important;
-  border-left: 4px solid #0d6efd !important;
+.recepcion-sga {
+  .page-header-sga {
+    color: #333;
+    font-size: 1.5rem;
+  }
 }
 
-.receipt-config-panel {
-  background-color: #ffffff;
-  border: 1px solid #e9ecef !important;
-  border-left: 4px solid #6f42c1 !important;
+/* Similar a panel-primary (Bootstrap 3) */
+.panel-sga-heading {
+  background-color: #337ab7;
+  border-color: #2e6da4;
+  padding: 0.5rem 1rem;
+  font-size: 0.95rem;
 }
 
-.result-panel {
-  border: 1px solid #ebedef !important;
+.panel-sga-primary {
+  .card-header.panel-sga-heading {
+    border-radius: 0.25rem 0.25rem 0 0;
+  }
 }
 
-/* Colores personalizados */
-.bg-purple {
-  background-color: #6f42c1;
-}
-.border-purple {
-  border-color: #6f42c1 !important;
-}
-
-/* Tabla de Recibo */
-.receipt-table {
+.table-sga-recepcion {
   font-size: 0.85rem;
 }
-.receipt-table thead th {
-  text-transform: uppercase;
-  font-size: 0.75rem;
-  letter-spacing: 0.5px;
-  color: #555;
-  border-bottom-width: 2px;
-}
-.receipt-table tbody td {
-  padding: 0.6rem 0.5rem;
+
+.table-sga-recepcion thead th {
+  background-color: #f5f5f5;
+  color: #333;
+  font-weight: 600;
+  font-size: 0.8rem;
+  vertical-align: middle;
+  border-color: #ddd;
+  padding: 0.5rem 0.35rem;
 }
 
-/* Modal Vista Previa (Impresión) */
+.table-sga-recepcion tbody td {
+  vertical-align: middle;
+  padding: 0.5rem 0.35rem;
+  border-color: #ddd;
+}
+
+/* Modal / impresión */
 .print-table {
   font-size: 0.85rem;
   border-color: #333 !important;
@@ -74,16 +75,12 @@
   color: #555;
 }
 
-/* ==== MEDIOS DE IMPRESION ==== */
 @media print {
-  /* Ocultar elementos de UI principal que no sena modal */
   body > *:not(app-root) { display: none !important; }
   .modal { background: none !important; position: static !important; }
   .modal-dialog { max-width: 100% !important; margin: 0 !important; }
   .modal-content { border: none !important; box-shadow: none !important; }
   .modal-header, .modal-footer { display: none !important; }
-  
-  /* Reset al contenedor para impresion */
   #print-area {
     padding: 0 !important;
   }
