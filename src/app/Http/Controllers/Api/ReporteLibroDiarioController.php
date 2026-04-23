@@ -4,6 +4,7 @@ namespace App\Http\Controllers\Api;
 
 use App\Http\Controllers\Controller;
 use App\Models\Usuario;
+use App\Services\DompdfInstitucionLogoHelper;
 use App\Services\LibroDiarioPdfService;
 use App\Services\LibroDiarioIdentificadorHelper;
 use App\Services\Reportes\LibroDiarioAccessService;
@@ -22,9 +23,14 @@ class ReporteLibroDiarioController extends Controller
      * (LIBRO_DIARIO_PAGE_MARGIN_TOP_PT + BOTTOM_PT, ajustables con body_vertical_offset_*)
      * → ~562pt de área de contenido aprox.; descontando ~14pt thead + ~12pt subtotal ≈ 536pt para filas de datos.
      * Fila de una línea ~9–11pt en Dompdf; con texto multilínea baja el conteo → valor fijo conservador para diseño/pruebas.
-     * Sobrescribir con request `filas_por_pagina` (5–60).
+     * Sobrescribir con request `filas_por_pagina` (ver MIN/MAX).
      */
-    private const LIBRO_DIARIO_FILAS_POR_PAGINA_DEFAULT = 60;
+    private const LIBRO_DIARIO_FILAS_POR_PAGINA_DEFAULT = 50;
+
+    private const LIBRO_DIARIO_FILAS_POR_PAGINA_MIN = 5;
+
+    /** Tope superior: subir mucho puede cortar filas contra el pie fijo en Dompdf. */
+    private const LIBRO_DIARIO_FILAS_POR_PAGINA_MAX = 80;
 
     /**
      * Margen @page superior base (pt): zona reservada encima del flujo del body (evita solape con header fijo).
@@ -53,7 +59,7 @@ class ReporteLibroDiarioController extends Controller
      * Genera el PDF del Libro Diario a partir de HTML/datos enviados por el frontend.
      * Estructura: Header (logo hasta hora cierre), Body (tabla de datos), Footer (totales y firmas).
      * Si llega el array datos, el tbody se trocea en páginas lógicas: cada hoja incluye N filas
-     * + una fila de subtotal (suma de ingreso/ingresos solo de esas filas). Opcional: filas_por_pagina (5–60).
+     * + una fila de subtotal (suma de ingreso/ingresos solo de esas filas). Opcional: filas_por_pagina (5–80).
      *
      * Espera:
      * - contenido: string (filas <tr> con 11 columnas), usado si datos está vacío
@@ -233,21 +239,11 @@ class ReporteLibroDiarioController extends Controller
             $styleBorder = 'border: 1px solid #000066;';
             $styleColor = 'color: #000066; font-weight: bold;';
 
-            // Logo compacto (sin height fijo excesivo en la celda)
-            $logoW = 48;
-            $logoH = 48;
-            $logoImg = '';
-            $logoPath = public_path('img' . DIRECTORY_SEPARATOR . 'logo.png');
-            if (is_file($logoPath) && is_readable($logoPath)) {
-                $info = @getimagesize($logoPath);
-                if ($info && isset($info[0], $info[1])) {
-                    $logoW = min(56, max(36, (int)$info[0]));
-                    $logoH = min(56, max(36, (int)$info[1]));
-                }
-                $logoB64 = base64_encode(file_get_contents($logoPath));
-                $logoImg = '<img src="data:image/png;base64,' . $logoB64 . '" width="' . $logoW . '" height="' . $logoH . '" style="display:block;margin:0 auto;vertical-align:middle;border:0;outline:none;" alt="Logo" />';
-            }
             $logoPad = 2;
+            $logo = DompdfInstitucionLogoHelper::logoParaEncabezadoDompdf($logoPad);
+            $logoImg = $logo['html'];
+            $logoW = $logo['width'];
+            $logoH = $logo['height'];
             // border-right:none evita doble trazo vertical logo|texto con Dompdf (colapso imperfecto entre celdas)
             $logoCellStyle = 'width:' . ($logoW + $logoPad * 2) . 'px; min-width:' . ($logoW + $logoPad * 2) . 'px; max-width:' . ($logoW + $logoPad * 2) . 'px; padding:' . $logoPad . 'px; ' . $styleBorder . ' border-right:none; vertical-align:middle; text-align:center; line-height:0;';
 
@@ -257,7 +253,10 @@ class ReporteLibroDiarioController extends Controller
                 if ($filasPorPagina < 1) {
                     $filasPorPagina = self::LIBRO_DIARIO_FILAS_POR_PAGINA_DEFAULT;
                 }
-                $filasPorPagina = max(5, min(60, $filasPorPagina));
+                $filasPorPagina = max(
+                    self::LIBRO_DIARIO_FILAS_POR_PAGINA_MIN,
+                    min(self::LIBRO_DIARIO_FILAS_POR_PAGINA_MAX, $filasPorPagina)
+                );
                 $contenidoBody = $this->construirFilasLibroDiarioConSubtotalesPorPagina(
                     $datos,
                     $fmt,
