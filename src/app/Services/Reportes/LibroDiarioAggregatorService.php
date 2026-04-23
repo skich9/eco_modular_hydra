@@ -11,6 +11,9 @@ use Illuminate\Support\Facades\Schema;
  *
  * Reglas:
  * - Dedupe: si una factura está enlazada a un cobro, solo se incluye el cobro (evita doble conteo).
+ * - Si los cobros solo llevan nº de recibo (sin nº de factura) pero la suma por recibo y cod_ceta
+ *   coincide con una sola factura en el rango, esa factura no se lista en duplicado.
+ * - `qr_transacciones` no se agrega si ya hay cobro con la misma clave de factura (año:nro); el cobro es la fila canónica.
  * - `otros_ingresos`: se filtra por nickname del usuario (la tabla no guarda id_usuario).
  * - `valido='N'` (anulado) se excluye; `valido='A'` se preserva y se reporta como ingreso 0 opcionalmente.
  * - Las observaciones extendidas (banco/nro/fecha/correlativo) se arman en esta capa para el PDF.
@@ -86,6 +89,103 @@ class LibroDiarioAggregatorService
 			$out[$k] = ($out[$k] ?? 0) + 1;
 		}
 		return $out;
+	}
+
+	/**
+	 * Claves "anio:nro_factura" (o solo nro) de facturas que ya se representan con líneas de cobro:
+	 * directamente por nº de factura en cobro, o por suma de montos de cobros con solo recibo = una factura.
+	 *
+	 * @param \Illuminate\Support\Collection<int,object>|\Illuminate\Support\Collection<int,mixed> $cobros
+	 * @param \Illuminate\Support\Collection<int,object>|\Illuminate\Support\Collection<int,mixed> $facturas
+	 * @return array<string, bool>
+	 */
+	private function clavesFacturaCubiertaPorCobro($cobros, $facturas): array
+	{
+		$out = [];
+		foreach ($cobros as $c) {
+			$nroFac = (string) ($c->nro_factura ?? '0');
+			if ($nroFac === '' || $nroFac === '0') {
+				continue;
+			}
+			$anioC = (int) ($c->anio_cobro ?? 0);
+			$out[$anioC > 0 ? ($anioC . ':' . $nroFac) : $nroFac] = true;
+		}
+
+		$grupos = [];
+		foreach ($cobros as $c) {
+			$nroFac = (string) ($c->nro_factura ?? '0');
+			if ($nroFac !== '' && $nroFac !== '0') {
+				continue;
+			}
+			$nr = (int) ($c->nro_recibo ?? 0);
+			$an = (int) ($c->anio_cobro ?? 0);
+			if ($nr <= 0 || $an <= 0) {
+				continue;
+			}
+			$k = $an . ':' . $nr;
+			if (!isset($grupos[$k])) {
+				$grupos[$k] = [
+					'sum' => 0.0,
+					'cod_ceta' => null,
+				];
+			}
+			$grupos[$k]['sum'] += (float) ($c->monto ?? 0);
+			if ($grupos[$k]['cod_ceta'] === null) {
+				$cc = $c->cod_ceta ?? null;
+				if ($cc !== null && (int) $cc > 0) {
+					$grupos[$k]['cod_ceta'] = (int) $cc;
+				}
+			}
+		}
+
+		foreach ($grupos as $g) {
+			$sum = round($g['sum'], 2);
+			$cetaC = (int) ($g['cod_ceta'] ?? 0);
+			$matches = [];
+			foreach ($facturas as $f) {
+				$nroF = (string) ($f->nro_factura ?? '0');
+				$anF = (int) ($f->anio ?? 0);
+				if ($nroF === '' || $nroF === '0' || $anF <= 0) {
+					continue;
+				}
+				$cetaF = (int) ($f->cod_ceta ?? 0);
+				if ($cetaC > 0 && $cetaF > 0 && $cetaC !== $cetaF) {
+					continue;
+				}
+				if (abs((float) ($f->monto_total ?? 0) - $sum) < 0.01) {
+					$matches[] = $anF . ':' . $nroF;
+				}
+			}
+			if (count($matches) === 1) {
+				$out[$matches[0]] = true;
+			}
+		}
+
+		return $out;
+	}
+
+	/**
+	 * Clave alineada con mapeo de factura/QR, o null si no hay nº de factura.
+	 */
+	private function claveFacturaDesdeFilaQr($q): ?string
+	{
+		$nroFac = (string) ($q->nro_factura ?? '0');
+		if ($nroFac === '' || $nroFac === '0') {
+			return null;
+		}
+		$anio = 0;
+		if (!empty($q->fecha_generacion)) {
+			try {
+				$anio = (int) (new \DateTime((string) $q->fecha_generacion))->format('Y');
+			} catch (\Throwable $e) {
+				$anio = 0;
+			}
+		}
+		if ($anio > 0) {
+			return $anio . ':' . $nroFac;
+		}
+
+		return $nroFac;
 	}
 
 	/** @return array<string,bool> codigo_producto_interno (string) => true */
@@ -168,14 +268,7 @@ class LibroDiarioAggregatorService
 			}
 		}
 
-		$facturasConCobro = [];
-		foreach ($cobros as $c) {
-			$nroFac = (string) ($c->nro_factura ?? '0');
-			if ($nroFac !== '' && $nroFac !== '0') {
-				$anioC = (int) ($c->anio_cobro ?? 0);
-				$facturasConCobro[$anioC > 0 ? ($anioC . ':' . $nroFac) : $nroFac] = true;
-			}
-		}
+		$clavesFacturaCubierta = $this->clavesFacturaCubiertaPorCobro($cobros, $facturas);
 
 		$mapaMoraFacturaDetalle = $this->cargarMapaSubtotalMoraFacturaDetalle($cobros, $facturas);
 		$conteoCobrosPorFactura = $this->construirConteoCobrosPorFactura($cobros);
@@ -189,7 +282,7 @@ class LibroDiarioAggregatorService
 			}
 			$anioF = (int) ($f->anio ?? 0);
 			$claveFac = $anioF > 0 ? ($anioF . ':' . $nroFac) : $nroFac;
-			if (isset($facturasConCobro[$claveFac]) || ($anioF <= 0 && isset($facturasConCobro[$nroFac]))) {
+			if (isset($clavesFacturaCubierta[$claveFac]) || ($anioF <= 0 && isset($clavesFacturaCubierta[$nroFac]))) {
 				continue;
 			}
 			$items[] = $this->mapearFactura($f, $mapaFacturas, $mapaMoraFacturaDetalle);
@@ -207,6 +300,10 @@ class LibroDiarioAggregatorService
 		}
 
 		foreach ($qrs as $q) {
+			$claveQr = $this->claveFacturaDesdeFilaQr($q);
+			if ($claveQr !== null && isset($clavesFacturaCubierta[$claveQr])) {
+				continue;
+			}
 			$items[] = $this->mapearQr($q, $mapaFacturas);
 		}
 
@@ -625,7 +722,7 @@ class LibroDiarioAggregatorService
 		}
 
 		$metodo = strtoupper((string) ($q->metodo_pago ?? ''));
-		$tipoPago = $metodo === 'TARJETA' ? 'L' : 'E';
+		$tipoPago = $this->mapearTipoPagoDesdeMetodoQr($metodo);
 
 		return [
 			'numero' => 0,
@@ -686,6 +783,35 @@ class LibroDiarioAggregatorService
 			'es_mora' => false,
 			'monto_mora' => 0.0,
 		];
+	}
+
+	/** Tipo pago letra para filas de `qr_transacciones` (metodo_pago en texto). */
+	private function mapearTipoPagoDesdeMetodoQr(string $metodo): string
+	{
+		$m = strtoupper(trim($metodo));
+		if ($m === '') {
+			return 'E';
+		}
+		if (str_contains($m, 'TARJ') || $m === 'L' || $m === 'TA' || $m === 'TC') {
+			return 'L';
+		}
+		if (str_contains($m, 'DEPOS') || $m === 'D' || $m === 'DE') {
+			return 'D';
+		}
+		if (str_contains($m, 'CHEQ') || $m === 'C' || $m === 'CH') {
+			return 'C';
+		}
+		if (str_contains($m, 'TRASP') || $m === 'T') {
+			return 'T';
+		}
+		if (str_contains($m, 'TRANS') || str_contains($m, 'BANC') || str_contains($m, 'QR')) {
+			return 'B';
+		}
+		if (str_contains($m, 'VAL')) {
+			return 'O';
+		}
+
+		return 'E';
 	}
 
 	private function mapearTipoPago(string $codigo): string
