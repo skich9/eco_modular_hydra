@@ -28,6 +28,7 @@ final class LibroDiarioAccessService
 		'rector',
 		'tesoreria',
 		'contabilidad',
+        'contador',
 		'sistemas',
 	];
 
