@@ -16,11 +16,19 @@ use Illuminate\Support\Facades\Schema;
  * - `otros_ingresos`: se filtra por nickname del usuario (la tabla no guarda id_usuario).
  * - `valido='N'` (anulado) se excluye; `valido='A'` se preserva y se reporta como ingreso 0 opcionalmente.
  * - Las observaciones extendidas (banco/nro/fecha/correlativo) se arman en esta capa para el PDF.
+ * - Resumen: `id_forma_cobro` de `formas_cobro` (B, C, D, E, L, O, T) es la letra de columna; para ids
+ *   compuestos se usa el nombre o heurística de apoyo.
  */
 class LibroDiarioAggregatorService
 {
 	/** Códigos en `cobro.cod_tipo_cobro` considerados mora/recargos para el resumen del Libro Diario. */
 	private const COD_TIPO_COBRO_MORA = ['MORA', 'RECARGO', 'INTERES', 'PENALIDAD', 'NIVELACION'];
+
+	/** Letras alineadas con `formas_cobro` y el resumen (Transferencia, Cheque, Depósito, Efectivo, Tarjeta, Otro, Traspaso). */
+	private const LETRAS_RESUMEN = ['B', 'C', 'D', 'E', 'L', 'O', 'T'];
+
+	/** @var array<string, string>|null id_forma_cobro => E|L|D|C|B|T|O */
+	private ?array $mapaFormaCobroIdALetra = null;
 
 	/**
 	 * Suma subtotales de líneas de mora/multa por factura (clave "anio:nro_factura") desde `factura_detalle`.
@@ -215,6 +223,8 @@ class LibroDiarioAggregatorService
 		if ($idUsuario <= 0 || $desde === '' || $hasta === '') {
 			return $this->respuestaVacia((string) ($filters['usuario_display'] ?? ''));
 		}
+
+		$this->mapaFormaCobroIdALetra = null;
 
 		$nickname = $this->resolverNicknameUsuario($idUsuario);
 
@@ -680,9 +690,83 @@ class LibroDiarioAggregatorService
 		];
 	}
 
-	private function mapearTipoPago(string $codigo): string
+	/**
+	 * Mapa id_forma_cobro => letra de resumen. Caso base (catálogo con B, C, D, E, L, O, T en id): la
+	 * letra es el propio id; ids largos usan el nombre o heurística.
+	 *
+	 * @return array<string, string> id => E|L|D|C|B|T|O
+	 */
+	private function mapaFormaCobroIdALetraResumen(): array
 	{
-		$c = strtoupper(trim($codigo));
+		if ($this->mapaFormaCobroIdALetra !== null) {
+			return $this->mapaFormaCobroIdALetra;
+		}
+		$this->mapaFormaCobroIdALetra = [];
+		if (!Schema::hasTable('formas_cobro')) {
+			return $this->mapaFormaCobroIdALetra;
+		}
+		$rows = DB::table('formas_cobro')->select('id_forma_cobro', 'nombre')->get();
+		foreach ($rows as $row) {
+			$id = trim((string) ($row->id_forma_cobro ?? ''));
+			if ($id === '') {
+				continue;
+			}
+			$this->mapaFormaCobroIdALetra[$id] = $this->letraResumenDesdeFormaCobro(
+				$id,
+				(string) ($row->nombre ?? '')
+			);
+		}
+		return $this->mapaFormaCobroIdALetra;
+	}
+
+	/**
+	 * 1) Id de una sola letra (catálogo estándar): es la letra del resumen.
+	 * 2) Id compuesto: pistas en `nombre` alineadas con formas_cobro.
+	 * 3) Fallback: heurística sobre el id.
+	 */
+	private function letraResumenDesdeFormaCobro(string $id, string $nombre): string
+	{
+		$u = strtoupper(trim($id));
+		if (strlen($u) === 1 && in_array($u, self::LETRAS_RESUMEN, true)) {
+			return $u;
+		}
+		$n = mb_strtolower($nombre, 'UTF-8');
+		$n = strtr($n, ['á' => 'a', 'é' => 'e', 'í' => 'i', 'ó' => 'o', 'ú' => 'u', 'ü' => 'u', 'ñ' => 'n']);
+
+		if (str_contains($n, 'traspaso')) {
+			return 'T';
+		}
+		if (str_contains($n, 'transfer') || (str_contains($n, 'qr') && (str_contains($n, 'banc') || str_contains($n, 'trans')))) {
+			return 'B';
+		}
+		if (str_contains($n, 'cheq')) {
+			return 'C';
+		}
+		if (str_contains($n, 'linea') && str_contains($n, 'dep')) {
+			return 'L';
+		}
+		if (str_contains($n, 'depo') || str_contains($n, 'posit') || (str_contains($n, 'dep') && str_contains($n, 'cuenta'))) {
+			return 'D';
+		}
+		if (str_contains($n, 'tarj')) {
+			return str_contains($n, 'efectiv') ? 'O' : 'L';
+		}
+		if (str_contains($n, 'vales') || str_contains($n, 'otro') || (str_contains($n, 'pago') && str_contains($n, 'posterior'))) {
+			return 'O';
+		}
+		if (str_contains($n, 'efectiv')) {
+			if (str_contains($n, 'tarj') || str_contains($n, 'transf') || str_contains($n, 'cheq') || str_contains($n, 'vales') || str_contains($n, 'dep') || str_contains($n, 'qr')) {
+				return 'O';
+			}
+			return 'E';
+		}
+
+		return $this->mapearTipoPagoHeuristicaSobreId($u);
+	}
+
+	/** Fallback cuando el id no está en el catálogo: mismas pistas anteriores sobre el string. */
+	private function mapearTipoPagoHeuristicaSobreId(string $c): string
+	{
 		if ($c === '') {
 			return 'E';
 		}
@@ -705,6 +789,30 @@ class LibroDiarioAggregatorService
 			return 'T';
 		}
 		return 'O';
+	}
+
+	private function mapearTipoPago(string $codigo): string
+	{
+		$k = trim($codigo);
+		if ($k === '') {
+			return 'E';
+		}
+		$mapa = $this->mapaFormaCobroIdALetraResumen();
+		if (isset($mapa[$k])) {
+			return $mapa[$k];
+		}
+		$c = strtoupper($k);
+		foreach ($mapa as $idCat => $letra) {
+			if (strtoupper((string) $idCat) === $c) {
+				return $letra;
+			}
+		}
+		// Misma convención que `formas_cobro.id_forma_cobro` (una letra).
+		if (strlen($c) === 1 && in_array($c, self::LETRAS_RESUMEN, true)) {
+			return $c;
+		}
+
+		return $this->mapearTipoPagoHeuristicaSobreId($c);
 	}
 
 	private function armarObservacionesExtendidas($c): string

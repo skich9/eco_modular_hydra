@@ -326,7 +326,7 @@ export class LibroDiarioComponent implements OnInit {
             return 0;
           });
           this.totales = response.data.totales;
-          this.recalcularResumenMetodosPago();
+          this.aplicarResumenDesdeApi(response.data.resumen);
         } else {
           this.datosLibroDiario = [];
           this.totales = { ingresos: 0, egresos: 0 };
@@ -633,15 +633,16 @@ export class LibroDiarioComponent implements OnInit {
     this.datosLibroDiario.forEach(item => {
       if (tipo === 'efectivo' && item.tipo_pago === 'E') {
         total += item.ingreso;
-      } else if (tipo === 'tarjeta' && (item.tipo_pago === 'L' || item.tipo_pago === 'B')) {
-        // Tarjeta incluye también Transferencia (B) - se consolidan en la misma fila
+      } else if (tipo === 'tarjeta' && item.tipo_pago === 'L') {
         total += item.ingreso;
       } else if (tipo === 'deposito' && item.tipo_pago === 'D') {
         total += item.ingreso;
       } else if (tipo === 'cheque' && item.tipo_pago === 'C') {
         total += item.ingreso;
       } else if (tipo === 'transferencia' && item.tipo_pago === 'B') {
-        // Transferencia (B) se consolida en fila Tarjeta; no sumar aquí para evitar duplicados
+        total += item.ingreso;
+      } else if (tipo === 'traspaso' && item.tipo_pago === 'T') {
+        total += item.ingreso;
       } else if (tipo === 'otro' && item.tipo_pago === 'O') {
         total += item.ingreso;
       }
@@ -659,21 +660,19 @@ export class LibroDiarioComponent implements OnInit {
     this.datosLibroDiario.forEach(item => {
       let esMetodoPagoCorrecto = false;
       
-      // Determinar si el item corresponde al método de pago
-      // Nota: Transferencia (B) se suma en la fila Tarjeta según requerimiento del reporte
+      // Alineado con `formas_cobro` y el backend: L = tarjeta, B = transferencia, etc. (no consolidar B en L)
       if (metodoPago === 'traspaso' && item.tipo_pago === 'T') {
         esMetodoPagoCorrecto = true;
       } else if (metodoPago === 'efectivo' && item.tipo_pago === 'E') {
         esMetodoPagoCorrecto = true;
-      } else if (metodoPago === 'tarjeta' && (item.tipo_pago === 'L' || item.tipo_pago === 'B')) {
-        esMetodoPagoCorrecto = true; // Tarjeta + Transferencia consolidados
+      } else if (metodoPago === 'tarjeta' && item.tipo_pago === 'L') {
+        esMetodoPagoCorrecto = true;
       } else if (metodoPago === 'deposito' && item.tipo_pago === 'D') {
         esMetodoPagoCorrecto = true;
       } else if (metodoPago === 'cheque' && item.tipo_pago === 'C') {
         esMetodoPagoCorrecto = true;
       } else if (metodoPago === 'transferencia' && item.tipo_pago === 'B') {
-        // B ya se cuenta en Tarjeta; aquí 0 para evitar duplicar (fila Transferencia queda vacía)
-        esMetodoPagoCorrecto = false;
+        esMetodoPagoCorrecto = true;
       } else if (metodoPago === 'otro' && item.tipo_pago === 'O') {
         esMetodoPagoCorrecto = true;
       }
@@ -717,6 +716,43 @@ export class LibroDiarioComponent implements OnInit {
     });
 
     return total;
+  }
+
+  /**
+   * Usa el `resumen` del agregador (Laravel) si viene completo; si no, recalcula en cliente.
+   * Así la tabla coincide con `formas_cobro` (B = transferencia, L = tarjeta, etc.).
+   */
+  private aplicarResumenDesdeApi(resumenApi: Record<string, unknown> | null | undefined): void {
+    const r = resumenApi as
+      | Record<string, { factura?: number; recibo?: number; mora_factura?: number; mora_recibo?: number }>
+      | null
+      | undefined;
+    const tieneBloqueMetodo = (k: string) => r && r[k] && typeof r[k] === 'object' && r[k] !== null;
+    if (r && tieneBloqueMetodo('tarjeta') && tieneBloqueMetodo('transferencia')) {
+      const m = (k: string) => ({
+        factura: Number((r![k] as { factura?: number })?.factura ?? 0),
+        recibo: Number((r![k] as { recibo?: number })?.recibo ?? 0),
+        mora_factura: Number((r![k] as { mora_factura?: number })?.mora_factura ?? 0),
+        mora_recibo: Number((r![k] as { mora_recibo?: number })?.mora_recibo ?? 0)
+      });
+      this.resumenMetodosPago = {
+        traspaso: m('traspaso'),
+        deposito: m('deposito'),
+        efectivo: m('efectivo'),
+        cheque: m('cheque'),
+        tarjeta: m('tarjeta'),
+        transferencia: m('transferencia'),
+        otro: m('otro')
+      };
+      this.totalParcialRecibo = Number((r as { total_recibo?: number }).total_recibo ?? 0);
+      this.totalParcialFactura = Number((r as { total_factura?: number }).total_factura ?? 0);
+      this.totalParcialMoraFactura = Number((r as { total_mora_factura?: number }).total_mora_factura ?? 0);
+      this.totalParcialMoraRecibo = Number((r as { total_mora_recibo?: number }).total_mora_recibo ?? 0);
+      this.totalEfectivo = Number((r as { total_efectivo?: number }).total_efectivo ?? 0);
+      this.totalGeneral = Number((r as { total_general?: number }).total_general ?? 0);
+      return;
+    }
+    this.recalcularResumenMetodosPago();
   }
 
   /**
