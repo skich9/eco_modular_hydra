@@ -48,8 +48,8 @@ class ReporteRecepcionIngresoDepositoController extends Controller
 
     private const PAGE_MARGIN_BOTTOM_PT = 12;
 
-    /** Alto mínimo del bloque = área útil A4 (~842pt) menos márgenes arriba/abajo. */
-    private const WRAP_MIN_HEIGHT_PT = 800;
+    /** Alto mínimo del bloque ≈ área útil carta US (~792pt) menos márgenes @page. */
+    private const WRAP_MIN_HEIGHT_PT = 760;
 
     /** Reserva bajo la tabla para no solapar concepto + firmas (pie position:absolute bottom:0). */
     private const MAIN_PADDING_BOTTOM_PARA_PIE_PT = 248;
@@ -149,7 +149,7 @@ HTML;
     <meta charset="utf-8" />
     <title>Recepción ingresos depósitos (ING-4)</title>
     <style>
-        @page { size: A4; margin: {$pageMt}pt 0.8cm {$pageMb}pt 0.8cm; }
+        @page { size: letter; margin: {$pageMt}pt 0.8cm {$pageMb}pt 0.8cm; }
         body {
             font-family: DejaVu Sans, sans-serif;
             font-size: 8.5pt;
@@ -550,7 +550,7 @@ HTML;
     <meta charset="utf-8" />
     <title>ING-4 Recepción de ingresos</title>
     <style>
-        @page { size: A4; margin: {$pageMt}pt 0.8cm {$pageMb}pt 0.8cm; }
+        @page { size: letter; margin: {$pageMt}pt 0.8cm {$pageMb}pt 0.8cm; }
         body {
             font-family: DejaVu Sans, sans-serif;
             font-size: 8.5pt;
@@ -656,11 +656,12 @@ HTML;
         $entregaA = htmlspecialchars($entregaA, ENT_QUOTES, 'UTF-8');
 
         return <<<HTML
-<table width="100%" style="border-collapse:collapse;{$styleBorder};margin:0 0 5px 0;font-size:8pt;line-height:1.2;">
+<table width="100%" style="border-collapse:collapse;{$styleBorder};margin:0 0 5px 0;font-size:8pt;line-height:1.25;">
   <tr>
-    <td style="{$styleBorder}padding:4px 6px;vertical-align:top;">
-      <strong>CONCEPTO:</strong> El importe <strong>TOTAL FACTURAS</strong> de Bs{$montoFac}.- ({$literalFac}) se Depositará a las Cuentas Bancarias Fiscales del Instituto.<br/><br/>
-      El importe <strong>TOTAL RECIBOS</strong> de Bs{$montoRec}.- ({$literalRec}) se hace entrega a: <strong>{$entregaA}</strong><br/><br/>
+    <td style="{$styleBorder}padding:4px 6px;vertical-align:top;text-align:left;">
+      <span style="font-weight:bold;">CONCEPTO:</span> El importe TOTAL FACTURAS de <span style="font-weight:bold;">Bs{$montoFac}.- ({$literalFac})</span> se Depositará a las Cuentas Bancarias Fiscales del Instituto.
+      <br/>
+      El importe TOTAL RECIBOS de <span style="font-weight:bold;">Bs{$montoRec}.- ({$literalRec})</span> se hace entrega a: <span style="font-weight:bold;">{$entregaA}</span><br/>
       Con la firma al pie del presente Formulario.
     </td>
   </tr>
@@ -827,6 +828,9 @@ HTML;
 HTML;
     }
 
+    /**
+     * Pie de firmas: misma estructura que SGA (4 columnas: etiqueta Firma / celda vacía / Firma / celda; luego Nombre con texto centrado).
+     */
     private function buildBloqueFirmasSga4(
         string $e1,
         string $r1,
@@ -835,21 +839,39 @@ HTML;
         string $styleBorder,
         bool $incluirSegundaPareja = true
     ): string {
-        $e1 = htmlspecialchars($e1, ENT_QUOTES, 'UTF-8');
-        $r1 = htmlspecialchars($r1, ENT_QUOTES, 'UTF-8');
-        $e2h = $e2 !== '' ? htmlspecialchars($e2, ENT_QUOTES, 'UTF-8') : '______________________________';
-        $r2h = $r2 !== '' ? htmlspecialchars($r2, ENT_QUOTES, 'UTF-8') : '______________________________';
-        $firmaRowHeight = 'height:72pt;min-height:72pt;';
+        $b = $styleBorder;
+        $e1e = htmlspecialchars($e1, ENT_QUOTES, 'UTF-8');
+        $r1e = htmlspecialchars($r1, ENT_QUOTES, 'UTF-8');
+        $e2e = $e2 !== '' ? htmlspecialchars($e2, ENT_QUOTES, 'UTF-8') : '';
+        $r2e = $r2 !== '' ? htmlspecialchars($r2, ENT_QUOTES, 'UTF-8') : '';
+        $blank = '______________________________';
+        $e2c = $e2e !== '' ? $e2e : $blank;
+        $r2c = $r2e !== '' ? $r2e : $blank;
+        $sHead = "padding:2px 4px;{$b}text-align:center;font-weight:bold;color:#000066;font-size:7.5pt;";
+        // Misma fila "Firma" que SGA (mPDF recepcion_ingresos: height 35px en celdas de firma)
+        $sFilaFirma = 'height:35px;';
+        $sLabFirma = "height:35px;min-height:35px;{$b}text-align:right;font-weight:bold;vertical-align:middle;font-size:7.5pt;width:14%;padding:2px 4px;";
+        $sCelFirma = "height:35px;min-height:35px;{$b}vertical-align:middle;padding:2px 4px;";
+        $sLabNom = "padding:2px 4px;{$b}text-align:right;font-weight:bold;vertical-align:middle;font-size:7.5pt;width:14%;";
+        $sCelNom = "padding:2px 4px;{$b}text-align:center;vertical-align:middle;";
 
         $tabla1 = <<<HTML
-<table width="100%" style="border-collapse:collapse;{$styleBorder};margin:0 0 5px 0;font-size:7.5pt;line-height:1.15;">
+<table width="100%" style="border-collapse:collapse;{$b};margin:0 0 5px 0;font-size:7.5pt;line-height:1.2;border-spacing:0;">
   <tr>
-    <td style="{$styleBorder}padding:2px 4px;text-align:center;width:50%;color:#000066;font-weight:bold;">ENTREGUE CONFORME (a Caja Fuerte):</td>
-    <td style="{$styleBorder}padding:2px 4px;text-align:center;width:50%;color:#000066;font-weight:bold;">RECIBI CONFORME:</td>
+    <td colspan="2" style="{$sHead}">ENTREGUE CONFORME (a Caja Fuerte):</td>
+    <td colspan="2" style="{$sHead}">RECIBI CONFORME:</td>
+  </tr>
+  <tr style="{$sFilaFirma}">
+    <td style="{$sLabFirma}">Firma:</td>
+    <td style="{$sCelFirma}"></td>
+    <td style="{$sLabFirma}">Firma:</td>
+    <td style="{$sCelFirma}"></td>
   </tr>
   <tr>
-    <td style="{$styleBorder}padding:4px 6px;vertical-align:top;{$firmaRowHeight}">Firma: ____________________<br/>Nombre: {$e1}</td>
-    <td style="{$styleBorder}padding:4px 6px;vertical-align:top;{$firmaRowHeight}">Firma: ____________________<br/>Nombre: {$r1}</td>
+    <td style="{$sLabNom}">Nombre:</td>
+    <td style="{$sCelNom}">{$e1e}</td>
+    <td style="{$sLabNom}">Nombre:</td>
+    <td style="{$sCelNom}">{$r1e}</td>
   </tr>
 </table>
 HTML;
@@ -859,14 +881,22 @@ HTML;
         }
 
         $tabla2 = <<<HTML
-<table width="100%" style="border-collapse:collapse;{$styleBorder};margin:0;font-size:7.5pt;line-height:1.15;">
+<table width="100%" style="border-collapse:collapse;{$b};margin:0;font-size:7.5pt;line-height:1.2;border-spacing:0;">
   <tr>
-    <td style="{$styleBorder}padding:2px 4px;text-align:center;width:50%;color:#000066;font-weight:bold;">ENTREGUE CONFORME:</td>
-    <td style="{$styleBorder}padding:2px 4px;text-align:center;width:50%;color:#000066;font-weight:bold;">RECIBI CONFORME:</td>
+    <td colspan="2" style="{$sHead}">ENTREGUE CONFORME:</td>
+    <td colspan="2" style="{$sHead}">RECIBI CONFORME:</td>
+  </tr>
+  <tr style="{$sFilaFirma}">
+    <td style="{$sLabFirma}">Firma:</td>
+    <td style="{$sCelFirma}"></td>
+    <td style="{$sLabFirma}">Firma:</td>
+    <td style="{$sCelFirma}"></td>
   </tr>
   <tr>
-    <td style="{$styleBorder}padding:4px 6px;vertical-align:top;{$firmaRowHeight}">Firma: ____________________<br/>Nombre: {$e2h}</td>
-    <td style="{$styleBorder}padding:4px 6px;vertical-align:top;{$firmaRowHeight}">Firma: ____________________<br/>Nombre: {$r2h}</td>
+    <td style="{$sLabNom}">Nombre:</td>
+    <td style="{$sCelNom}">{$e2c}</td>
+    <td style="{$sLabNom}">Nombre:</td>
+    <td style="{$sCelNom}">{$r2c}</td>
   </tr>
 </table>
 HTML;
@@ -936,8 +966,18 @@ HTML;
             return '';
         }
         $norm = Usuario::normalizeNickname($n);
-        $nombre = Usuario::query()->where('nickname', $norm)->value('nombre');
+        $u = Usuario::query()
+            ->where('nickname', $norm)
+            ->first(['nombre', 'ap_paterno', 'ap_materno', 'nickname']);
+        if (! $u) {
+            return $n;
+        }
+        $parts = array_filter(
+            [trim((string) $u->nombre), trim((string) $u->ap_paterno), trim((string) $u->ap_materno)],
+            static fn (string $p) => $p !== ''
+        );
+        $full = implode(' ', $parts);
 
-        return $nombre ? (string) $nombre : $n;
+        return $full !== '' ? $full : (string) ($u->nickname ?? $n);
     }
 }

@@ -187,6 +187,10 @@ class ReporteLibroDiarioController extends Controller
             $tRecibo = $fmt($resumen['total_recibo'] ?? 0);
             $tMoraFactura = $fmt($resumen['total_mora_factura'] ?? 0);
             $tMoraRecibo = $fmt($resumen['total_mora_recibo'] ?? 0);
+            // Total Parcial estilo SGA (dos columnas): factura = capital+mora fac; recibo = capital+mora rec.
+            $tParcialFacturaBs = $fmt((float) ($resumen['total_factura'] ?? 0) + (float) ($resumen['total_mora_factura'] ?? 0));
+            $tParcialReciboBs = $fmt((float) ($resumen['total_recibo'] ?? 0) + (float) ($resumen['total_mora_recibo'] ?? 0));
+            $tMoraParcialCero = $fmt(0);
             $totalEfectivo = $fmt($resumen['total_efectivo'] ?? 0);
             $totalGeneral = $fmt($resumen['total_general'] ?? $request->input('totales', 0));
 
@@ -274,7 +278,7 @@ class ReporteLibroDiarioController extends Controller
                 $fTarjeta, $rTarjeta, $mfTarjeta, $mrTarjeta,
                 $fTransferencia, $rTransferencia, $mfTransferencia, $mrTransferencia,
                 $fOtro, $rOtro, $mfOtro, $mrOtro,
-                $tFactura, $tRecibo, $tMoraFactura, $tMoraRecibo,
+                $tParcialFacturaBs, $tParcialReciboBs, $tMoraParcialCero, $tMoraParcialCero,
                 $totalEfectivo, $totalGeneral
             );
             $footerHtml = $this->buildFooterHtml($pdfFooterNombre, $pdfFooterCargo, $fecha, $fechaHoraImp);
@@ -861,7 +865,8 @@ HTML;
         string $fTarjeta, string $rTarjeta, string $mfTarjeta, string $mrTarjeta,
         string $fTransferencia, string $rTransferencia, string $mfTransferencia, string $mrTransferencia,
         string $fOtro, string $rOtro, string $mfOtro, string $mrOtro,
-        string $tFactura, string $tRecibo, string $tMoraFactura, string $tMoraRecibo,
+        /** Total Parcial: factura BS = capital+mora fac; recibo BS = capital+mora rec; mora cols en 0 (sin duplicar). */
+        string $tParcialFacturaBs, string $tParcialReciboBs, string $tParcialMoraFac, string $tParcialMoraRec,
         string $totalEfectivo, string $totalGeneral
     ): string {
         return <<<HTML
@@ -883,7 +888,7 @@ HTML;
     <tr><td>Tarjeta</td><td class="right">{$fTarjeta}</td><td class="right">{$rTarjeta}</td><td class="right">{$mfTarjeta}</td><td class="right">{$mrTarjeta}</td></tr>
     <tr><td>Transferencia Bancaria</td><td class="right">{$fTransferencia}</td><td class="right">{$rTransferencia}</td><td class="right">{$mfTransferencia}</td><td class="right">{$mrTransferencia}</td></tr>
     <tr><td>Otro</td><td class="right">{$fOtro}</td><td class="right">{$rOtro}</td><td class="right">{$mfOtro}</td><td class="right">{$mrOtro}</td></tr>
-    <tr class="fila-resaltada"><td class="texto-modo">Total Parcial</td><td class="right">{$tFactura}</td><td class="right">{$tRecibo}</td><td class="right">{$tMoraFactura}</td><td class="right">{$tMoraRecibo}</td></tr>
+    <tr class="fila-resaltada"><td class="texto-modo">Total Parcial</td><td class="right">{$tParcialFacturaBs}</td><td class="right">{$tParcialReciboBs}</td><td class="right">{$tParcialMoraFac}</td><td class="right">{$tParcialMoraRec}</td></tr>
     <tr class="fila-resaltada"><td class="texto-modo">Total Efectivo</td><td colspan="4" class="right">{$totalEfectivo}</td></tr>
     <tr class="fila-resaltada"><td class="texto-modo">Total General</td><td colspan="4" class="right texto-modo">{$totalGeneral}</td></tr>
     </tbody>

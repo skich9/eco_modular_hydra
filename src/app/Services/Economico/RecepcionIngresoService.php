@@ -141,6 +141,51 @@ class RecepcionIngresoService
         return str_replace(['á', 'é', 'í', 'ó', 'ú', 'ü'], ['a', 'e', 'i', 'o', 'u', 'u'], $n);
     }
 
+    private function formatearNombreCompleto(?string $nombre, ?string $apPaterno, ?string $apMaterno): string
+    {
+        $parts = array_filter(
+            [trim((string) $nombre), trim((string) $apPaterno), trim((string) $apMaterno)],
+            static fn (string $p) => $p !== ''
+        );
+
+        return implode(' ', $parts);
+    }
+
+    /**
+     * Texto mostrado: nombre + apellido paterno + apellido materno; si faltan, nickname.
+     */
+    private function labelMostrarUsuario(?string $nombre, ?string $apPaterno, ?string $apMaterno, ?string $nickname): string
+    {
+        $full = $this->formatearNombreCompleto($nombre, $apPaterno, $apMaterno);
+        if ($full !== '') {
+            return $full;
+        }
+        $n = trim((string) $nickname);
+
+        return $n !== '' ? $n : '—';
+    }
+
+    private function labelDesdeFilaCierre(object $c): string
+    {
+        $full = trim((string) ($c->nombre_completo ?? ''));
+        if ($full !== '') {
+            return $full;
+        }
+        $n = trim((string) ($c->usuario_nick ?? ''));
+
+        return $n !== '' ? $n : '—';
+    }
+
+    private function compararPorNombreUsuario(object $a, object $b): int
+    {
+        $cmp = strcmp($this->labelDesdeFilaCierre($a), $this->labelDesdeFilaCierre($b));
+        if ($cmp !== 0) {
+            return $cmp;
+        }
+
+        return strcmp((string) ($a->usuario_nick ?? ''), (string) ($b->usuario_nick ?? ''));
+    }
+
     private function mapearUsuariosSelectFirmas($collection): array
     {
         return $collection
@@ -148,7 +193,7 @@ class RecepcionIngresoService
                 'id_usuario' => $u->id_usuario,
                 'nickname'   => $u->nickname,
                 'nombre'     => $u->nombre,
-                'label'      => $u->nombre . ' (' . $u->nickname . ')',
+                'label'      => $this->labelMostrarUsuario($u->nombre, $u->ap_paterno, $u->ap_materno, $u->nickname),
             ])
             ->values()
             ->all();
@@ -187,11 +232,24 @@ class RecepcionIngresoService
 
         return DB::table('libro_diario_cierre')
             ->join('usuarios', 'libro_diario_cierre.id_usuario', '=', 'usuarios.id_usuario')
-            ->select('usuarios.nickname as usuario')
+            ->select(
+                'usuarios.nombre',
+                'usuarios.ap_paterno',
+                'usuarios.ap_materno',
+                'usuarios.nickname'
+            )
             ->distinct()
-            ->orderBy('usuario')
-            ->pluck('usuario')
-            ->map(fn ($u) => ['usuario' => $u])
+            ->orderBy('usuarios.nombre')
+            ->orderBy('usuarios.ap_paterno')
+            ->get()
+            ->map(fn ($r) => [
+                'usuario' => $this->labelMostrarUsuario(
+                    $r->nombre,
+                    $r->ap_paterno,
+                    $r->ap_materno,
+                    $r->nickname
+                ),
+            ])
             ->values()
             ->all();
     }
@@ -358,7 +416,8 @@ class RecepcionIngresoService
                 ->join('usuarios', 'libro_diario_cierre.id_usuario', '=', 'usuarios.id_usuario')
                 ->select(
                     'libro_diario_cierre.id as id_cierre',
-                    'usuarios.nickname as usuario',
+                    DB::raw("NULLIF(TRIM(CONCAT_WS(' ', NULLIF(TRIM(usuarios.nombre), ''), NULLIF(TRIM(usuarios.ap_paterno), ''), NULLIF(TRIM(usuarios.ap_materno), ''))), '') as nombre_completo"),
+                    'usuarios.nickname as usuario_nick',
                     'libro_diario_cierre.codigo_rd',
                     'libro_diario_cierre.fecha as fecha_cierre',
                     'libro_diario_cierre.codigo_carrera as cierre_codigo_carrera'
@@ -375,7 +434,9 @@ class RecepcionIngresoService
                         );
                     }
                 })
-                ->orderBy('usuarios.nickname')
+                ->orderBy('usuarios.nombre')
+                ->orderBy('usuarios.ap_paterno')
+                ->orderBy('usuarios.ap_materno')
                 ->orderBy('libro_diario_cierre.fecha')
                 ->orderBy('libro_diario_cierre.id');
 
@@ -396,7 +457,7 @@ class RecepcionIngresoService
                 ->merge($cierresComplemento)
                 ->unique('id_cierre')
                 ->sort(function ($a, $b) {
-                    $u = strcmp((string) ($a->usuario ?? ''), (string) ($b->usuario ?? ''));
+                    $u = $this->compararPorNombreUsuario($a, $b);
                     if ($u !== 0) {
                         return $u;
                     }
@@ -416,7 +477,7 @@ class RecepcionIngresoService
                 $tot = $this->cierreTotales->obtenerOComputar((int) $c->id_cierre, $carreraF);
                 $fechaC = (string) $c->fecha_cierre;
                 $detallesParaReporte[] = [
-                    'usuario_libro'        => (string) ($c->usuario ?? '—'),
+                    'usuario_libro'        => $this->labelDesdeFilaCierre($c),
                     'cod_libro_diario'     => (string) ($c->codigo_rd ?? ''),
                     'fecha_inicial_libros' => $fechaC,
                     'fecha_final_libros'   => $fechaC,
@@ -564,7 +625,8 @@ class RecepcionIngresoService
             ->select(
                 'libro_diario_cierre.id as id_cierre',
                 'libro_diario_cierre.id_usuario',
-                'usuarios.nickname as usuario',
+                DB::raw("NULLIF(TRIM(CONCAT_WS(' ', NULLIF(TRIM(usuarios.nombre), ''), NULLIF(TRIM(usuarios.ap_paterno), ''), NULLIF(TRIM(usuarios.ap_materno), ''))), '') as nombre_completo"),
+                'usuarios.nickname as usuario_nick',
                 'libro_diario_cierre.codigo_rd',
                 'libro_diario_cierre.fecha as fecha_cierre',
                 'libro_diario_cierre.codigo_carrera as cierre_codigo_carrera'

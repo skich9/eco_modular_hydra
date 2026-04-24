@@ -58,6 +58,18 @@ export class RecepcionIngresosComponent implements OnInit {
   filas: FilaReporte[] = [];
   reporteGenerado = false;
 
+  /** Bordes / Bootstrap is-invalid: consulta (Consultar) */
+  invalidCarrera = false;
+  invalidFechaDesde = false;
+  invalidFechaHasta = false;
+  invalidFechaRango = false;
+  invalidActividadConsulta = false;
+  /** Documento: Vista previa / Imprimir */
+  invalidFechaRecepcion = false;
+  invalidEntregue1 = false;
+  invalidRecibi1 = false;
+  invalidActividadDocumento = false;
+
   constructor(
     private readonly svc: RecepcionIngresosService,
   ) {}
@@ -117,6 +129,7 @@ export class RecepcionIngresosComponent implements OnInit {
         total_entregado: Number(d.total_entregado ?? 0),
       }));
 
+      this.limpiarFlagsConsulta();
       this.reporteGenerado = true;
 
       if (this.filas.length === 0) {
@@ -198,18 +211,112 @@ export class RecepcionIngresosComponent implements OnInit {
     this.filas = [];
     this.reporteGenerado = false;
     this.alertMsg = '';
+    this.limpiarTodasFlagsInvalido();
+  }
+
+  private isActividadElegida(): boolean {
+    const v = this.idActividad;
+    if (v === null || v === undefined) {
+      return false;
+    }
+    if (typeof v === 'string' && (v === '' || v === 'null')) {
+      return false;
+    }
+    const n = Number(v);
+
+    return !Number.isNaN(n) && n > 0;
+  }
+
+  private limpiarFlagsConsulta(): void {
+    this.invalidCarrera = false;
+    this.invalidFechaDesde = false;
+    this.invalidFechaHasta = false;
+    this.invalidFechaRango = false;
+    this.invalidActividadConsulta = false;
+  }
+
+  private limpiarFlagsDocumento(): void {
+    this.invalidFechaRecepcion = false;
+    this.invalidEntregue1 = false;
+    this.invalidRecibi1 = false;
+    this.invalidActividadDocumento = false;
+  }
+
+  private limpiarTodasFlagsInvalido(): void {
+    this.limpiarFlagsConsulta();
+    this.limpiarFlagsDocumento();
   }
 
   private validarBusqueda(): boolean {
-    if (!this.carrera) { this.toast('Selecciona una carrera primero.', false); return false; }
-    if (!this.fechaDesde || !this.fechaHasta) { this.toast('Indica el rango de fechas válido.', false); return false; }
-    if (this.fechaDesde > this.fechaHasta) { this.toast('Rango inválido: "Desde" es mayor que "Hasta".', false); return false; }
+    this.limpiarFlagsConsulta();
+
+    this.invalidCarrera = !this.carrera?.trim();
+    this.invalidFechaDesde = !this.fechaDesde;
+    this.invalidFechaHasta = !this.fechaHasta;
+    this.invalidActividadConsulta = !this.isActividadElegida();
+    this.invalidFechaRango = !!(
+      this.fechaDesde
+      && this.fechaHasta
+      && this.fechaDesde > this.fechaHasta
+    );
+    if (this.invalidFechaRango) {
+      this.invalidFechaDesde = true;
+      this.invalidFechaHasta = true;
+    }
+
+    if (this.invalidFechaRango) {
+      this.toast(
+        'Rango inválido: "Fecha inicial libro" no puede ser mayor que "Fecha final libro".',
+        false,
+      );
+      return false;
+    }
+
+    const faltan: string[] = [];
+    if (this.invalidCarrera) {
+      faltan.push('Carrera');
+    }
+    if (this.invalidFechaDesde) {
+      faltan.push('Fecha inicial libro');
+    }
+    if (this.invalidFechaHasta) {
+      faltan.push('Fecha final libro');
+    }
+    if (this.invalidActividadConsulta) {
+      faltan.push('Actividad');
+    }
+    if (faltan.length) {
+      this.toast(`Seleccione: ${faltan.join(', ')}.`, false);
+      return false;
+    }
     return true;
   }
-  
+
   private validarFirmas(): boolean {
-    if (!this.entregue1 || !this.recibi1) { this.toast('Entregue 1 y Recibi 1 son obligatorios.', false); return false; }
-    if (!this.fechaRecepcion) { this.toast('La fecha de recepción es requerida para el documento.', false); return false; }
+    this.limpiarFlagsDocumento();
+
+    this.invalidFechaRecepcion = !this.fechaRecepcion;
+    this.invalidEntregue1 = !this.entregue1?.trim();
+    this.invalidRecibi1 = !this.recibi1?.trim();
+    this.invalidActividadDocumento = !this.isActividadElegida();
+
+    const faltan: string[] = [];
+    if (this.invalidFechaRecepcion) {
+      faltan.push('Fecha de recepción');
+    }
+    if (this.invalidActividadDocumento) {
+      faltan.push('Actividad');
+    }
+    if (this.invalidEntregue1) {
+      faltan.push('Entregue 1');
+    }
+    if (this.invalidRecibi1) {
+      faltan.push('Recibí 1');
+    }
+    if (faltan.length) {
+      this.toast(`Seleccione: ${faltan.join(', ')}.`, false);
+      return false;
+    }
     return true;
   }
 

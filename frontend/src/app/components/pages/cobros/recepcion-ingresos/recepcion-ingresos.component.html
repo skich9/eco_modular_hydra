@@ -29,7 +29,13 @@
                 <div class="mb-3 row align-items-center">
                   <label class="col-sm-6 col-form-label col-form-label-sm">Fecha Recepción <span class="text-warning">*</span></label>
                   <div class="col-sm-6">
-                    <input type="date" class="form-control form-control-sm" [(ngModel)]="fechaRecepcion">
+                    <input
+                      type="date"
+                      class="form-control form-control-sm"
+                      [class.is-invalid]="invalidFechaRecepcion"
+                      [(ngModel)]="fechaRecepcion"
+                      (ngModelChange)="invalidFechaRecepcion = false"
+                    />
                   </div>
                 </div>
                 <div class="mb-3 row align-items-center">
@@ -41,13 +47,27 @@
                 <div class="mb-3 row align-items-center">
                   <label class="col-sm-6 col-form-label col-form-label-sm">Fecha Inicial Libro <span class="text-warning">*</span></label>
                   <div class="col-sm-6">
-                    <input type="date" class="form-control form-control-sm" [(ngModel)]="fechaDesde" [max]="fechaHasta">
+                    <input
+                      type="date"
+                      class="form-control form-control-sm"
+                      [class.is-invalid]="invalidFechaDesde"
+                      [(ngModel)]="fechaDesde"
+                      (ngModelChange)="invalidFechaDesde = false; invalidFechaRango = false"
+                      [max]="fechaHasta"
+                    />
                   </div>
                 </div>
                 <div class="mb-3 row align-items-center">
                   <label class="col-sm-6 col-form-label col-form-label-sm">Fecha Final Libro <span class="text-warning">*</span></label>
                   <div class="col-sm-6">
-                    <input type="date" class="form-control form-control-sm" [(ngModel)]="fechaHasta" [min]="fechaDesde">
+                    <input
+                      type="date"
+                      class="form-control form-control-sm"
+                      [class.is-invalid]="invalidFechaHasta"
+                      [(ngModel)]="fechaHasta"
+                      (ngModelChange)="invalidFechaHasta = false; invalidFechaRango = false"
+                      [min]="fechaDesde"
+                    />
                   </div>
                 </div>
               </div>
@@ -55,7 +75,12 @@
                 <div class="mb-3 row align-items-center">
                   <label class="col-sm-4 col-form-label col-form-label-sm">Entregue 1 <span class="text-warning">*</span></label>
                   <div class="col-sm-8">
-                    <select class="form-select form-select-sm" [(ngModel)]="entregue1">
+                    <select
+                      class="form-select form-select-sm"
+                      [class.is-invalid]="invalidEntregue1"
+                      [(ngModel)]="entregue1"
+                      (ngModelChange)="invalidEntregue1 = false"
+                    >
                       <option value="">Seleccione un usuario</option>
                       @for (u of catalogos.usuarios_activos; track u.id_usuario) {
                         <option [value]="u.nickname">{{ u.label }}</option>
@@ -66,7 +91,12 @@
                 <div class="mb-3 row align-items-center">
                   <label class="col-sm-4 col-form-label col-form-label-sm">Recibi 1 <span class="text-warning">*</span></label>
                   <div class="col-sm-8">
-                    <select class="form-select form-select-sm" [(ngModel)]="recibi1">
+                    <select
+                      class="form-select form-select-sm"
+                      [class.is-invalid]="invalidRecibi1"
+                      [(ngModel)]="recibi1"
+                      (ngModelChange)="invalidRecibi1 = false"
+                    >
                       <option value="">Seleccione un usuario</option>
                       @for (u of catalogos.usuarios_activos; track u.id_usuario) {
                         <option [value]="u.nickname">{{ u.label }}</option>
@@ -104,7 +134,12 @@
                 <div class="mb-3 row align-items-center">
                   <label class="col-sm-3 col-md-2 col-form-label col-form-label-sm">Carrera <span class="text-warning">*</span></label>
                   <div class="col-sm-9 col-md-4">
-                    <select class="form-select form-select-sm" [(ngModel)]="carrera">
+                    <select
+                      class="form-select form-select-sm"
+                      [class.is-invalid]="invalidCarrera"
+                      [(ngModel)]="carrera"
+                      (ngModelChange)="invalidCarrera = false"
+                    >
                       <option value="">Seleccione carrera</option>
                       @for (c of catalogos.carreras; track c.codigo) {
                         <option [value]="c.codigo">{{ c.nombre }}</option>
@@ -113,12 +148,17 @@
                   </div>
                 </div>
                 <div class="mb-3 row align-items-center">
-                  <label class="col-sm-3 col-md-2 col-form-label col-form-label-sm">Actividad:</label>
+                  <label class="col-sm-3 col-md-2 col-form-label col-form-label-sm">Actividad <span class="text-warning">*</span></label>
                   <div class="col-sm-9 col-md-4">
-                    <select class="form-select form-select-sm" [(ngModel)]="idActividad">
-                      <option [value]="null">Seleccione una Actividad</option>
+                    <select
+                      class="form-select form-select-sm"
+                      [class.is-invalid]="invalidActividadConsulta || invalidActividadDocumento"
+                      [(ngModel)]="idActividad"
+                      (ngModelChange)="invalidActividadConsulta = false; invalidActividadDocumento = false"
+                    >
+                      <option [ngValue]="null">Seleccione una actividad</option>
                       @for (a of catalogos.actividades; track a.id) {
-                        <option [value]="a.id">{{ a.descripcion }}</option>
+                        <option [ngValue]="a.id">{{ a.descripcion }}</option>
                       }
                     </select>
                   </div>

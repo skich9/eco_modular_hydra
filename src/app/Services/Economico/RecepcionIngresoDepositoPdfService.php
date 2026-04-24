@@ -17,7 +17,7 @@ class RecepcionIngresoDepositoPdfService
             'isPhpEnabled' => true,
         ]);
         $dompdf->loadHtml($html, 'UTF-8');
-        $dompdf->setPaper('A4', 'portrait');
+        $dompdf->setPaper('letter', 'portrait');
 
         $dompdf->render();
         $output = $dompdf->output();
