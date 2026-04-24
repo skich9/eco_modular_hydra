@@ -375,6 +375,7 @@ class LibroDiarioAggregatorService
 				$j->on('r.nro_recibo', '=', 'c.nro_recibo')
 					->on('r.anio', '=', 'c.anio_cobro');
 			})
+			->leftJoin('cuentas_bancarias as cb', 'cb.id_cuentas_bancarias', '=', 'c.id_cuentas_bancarias')
 			->leftJoin('formas_cobro as fc', 'fc.id_forma_cobro', '=', 'c.id_forma_cobro')
 			->where('c.id_usuario', $idUsuario)
 			->whereDate('c.fecha_cobro', '>=', $desde)
@@ -390,9 +391,10 @@ class LibroDiarioAggregatorService
 			'c.nro_cobro', 'c.anio_cobro', 'c.cod_ceta', 'c.cod_pensum', 'c.tipo_inscripcion',
 			'c.nro_factura', 'c.nro_recibo', 'c.monto',
 			'c.observaciones', 'c.concepto', 'c.fecha_cobro', 'c.id_forma_cobro',
-			'c.cod_tipo_cobro',
+			'c.cod_tipo_cobro', 'c.id_cuentas_bancarias',
 			DB::raw('COALESCE(r.cliente, f.cliente) as cliente'),
 			DB::raw('COALESCE(r.nro_documento_cobro, f.nro_documento_cobro) as nro_documento_cobro'),
+			'cb.banco as banco_cuenta_cobro',
 			'fc.nombre as forma_cobro_nombre',
 			'f.monto_total as factura_monto_total'
 		)->get();
@@ -420,7 +422,22 @@ class LibroDiarioAggregatorService
 			}
 		}
 
-		return $rows->map(function ($r) use ($nbByRec, $nbByFac) {
+		$qrByRec = [];
+		if (Schema::hasTable('qr_transacciones') && $nros->count()) {
+			$qrRows = DB::table('qr_transacciones')
+				->whereIn('nro_recibo', $nros->all())
+				->orderBy('updated_at', 'desc')
+				->get(['nro_recibo', 'numeroordenoriginante']);
+			foreach ($qrRows as $qr) {
+				$kR = (string) ($qr->nro_recibo ?? '');
+				if ($kR === '' || isset($qrByRec[$kR])) {
+					continue;
+				}
+				$qrByRec[$kR] = $qr;
+			}
+		}
+
+		return $rows->map(function ($r) use ($nbByRec, $nbByFac, $qrByRec) {
 			$kR = (string) ($r->nro_recibo ?? '');
 			$kF = (string) ($r->nro_factura ?? '');
 			$nb = null;
@@ -435,6 +452,9 @@ class LibroDiarioAggregatorService
 				$r->fecha_deposito = $nb->fecha_deposito ?? null;
 				$r->fecha_nota = $nb->fecha_nota ?? null;
 				$r->correlativo_nb = $nb->correlativo ?? null;
+			}
+			if ($kR !== '' && isset($qrByRec[$kR])) {
+				$r->qr_numero_originante = $qrByRec[$kR]->numeroordenoriginante ?? null;
 			}
 			return $r;
 		});
@@ -453,7 +473,7 @@ class LibroDiarioAggregatorService
 			->whereBetween('fecha_emision', [$desde . ' 00:00:00', $hasta . ' 23:59:59'])
 			->where('nro_factura', '>', 0);
 
-		$this->aplicarFiltroCarreraQueryFactura($q, $idUsuario, $codigoCarrera);
+		$this->aplicarFiltroCarreraQueryFactura($q, $idUsuario, $desde, $hasta, $codigoCarrera);
 
 		return $q->select(
 			'anio', 'nro_factura', 'cliente', 'nro_documento_cobro', 'cod_ceta',
@@ -462,41 +482,32 @@ class LibroDiarioAggregatorService
 	}
 
 	/**
-	 * Restringe el query de `factura` a la carrera pedida (misma regla de pensum que {@see cargarCobros}).
+	 * Restringe el query de `factura` a la carrera pedida exigiendo que exista
+	 * un cobro del mismo usuario/factura en el rango y con pensum de esa carrera.
 	 */
-	private function aplicarFiltroCarreraQueryFactura($query, int $idUsuario, string $codigoCarrera): void
+	private function aplicarFiltroCarreraQueryFactura($query, int $idUsuario, string $desde, string $hasta, string $codigoCarrera): void
 	{
 		$codigoCarrera = trim($codigoCarrera);
 		if ($codigoCarrera === '' || ! Schema::hasTable('pensums')) {
 			return;
 		}
+		if (! Schema::hasTable('cobro')) {
+			$query->whereRaw('1 = 0');
+			return;
+		}
 
-		$query->where(function ($w) use ($idUsuario, $codigoCarrera) {
-			if (Schema::hasTable('inscripciones') && Schema::hasColumn('factura', 'cod_ceta')) {
-				$w->whereExists(function ($ex) use ($codigoCarrera) {
-					$ex->from('inscripciones as i')
-						->whereColumn('i.cod_ceta', 'factura.cod_ceta')
-						->whereIn('i.cod_pensum', function ($sub) use ($codigoCarrera) {
-							$sub->select('cod_pensum')->from('pensums')->where('codigo_carrera', $codigoCarrera);
-						});
-					if (Schema::hasColumn('inscripciones', 'deleted_at')) {
-						$ex->whereNull('i.deleted_at');
-					}
+		$query->whereExists(function ($ex) use ($idUsuario, $desde, $hasta, $codigoCarrera) {
+			$ex->from('cobro as c')
+				->whereColumn('c.nro_factura', 'factura.nro_factura')
+				->where('c.id_usuario', $idUsuario)
+				->whereDate('c.fecha_cobro', '>=', $desde)
+				->whereDate('c.fecha_cobro', '<=', $hasta)
+				->whereIn('c.cod_pensum', function ($sub) use ($codigoCarrera) {
+					$sub->select('cod_pensum')->from('pensums')->where('codigo_carrera', $codigoCarrera);
 				});
-			}
 
-			if (Schema::hasTable('cobro')) {
-				$w->orWhereExists(function ($ex) use ($idUsuario, $codigoCarrera) {
-					$ex->from('cobro as c')
-						->whereColumn('c.nro_factura', 'factura.nro_factura')
-						->where('c.id_usuario', $idUsuario)
-						->whereIn('c.cod_pensum', function ($sub) use ($codigoCarrera) {
-							$sub->select('cod_pensum')->from('pensums')->where('codigo_carrera', $codigoCarrera);
-						});
-					if (Schema::hasColumn('cobro', 'anio_cobro') && Schema::hasColumn('factura', 'anio')) {
-						$ex->whereColumn('c.anio_cobro', 'factura.anio');
-					}
-				});
+			if (Schema::hasColumn('cobro', 'anio_cobro') && Schema::hasColumn('factura', 'anio')) {
+				$ex->whereColumn('c.anio_cobro', 'factura.anio');
 			}
 		});
 	}
@@ -874,6 +885,19 @@ class LibroDiarioAggregatorService
 	{
 		$idForma = strtoupper((string) ($c->id_forma_cobro ?? ''));
 		$obsOriginal = trim((string) ($c->observaciones ?? ''));
+		$bancoQr = $this->bancoSoloNombre((string) ($c->banco_cuenta_cobro ?? ''));
+		$numeroOriginanteQr = trim((string) ($c->qr_numero_originante ?? ''));
+		if ($numeroOriginanteQr !== '') {
+			$fechaQr = substr((string) ($c->fecha_cobro ?? ''), 0, 10);
+			if ($fechaQr === '') {
+				$fechaQr = (string) ($c->fecha_deposito ?? ($c->fecha_nota ?? ''));
+			}
+			$infoQr = trim((string) ($bancoQr !== '' ? $bancoQr : $this->bancoSoloNombre((string) ($c->banco_nb ?? ''))));
+			if ($infoQr !== '' && $fechaQr !== '') {
+				$qrObs = "Transferencia: {$infoQr}-{$numeroOriginanteQr}-{$fechaQr}";
+				return $obsOriginal !== '' ? ($qrObs . ' ' . $obsOriginal) : $qrObs;
+			}
+		}
 
 		$codigo = $idForma;
 		switch ($codigo) {
@@ -901,14 +925,13 @@ class LibroDiarioAggregatorService
 		$banco = $this->bancoSoloNombre((string) ($c->banco_nb ?? ''));
 		$nroTrx = (string) ($c->nro_transaccion ?? ($c->nro_deposito ?? ''));
 		$fechaDep = (string) ($c->fecha_deposito ?? ($c->fecha_nota ?? ''));
-		$correlativo = (string) ($c->correlativo_nb ?? '');
 
 		$infoAdicional = '';
 
 		switch ($codigo) {
 			case 'TA':
 				if ($banco !== '' && $nroTrx !== '' && $fechaDep !== '') {
-					$infoAdicional = "Tarjeta: {$banco}-{$nroTrx}-{$fechaDep} NL:0";
+					$infoAdicional = "Tarjeta: {$banco}-{$nroTrx}-{$fechaDep}";
 				}
 				break;
 			case 'CH':
@@ -916,18 +939,12 @@ class LibroDiarioAggregatorService
 				break;
 			case 'DE':
 				if ($banco !== '' && $nroTrx !== '' && $fechaDep !== '') {
-					$cn = $correlativo !== '' ? preg_replace('/^N[BD][:\s]*/i', '', $correlativo) : '';
-					$infoAdicional = $cn !== ''
-						? "Deposito: {$banco}-{$nroTrx}-{$fechaDep} ND:{$cn}"
-						: "Deposito: {$banco}-{$nroTrx}-{$fechaDep}";
+					$infoAdicional = "Deposito: {$banco}-{$nroTrx}-{$fechaDep}";
 				}
 				break;
 			case 'TR':
 				if ($banco !== '' && $nroTrx !== '' && $fechaDep !== '') {
-					$cn = $correlativo !== '' ? preg_replace('/^NB[:\s]*/i', '', $correlativo) : '';
-					$infoAdicional = $cn !== ''
-						? "Transferencia: {$banco}-{$nroTrx}-{$fechaDep} NB:{$cn}"
-						: "Transferencia: {$banco}-{$nroTrx}-{$fechaDep}";
+					$infoAdicional = "Transferencia: {$banco}-{$nroTrx}-{$fechaDep}";
 				}
 				break;
 		}
@@ -965,7 +982,7 @@ class LibroDiarioAggregatorService
 			return $obs !== '' ? ($info . ' ' . $obs) : $info;
 		}
 		if (($codForma === 'TA' || $codForma === 'L' || $codForma === 'TC') && $banco !== '' && $nroDep !== '' && $fechaDep !== '') {
-			$info = "Tarjeta: {$banco}-{$nroDep}-{$fechaDep} NL:0";
+			$info = "Tarjeta: {$banco}-{$nroDep}-{$fechaDep}";
 			return $obs !== '' ? ($info . ' ' . $obs) : $info;
 		}
 
