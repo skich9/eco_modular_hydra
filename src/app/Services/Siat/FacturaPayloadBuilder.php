@@ -653,7 +653,12 @@ class FacturaPayloadBuilder
         } else {
             $xml .= '<descuentoAdicional xsi:nil="true"/>';
         }
-        $xml .= '<codigoExcepcion xsi:nil="true"/>';
+        $codigoExcepcion = isset($args['codigo_excepcion']) ? $args['codigo_excepcion'] : null;
+        if ($codigoExcepcion === 0 || $codigoExcepcion === '0' || $codigoExcepcion === 1 || $codigoExcepcion === '1') {
+            $xml .= '<codigoExcepcion>' . (int) $codigoExcepcion . '</codigoExcepcion>';
+        } else {
+            $xml .= '<codigoExcepcion xsi:nil="true"/>';
+        }
         $xml .= '<cafc xsi:nil="true"/>';
         $xml .= '<leyenda>' . htmlspecialchars($leyenda, ENT_QUOTES | ENT_SUBSTITUTE, 'UTF-8') . '</leyenda>';
         $xml .= '<usuario>' . htmlspecialchars((string)(isset($args['usuario']) ? $args['usuario'] : 'system'), ENT_QUOTES | ENT_SUBSTITUTE, 'UTF-8') . '</usuario>';

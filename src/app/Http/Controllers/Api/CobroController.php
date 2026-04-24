@@ -27,6 +27,7 @@ use App\Services\FacturaService;
 use App\Services\Siat\OperationsService;
 use App\Services\Siat\CufGenerator;
 use App\Services\Siat\FacturaPayloadBuilder;
+use App\Services\Siat\CodesService;
 use App\Services\Qr\QrSocketNotifier;
 use App\Services\MoraRecalculoService;
 use App\Services\LibroDiarioIdentificadorHelper;
@@ -1914,7 +1915,7 @@ class CobroController extends Controller
 	/**
 	 * Registro por lote de cobros
 	 */
-	public function batchStore(Request $request, ReciboService $reciboService, FacturaService $facturaService, CufdRepository $cufdRepo, OperationsService $ops, CufGenerator $cufGen, FacturaPayloadBuilder $payloadBuilder, CuisRepository $cuisRepo)
+	public function batchStore(Request $request, ReciboService $reciboService, FacturaService $facturaService, CufdRepository $cufdRepo, OperationsService $ops, CufGenerator $cufGen, FacturaPayloadBuilder $payloadBuilder, CuisRepository $cuisRepo, CodesService $codesService)
 	{
 		$rules = [
 			'cod_ceta' => 'required|integer',
@@ -4114,6 +4115,31 @@ class CobroController extends Controller
 								'complemento' => isset($cliIn['complemento']) ? $cliIn['complemento'] : null,
 								'codigo' => (string)(isset($cliIn['codigo']) ? $cliIn['codigo'] : (isset($cliIn['numero']) ? $cliIn['numero'] : '0')),
 							];
+
+							$codigoExcepcionXml = null;
+							if ((int) $cliente['tipo_doc'] === 5) {
+								$nitParaVerificar = preg_replace('/\D+/', '', (string) $cliente['numero']);
+								if ($nitParaVerificar !== '' && (string) $cuisCode !== '') {
+									try {
+										$respVerificarNit = $codesService->verificarNit((string) $cuisCode, $nitParaVerificar, (int) $pv, (int) $sucursal);
+										$nitNormalizado = $this->normalizeVerificacionNitResponse($respVerificarNit, (string) $nitParaVerificar);
+										$codigoExcepcionXml = !empty($nitNormalizado['transaccion']) ? 0 : 1;
+										Log::info('batchStore: verificacion NIT para XML', [
+											'nit' => $nitParaVerificar,
+											'transaccion' => $nitNormalizado['transaccion'],
+											'codigo_excepcion' => $codigoExcepcionXml,
+											'mensaje' => isset($nitNormalizado['descripcion']) ? $nitNormalizado['descripcion'] : null,
+										]);
+									} catch (\Throwable $e) {
+										// Cuando SIAT no responde para verificación NIT, se envía excepción para evitar rechazo por NIT.
+										$codigoExcepcionXml = 1;
+										Log::warning('batchStore: error verificando NIT para XML, usando codigoExcepcion=1', [
+											'nit' => $nitParaVerificar,
+											'error' => $e->getMessage(),
+										]);
+									}
+								}
+							}
                             Log::info('batchStore: tercer identificador');
 
 							// IMPORTANTE: Usar las variables actualizadas ($cufGroup, $cufdGroup, $cuisCode)
@@ -4135,6 +4161,7 @@ class CobroController extends Controller
 								'monto_total' => (float)$factMontoTotal,
 								'numero_factura' => (int)$nroFacturaGroup,
 								'id_forma_cobro' => (string)(isset($request->id_forma_cobro) ? $request->id_forma_cobro : ''),
+								'codigo_excepcion' => $codigoExcepcionXml,
 								'cliente' => $cliente,
 								'detalles' => $factDetalles,
 							];
@@ -4430,13 +4457,18 @@ class CobroController extends Controller
 	/**
 	 * Validar y preparar contexto de impuestos (CUIS/CUFD vigentes)
 	 */
-	public function validarImpuestos(Request $request, CuisRepository $cuisRepo, CufdRepository $cufdRepo)
+	public function validarImpuestos(Request $request, CuisRepository $cuisRepo, CufdRepository $cufdRepo, CodesService $codesService)
 	{
+		$request->merge([
+			'nit_para_verificacion' => $request->input('nit_para_verificacion', $request->input('nitParaVerificacion')),
+		]);
+
 		$rules = [
 			'codigo_punto_venta' => 'nullable|integer|min:0',
 			'codigo_sucursal' => 'nullable|integer|min:0',
 			'id_usuario' => 'nullable|integer|exists:usuarios,id_usuario',
 			'ip_equipo' => 'nullable|string|max:50',
+			'nit_para_verificacion' => ['nullable', 'string', 'max:20', 'regex:/^[0-9]+$/'],
 		];
 		$validator = Validator::make($request->all(), $rules);
 		if ($validator->fails()) {
@@ -4449,25 +4481,40 @@ class CobroController extends Controller
 		}
 
 		$pv = (int) ($request->input('codigo_punto_venta', 0));
-		$sucursalInput = $request->input('codigo_sucursal');
+		$sucursal = (int) ($request->input('codigo_sucursal', config('sin.sucursal')));
+		$nitParaVerificacion = $request->input('nit_para_verificacion');
         $codigoAmbiente = (int) config('sin.ambiente');
-		Log::info('validar-impuestos: start', [ 'pv' => $pv, 'codigo_sucursal' => $sucursalInput ]);
+		Log::info('validar-impuestos: start', [
+			'pv' => $pv,
+			'codigo_sucursal' => $sucursal,
+			'nit_para_verificacion' => $nitParaVerificacion,
+		]);
 
 		try {
 			// CUIS vigente o crear
-            $cuis = $cuisRepo->getVigenteOrCreate2($codigoAmbiente, $sucursalInput, $pv);
+			$cuis = $cuisRepo->getVigenteOrCreate2($codigoAmbiente, $sucursal, $pv);
 			// $cuis = $cuisRepo->getVigenteOrCreate($pv);
 			Log::info('validar-impuestos: CUIS ok', [ 'codigo_cuis' => isset($cuis['codigo_cuis']) ? $cuis['codigo_cuis'] : null, 'fecha_vigencia' => isset($cuis['fecha_vigencia']) ? $cuis['fecha_vigencia'] : null ]);
 
 			// CUFD vigente o crear
 			$cufd = null;
 			try {
-                $cufd = $cufdRepo->getVigenteOrCreate2($codigoAmbiente, 0, $pv);
-				$cufd = $cufdRepo->getVigenteOrCreate($pv);
+				$cufd = $cufdRepo->getVigenteOrCreate2($codigoAmbiente, $sucursal, $pv);
 				Log::info('validar-impuestos: CUFD ok', [ 'codigo_cufd' => isset($cufd['codigo_cufd']) ? $cufd['codigo_cufd'] : null, 'fecha_vigencia' => isset($cufd['fecha_vigencia']) ? $cufd['fecha_vigencia'] : null ]);
 			} catch (\Throwable $e) {
 				// No bloquear: en algunos PV puede no requerirse CUFD inmediato
 				Log::warning('validar-impuestos: CUFD lookup failed', [ 'pv' => $pv, 'error' => $e->getMessage() ]);
+			}
+
+			$verificacionNit = null;
+			if ($nitParaVerificacion !== null && $nitParaVerificacion !== '') {
+				$verificacionNitRaw = $codesService->verificarNit(
+					(string) ($cuis['codigo_cuis'] ?? ''),
+					(string) $nitParaVerificacion,
+					$pv,
+					$sucursal,
+				);
+				$verificacionNit = $this->normalizeVerificacionNitResponse($verificacionNitRaw, (string) $nitParaVerificacion);
 			}
 
 			// TODO: evento significativo/leyendas si es necesario (quedará para paso 2)
@@ -4476,8 +4523,9 @@ class CobroController extends Controller
 				'data' => [
 					'cuis' => $cuis,
 					'cufd' => $cufd,
+					'verificacion_nit' => $verificacionNit,
 					'punto_venta' => [ 'codigo_punto_venta' => $pv ],
-					'sucursal' => [ 'codigo_sucursal' => isset($sucursalInput) ? $sucursalInput : config('sin.sucursal') ],
+					'sucursal' => [ 'codigo_sucursal' => $sucursal ],
 				],
 			]);
 		} catch (\Throwable $e) {
@@ -4487,6 +4535,59 @@ class CobroController extends Controller
 				'message' => 'Error al validar impuestos: ' . $e->getMessage(),
 			], 500);
 		}
+	}
+
+	private function normalizeVerificacionNitResponse(array $response, string $nitParaVerificacion): array
+	{
+		$respuesta = (array) ($response['RespuestaVerificarNit'] ?? []);
+		$mensajes = $this->normalizeSiatMensajes($respuesta['mensajesList'] ?? []);
+		$primerMensaje = $mensajes[0] ?? [];
+
+		return [
+			'nit' => $nitParaVerificacion,
+			'transaccion' => filter_var($respuesta['transaccion'] ?? false, FILTER_VALIDATE_BOOL),
+			'codigo' => isset($primerMensaje['codigo']) ? (int) $primerMensaje['codigo'] : null,
+			'descripcion' => $primerMensaje['descripcion'] ?? null,
+			'mensajes' => $mensajes,
+		];
+	}
+
+	private function normalizeSiatMensajes($mensajes): array
+	{
+		if ($mensajes === null || $mensajes === []) {
+			return [];
+		}
+
+		if (is_array($mensajes) && array_key_exists('codigo', $mensajes)) {
+			return [
+				[
+					'codigo' => $mensajes['codigo'] ?? null,
+					'descripcion' => $mensajes['descripcion'] ?? null,
+				],
+			];
+		}
+
+		if (is_array($mensajes)) {
+			return array_values(array_map(function ($mensaje) {
+				if (!is_array($mensaje)) {
+					$mensaje = (array) $mensaje;
+				}
+
+				return [
+					'codigo' => $mensaje['codigo'] ?? null,
+					'descripcion' => $mensaje['descripcion'] ?? null,
+				];
+			}, $mensajes));
+		}
+
+		$mensaje = (array) $mensajes;
+
+		return [
+			[
+				'codigo' => $mensaje['codigo'] ?? null,
+				'descripcion' => $mensaje['descripcion'] ?? null,
+			],
+		];
 	}
 
 	/**

@@ -7,6 +7,56 @@ use Illuminate\Support\Facades\Log;
 
 class CodesService
 {
+	public function verificarNit($cuis, $nitParaVerificacion, $puntoVenta = 0, $codigoSucursal = null)
+	{
+		$client = SoapClientFactory::build(config('sin.codes_service'));
+		$codigoSucursalResolved = $codigoSucursal !== null ? (int) $codigoSucursal : (int) config('sin.sucursal');
+		$payload = [
+			'codigoAmbiente' => (int) config('sin.ambiente'),
+			'codigoModalidad' => (int) config('sin.modalidad'),
+			'codigoSistema' => (string) config('sin.cod_sistema'),
+			'codigoSucursal' => $codigoSucursalResolved,
+			'cuis' => (string) $cuis,
+			'nit' => (int) config('sin.nit'),
+			'nitParaVerificacion' => (int) $nitParaVerificacion,
+		];
+
+		$arg = new \stdClass();
+		$arg->SolicitudVerificarNit = (object) $payload;
+
+		Log::info('CodesService.verificarNit: request', [
+			'pv' => $puntoVenta,
+			'sucursal' => $payload['codigoSucursal'],
+			'nit_para_verificacion' => (string) $nitParaVerificacion,
+		]);
+
+		try {
+			$result = $client->__soapCall('verificarNit', [ $arg ]);
+			$arr = json_decode(json_encode($result), true);
+			$transaccion = isset($arr['RespuestaVerificarNit']) && isset($arr['RespuestaVerificarNit']['transaccion'])
+				? $arr['RespuestaVerificarNit']['transaccion']
+				: null;
+			Log::debug('CodesService.verificarNit: response', [
+				'hasRespuesta' => isset($arr['RespuestaVerificarNit']),
+				'transaccion' => $transaccion,
+			]);
+
+			return $arr;
+		} catch (SoapFault $e) {
+			Log::error('CodesService.verificarNit: soap fault', [
+				'pv' => $puntoVenta,
+				'error' => $e->getMessage(),
+			]);
+			throw $e;
+		} catch (\Throwable $e) {
+			Log::error('CodesService.verificarNit: exception', [
+				'pv' => $puntoVenta,
+				'error' => $e->getMessage(),
+			]);
+			throw $e;
+		}
+	}
+
 	public function cuis(int $puntoVenta = 0): array
 	{
 		$client = SoapClientFactory::build(config('sin.codes_service'));
