@@ -395,8 +395,8 @@ export class LibroDiarioService {
 		t_egresos: string;
 		totales: string;
 		resumen?: Record<string, unknown>;
-		/** Filas de datos por página del PDF (5–80 en backend). */
-		filas_por_pagina?: number;
+		/** Si no se envía, null, 0 o 'auto': 30 filas de datos + subtotal por bloque. Entero 5–80: otro valor. */
+		filas_por_pagina?: number | 'auto';
 	}): Observable<{ success: boolean; url: string; message?: string }> {
 		const url = `${this.apiUrl}/reportes/libro-diario/imprimir`;
 

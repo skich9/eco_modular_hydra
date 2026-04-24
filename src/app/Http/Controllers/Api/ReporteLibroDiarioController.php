@@ -19,30 +19,28 @@ class ReporteLibroDiarioController extends Controller
     /**
      * Filas de datos por bloque/página lógica (antes de la fila "Subtotal Página N") cuando hay `datos[]`.
      *
-     * Estimación con body compacto (8px, padding mínimo): A4 ≈ 842pt; márgenes @page base
-     * (LIBRO_DIARIO_PAGE_MARGIN_TOP_PT + BOTTOM_PT, ajustables con body_vertical_offset_*)
-     * → ~562pt de área de contenido aprox.; descontando ~14pt thead + ~12pt subtotal ≈ 536pt para filas de datos.
-     * Fila de una línea ~9–11pt en Dompdf; con texto multilínea baja el conteo → valor fijo conservador para diseño/pruebas.
-     * Sobrescribir con request `filas_por_pagina` (ver MIN/MAX).
+     * Márgenes de página como SGA `imprime_libro_ingresos` (mPDF: mgl/mgr 10 mm, mgt/mgb 45 mm, letter).
+     * Por defecto el body trocea **30** filas de datos + subtotal por bloque. Otro valor: `filas_por_pagina` 5–80 o `auto` (=30).
      */
-    private const LIBRO_DIARIO_FILAS_POR_PAGINA_DEFAULT = 50;
-
     private const LIBRO_DIARIO_FILAS_POR_PAGINA_MIN = 5;
 
-    /** Tope superior: subir mucho puede cortar filas contra el pie fijo en Dompdf. */
+    /** Tope: subir mucho con filas manuales puede cortar filas contra el pie en Dompdf. */
     private const LIBRO_DIARIO_FILAS_POR_PAGINA_MAX = 80;
 
-    /**
-     * Margen @page superior base (pt): zona reservada encima del flujo del body (evita solape con header fijo).
-     * Bajar este valor = sube el body (más espacio vertical para la tabla). Subir = baja el body.
-     * El margin-top de .libro-header se recalcula solo (LIBRO_DIARIO_PAGE_PLUS_HEADER_TOP_SUM_PT).
-     */
-    private const LIBRO_DIARIO_PAGE_MARGIN_TOP_PT = 150;
+    /** Filas de datos por página lógica cuando no se envía `filas_por_pagina` (cuerpo de la tabla, sin contar el subtotal). */
+    private const LIBRO_DIARIO_FILAS_POR_PAGINA_DEFAULT = 30;
 
     /**
-     * Margen @page inferior base (pt): reserva para pie fijo + numeración.
+     * Margen @page superior (pt) — equivale a 45 mm como en SGA mPDF mgt, para flujo bajo el header fijo.
+     * Base SGA 45 mm ≈ 128 pt; +14 pt para que el bloque fijo (logo + metadatos compactos) no solape el body en Dompdf.
+     * El margin-top de .libro-header se recalcula (LIBRO_DIARIO_PAGE_PLUS_HEADER_TOP_SUM_PT − este valor).
      */
-    private const LIBRO_DIARIO_PAGE_MARGIN_BOTTOM_PT = 94;
+    private const LIBRO_DIARIO_PAGE_MARGIN_TOP_PT = 142;
+
+    /**
+     * Margen @page inferior (pt) — equivale a 45 mm como SGA mPDF mgb (pie fijo + “Fecha y Hora” + número de página).
+     */
+    private const LIBRO_DIARIO_PAGE_MARGIN_BOTTOM_PT = 128;
 
     /**
      * Invariante Dompdf: marginTop(@page) + margin-top(header fijo) = esta suma (pt).
@@ -58,17 +56,17 @@ class ReporteLibroDiarioController extends Controller
     /**
      * Genera el PDF del Libro Diario a partir de HTML/datos enviados por el frontend.
      * Estructura: Header (logo hasta hora cierre), Body (tabla de datos), Footer (totales y firmas).
-     * Si llega el array datos, el tbody se trocea en páginas lógicas: cada hoja incluye N filas
-     * + una fila de subtotal (suma de ingreso/ingresos solo de esas filas). Opcional: filas_por_pagina (5–80).
+     * Si llega el array datos, el tbody se trocea en bloques por hoja: N filas de datos + subtotal (por defecto N=30).
      *
      * Espera:
      * - contenido: string (filas <tr> con 11 columnas), usado si datos está vacío
      * - datos: array opcional de items (ingreso o ingresos); prioridad sobre contenido
      * - usuario, fecha, resumen
-     * - body_vertical_offset_pt (opcional, int -6..6, default 0): positivo baja el body (más margen sup.);
-     *   negativo sube el body (menos margen sup.). Mantiene coherencia con .libro-header.
+     * - body_vertical_offset_pt (opcional, int -20..20, default 0): positivo baja el body (más margen sup.;
+     *   p. ej. +6 si aún se solapa en algún entorno). Negativo sube el body. Coherente con .libro-header.
      * - body_vertical_offset_bottom_pt (opcional, int -6..6, default 0): positivo reduce altura útil inferior;
      *   negativo acerca el límite del flujo al pie (más filas visibles; riesgo si se exagera).
+     * - filas_por_pagina (opcional): omitir, null, 0, "auto" → 30 filas de datos por bloque. Entero 5–80: otro valor fijo.
      */
     public function imprimir(Request $request)
     {
@@ -100,9 +98,7 @@ class ReporteLibroDiarioController extends Controller
             $pdfUsuarioNickname = $usuarioLibroPdf
                 ? trim((string) ($usuarioLibroPdf->nickname ?? ''))
                 : '';
-            $pdfFooterNombre = $usuarioLibroPdf
-                ? trim((string) ($usuarioLibroPdf->nombre ?? ''))
-                : '';
+            $pdfFooterNombre = $this->nombreCompletoFooterDesdeUsuario($usuarioLibroPdf);
             $pdfFooterCargo = '';
             if ($usuarioLibroPdf && $usuarioLibroPdf->rol) {
                 $pdfFooterCargo = trim((string) ($usuarioLibroPdf->rol->nombre ?? ''));
@@ -237,6 +233,7 @@ class ReporteLibroDiarioController extends Controller
             $fechaHoraImp = $this->formatearFechaHoraImpresionPieEspanol($now);
 
             $styleBorder = 'border: 1px solid #000066;';
+            $styleBorderTabla = 'border: 1px solid #c00;';
             $styleColor = 'color: #000066; font-weight: bold;';
 
             $logoPad = 2;
@@ -247,20 +244,22 @@ class ReporteLibroDiarioController extends Controller
             // border-right:none evita doble trazo vertical logo|texto con Dompdf (colapso imperfecto entre celdas)
             $logoCellStyle = 'width:' . ($logoW + $logoPad * 2) . 'px; min-width:' . ($logoW + $logoPad * 2) . 'px; max-width:' . ($logoW + $logoPad * 2) . 'px; padding:' . $logoPad . 'px; ' . $styleBorder . ' border-right:none; vertical-align:middle; text-align:center; line-height:0;';
 
+            $offsetTop = (int) $request->input('body_vertical_offset_pt', 0);
+            $offsetTop = max(-20, min(20, $offsetTop));
+            $offsetBottom = (int) $request->input('body_vertical_offset_bottom_pt', 0);
+            $offsetBottom = max(-12, min(12, $offsetBottom));
+            $pageMarginTop = self::LIBRO_DIARIO_PAGE_MARGIN_TOP_PT + $offsetTop;
+            $pageMarginBottom = self::LIBRO_DIARIO_PAGE_MARGIN_BOTTOM_PT + $offsetBottom;
+            $headerMarginTop = self::LIBRO_DIARIO_PAGE_PLUS_HEADER_TOP_SUM_PT - $pageMarginTop;
+            $footerMarginBottom = self::LIBRO_DIARIO_PAGE_PLUS_FOOTER_BOTTOM_SUM_PT - $pageMarginBottom;
+
             $contenidoBody = $contenido;
             if (is_array($datos) && count($datos) > 0) {
-                $filasPorPagina = (int) $request->input('filas_por_pagina', self::LIBRO_DIARIO_FILAS_POR_PAGINA_DEFAULT);
-                if ($filasPorPagina < 1) {
-                    $filasPorPagina = self::LIBRO_DIARIO_FILAS_POR_PAGINA_DEFAULT;
-                }
-                $filasPorPagina = max(
-                    self::LIBRO_DIARIO_FILAS_POR_PAGINA_MIN,
-                    min(self::LIBRO_DIARIO_FILAS_POR_PAGINA_MAX, $filasPorPagina)
-                );
+                $filasPorPagina = $this->resolverFilasPorPagina($request);
                 $contenidoBody = $this->construirFilasLibroDiarioConSubtotalesPorPagina(
                     $datos,
                     $fmt,
-                    $styleBorder,
+                    $styleBorderTabla,
                     $styleColor,
                     $filasPorPagina
                 );
@@ -276,20 +275,9 @@ class ReporteLibroDiarioController extends Controller
                 $fTransferencia, $rTransferencia, $mfTransferencia, $mrTransferencia,
                 $fOtro, $rOtro, $mfOtro, $mrOtro,
                 $tFactura, $tRecibo, $tMoraFactura, $tMoraRecibo,
-                $totalEfectivo, $totalGeneral,
-                $styleBorder, $styleColor
+                $totalEfectivo, $totalGeneral
             );
-            $footerHtml = $this->buildFooterHtml($pdfFooterNombre, $pdfFooterCargo, $fecha, $fechaHoraImp, $styleBorder, $styleColor);
-
-            $offsetTop = (int) $request->input('body_vertical_offset_pt', 0);
-            $offsetTop = max(-6, min(6, $offsetTop));
-            $offsetBottom = (int) $request->input('body_vertical_offset_bottom_pt', 0);
-            $offsetBottom = max(-6, min(6, $offsetBottom));
-
-            $pageMarginTop = self::LIBRO_DIARIO_PAGE_MARGIN_TOP_PT + $offsetTop;
-            $pageMarginBottom = self::LIBRO_DIARIO_PAGE_MARGIN_BOTTOM_PT + $offsetBottom;
-            $headerMarginTop = self::LIBRO_DIARIO_PAGE_PLUS_HEADER_TOP_SUM_PT - $pageMarginTop;
-            $footerMarginBottom = self::LIBRO_DIARIO_PAGE_PLUS_FOOTER_BOTTOM_SUM_PT - $pageMarginBottom;
+            $footerHtml = $this->buildFooterHtml($pdfFooterNombre, $pdfFooterCargo, $fecha, $fechaHoraImp);
 
             $html = <<<HTML
 <!DOCTYPE html>
@@ -298,46 +286,71 @@ class ReporteLibroDiarioController extends Controller
     <meta charset="utf-8" />
     <title>Libro Diario</title>
     <style>
-        /* Márgenes @page: espacio entre bordes de hoja y flujo del body (coordinados con header/footer fijos) */
+        /* Márgenes @page: SGA mPDF libro ingresos = 10 mm laterales, 45 mm arriba/abajo (pt vía parámetros pageMargin*). */
         @page {
-            size: A4;
-            margin: {$pageMarginTop}pt 1cm {$pageMarginBottom}pt 1cm;
+            size: letter;
+            margin: {$pageMarginTop}pt 10mm {$pageMarginBottom}pt 10mm;
         }
         body { font-family: DejaVu Sans, sans-serif; font-size: 12px; color: #000; line-height: 1.12; margin: 0; padding: 0; }
-        /* Cuerpo del reporte: tabla compacta 8px; anchos guiados por contenido (cabecera / filas) salvo Observación */
+        /* Cuerpo: mismas proporciones de columnas que SGA get_libro (anchos th en px, suma 700 → % del ancho útil) */
         .tabla {
             width: 100%;
-            table-layout: auto;
+            table-layout: fixed;
             border-collapse: collapse;
-            {$styleBorder};
+            {$styleBorderTabla}
             margin: 0;
         }
+        /* Tipos de letra cuerpo = SGA get_libro / libro_row: tabla 6pt, textos largos 7pt, Hora 5pt, Ingresos 7pt */
+        .tabla { font-size: 6pt; }
         .tabla th, .tabla td {
-            border: 1px solid #000066;
-            padding: 0 1px;
+            border: 1px solid #c00;
+            padding: 2px 3px;
             margin: 0;
-            font-size: 8px;
-            line-height: 1.05;
+            line-height: 1.1;
             vertical-align: middle;
         }
-        .tabla th { background: #e8ecf4; color: #000066; text-align: center; font-weight: bold; padding: 1px 2px; }
-        .tabla thead { display: table-header-group; }
-        /* Columnas 1–7 y 9–11: ancho mínimo según contenido (nowrap → la columna crece con el texto más ancho de la columna) */
-        .tabla th:not(:nth-child(8)),
-        .tabla td:not(:nth-child(8)) {
-            white-space: nowrap;
-            width: 1%;
-            max-width: none;
+        .tabla th {
+            background: #dee6f0;
+            color: #000066;
+            text-align: center;
+            font-weight: bold;
+            font-size: 6pt;
+            padding: 3px 4px;
+            border-bottom: 2px solid #a00;
         }
-        /* Observación (columna 8): flexible; absorbe espacio sobrante y permite varias líneas sin forzar el ancho de las demás */
-        .tabla th:nth-child(8),
-        .tabla td:nth-child(8) {
-            width: auto;
-            min-width: 4em;
+        .tabla thead { display: table-header-group; }
+        .tabla td:nth-child(1), .tabla td:nth-child(2), .tabla td:nth-child(3), .tabla td:nth-child(4),
+        .tabla td:nth-child(9) { font-size: 6pt; }
+        .tabla td:nth-child(5), .tabla td:nth-child(6), .tabla td:nth-child(7), .tabla td:nth-child(8),
+        .tabla td:nth-child(11) { font-size: 7pt; }
+        .tabla td:nth-child(10) { font-size: 5pt; }
+        .tabla th:nth-child(1), .tabla td:nth-child(1) { width: 2.1429%; }   /* P 15 */
+        .tabla th:nth-child(2), .tabla td:nth-child(2) { width: 2.1429%; }   /* Nº 15 */
+        .tabla th:nth-child(3), .tabla td:nth-child(3) { width: 4.2857%; }   /* Recibo 30 */
+        .tabla th:nth-child(4), .tabla td:nth-child(4) { width: 5.2857%; }   /* Factura 30 */
+        .tabla th:nth-child(5), .tabla td:nth-child(5) { width: 13.7143%; }  /* Razon 145 */
+        .tabla th:nth-child(6), .tabla td:nth-child(6) { width: 10.4286%; }  /* NIT 80 */
+        .tabla th:nth-child(7), .tabla td:nth-child(7) { width: 17.8571%; }  /* Concepto 160 */
+        .tabla th:nth-child(8), .tabla td:nth-child(8) { width: 21.7143%; }  /* Obs 110 */
+        .tabla th:nth-child(9), .tabla td:nth-child(9) { width: 8.5714%; }   /* CETA 60 */
+        .tabla th:nth-child(10), .tabla td:nth-child(10) { width: 5.5714%; } /* Hora 25 */
+        .tabla th:nth-child(11), .tabla td:nth-child(11) { width: 7.2857%; } /* Ingresos 30 */
+        .tabla th:nth-child(1), .tabla td:nth-child(1),
+        .tabla th:nth-child(2), .tabla td:nth-child(2),
+        .tabla th:nth-child(3), .tabla td:nth-child(3),
+        .tabla th:nth-child(4), .tabla td:nth-child(4),
+        .tabla th:nth-child(6), .tabla td:nth-child(6),
+        .tabla th:nth-child(9), .tabla td:nth-child(9),
+        .tabla th:nth-child(10), .tabla td:nth-child(10),
+        .tabla th:nth-child(11), .tabla td:nth-child(11) {
+            white-space: nowrap;
+        }
+        .tabla th:nth-child(5), .tabla td:nth-child(5),
+        .tabla th:nth-child(7), .tabla td:nth-child(7),
+        .tabla th:nth-child(8), .tabla td:nth-child(8) {
             white-space: normal;
             word-wrap: break-word;
             overflow-wrap: break-word;
-            vertical-align: middle;
         }
         .text-center { text-align: center; }
         .text-right { text-align: right; }
@@ -350,11 +363,11 @@ class ReporteLibroDiarioController extends Controller
             right: 0;
             z-index: 1;
             background: #fff;
-            font-size: 9pt;
+            font-size: 8pt;
             font-weight: bold;
-            line-height: 1.1;
+            line-height: 1.08;
             margin: 0;
-            padding: 0 0 2px 0;
+            padding: 0 0 1px 0;
             margin-top: {$headerMarginTop}pt;
             outline: none;
             box-shadow: none;
@@ -365,7 +378,34 @@ class ReporteLibroDiarioController extends Controller
             padding: 0;
             position: relative;
         }
-        /* Tipografía única del pie (alineada con numeración en LibroDiarioPdfService: DejaVu Sans 7.5pt) */
+        .tabla-totales {
+            width: 70%;
+            margin-left: auto;
+            border-collapse: collapse;
+            font-size: 8px;
+        }
+        .tabla-totales th,
+        .tabla-totales td {
+            border: 1px solid #c00;
+            padding: 2px 4px;
+            line-height: 1.12;
+            vertical-align: middle;
+        }
+        .tabla-totales thead th {
+            background: #dee6f0;
+            color: #000066;
+            font-weight: bold;
+            text-align: center;
+            border-bottom: 2px solid #a00;
+        }
+        .tabla-totales tbody td.texto-modo {
+            color: #000066;
+            font-weight: bold;
+        }
+        .tabla-totales tbody tr.fila-resaltada {
+            background: #e8ecf4;
+        }
+        /* Pie 9pt (SGA); numeración vía LibroDiarioPdfService (~8pt) en esquina inferior derecha */
         .libro-footer {
             position: fixed;
             bottom: 0;
@@ -374,9 +414,9 @@ class ReporteLibroDiarioController extends Controller
             z-index: 1;
             background: #fff;
             font-family: DejaVu Sans, sans-serif;
-            font-size: 7.5pt;
+            font-size: 9pt;
             font-weight: normal;
-            line-height: 1.1;
+            line-height: 1.12;
             color: #000;
             margin: 0;
             padding: 0 0 1px 0;
@@ -384,9 +424,9 @@ class ReporteLibroDiarioController extends Controller
         }
         .libro-footer table {
             font-family: DejaVu Sans, sans-serif;
-            font-size: 7.5pt;
+            font-size: 9pt;
             font-weight: normal;
-            line-height: 1.1;
+            line-height: 1.12;
         }
     </style>
 </head>
@@ -416,11 +456,11 @@ class ReporteLibroDiarioController extends Controller
             </tbody>
         </table>
 
-        <div class="totales-ultima-pagina" style="margin-top: 8pt; page-break-inside: avoid;">
+        <div class="totales-ultima-pagina" style="margin-top: 4pt; page-break-inside: avoid;">
 {$totalesYFirmasHtml}
         </div>
     </main>
-    <!-- Numeración: LibroDiarioPdfService (callback end_document) para pintarla al final y que no la tape la última página. -->
+    <!-- Numeración: LibroDiarioPdfService (end_document) — mismo estilo/banda que "Fecha y Hora de Impresión" (9pt bold #000066, margen 1cm). -->
 </body>
 </html>
 HTML;
@@ -545,8 +585,33 @@ HTML;
     }
 
     /**
+     * Por defecto 30 filas de datos + subtotal. Manual: 5–80. `filas_por_pagina` null, '', 0, "auto" → 30.
+     */
+    private function resolverFilasPorPagina(Request $request): int
+    {
+        $raw = $request->input('filas_por_pagina');
+
+        if ($raw === null || $raw === '') {
+            return self::LIBRO_DIARIO_FILAS_POR_PAGINA_DEFAULT;
+        }
+        if (is_string($raw) && strtolower(trim($raw)) === 'auto') {
+            return self::LIBRO_DIARIO_FILAS_POR_PAGINA_DEFAULT;
+        }
+        $n = is_numeric($raw) ? (int) $raw : 0;
+        if ($n < 1) {
+            return self::LIBRO_DIARIO_FILAS_POR_PAGINA_DEFAULT;
+        }
+
+        return max(
+            self::LIBRO_DIARIO_FILAS_POR_PAGINA_MIN,
+            min(self::LIBRO_DIARIO_FILAS_POR_PAGINA_MAX, $n)
+        );
+    }
+
+    /**
      * Genera filas de datos + una fila de subtotal por cada "página lógica" del PDF.
-     * Suma solo ingreso/ingresos del bloque actual; page-break-before alinea con hojas siguientes.
+     * Suma solo ingreso/ingresos del bloque actual. Salto de hoja: `page-break-after` en el subtotal (Dompdf
+     * maneja mejor el corte al final de bloque que `page-break-before` en la primera fila del siguiente tramo).
      */
     private function construirFilasLibroDiarioConSubtotalesPorPagina(
         array $datos,
@@ -558,12 +623,9 @@ HTML;
         $chunks = array_chunk($datos, $filasPorPagina);
         $html = '';
         $numGlobal = 0;
+        $totalChunks = count($chunks);
 
         foreach ($chunks as $idx => $chunk) {
-            if ($idx > 0) {
-                $html .= '<tr style="page-break-before: always; height: 0;"><td colspan="11" style="height: 0; padding: 0; margin: 0; border: none; line-height: 0;"></td></tr>';
-            }
-
             $subtotalPag = 0.0;
             foreach ($chunk as $item) {
                 $numGlobal++;
@@ -580,7 +642,7 @@ HTML;
                 $hora = htmlspecialchars((string) ($it['hora'] ?? ''));
                 $ingresoStr = $ing > 0 ? $fmt($ing) : '';
 
-                $estilo = $styleBorder . ' padding:0 1px;margin:0;vertical-align:middle;font-size:8px;line-height:1.05;';
+                $estilo = $styleBorder . ' padding:2px 3px;margin:0;vertical-align:middle;line-height:1.1;';
                 $html .= '<tr id="' . $numGlobal . '">';
                 $html .= '<td class="text-center" style="' . $estilo . '">' . $p . '</td>';
                 $html .= '<td class="text-center" style="' . $estilo . '">' . $numGlobal . '</td>';
@@ -597,9 +659,12 @@ HTML;
             }
 
             $numPag = $idx + 1;
-            $html .= '<tr class="subtotal-pagina" style="background:#e8ecf4; page-break-inside: avoid;">'
-                . '<td colspan="10" style="' . $styleBorder . ' padding:1px 2px; margin:0; font-size:8px; line-height:1.05; vertical-align:middle; ' . $styleColor . ' text-align:right;">Subtotal Página ' . $numPag . ':</td>'
-                . '<td style="' . $styleBorder . ' padding:1px 2px; margin:0; font-size:8px; line-height:1.05; vertical-align:middle; text-align:right; font-weight:bold;">' . $fmt($subtotalPag) . '</td>'
+            $forzarSaltoHoja = ($idx < $totalChunks - 1);
+            $estiloSubtotal = 'background:#e8ecf4; page-break-inside: avoid;'
+                . ($forzarSaltoHoja ? ' page-break-after: always;' : '');
+            $html .= '<tr class="subtotal-pagina" style="' . $estiloSubtotal . '">'
+                . '<td colspan="10" style="' . $styleBorder . ' padding:3px 4px; margin:0; font-size:6pt; line-height:1.1; vertical-align:middle; ' . $styleColor . ' text-align:right;">Subtotal Página ' . $numPag . ':</td>'
+                . '<td style="' . $styleBorder . ' padding:3px 4px; margin:0; font-size:7pt; line-height:1.1; vertical-align:middle; text-align:right; font-weight:bold;">' . $fmt($subtotalPag) . '</td>'
                 . '</tr>';
         }
 
@@ -626,7 +691,7 @@ HTML;
     <td style="{$styleBorder}padding:1px 3px;{$styleColor}text-align:center;font-size:7.5pt;line-height:1.1;vertical-align:middle;">{$numeracion}</td>
   </tr>
   <tr>
-    <td rowspan="2" style="{$styleBorder}padding:2px 5px;{$styleColor}text-align:center;font-size:11pt;font-weight:bold;line-height:1.08;vertical-align:middle;">
+    <td rowspan="2" style="{$styleBorder}padding:1px 4px;{$styleColor}text-align:center;font-size:10pt;font-weight:bold;line-height:1.06;vertical-align:middle;">
       REPORTE DIARIO DE INGRESOS</td>
     <td style="{$styleBorder}padding:1px 3px;{$styleColor}text-align:center;font-size:7.5pt;font-weight:bold;line-height:1.1;vertical-align:middle;">CODIGO:</td>
     <td style="{$styleBorder}padding:1px 3px;{$styleColor}text-align:center;font-size:7.5pt;line-height:1.1;vertical-align:middle;">ING-2</td>
@@ -636,12 +701,12 @@ HTML;
     <td style="{$styleBorder}padding:1px 3px;{$styleColor}text-align:center;font-size:7.5pt;line-height:1.1;vertical-align:middle;">V.0.</td>
   </tr>
 </table>
-<table width="100%" style="border-collapse:collapse;margin-top:10px;padding:0;font-size:8pt;font-weight:normal;color:#000;line-height:1.12;">
-  <tr><td style="padding:0 0 1px 0;width:92px;vertical-align:middle;"><strong>Carrera:</strong></td><td style="padding:0 0 1px 0;vertical-align:middle;">{$carreraVal}</td></tr>
-  <tr><td style="padding:0 0 1px 0;vertical-align:middle;"><strong>Fecha:</strong></td><td style="padding:0 0 1px 0;vertical-align:middle;">{$fechaLiteral}</td></tr>
-  <tr><td style="padding:0 0 1px 0;vertical-align:middle;"><strong>Usuario:</strong></td><td style="padding:0 0 1px 0;vertical-align:middle;">{$usuarioNickname}</td></tr>
-  <tr><td style="padding:0 0 1px 0;vertical-align:middle;"><strong>Hora Apertura:</strong></td><td style="padding:0 0 1px 0;vertical-align:middle;">{$horaAperturaDisplay}</td></tr>
-  <tr><td style="padding:0 0 1px 0;vertical-align:middle;"><strong>Hora de Cierre:</strong></td><td style="padding:0 0 1px 0;vertical-align:middle;">{$horaCierreDisplay}</td></tr>
+<table width="100%" class="libro-header-meta" style="border-collapse:collapse;margin-top:4px;padding:0;font-size:7.5pt;font-weight:bold;color:#000066;line-height:1.06;">
+  <tr><td style="padding:0;width:118px;vertical-align:top;">Carrera:</td><td style="padding:0 0 1px 0;vertical-align:top;">{$carreraVal}</td></tr>
+  <tr><td style="padding:0;vertical-align:top;">Fecha:</td><td style="padding:0 0 1px 0;vertical-align:top;">{$fechaLiteral}</td></tr>
+  <tr><td style="padding:0;vertical-align:top;">Usuario:</td><td style="padding:0 0 1px 0;vertical-align:top;">{$usuarioNickname}</td></tr>
+  <tr><td style="padding:0;vertical-align:top;">Hora de Apertura:</td><td style="padding:0 0 1px 0;vertical-align:top;">{$horaAperturaDisplay}</td></tr>
+  <tr><td style="padding:0;vertical-align:top;">Hora de Cierre:</td><td style="padding:0;vertical-align:top;">{$horaCierreDisplay}</td></tr>
 </table>
 HTML;
     }
@@ -693,49 +758,101 @@ HTML;
         return $diaSemana . ' ' . $diaNum . ' de ' . $mesNombre . ' de ' . $anio . ' ' . $hora;
     }
 
+    /**
+     * Nombre listo para el pie: nombre + apellidos en una sola cadena (espacios normalizados).
+     */
+    private function nombreCompletoFooterDesdeUsuario(?Usuario $u): string
+    {
+        if (! $u) {
+            return '';
+        }
+        $parts = array_filter(
+            array_map('trim', [
+                (string) ($u->nombre ?? ''),
+                (string) ($u->ap_paterno ?? ''),
+                (string) ($u->ap_materno ?? ''),
+            ]),
+            static fn (string $p): bool => $p !== ''
+        );
+
+        return $parts === [] ? '' : implode(' ', $parts);
+    }
+
     /** Tabla de firmas: se muestra en el pie de página de cada hoja */
-    private function buildFooterHtml(string $nombreResponsable, string $cargoResponsable, string $fecha, string $fechaHoraImp, string $styleBorder, string $styleColor): string
+    private function buildFooterHtml(string $nombreResponsable, string $cargoResponsable, string $fecha, string $fechaHoraImp): string
     {
         $fechaHoraImp = htmlspecialchars($fechaHoraImp, ENT_QUOTES, 'UTF-8');
         $fechaEsc = htmlspecialchars($fecha, ENT_QUOTES, 'UTF-8');
         $nombreHtml = $nombreResponsable !== ''
             ? htmlspecialchars($nombreResponsable, ENT_QUOTES, 'UTF-8')
-            : '______________________';
+            : '';
         $cargoHtml = $cargoResponsable !== ''
             ? htmlspecialchars($cargoResponsable, ENT_QUOTES, 'UTF-8')
-            : '______________________';
+            : '';
 
-        // Misma tipografía que la numeración PDF (LibroDiarioPdfService): DejaVu Sans, 7.5pt, normal, line-height 1.1, #000
-        $footerType = 'font-family:DejaVu Sans,sans-serif;font-size:7.5pt;font-weight:normal;line-height:1.1;color:#000;';
-        $footerHdr = 'color:#000066;font-weight:normal;'; // títulos de columna: mismo peso que el resto del pie
+        // Alineado a SGA imprime_libro_ingresos: cuadrícula roja, cabeceras en celdas; fila final azul y negrita
+        $red = 'border:1px solid #c00;';
+        $hdr = 'border:1px solid #c00;padding:2px 3px;text-align:center;font-weight:bold;vertical-align:middle;';
+        $cell = 'border:1px solid #c00;padding:2px 3px;vertical-align:middle;';
+        $cellUp = 'border:1px solid #c00;border-width:1px 1px 0 1px;padding:2px 3px;vertical-align:middle;';
+        $cellBottom = 'border:1px solid #c00;border-width:0 1px 1px 1px;padding:2px 3px;vertical-align:middle;';
+        $footerRow = 'color:#000066;font-weight:bold;font-size:9pt;';
+        // Columna 2 (RESPONSABLE) más ancha; 3–5 más estrechas para dar espacio a nombre completo
+        $wLab = 'width:8%;';
+        $wResp = 'width:28%;';
+        $wOt = 'width:20%;';
+        $cellNombre = $cell . 'text-align:center;white-space:normal;word-wrap:break-word;word-break:normal;line-height:1.15;vertical-align:top;';
 
         return <<<HTML
 
-<table width="100%" style="border-collapse:collapse;{$styleBorder};margin:0;{$footerType}">
+<table width="100%" style="border-collapse:collapse;table-layout:fixed;margin:0;font-family:DejaVu Sans,sans-serif;font-size:9pt;">
     <tr>
-        <td style="{$styleBorder}padding:1px 3px;{$footerHdr}text-align:center;width:25%;vertical-align:middle;">Responsable</td>
-        <td style="{$styleBorder}padding:1px 3px;{$footerHdr}text-align:center;width:25%;vertical-align:middle;">Recibido</td>
-        <td style="{$styleBorder}padding:1px 3px;{$footerHdr}text-align:center;width:25%;vertical-align:middle;">Revisado</td>
-        <td style="{$styleBorder}padding:1px 3px;{$footerHdr}text-align:center;width:25%;vertical-align:middle;">Aprobado</td>
+        <td style="{$wLab}"></td>
+        <td style="{$wResp}{$hdr}">RESPONSABLE</td>
+        <td style="{$wOt}{$hdr}">RECIBIDO</td>
+        <td style="{$wOt}{$hdr}">REVISADO</td>
+        <td style="{$wOt}{$hdr}">APROBADO</td>
     </tr>
     <tr>
-        <td style="{$styleBorder}padding:1px 3px;{$footerType}vertical-align:top;">Firma: ____________________<br>Nombre: {$nombreHtml}<br>Cargo: {$cargoHtml}<br>Fecha: {$fechaEsc}</td>
-        <td style="{$styleBorder}padding:3px 1px;{$footerType}vertical-align:top;">Firma: ____________________</td>
-        <td style="{$styleBorder}padding:1px 3px;{$footerType}vertical-align:top;">Firma: ____________________</td>
-        <td style="{$styleBorder}padding:1px 3px;{$footerType}vertical-align:top;">Firma: ____________________</td>
+        <td style="{$wLab}height:36px;{$cell}text-align:center;">Firma:</td>
+        <td style="{$wResp}{$cell}"></td>
+        <td style="{$wOt}{$cell}"></td>
+        <td style="{$wOt}{$cell}"></td>
+        <td style="{$wOt}{$cell}"></td>
+    </tr>
+    <tr>
+        <td style="{$wLab}min-height:24px;{$cell}text-align:center;vertical-align:top;">Nombre:</td>
+        <td style="{$wResp}{$cellNombre}">{$nombreHtml}</td>
+        <td style="{$wOt}{$cellUp}"></td>
+        <td style="{$wOt}{$cellUp}"></td>
+        <td style="{$wOt}{$cellUp}"></td>
+    </tr>
+    <tr>
+        <td style="{$wLab}min-height:24px;{$cell}text-align:center;">Cargo:</td>
+        <td style="{$wResp}{$cell}text-align:center;white-space:normal;word-wrap:break-word;">{$cargoHtml}</td>
+        <td style="{$wOt}{$cellBottom}"></td>
+        <td style="{$wOt}{$cellBottom}"></td>
+        <td style="{$wOt}{$cellBottom}"></td>
+    </tr>
+    <tr>
+        <td style="{$wLab}{$cell}text-align:center;">Fecha:</td>
+        <td style="{$wResp}{$cell}text-align:center;">{$fechaEsc}</td>
+        <td style="{$wOt}{$cell}"></td>
+        <td style="{$wOt}{$cell}"></td>
+        <td style="{$wOt}{$cell}"></td>
     </tr>
 </table>
-<table width="100%" style="border-collapse:collapse;margin:0;padding:0;border:none;{$footerType}">
+<table width="100%" style="border-collapse:collapse;margin:0;padding:0;border:none;font-family:DejaVu Sans,sans-serif;">
     <tr>
-        <td style="text-align:left;width:33%;padding:2px 0 0 1cm;border:none;vertical-align:middle;">Fecha y Hora de Impresión:</td>
-        <td style="text-align:center;width:34%;padding:2px 0 0 0;border:none;vertical-align:middle;">{$fechaHoraImp}</td>
-        <td style="text-align:right;width:33%;padding:2px 1cm 0 0;border:none;vertical-align:middle;"></td>
+        <td style="text-align:left;width:25%;padding:3px 0 0 0;border:none;vertical-align:middle;{$footerRow}">Fecha y Hora de Impresión</td>
+        <td style="text-align:center;width:50%;padding:3px 0 0 0;border:none;vertical-align:middle;{$footerRow}">{$fechaHoraImp}</td>
+        <td style="text-align:right;width:25%;padding:3px 1cm 0 0;border:none;vertical-align:middle;{$footerRow}"></td>
     </tr>
 </table>
 HTML;
     }
 
-    /** Totales: solo en la última página (fluyen al final del contenido) */
+    /** Totales: solo en la última página. Mismo lenguaje visual que .tabla (bordes #c00, cabecera #dee6f0). */
     private function buildTotalesYFirmasHtml(
         string $fTraspaso, string $rTraspaso, string $mfTraspaso, string $mrTraspaso,
         string $fDeposito, string $rDeposito, string $mfDeposito, string $mrDeposito,
@@ -745,28 +862,31 @@ HTML;
         string $fTransferencia, string $rTransferencia, string $mfTransferencia, string $mrTransferencia,
         string $fOtro, string $rOtro, string $mfOtro, string $mrOtro,
         string $tFactura, string $tRecibo, string $tMoraFactura, string $tMoraRecibo,
-        string $totalEfectivo, string $totalGeneral,
-        string $styleBorder, string $styleColor
+        string $totalEfectivo, string $totalGeneral
     ): string {
         return <<<HTML
-<table style="border-collapse: collapse; {$styleBorder}; width: 70%; margin-left: auto; font-size: 8pt;">
+<table class="tabla-totales">
+    <thead>
     <tr>
-        <td style="{$styleBorder}"></td>
-        <td class="center" style="{$styleBorder} {$styleColor}">Factura</td>
-        <td class="center" style="{$styleBorder} {$styleColor}">Recibo</td>
-        <td class="center" style="{$styleBorder} {$styleColor}">Mora Fac</td>
-        <td class="center" style="{$styleBorder} {$styleColor}">Mora Rec</td>
+        <th></th>
+        <th>Factura</th>
+        <th>Recibo</th>
+        <th>Mora Fac</th>
+        <th>Mora Rec</th>
     </tr>
-    <tr><td style="{$styleBorder}">Traspaso</td><td class="right" style="{$styleBorder}">{$fTraspaso}</td><td class="right" style="{$styleBorder}">{$rTraspaso}</td><td class="right" style="{$styleBorder}">{$mfTraspaso}</td><td class="right" style="{$styleBorder}">{$mrTraspaso}</td></tr>
-    <tr><td style="{$styleBorder}">Depósito</td><td class="right" style="{$styleBorder}">{$fDeposito}</td><td class="right" style="{$styleBorder}">{$rDeposito}</td><td class="right" style="{$styleBorder}">{$mfDeposito}</td><td class="right" style="{$styleBorder}">{$mrDeposito}</td></tr>
-    <tr><td style="{$styleBorder}">Efectivo</td><td class="right" style="{$styleBorder}">{$fEfectivo}</td><td class="right" style="{$styleBorder}">{$rEfectivo}</td><td class="right" style="{$styleBorder}">{$mfEfectivo}</td><td class="right" style="{$styleBorder}">{$mrEfectivo}</td></tr>
-    <tr><td style="{$styleBorder}">Cheque</td><td class="right" style="{$styleBorder}">{$fCheque}</td><td class="right" style="{$styleBorder}">{$rCheque}</td><td class="right" style="{$styleBorder}">{$mfCheque}</td><td class="right" style="{$styleBorder}">{$mrCheque}</td></tr>
-    <tr><td style="{$styleBorder}">Tarjeta</td><td class="right" style="{$styleBorder}">{$fTarjeta}</td><td class="right" style="{$styleBorder}">{$rTarjeta}</td><td class="right" style="{$styleBorder}">{$mfTarjeta}</td><td class="right" style="{$styleBorder}">{$mrTarjeta}</td></tr>
-    <tr><td style="{$styleBorder}">Transferencia Bancaria</td><td class="right" style="{$styleBorder}">{$fTransferencia}</td><td class="right" style="{$styleBorder}">{$rTransferencia}</td><td class="right" style="{$styleBorder}">{$mfTransferencia}</td><td class="right" style="{$styleBorder}">{$mrTransferencia}</td></tr>
-    <tr><td style="{$styleBorder}">Otro</td><td class="right" style="{$styleBorder}">{$fOtro}</td><td class="right" style="{$styleBorder}">{$rOtro}</td><td class="right" style="{$styleBorder}">{$mfOtro}</td><td class="right" style="{$styleBorder}">{$mrOtro}</td></tr>
-    <tr><td style="{$styleBorder} {$styleColor}">Total Parcial</td><td class="right" style="{$styleBorder}">{$tFactura}</td><td class="right" style="{$styleBorder}">{$tRecibo}</td><td class="right" style="{$styleBorder}">{$tMoraFactura}</td><td class="right" style="{$styleBorder}">{$tMoraRecibo}</td></tr>
-    <tr style="background:#e8ecf4;"><td style="{$styleBorder} {$styleColor}">Total Efectivo</td><td colspan="4" class="right" style="{$styleBorder}">{$totalEfectivo}</td></tr>
-    <tr><td style="{$styleBorder} {$styleColor}">Total General</td><td colspan="4" class="right" style="{$styleBorder} {$styleColor}">{$totalGeneral}</td></tr>
+    </thead>
+    <tbody>
+    <tr><td>Traspaso</td><td class="right">{$fTraspaso}</td><td class="right">{$rTraspaso}</td><td class="right">{$mfTraspaso}</td><td class="right">{$mrTraspaso}</td></tr>
+    <tr><td>Depósito</td><td class="right">{$fDeposito}</td><td class="right">{$rDeposito}</td><td class="right">{$mfDeposito}</td><td class="right">{$mrDeposito}</td></tr>
+    <tr><td>Efectivo</td><td class="right">{$fEfectivo}</td><td class="right">{$rEfectivo}</td><td class="right">{$mfEfectivo}</td><td class="right">{$mrEfectivo}</td></tr>
+    <tr><td>Cheque</td><td class="right">{$fCheque}</td><td class="right">{$rCheque}</td><td class="right">{$mfCheque}</td><td class="right">{$mrCheque}</td></tr>
+    <tr><td>Tarjeta</td><td class="right">{$fTarjeta}</td><td class="right">{$rTarjeta}</td><td class="right">{$mfTarjeta}</td><td class="right">{$mrTarjeta}</td></tr>
+    <tr><td>Transferencia Bancaria</td><td class="right">{$fTransferencia}</td><td class="right">{$rTransferencia}</td><td class="right">{$mfTransferencia}</td><td class="right">{$mrTransferencia}</td></tr>
+    <tr><td>Otro</td><td class="right">{$fOtro}</td><td class="right">{$rOtro}</td><td class="right">{$mfOtro}</td><td class="right">{$mrOtro}</td></tr>
+    <tr class="fila-resaltada"><td class="texto-modo">Total Parcial</td><td class="right">{$tFactura}</td><td class="right">{$tRecibo}</td><td class="right">{$tMoraFactura}</td><td class="right">{$tMoraRecibo}</td></tr>
+    <tr class="fila-resaltada"><td class="texto-modo">Total Efectivo</td><td colspan="4" class="right">{$totalEfectivo}</td></tr>
+    <tr class="fila-resaltada"><td class="texto-modo">Total General</td><td colspan="4" class="right texto-modo">{$totalGeneral}</td></tr>
+    </tbody>
 </table>
 HTML;
     }

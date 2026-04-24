@@ -42,12 +42,6 @@ export class LibroDiarioComponent implements OnInit {
   alertMessage: string = '';
   alertType: 'success' | 'error' | 'warning' = 'success';
 
-  /**
-   * Filas de datos por página en el PDF (sin contar la fila "Subtotal página").
-   * Backend acepta 5–80; valores fuera de rango se recortan.
-   */
-  readonly filasLibroDiarioPdfPorPagina = 50;
-
   constructor(
     private fb: FormBuilder,
     private libroDiarioService: LibroDiarioService,
@@ -312,6 +306,14 @@ export class LibroDiarioComponent implements OnInit {
           this.datosLibroDiario = response.data.datos || [];
           this.usuarioInfo = response.data.usuario_info || {};
           this.datosLibroDiario.sort((a: any, b: any) => {
+            const ta = String(a?.tipo_doc || '').toUpperCase();
+            const tb = String(b?.tipo_doc || '').toUpperCase();
+            const prio: Record<string, number> = { F: 0, R: 1 };
+            const pa = ta in prio ? prio[ta] : 2;
+            const pb = tb in prio ? prio[tb] : 2;
+            if (pa !== pb) {
+              return pa - pb;
+            }
             const ha = (a?.hora || '').toString();
             const hb = (b?.hora || '').toString();
             if (ha && hb) {
@@ -483,8 +485,7 @@ export class LibroDiarioComponent implements OnInit {
               t_ingresos: this.totales.ingresos.toFixed(2),
               t_egresos: '0.00',
               totales: this.totalGeneral.toFixed(2),
-              resumen,
-              filas_por_pagina: this.filasLibroDiarioPdfPorPagina
+              resumen
             };
 
             // Luego generar el PDF
@@ -782,10 +783,12 @@ export class LibroDiarioComponent implements OnInit {
     this.totalParcialMoraFactura = sumar('mora_factura');
     this.totalParcialMoraRecibo = sumar('mora_recibo');
 
-    // Total Efectivo: solo factura/recibo en efectivo, sin mora.
+    // Total Efectivo: suma de la fila efectivo (factura + recibo + mora factura + mora recibo).
     this.totalEfectivo =
       (resumen['efectivo']?.factura || 0) +
-      (resumen['efectivo']?.recibo || 0);
+      (resumen['efectivo']?.recibo || 0) +
+      (resumen['efectivo']?.mora_factura || 0) +
+      (resumen['efectivo']?.mora_recibo || 0);
 
     this.totalGeneral =
       this.totalParcialFactura +

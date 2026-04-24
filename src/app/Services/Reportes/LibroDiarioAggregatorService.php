@@ -288,6 +288,14 @@ class LibroDiarioAggregatorService
 		}
 
 		usort($items, function ($a, $b) {
+			$ta = (string) ($a['tipo_doc'] ?? '');
+			$tb = (string) ($b['tipo_doc'] ?? '');
+			$prioF = ['F' => 0, 'R' => 1];
+			$pa = $prioF[$ta] ?? 2;
+			$pb = $prioF[$tb] ?? 2;
+			if ($pa !== $pb) {
+				return $pa <=> $pb;
+			}
 			$ha = (string) ($a['hora'] ?? '');
 			$hb = (string) ($b['hora'] ?? '');
 			if ($ha !== '' && $hb !== '') {
@@ -954,7 +962,6 @@ class LibroDiarioAggregatorService
 		$totalRecibo = 0.0;
 		$totalMoraFactura = 0.0;
 		$totalMoraRecibo = 0.0;
-		$totalEfectivo = 0.0;
 		foreach ($items as $it) {
 			$tp = (string) ($it['tipo_pago'] ?? 'E');
 			$td = (string) ($it['tipo_doc'] ?? 'F');
@@ -993,22 +1000,16 @@ class LibroDiarioAggregatorService
 					$totalRecibo += $ing;
 				}
 			}
-			// Total Efectivo: solo capital en efectivo (factura/recibo), sin mora.
-			if ($tp === 'E') {
-				if ($esMora) {
-					// no sumar
-				} elseif ($mMora > 0.00001) {
-					$totalEfectivo += $mCapital;
-				} else {
-					$totalEfectivo += $ing;
-				}
-			}
 		}
 		$resumen['total_factura'] = round($totalFactura, 2);
 		$resumen['total_recibo'] = round($totalRecibo, 2);
 		$resumen['total_mora_factura'] = round($totalMoraFactura, 2);
 		$resumen['total_mora_recibo'] = round($totalMoraRecibo, 2);
-		$resumen['total_efectivo'] = round($totalEfectivo, 2);
+		$ef = $resumen['efectivo'];
+		$resumen['total_efectivo'] = round(
+			$ef['factura'] + $ef['recibo'] + $ef['mora_factura'] + $ef['mora_recibo'],
+			2
+		);
 		$resumen['total_general'] = round(
 			$totalFactura + $totalRecibo + $totalMoraFactura + $totalMoraRecibo,
 			2
