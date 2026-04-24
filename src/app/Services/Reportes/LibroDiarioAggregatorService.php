@@ -229,7 +229,7 @@ class LibroDiarioAggregatorService
 		$nickname = $this->resolverNicknameUsuario($idUsuario);
 
 		$cobros = $this->cargarCobros($idUsuario, $desde, $hasta, $codigoCarrera);
-		$facturas = $this->cargarFacturas($idUsuario, $desde, $hasta);
+		$facturas = $this->cargarFacturas($idUsuario, $desde, $hasta, $codigoCarrera);
 		$recibosMap = $this->cargarRecibosMap($cobros);
 		$otros = $this->cargarOtrosIngresos($nickname, $desde, $hasta, $codigoCarrera);
 
@@ -440,18 +440,65 @@ class LibroDiarioAggregatorService
 		});
 	}
 
-	/** @return \Illuminate\Support\Collection<int,object> */
-	private function cargarFacturas(int $idUsuario, string $desde, string $hasta)
+	/**
+	 * Facturas del usuario en el rango. Si `codigoCarrera` no está vacío, solo las asociadas a esa
+	 * carrera vía inscripciones (cod_ceta → cod_pensum) o vía cobro con mismo nro/anio y cod_pensum.
+	 *
+	 * @return \Illuminate\Support\Collection<int,object>
+	 */
+	private function cargarFacturas(int $idUsuario, string $desde, string $hasta, string $codigoCarrera = '')
 	{
-		return DB::table('factura')
+		$q = DB::table('factura')
 			->where('id_usuario', $idUsuario)
 			->whereBetween('fecha_emision', [$desde . ' 00:00:00', $hasta . ' 23:59:59'])
-			->where('nro_factura', '>', 0)
-			->select(
-				'anio', 'nro_factura', 'cliente', 'nro_documento_cobro', 'cod_ceta',
-				'id_forma_cobro', 'monto_total', 'fecha_emision', 'estado'
-			)
-			->get();
+			->where('nro_factura', '>', 0);
+
+		$this->aplicarFiltroCarreraQueryFactura($q, $idUsuario, $codigoCarrera);
+
+		return $q->select(
+			'anio', 'nro_factura', 'cliente', 'nro_documento_cobro', 'cod_ceta',
+			'id_forma_cobro', 'monto_total', 'fecha_emision', 'estado'
+		)->get();
+	}
+
+	/**
+	 * Restringe el query de `factura` a la carrera pedida (misma regla de pensum que {@see cargarCobros}).
+	 */
+	private function aplicarFiltroCarreraQueryFactura($query, int $idUsuario, string $codigoCarrera): void
+	{
+		$codigoCarrera = trim($codigoCarrera);
+		if ($codigoCarrera === '' || ! Schema::hasTable('pensums')) {
+			return;
+		}
+
+		$query->where(function ($w) use ($idUsuario, $codigoCarrera) {
+			if (Schema::hasTable('inscripciones') && Schema::hasColumn('factura', 'cod_ceta')) {
+				$w->whereExists(function ($ex) use ($codigoCarrera) {
+					$ex->from('inscripciones as i')
+						->whereColumn('i.cod_ceta', 'factura.cod_ceta')
+						->whereIn('i.cod_pensum', function ($sub) use ($codigoCarrera) {
+							$sub->select('cod_pensum')->from('pensums')->where('codigo_carrera', $codigoCarrera);
+						});
+					if (Schema::hasColumn('inscripciones', 'deleted_at')) {
+						$ex->whereNull('i.deleted_at');
+					}
+				});
+			}
+
+			if (Schema::hasTable('cobro')) {
+				$w->orWhereExists(function ($ex) use ($idUsuario, $codigoCarrera) {
+					$ex->from('cobro as c')
+						->whereColumn('c.nro_factura', 'factura.nro_factura')
+						->where('c.id_usuario', $idUsuario)
+						->whereIn('c.cod_pensum', function ($sub) use ($codigoCarrera) {
+							$sub->select('cod_pensum')->from('pensums')->where('codigo_carrera', $codigoCarrera);
+						});
+					if (Schema::hasColumn('cobro', 'anio_cobro') && Schema::hasColumn('factura', 'anio')) {
+						$ex->whereColumn('c.anio_cobro', 'factura.anio');
+					}
+				});
+			}
+		});
 	}
 
 	/**
