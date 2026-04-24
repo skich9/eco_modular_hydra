@@ -83,8 +83,7 @@ class LibroDiarioCierreTotalesService
     {
         try {
             if (Schema::hasTable('libro_diario_cierre_totales')) {
-                // Siempre recalcula y persiste para alinear (a)/(b) con total_general; la fila
-                // caché podría quedar con regla antigua (capital sin mora en recibos/facturas).
+                // Recalcula y persiste: (a)/(b) = fila Efectivo del resumen; caché puede tener regla antigua.
                 $this->syncFromCierreId($idCierre, $carreraFallback);
                 $row = DB::table('libro_diario_cierre_totales')->where('id_libro_diario_cierre', $idCierre)->first();
                 if ($row) {
@@ -137,22 +136,31 @@ class LibroDiarioCierreTotalesService
      * @return array{total_deposito: float, total_traspaso: float, total_recibos: float, total_facturas: float, total_entregado: float}
      */
     /**
-     * (a) RECIBOS y (b) FACTURAS incluyen la mora asociada a cada tipo, igual que
-     * compone `total_general` en {@see LibroDiarioAggregatorService::construirResumenMetodosPago}.
+     * (a) RECIBOS y (b) FACTURAS (ING-4 / recepción): solo fila **Efectivo** del resumen
+     * (recibo + mora_recibo / factura + mora_factura), alineado a SGA: no usar «Total parcial»
+     * (suma de todos los medios). Depósito y traspaso siguen siendo sus canales completos.
+     * `total_entregado`: suma de las cuatro columnas del formulario «Datos de recepción de ingresos»
+     * (depósito + traspaso + (a) + (b)), no el `total_general` del libro (incluye otros medios no listados).
      */
     private function mapearResumenAMontos(array $res): array
     {
-        $capRec = (float) ($res['total_recibo'] ?? 0);
-        $capFac = (float) ($res['total_factura'] ?? 0);
-        $moraRec = (float) ($res['total_mora_recibo'] ?? 0);
-        $moraFac = (float) ($res['total_mora_factura'] ?? 0);
+        $ef = $res['efectivo'] ?? null;
+        $ef = is_array($ef) ? $ef : [];
+        $recEf = (float) ($ef['recibo'] ?? 0) + (float) ($ef['mora_recibo'] ?? 0);
+        $facEf = (float) ($ef['factura'] ?? 0) + (float) ($ef['mora_factura'] ?? 0);
+
+        $deposito = $this->sumarCanal($res, 'deposito');
+        $traspaso = $this->sumarCanal($res, 'traspaso');
+        $recibos = round($recEf, 2);
+        $facturas = round($facEf, 2);
+        $entregado = round($deposito + $traspaso + $recibos + $facturas, 2);
 
         return [
-            'total_deposito'  => $this->sumarCanal($res, 'deposito'),
-            'total_traspaso'  => $this->sumarCanal($res, 'traspaso'),
-            'total_recibos'   => round($capRec + $moraRec, 2),
-            'total_facturas'  => round($capFac + $moraFac, 2),
-            'total_entregado' => (float) ($res['total_general'] ?? 0),
+            'total_deposito'  => $deposito,
+            'total_traspaso'  => $traspaso,
+            'total_recibos'   => $recibos,
+            'total_facturas'  => $facturas,
+            'total_entregado' => $entregado,
         ];
     }
 

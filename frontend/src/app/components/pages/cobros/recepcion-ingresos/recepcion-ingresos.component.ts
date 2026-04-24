@@ -320,7 +320,18 @@ export class RecepcionIngresosComponent implements OnInit {
     return true;
   }
 
-  get totalGeneral(): number { return this.filas.reduce((s, f) => s + f.total_entregado, 0); }
+  /** Coincide con la columna (a+b): suma depósito + traspaso + recibos + facturas por fila. */
+  get totalGeneral(): number {
+    return this.filas.reduce(
+      (s, f) =>
+        s +
+        f.total_deposito +
+        f.total_traspaso +
+        f.total_recibos +
+        f.total_facturas,
+      0
+    );
+  }
   get totales() {
     return {
       deposito: this.filas.reduce((s, f) => s + f.total_deposito, 0),

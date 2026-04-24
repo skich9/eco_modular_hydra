@@ -415,18 +415,7 @@ HTML;
         $conceptoEntrega = 'Caja Fuerte de Tesorería';
 
         $observacion = trim((string) ($ctx['observacion'] ?? ''));
-        $sumaFalt = 0.0;
-        foreach ($normalizados as $row) {
-            $falt = $row['total_entregado'] - $row['total_recibos'] - $row['total_facturas'];
-            $sumaFalt += $falt;
-        }
-        if (abs($sumaFalt) > 0.001) {
-            if ($sumaFalt > 0) {
-                $observacion = 'Sobrante:' . $this->fmtMonto2($sumaFalt) . '. ' . $observacion;
-            } else {
-                $observacion = 'Faltante:' . $this->fmtMonto2($sumaFalt) . '. ' . $observacion;
-            }
-        }
+        // (a)/(b) son solo efectivo; total_entregado incluye depósito, traspaso y demás medios: no auto-etiquetar sobrante/faltante.
 
         $styleBorder = 'border: 1px solid #000066;';
         $styleColor = 'color: #000066; font-weight: bold;';

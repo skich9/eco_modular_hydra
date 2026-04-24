@@ -323,17 +323,21 @@ class RecepcionIngresoService
 
             // Crear los detalles (un registro por usuario_libro/libro diario)
             foreach ($detalles as $det) {
+                $dep = (float) ($det['total_deposito'] ?? 0);
+                $tras = (float) ($det['total_traspaso'] ?? 0);
+                $rec = (float) ($det['total_recibos'] ?? 0);
+                $fac = (float) ($det['total_facturas'] ?? 0);
                 RecepcionIngresoDetalle::create([
                     'recepcion_ingreso_id' => $cabecera->id,
                     'usuario_libro'        => trim((string) ($det['usuario_libro'] ?? '')) ?: null,
                     'cod_libro_diario'     => trim((string) ($det['cod_libro_diario'] ?? '')) ?: null,
                     'fecha_inicial_libros' => $det['fecha_inicial_libros'] ?? null,
                     'fecha_final_libros'   => $det['fecha_final_libros'] ?? $fecha,
-                    'total_deposito'       => (float) ($det['total_deposito'] ?? 0),
-                    'total_traspaso'       => (float) ($det['total_traspaso'] ?? 0),
-                    'total_recibos'        => (float) ($det['total_recibos'] ?? 0),
-                    'total_facturas'       => (float) ($det['total_facturas'] ?? 0),
-                    'total_entregado'      => (float) ($det['total_entregado'] ?? 0),
+                    'total_deposito'       => $dep,
+                    'total_traspaso'       => $tras,
+                    'total_recibos'        => $rec,
+                    'total_facturas'       => $fac,
+                    'total_entregado'      => round($dep + $tras + $rec + $fac, 2),
                     'faltante_sobrante'    => isset($det['faltante_sobrante']) ? (float) $det['faltante_sobrante'] : null,
                 ]);
             }
@@ -536,13 +540,24 @@ class RecepcionIngresoService
     // ─── Helpers privados ─────────────────────────────────────────────────────
 
     /**
-     * Calcula el monto total sumando total_entregado de todos los detalles.
+     * Monto total cabecera = suma de las cuatro columnas de cada detalle (misma regla que la tabla ING-4).
      *
      * @param  array<int, array<string, mixed>>  $detalles
      */
     private function calcularMontoTotal(array $detalles): float
     {
-        return array_sum(array_column($detalles, 'total_entregado'));
+        $s = 0.0;
+        foreach ($detalles as $d) {
+            if (! is_array($d)) {
+                continue;
+            }
+            $s += (float) ($d['total_deposito'] ?? 0)
+                + (float) ($d['total_traspaso'] ?? 0)
+                + (float) ($d['total_recibos'] ?? 0)
+                + (float) ($d['total_facturas'] ?? 0);
+        }
+
+        return round($s, 2);
     }
 
     /**
