@@ -6,20 +6,20 @@ use Dompdf\Dompdf;
 
 class LibroDiarioPdfService
 {
-    /** Misma posición y tamaño que el diseño del Libro Diario (A4 retrato). */
-    private const PAGE_NUM_X = 470;
+    /** 10 mm (SGA mgl/mgr) — mismo criterio que @page 10mm en ReporteLibroDiarioController. */
+    private const MARGIN_H_MM = 10.0;
 
-    private const PAGE_NUM_Y = 812;
-
-    private const PAGE_NUM_FONT_PT = 7.5;
+    /**
+     * Desde el borde inferior de la hoja (letter) a la baseline del texto, en línea con la fila "Fecha y Hora" / pie SGA
+     * (mPDF mgb 45 mm de zona inferior; fino: 30–36 pt suele alinear con DejaVu 9pt bold).
+     */
+    private const PAGE_NUM_BASELINE_FROM_BOTTOM_PT = 32.0;
 
     /**
      * Genera un PDF de Libro Diario a partir de HTML ya armado.
-     * El pie de página (fecha, tabla Responsable/Recibido/Revisado/Aprobado)
-     * se incluye en el HTML con position: fixed para mostrarse en cada hoja.
-     * La numeración "Página X de N" se pinta en end_document para que quede por encima
-     * de todo el contenido (incluida la última página con totales).
-     * Devuelve la ruta absoluta del archivo generado.
+     * El pie (fecha, firmas) va en el HTML; "Página X de N" se pinta vía end_document
+     * con el mismo criterio que .libro-footer (DejaVu Sans bold 9pt, #000066), alineado
+     * a la derecha con la fila "Fecha y Hora de Impresión" (1 cm de margen).
      */
     public function generate(string $html, string $usuario, string $fechaCorta, ?string $fechaHoraImp = null): string
     {
@@ -30,22 +30,24 @@ class LibroDiarioPdfService
         ]);
         $dompdf->loadHtml($html, 'UTF-8');
 
-        $dompdf->setPaper('A4', 'portrait');
+        $dompdf->setPaper('letter', 'portrait');
+
+        $colorPie = [0.0, 0.0, 102 / 255];
 
         $dompdf->setCallbacks([
             [
                 'event' => 'end_document',
-                'f' => function (int $pageNumber, int $pageCount, $canvas, $fontMetrics): void {
-                    $font = $fontMetrics->getFont('DejaVu Sans', 'normal');
-                    $label = 'Página ' . $pageNumber . ' de ' . $pageCount;
-                    $canvas->text(
-                        self::PAGE_NUM_X,
-                        self::PAGE_NUM_Y,
-                        $label,
-                        $font,
-                        self::PAGE_NUM_FONT_PT,
-                        [0, 0, 0]
-                    );
+                'f' => function (int $pageNumber, int $pageCount, $canvas, $fontMetrics) use ($colorPie): void {
+                    $text = 'Página ' . $pageNumber . ' de ' . $pageCount;
+                    $font = $fontMetrics->getFont('DejaVu Sans', 'bold');
+                    $size = 9.0;
+                    $w = $fontMetrics->getTextWidth($text, $font, $size);
+                    $pageW = $canvas->get_width();
+                    $pageH = $canvas->get_height();
+                    $marginHpt = self::MARGIN_H_MM * 2.834645669;
+                    $x = $pageW - $marginHpt - $w;
+                    $y = $pageH - self::PAGE_NUM_BASELINE_FROM_BOTTOM_PT;
+                    $canvas->text($x, $y, $text, $font, $size, $colorPie);
                 },
             ],
         ]);
@@ -57,7 +59,6 @@ class LibroDiarioPdfService
         $safeUsuario = preg_replace('/[^A-Za-z0-9_\-]/', '_', $usuario ?: 'usuario');
         $safeFecha = preg_replace('/[^0-9\-]/', '_', $fechaCorta ?: date('Y-m-d'));
 
-        // Guardar dentro de public/reportes/libro_diario para servir directamente
         $dir = public_path('reportes' . DIRECTORY_SEPARATOR . 'libro_diario');
         if (!is_dir($dir)) {
             @mkdir($dir, 0775, true);
@@ -71,4 +72,3 @@ class LibroDiarioPdfService
         return $path;
     }
 }
-
