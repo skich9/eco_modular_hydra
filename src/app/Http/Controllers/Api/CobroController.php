@@ -4980,6 +4980,10 @@ class CobroController extends Controller
 			$codigoCarreraVal = $codigoCarreraReq !== null && $codigoCarreraReq !== ''
 				? substr(trim((string) $codigoCarreraReq), 0, 50)
 				: null;
+			/** EEA/MEA en mayúsculas; un cierre distinto por carrera (mismo usuario y fecha). */
+			$normCarr = ($codigoCarreraVal !== null && $codigoCarreraVal !== '')
+				? strtoupper($codigoCarreraVal)
+				: null;
 
 			if ($usuarioRaw === null || $usuarioRaw === '') {
 				return response()->json([
@@ -5049,7 +5053,7 @@ class CobroController extends Controller
 					DB::transaction(function () use (
 						$idUsuario,
 						$fechaYmd,
-						$codigoCarreraVal,
+						$normCarr,
 						$tieneNumeracionRd,
 						&$ordenCierre,
 						&$horaCierreRespuesta,
@@ -5059,12 +5063,18 @@ class CobroController extends Controller
 						&$codigoRdOut,
 						&$respuestaAnticipada
 					) {
-						$primera = DB::table('libro_diario_cierre')
+						$qCierre = DB::table('libro_diario_cierre')
 							->where('id_usuario', $idUsuario)
-							->where('fecha', $fechaYmd)
-							->orderBy('id', 'asc')
-							->lockForUpdate()
-							->first();
+							->where('fecha', $fechaYmd);
+						if ($normCarr !== null) {
+							$qCierre->whereRaw('UPPER(TRIM(COALESCE(codigo_carrera, ""))) = ?', [$normCarr]);
+						} else {
+							$qCierre->where(function ($w) {
+								$w->whereNull('codigo_carrera')
+									->orWhereRaw("TRIM(COALESCE(codigo_carrera, '')) = ''");
+							});
+						}
+						$primera = $qCierre->orderBy('id', 'asc')->lockForUpdate()->first();
 
 						if ($primera) {
 							$ordenCierre = (int) $primera->orden_cierre;
@@ -5074,7 +5084,7 @@ class CobroController extends Controller
 							if ($tieneNumeracionRd
 								&& ($primera->correlativo === null || (int) $primera->correlativo < 1)
 								&& empty($primera->codigo_rd)) {
-								$ids = LibroDiarioIdentificadorHelper::reservarSiguienteIdentificador($fechaYmd, $codigoCarreraVal);
+								$ids = LibroDiarioIdentificadorHelper::reservarSiguienteIdentificador($fechaYmd, $normCarr);
 								DB::table('libro_diario_cierre')->where('id', $primera->id)->update([
 									'correlativo' => $ids['correlativo'],
 									'codigo_rd' => $ids['codigo_rd'],
@@ -5088,8 +5098,8 @@ class CobroController extends Controller
 								$horaCierreRespuesta = is_string($hc) ? $hc : substr((string) $hc, 0, 8);
 
 								$updReuso = ['updated_at' => now()];
-								if ($codigoCarreraVal !== null) {
-									$updReuso['codigo_carrera'] = $codigoCarreraVal;
+								if ($normCarr !== null) {
+									$updReuso['codigo_carrera'] = $normCarr;
 								}
 								if (count($updReuso) > 1) {
 									DB::table('libro_diario_cierre')->where('id', $primera->id)->update($updReuso);
@@ -5105,8 +5115,10 @@ class CobroController extends Controller
 								}
 
 								Log::info('[CobroController] cerrarCaja: reutiliza cierre existente (hora_cierre sin cambiar)', [
+									'id_libro_diario_cierre' => (int) $primera->id,
 									'id_usuario' => $idUsuario,
 									'fecha' => $fechaYmd,
+									'codigo_carrera' => $normCarr,
 									'orden_cierre' => $ordenCierre,
 								]);
 
@@ -5129,8 +5141,8 @@ class CobroController extends Controller
 								'hora_cierre' => $horaCierreRespuesta,
 								'updated_at' => now(),
 							];
-							if ($codigoCarreraVal !== null) {
-								$updPrimera['codigo_carrera'] = $codigoCarreraVal;
+							if ($normCarr !== null) {
+								$updPrimera['codigo_carrera'] = $normCarr;
 							}
 							DB::table('libro_diario_cierre')
 								->where('id', $primera->id)
@@ -5157,14 +5169,14 @@ class CobroController extends Controller
 								'id_usuario' => $idUsuario,
 								'fecha' => $fechaYmd,
 								'orden_cierre' => $ordenCierre,
-								'codigo_carrera' => $codigoCarreraVal,
+								'codigo_carrera' => $normCarr,
 								'hora_cierre' => $horaCierreRespuesta,
 								'created_at' => now(),
 								'updated_at' => now(),
 							];
 
 							if ($tieneNumeracionRd) {
-								$ids = LibroDiarioIdentificadorHelper::reservarSiguienteIdentificador($fechaYmd, $codigoCarreraVal);
+								$ids = LibroDiarioIdentificadorHelper::reservarSiguienteIdentificador($fechaYmd, $normCarr);
 								$insert['correlativo'] = $ids['correlativo'];
 								$insert['codigo_rd'] = $ids['codigo_rd'];
 								$correlativoOut = $ids['correlativo'];
@@ -5181,7 +5193,7 @@ class CobroController extends Controller
 						if ($idEarly > 0 && Schema::hasTable('libro_diario_cierre_totales')) {
 							try {
 								app(LibroDiarioCierreTotalesService::class)
-									->syncFromCierreId($idEarly, $codigoCarreraVal);
+									->syncFromCierreId($idEarly, $normCarr);
 							} catch (\Throwable $e) {
 								Log::warning('[CobroController] sync libro_diario_cierre_totales (reuso cierre)', [
 									'id_libro_diario_cierre' => $idEarly,
@@ -5199,6 +5211,7 @@ class CobroController extends Controller
 			Log::info('[CobroController] cerrarCaja llamado', [
 				'id_usuario' => $idUsuario,
 				'fecha' => $fechaYmd,
+				'codigo_carrera' => $normCarr,
 				'orden_cierre' => $ordenCierre,
 			]);
 
@@ -5222,7 +5235,7 @@ class CobroController extends Controller
 			if ($idLibroDiarioCierre !== null && Schema::hasTable('libro_diario_cierre_totales')) {
 				try {
 					app(LibroDiarioCierreTotalesService::class)
-						->syncFromCierreId((int) $idLibroDiarioCierre, $codigoCarreraVal);
+						->syncFromCierreId((int) $idLibroDiarioCierre, $normCarr);
 				} catch (\Throwable $e) {
 					Log::warning('[CobroController] sync libro_diario_cierre_totales', [
 						'id_libro_diario_cierre' => $idLibroDiarioCierre,

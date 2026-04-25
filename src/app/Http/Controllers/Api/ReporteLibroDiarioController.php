@@ -465,8 +465,9 @@ class ReporteLibroDiarioController extends Controller
 </html>
 HTML;
 
+            $sufPdfCarrera = trim((string) ($resumen['codigo_carrera'] ?? $request->input('codigo_carrera', '')));
             $svc = new LibroDiarioPdfService();
-            $path = $svc->generate($html, $usuario, $fechaCorta, $fechaHoraImp);
+            $path = $svc->generate($html, $usuario, $fechaCorta, $fechaHoraImp, $sufPdfCarrera !== '' ? $sufPdfCarrera : null);
 
             if (!is_file($path) || !is_readable($path)) {
                 return response()->json([
@@ -542,9 +543,18 @@ HTML;
                 }
                 if (! $rowCierre) {
                     $orden = (int) ($resumen['orden_cierre'] ?? $request->input('orden_cierre', 0));
+                    $codCarrFiltro = strtoupper(trim((string) ($resumen['codigo_carrera'] ?? $request->input('codigo_carrera', ''))));
                     $q = DB::table('libro_diario_cierre')
                         ->where('id_usuario', $idUsuario)
                         ->where('fecha', $fechaCorta);
+                    if ($codCarrFiltro !== '') {
+                        $q->whereRaw('UPPER(TRIM(COALESCE(codigo_carrera, ""))) = ?', [$codCarrFiltro]);
+                    } else {
+                        $q->where(function ($w) {
+                            $w->whereNull('codigo_carrera')
+                                ->orWhereRaw("TRIM(COALESCE(codigo_carrera, '')) = ''");
+                        });
+                    }
                     if ($orden > 0) {
                         $q->where('orden_cierre', $orden);
                     }
@@ -900,11 +910,19 @@ HTML;
         $idUsuario = (int) $usuario;
         if ($idUsuario > 0 && $fechaCorta !== '' && Schema::hasTable('libro_diario_cierre')) {
             try {
-                $row = DB::table('libro_diario_cierre')
+                $codCarr = strtoupper(trim((string) ($resumen['codigo_carrera'] ?? $request->input('codigo_carrera', ''))));
+                $qH = DB::table('libro_diario_cierre')
                     ->where('id_usuario', $idUsuario)
-                    ->where('fecha', $fechaCorta)
-                    ->orderBy('id', 'asc')
-                    ->first();
+                    ->where('fecha', $fechaCorta);
+                if ($codCarr !== '') {
+                    $qH->whereRaw('UPPER(TRIM(COALESCE(codigo_carrera, ""))) = ?', [$codCarr]);
+                } else {
+                    $qH->where(function ($w) {
+                        $w->whereNull('codigo_carrera')
+                            ->orWhereRaw("TRIM(COALESCE(codigo_carrera, '')) = ''");
+                    });
+                }
+                $row = $qH->orderBy('id', 'asc')->first();
                 if ($row && isset($row->hora_cierre) && $row->hora_cierre !== null && (string) $row->hora_cierre !== '') {
                     $hc = $row->hora_cierre;
 

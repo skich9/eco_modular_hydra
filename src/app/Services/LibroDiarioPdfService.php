@@ -21,7 +21,10 @@ class LibroDiarioPdfService
      * con el mismo criterio que .libro-footer (DejaVu Sans bold 9pt, #000066), alineado
      * a la derecha con la fila "Fecha y Hora de Impresión" (1 cm de margen).
      */
-    public function generate(string $html, string $usuario, string $fechaCorta, ?string $fechaHoraImp = null): string
+    /**
+     * @param  string|null  $sufijoCarrera  p. ej. EEA, MEA — evita que dos PDFs el mismo día pisen el mismo archivo.
+     */
+    public function generate(string $html, string $usuario, string $fechaCorta, ?string $fechaHoraImp = null, ?string $sufijoCarrera = null): string
     {
         $dompdf = new Dompdf([
             'isRemoteEnabled' => true,
@@ -64,7 +67,11 @@ class LibroDiarioPdfService
             @mkdir($dir, 0775, true);
         }
 
-        $filename = 'libro_diario_' . $safeUsuario . '_' . $safeFecha . '.pdf';
+        $sufCarr = '';
+        if ($sufijoCarrera !== null && trim($sufijoCarrera) !== '') {
+            $sufCarr = '_' . preg_replace('/[^A-Za-z0-9_\-]/', '_', strtoupper(trim($sufijoCarrera)));
+        }
+        $filename = 'libro_diario_' . $safeUsuario . '_' . $safeFecha . $sufCarr . '.pdf';
         $path = $dir . DIRECTORY_SEPARATOR . $filename;
 
         file_put_contents($path, $output);
