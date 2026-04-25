@@ -1,6 +1,7 @@
 import { Component, EventEmitter, Input, OnInit, Output } from '@angular/core';
 import { CommonModule } from '@angular/common';
 import { FormBuilder, FormGroup, ReactiveFormsModule, Validators, FormsModule } from '@angular/forms';
+import { formatYmdLocal } from '../../../../utils/date-only.util';
 
 @Component({
 	selector: 'app-reincorporacion-modal',
@@ -32,7 +33,7 @@ export class ReincorporacionModalComponent implements OnInit {
 			pago_parcial: [false],
 			monto_parcial: [0, [Validators.min(0)]],
 			observaciones: [''],
-			fecha_cobro: [new Date().toISOString().slice(0, 10), Validators.required],
+			fecha_cobro: [formatYmdLocal(), Validators.required],
 			id_cuentas_bancarias: [''],
 			banco_origen: [''],
 			fecha_deposito: [''],
@@ -225,7 +226,7 @@ export class ReincorporacionModalComponent implements OnInit {
 		const pago = {
 			monto,
 			pu_mensualidad: monto,
-			fecha_cobro: this.form.get('fecha_cobro')?.value || new Date().toISOString().slice(0, 10),
+			fecha_cobro: this.form.get('fecha_cobro')?.value || formatYmdLocal(),
 			observaciones: obsConMarca,
 			id_forma_cobro: metodo,
 			tipo_documento: tipoDoc,
@@ -262,7 +263,7 @@ export class ReincorporacionModalComponent implements OnInit {
 			comprobante: 'RECIBO',
 			pago_parcial: false,
 			monto_parcial: 0,
-			fecha_cobro: new Date().toISOString().slice(0, 10)
+			fecha_cobro: formatYmdLocal()
 		});
 		this.modalAlertMessage = '';
 	}

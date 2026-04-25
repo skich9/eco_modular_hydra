@@ -5,6 +5,7 @@ import { forkJoin, of } from 'rxjs';
 import { catchError } from 'rxjs/operators';
 import { CobrosService } from '../../../../services/cobros.service';
 import { MateriaService } from '../../../../services/materia.service';
+import { formatYmdLocal } from '../../../../utils/date-only.util';
 
 @Component({
 	selector: 'app-rezagado-modal',
@@ -455,7 +456,7 @@ export class RezagadoModalComponent implements OnInit {
 		const compSelRaw = (this.form.get('comprobante')?.value || '').toString().toUpperCase();
 		const tipo_documento = compSelRaw === 'FACTURA' ? 'F' : (compSelRaw === 'RECIBO' ? 'R' : '');
 		const medio_doc = (this.form.get('computarizada')?.value === 'MANUAL') ? 'M' : 'C';
-		const hoy = new Date().toISOString().slice(0, 10);
+		const hoy = formatYmdLocal();
 		const periodo = Number(this.form.get('periodo')?.value || 1);
 		let nro = this.baseNro || 1;
 		const conJustificativo = this.form.get('justificativo')?.value === true;

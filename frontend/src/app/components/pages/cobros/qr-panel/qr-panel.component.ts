@@ -4,6 +4,7 @@ import { FormArray, FormGroup } from '@angular/forms';
 import { CobrosService } from '../../../../services/cobros.service';
 import { WsService } from '../../../../services/ws.service';
 import { Subscription } from 'rxjs';
+import { formatYmdLocal } from '../../../../utils/date-only.util';
 
 @Component({
 	selector: 'app-qr-panel',
@@ -522,7 +523,7 @@ export class QrPanelComponent implements OnDestroy, OnChanges {
 			const g = this.pagos.at(i) as FormGroup;
 			const idf = g.get('id_forma_cobro')?.value;
 			if (!this.isIdQR(idf)) continue; // solo filas QR
-			const hoy = new Date().toISOString().slice(0,10);
+			const hoy = formatYmdLocal();
 			const subtotal = Number(g.get('monto')?.value || 0) || 0;
 			qrAmount += subtotal;
 			const nro = Number(g.get('nro_cobro')?.value || 0) || (i + 1);

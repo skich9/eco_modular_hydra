@@ -2,6 +2,7 @@ import { Component, EventEmitter, Input, OnChanges, OnInit, Output, SimpleChange
 import { CommonModule } from '@angular/common';
 import { FormBuilder, FormGroup, ReactiveFormsModule, Validators, FormsModule } from '@angular/forms';
 import { ClickLockDirective } from '../../../../directives/click-lock.directive';
+import { formatYmdLocal } from '../../../../utils/date-only.util';
 
 @Component({
 	selector: 'app-mora-modal',
@@ -263,7 +264,7 @@ export class MoraModalComponent implements OnInit, OnChanges {
 		const isParcial = this.form.get('pago_parcial')?.value;
 		const montoParcial = isParcial ? Number(this.form.get('monto_parcial')?.value || 0) : 0;
 		const descuento = Number(this.form.get('descuento')?.value || 0);
-		const hoy = new Date().toISOString().slice(0, 10);
+		const hoy = formatYmdLocal();
 		const compSel = this.form.get('comprobante')?.value || 'RECIBO';
 		const tipo_documento = compSel === 'FACTURA' ? 'F' : 'R';
 		const medio_doc = this.form.get('computarizada')?.value === 'COMPUTARIZADA' ? 'C' : 'M';

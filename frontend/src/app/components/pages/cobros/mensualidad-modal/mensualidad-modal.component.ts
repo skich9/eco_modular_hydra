@@ -4,7 +4,7 @@ import { FormBuilder, FormGroup, ReactiveFormsModule, Validators, FormsModule } 
 import { ClickLockDirective } from '../../../../directives/click-lock.directive';
 import { ParametrosEconomicosService } from '../../../../services/parametros-economicos.service';
 import { DefDescuentosService } from '../../../../services/def-descuentos.service';
-import { isOnOrBeforeDeadlineLocal } from '../../../../utils/date-only.util';
+import { isOnOrBeforeDeadlineLocal, formatYmdLocal } from '../../../../utils/date-only.util';
 
 @Component({
   selector: 'app-mensualidad-modal',
@@ -294,7 +294,7 @@ export class MensualidadModalComponent implements OnInit, OnChanges, AfterViewIn
       rezagado: [false],
       recuperacion: [false],
       monto_manual: [0, [Validators.min(0)]], // usado cuando tipo != mensualidad
-      fecha_cobro: [new Date().toISOString().slice(0, 10), Validators.required],
+      fecha_cobro: [formatYmdLocal(), Validators.required],
       // Campos para TARJETA / DEPÓSITO
       id_cuentas_bancarias: [''],
       banco_origen: [''],
@@ -2689,7 +2689,7 @@ export class MensualidadModalComponent implements OnInit, OnChanges, AfterViewIn
       return;
     }
 
-    const hoy = this.form.get('fecha_cobro')?.value || new Date().toISOString().slice(0, 10);
+    const hoy = this.form.get('fecha_cobro')?.value || formatYmdLocal();
     const pagos: any[] = [];
     const descuentos: any[] = [];
     const compSel = compSelRaw;
@@ -3779,7 +3779,7 @@ export class MensualidadModalComponent implements OnInit, OnChanges, AfterViewIn
     if (!this.moraPendienteDetectada) return;
 
     const esParcial = !!this.form.get('pago_parcial')?.value;
-    const hoy = this.form.get('fecha_cobro')?.value || new Date().toISOString().slice(0, 10);
+    const hoy = this.form.get('fecha_cobro')?.value || formatYmdLocal();
     const compSelRaw = this.form.get('comprobante')?.value;
     const compSel = compSelRaw;
     const tipo_documento = compSel === 'FACTURA' ? 'F' : (compSel === 'RECIBO' ? 'R' : '');

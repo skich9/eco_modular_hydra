@@ -37,6 +37,27 @@ use Carbon\Carbon;
 
 class CobroController extends Controller
 {
+	/**
+	 * Algunos clientes envían la fecha con `toISOString().slice(0,10)` (día en UTC);
+	 * de noche en América/La_Paz el calendario UTC puede ser ya el día siguiente.
+	 * Si el prefijo Y-m-d coincide con hoy en UTC y no con hoy en La Paz, se reemplaza por hoy en La Paz.
+	 */
+	private static function corregirFechaCobroDiaDesfaseUtc(string $raw): string
+	{
+		$raw = trim($raw);
+		if ($raw === '' || ! preg_match('/^(\d{4}-\d{2}-\d{2})/', $raw, $m)) {
+			return $raw;
+		}
+		$d = $m[1];
+		$utcDia = Carbon::now('UTC')->format('Y-m-d');
+		$lapDia = Carbon::now('America/La_Paz')->format('Y-m-d');
+		if ($d === $utcDia && $d !== $lapDia) {
+			return strlen($raw) === 10 ? $lapDia : $lapDia . substr($raw, 10);
+		}
+
+		return $raw;
+	}
+
 	public function index(Request $request)
 	{
 		try {
@@ -295,6 +316,7 @@ class CobroController extends Controller
 			// Normalizar fecha_cobro a datetime (Y-m-d H:i:s) en zona America/La_Paz
 			try {
 				$fechaCobroRaw = isset($data['fecha_cobro']) ? (string)$data['fecha_cobro'] : date('Y-m-d H:i:s');
+				$fechaCobroRaw = self::corregirFechaCobroDiaDesfaseUtc($fechaCobroRaw);
 				if (preg_match('/^\d{4}-\d{2}-\d{2}$/', $fechaCobroRaw)) {
 					$nowLaPaz = \Carbon\Carbon::now('America/La_Paz');
 					$data['fecha_cobro'] = substr($fechaCobroRaw, 0, 10) . ' ' . $nowLaPaz->format('H:i:s');
@@ -3181,6 +3203,7 @@ class CobroController extends Controller
                 }
 
                 $fechaCobroRaw = (string)(isset($item['fecha_cobro']) ? $item['fecha_cobro'] : date('Y-m-d H:i:s'));
+                $fechaCobroRaw = self::corregirFechaCobroDiaDesfaseUtc($fechaCobroRaw);
                 $fechaCobroSave = $fechaCobroRaw;
                 try {
                     if (preg_match('/^\d{4}-\d{2}-\d{2}$/', $fechaCobroRaw)) {

@@ -18,7 +18,7 @@ import { QrPanelComponent } from './qr-panel/qr-panel.component';
 import { ClickLockDirective } from '../../../directives/click-lock.directive';
 import { environment } from '../../../../environments/environment';
 import { saveBlobAsFile, generateQuickReciboPdf, generateQuickFacturaPdf } from '../../../utils/pdf.helpers';
-import { isOnOrBeforeDeadlineLocal } from '../../../utils/date-only.util';
+import { isOnOrBeforeDeadlineLocal, formatYmdLocal } from '../../../utils/date-only.util';
 import * as QRCode from 'qrcode';
 import { ActivatedRoute } from '@angular/router';
 import { forkJoin } from 'rxjs';
@@ -334,7 +334,7 @@ export class CobrosComponent implements OnInit {
           const razon = (this.identidadForm.get('razon_social')?.value || est.ap_paterno || '').toString();
           const numero = (this.identidadForm.get('ci')?.value || '').toString();
           const complemento = (this.identidadForm.get('complemento_ci')?.value || '').toString();
-          const fecha = (item?.cobro?.fecha_cobro || new Date().toISOString()).toString();
+          const fecha = (item?.cobro?.fecha_cobro || formatYmdLocal()).toString();
           const periodo = (this.resumen?.gestion || '').toString();
           const detalle = (item?.detalle || item?.observaciones || 'Servicio educativo').toString();
           const cant = Number(item?.cantidad || 1);
@@ -774,7 +774,7 @@ export class CobrosComponent implements OnInit {
       return;
     }
     if (!this.ensureMetodoPagoPermitido(['EFECTIVO', 'TARJETA', 'CHEQUE', 'DEPOSITO', 'TRANSFERENCIA', 'QR', 'OTRO', 'TRASPASO'])) return;
-    const hoy = new Date().toISOString().slice(0, 10);
+    const hoy = formatYmdLocal();
     const nro = this.getNextCobroNro();
     this.pagos.push(this.fb.group({
       nro_cobro: [nro, Validators.required],
@@ -1346,7 +1346,7 @@ export class CobrosComponent implements OnInit {
   }
 
   onAddItem(evt: any): void {
-    const hoy = new Date().toISOString().slice(0, 10);
+    const hoy = formatYmdLocal();
     const pagos = Array.isArray(evt) ? evt : (evt?.pagos || []);
     const headerPatch = Array.isArray(evt) ? null : (evt?.cabecera || null);
     if (!Array.isArray(pagos) || pagos.length === 0) {
@@ -1641,7 +1641,7 @@ export class CobrosComponent implements OnInit {
       const docs: any[] = [];
       for (const it of (createdItems || [])) {
         try {
-          const fecha = it?.cobro?.fecha_cobro || new Date().toISOString().slice(0, 10);
+          const fecha = it?.cobro?.fecha_cobro || formatYmdLocal();
           const anio = new Date(fecha).getFullYear();
           if ((it?.tipo_documento === 'R') && (it?.medio_doc === 'C') && it?.nro_recibo) {
             const key = `R:${anio}:${it?.nro_recibo}`;
@@ -3470,7 +3470,7 @@ export class CobrosComponent implements OnInit {
 
   onAddPagosFromModal(payload: any): void {
     try { console.log('[Cobros] onAddPagosFromModal payload', payload); } catch { }
-    const hoy = new Date().toISOString().slice(0, 10);
+    const hoy = formatYmdLocal();
     const pagos = Array.isArray(payload) ? payload : (payload?.pagos || []);
     const headerPatch = Array.isArray(payload) ? null : (payload?.cabecera || null);
     const descuentos = Array.isArray(payload) ? [] : (payload?.descuentos || []);
@@ -3792,7 +3792,7 @@ export class CobrosComponent implements OnInit {
     console.log('HOIla 5');
     // Pre-completar fecha/monto y ASIGNAR nro_cobro único en cliente (hasta que backend lo haga atómico)
     try {
-      const hoy = new Date().toISOString().slice(0, 10);
+      const hoy = formatYmdLocal();
       let next = this.getNextCobroNro();
       (this.pagos.controls || []).forEach((ctrl, idx) => {
         const fg = ctrl as FormGroup;
@@ -3846,7 +3846,7 @@ export class CobrosComponent implements OnInit {
     // Asegurar codigo_sin base para SIAT (QR variante -> base)
     const siatCodigoSin = this.codigoSinBaseSelected || (cabecera?.codigo_sin || '');
     // Mapear pagos para enviar solo con 'monto' calculado, SIN nro_cobro (backend lo genera)
-    const hoy = new Date().toISOString().slice(0, 10);
+    const hoy = formatYmdLocal();
     console.log('Creando pagosRaw - SIN nro_cobro, backend generará con AUTO_INCREMENT');
 
     const pagosRaw = (baseCtrls || []).map((ctrl, idx) => {
@@ -4392,7 +4392,7 @@ export class CobrosComponent implements OnInit {
       return;
     }
     if (!this.ensureMetodoPagoPermitido(['EFECTIVO', 'TARJETA', 'CHEQUE', 'DEPOSITO', 'TRANSFERENCIA', 'QR', 'OTRO', 'TRASPASO'])) return;
-    const hoy = new Date().toISOString().slice(0, 10);
+    const hoy = formatYmdLocal();
     const nro = this.getNextMensualidadNro();
     // Monto/PU de arrastre debe ser NETO (preferir datos de arrastre.asignacion_costos/asignaciones_arrastre)
     let monto = 0;

@@ -2,6 +2,7 @@ import { Component, EventEmitter, Input, OnInit, Output, OnChanges, SimpleChange
 import { CommonModule } from '@angular/common';
 import { FormBuilder, FormGroup, ReactiveFormsModule, Validators, FormsModule } from '@angular/forms';
 import { CobrosService } from '../../../../services/cobros.service';
+import { formatYmdLocal } from '../../../../utils/date-only.util';
 
 @Component({
 	selector: 'app-recuperacion-modal',
@@ -415,7 +416,7 @@ export class RecuperacionModalComponent implements OnInit, OnChanges {
 		const compSelRaw = (this.form.get('comprobante')?.value || '').toString().toUpperCase();
 		const tipo_documento = compSelRaw === 'FACTURA' ? 'F' : (compSelRaw === 'RECIBO' ? 'R' : '');
 		const medio_doc = (this.form.get('computarizada')?.value === 'MANUAL') ? 'M' : 'C';
-		const hoy = new Date().toISOString().slice(0, 10);
+		const hoy = formatYmdLocal();
 		let nro = this.baseNro || 1;
 		const pagos = (this.materias || []).filter(m => m.selected).map(m => {
 			const detalle = `Prueba de Recuperación - ${m.sigla} ${m.nombre}`;

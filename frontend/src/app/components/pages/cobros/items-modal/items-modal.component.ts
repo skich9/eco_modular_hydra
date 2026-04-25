@@ -2,6 +2,7 @@ import { Component, EventEmitter, Input, OnChanges, OnInit, Output, SimpleChange
 import { CommonModule } from '@angular/common';
 import { FormBuilder, FormGroup, ReactiveFormsModule, Validators, FormsModule } from '@angular/forms';
 import { ItemsCobroService } from '../../../../services/items-cobro.service';
+import { formatYmdLocal } from '../../../../utils/date-only.util';
 
 @Component({
 	selector: 'app-items-modal',
@@ -325,7 +326,7 @@ export class ItemsModalComponent implements OnInit, OnChanges {
 		const compSelRaw = (this.form.get('comprobante')?.value || '').toString().toUpperCase();
 		const tipo_documento = compSelRaw === 'FACTURA' ? 'F' : (compSelRaw === 'RECIBO' ? 'R' : '');
 		const medio_doc = (this.form.get('computarizada')?.value === 'MANUAL') ? 'M' : 'C';
-		const hoy = new Date().toISOString().slice(0, 10);
+		const hoy = formatYmdLocal();
 		const payload: any = {
 			id_forma_cobro: this.form.get('metodo_pago')?.value || null,
 			nro_cobro: this.baseNro || 1,

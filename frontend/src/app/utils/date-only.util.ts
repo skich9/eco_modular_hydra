@@ -3,6 +3,17 @@
  * usar setHours local puede quedar el día anterior (p. ej. América/La_Paz).
  */
 
+/**
+ * Día de calendario en la zona del navegador, formato YYYY-MM-DD.
+ * **No** usar `toISOString().slice(0,10)`: es UTC y en horario nocturno en Bolivia puede ser “mañana”.
+ */
+export function formatYmdLocal(d: Date = new Date()): string {
+  const y = d.getFullYear();
+  const m = String(d.getMonth() + 1).padStart(2, '0');
+  const day = String(d.getDate()).padStart(2, '0');
+  return `${y}-${m}-${day}`;
+}
+
 export function startOfLocalDay(d: Date = new Date()): Date {
   return new Date(d.getFullYear(), d.getMonth(), d.getDate());
 }
