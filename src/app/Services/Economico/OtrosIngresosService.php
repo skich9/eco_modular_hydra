@@ -21,6 +21,7 @@ class OtrosIngresosService
 
 	public function __construct(
 		private readonly NotaOtrosIngresosPdfService $notaOtrosIngresosPdfService,
+		private readonly OtrosIngresosGlosaComprobanteService $glosaComprobanteService,
 	) {
 	}
 
@@ -656,6 +657,17 @@ class OtrosIngresosService
 				$head['num_recibo'] = 0;
 			} elseif ($fr === 'R') {
 				$head['num_factura'] = 0;
+			}
+
+			if (Schema::hasColumn('otros_ingresos', 'glosa_comprobante')) {
+				$head['glosa_comprobante'] = $this->glosaComprobanteService->construirDesdeInput(
+					$input,
+					(string) ($head['usuario'] ?? ''),
+					$fr,
+					(int) ($head['num_factura'] ?? 0),
+					(int) ($head['num_recibo'] ?? 0),
+					(string) ($head['gestion'] ?? ''),
+				);
 			}
 
 			/** @var OtroIngreso $oi */

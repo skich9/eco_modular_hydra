@@ -2,6 +2,7 @@
 
 namespace App\Services\Reportes;
 
+use App\Services\Economico\OtrosIngresosGlosaComprobanteService;
 use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Schema;
 
@@ -29,6 +30,11 @@ class LibroDiarioAggregatorService
 
 	/** @var array<string, string>|null id_forma_cobro => E|L|D|C|B|T|O */
 	private ?array $mapaFormaCobroIdALetra = null;
+
+	public function __construct(
+		private readonly OtrosIngresosGlosaComprobanteService $glosaOtrosIngresos,
+	) {
+	}
 
 	/**
 	 * Suma subtotales de líneas de mora/multa por factura (clave "anio:nro_factura") desde `factura_detalle`.
@@ -569,13 +575,19 @@ class LibroDiarioAggregatorService
 			$q->where('oi.codigo_carrera', $codigoCarrera);
 		}
 
-		return $q->select(
+		$sel = [
 			'oi.id', 'oi.num_factura', 'oi.num_recibo', 'oi.nit', 'oi.razon_social',
 			'oi.fecha', 'oi.monto', 'oi.concepto', 'oi.observaciones', 'oi.valido',
-			'oi.code_tipo_pago', 'oi.factura_recibo', 'oi.tipo_ingreso',
+			'oi.code_tipo_pago', 'oi.factura_recibo', 'oi.tipo_ingreso', 'oi.cod_tipo_ingreso',
+			'oi.gestion', 'oi.usuario',
 			'fc.nombre as forma_cobro_nombre',
-			'd.cta_banco', 'd.nro_deposito', 'd.fecha_deposito'
-		)->get();
+			'd.cta_banco', 'd.nro_deposito', 'd.fecha_deposito', 'd.fecha_ini', 'd.fecha_fin', 'd.nro_orden', 'd.concepto_alquiler',
+		];
+		if (Schema::hasColumn('otros_ingresos', 'glosa_comprobante')) {
+			$sel[] = 'oi.glosa_comprobante';
+		}
+
+		return $q->select($sel)->get();
 	}
 
 	/**
@@ -732,16 +744,20 @@ class LibroDiarioAggregatorService
 
 		$obs = $this->armarObservacionesOtroIngreso($o);
 
-		$concepto = trim((string) ($o->concepto ?? ''));
-		if ($concepto === '') {
-			$concepto = trim((string) ($o->tipo_ingreso ?? 'Otros Ingresos'));
+		$glosaComp = trim((string) ($o->glosa_comprobante ?? ''));
+		$linea = $glosaComp !== '' ? $glosaComp : $this->glosaOtrosIngresos->construirDesdeFila($o);
+		if (trim($linea) === '') {
+			$linea = trim((string) ($o->concepto ?? ''));
+		}
+		if (trim($linea) === '') {
+			$linea = trim((string) ($o->tipo_ingreso ?? 'Otros Ingresos'));
 		}
 
 		return [
 			'numero' => 0,
 			'recibo' => $tipoDoc === 'R' ? (string) ($numRec > 0 ? $numRec : '0') : '0',
 			'factura' => $tipoDoc === 'F' ? (string) ($numFac > 0 ? $numFac : '0') : '0',
-			'concepto' => $concepto,
+			'concepto' => $linea,
 			'razon' => (string) ($o->razon_social ?? ''),
 			'nit' => (string) ($o->nit ?? '0'),
 			'cod_ceta' => '0',
