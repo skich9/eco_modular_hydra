@@ -10,21 +10,35 @@ namespace App\Services;
  */
 class DompdfInstitucionLogoHelper
 {
-    public static function logoParaEncabezadoDompdf(int $logoPad = 2): array
+	/**
+	 * @param  string|null  $anchoCss  Si se pasa con $altoCss (p. ej. "5cm"), fija el tamaño en el PDF; si no, se usa la lógica px heredada.
+	 * @param  string|null  $altoCss
+	 */
+    public static function logoParaEncabezadoDompdf(int $logoPad = 2, ?string $anchoCss = null, ?string $altoCss = null): array
     {
         $logoW = 48;
         $logoH = 48;
         $html = '';
         $logoPath = public_path('img' . DIRECTORY_SEPARATOR . 'logo.png');
         if (is_file($logoPath) && is_readable($logoPath)) {
-            $info = @getimagesize($logoPath);
-            if ($info && isset($info[0], $info[1])) {
-                $logoW = min(56, max(36, (int) $info[0]));
-                $logoH = min(56, max(36, (int) $info[1]));
-            }
-            $logoB64 = base64_encode((string) file_get_contents($logoPath));
-            $html = '<img src="data:image/png;base64,' . $logoB64 . '" width="' . $logoW . '" height="' . $logoH
-                . '" style="display:block;margin:0 auto;vertical-align:middle;border:0;outline:none;" alt="Logo" />';
+			$logoB64 = base64_encode((string) file_get_contents($logoPath));
+			$useFijo = $anchoCss !== null && $anchoCss !== '' && $altoCss !== null && $altoCss !== '';
+			if ($useFijo) {
+				$w = (string) $anchoCss;
+				$h = (string) $altoCss;
+				$html = '<img src="data:image/png;base64,' . $logoB64
+					. '" alt="Logo" style="display:block;margin:0 auto;vertical-align:middle;border:0;outline:none;width:'.e($w).';height:'.e($h).';object-fit:contain;" />';
+				$logoW = 190;
+				$logoH = 190;
+			} else {
+				$info = @getimagesize($logoPath);
+				if ($info && isset($info[0], $info[1])) {
+					$logoW = min(56, max(36, (int) $info[0]));
+					$logoH = min(56, max(36, (int) $info[1]));
+				}
+				$html = '<img src="data:image/png;base64,' . $logoB64 . '" width="' . $logoW . '" height="' . $logoH
+					. '" style="display:block;margin:0 auto;vertical-align:middle;border:0;outline:none;" alt="Logo" />';
+			}
         }
 
         return [
