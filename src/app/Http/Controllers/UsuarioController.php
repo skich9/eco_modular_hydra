@@ -211,7 +211,8 @@ class UsuarioController extends Controller
             $usuario->update($validated);
 
             // Si el rol cambió, sincronizar funciones
-            if (isset($validated['id_rol']) && $validated['id_rol'] != $oldRolId) {
+            if (isset($validated['id_rol']) && (int)$validated['id_rol'] !== (int)$oldRolId) {
+
                 $this->permissionService->copyRoleFunctionsToUser(
                     $usuario->id_usuario,
                     $validated['id_rol'],

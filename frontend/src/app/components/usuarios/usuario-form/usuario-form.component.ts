@@ -158,6 +158,7 @@ export class UsuarioFormComponent implements OnInit {
 						estado: usuario.estado,
             			apoyoCobranzas: usuario.apoyoCobranzas || false
 					});
+					this.selectedRolId = usuario.id_rol;
 				}
 			},
 			error: (error: any) => {
@@ -326,39 +327,15 @@ export class UsuarioFormComponent implements OnInit {
 	}
 
 	saveFunciones(usuarioId: number): void {
-		if (this.selectedFunciones.length === 0) {
-			// Si no hay funciones seleccionadas, solo navegar
-			this.finalizarGuardado();
-			return;
-		}
-
-		// Asignar cada función seleccionada al usuario
-		let funcionesAsignadas = 0;
-		let erroresAsignacion = 0;
-
-		this.selectedFunciones.forEach((funcionId, index) => {
-			const request = {
-				id_funcion: funcionId,
-				fecha_ini: new Date().toISOString().split('T')[0],
-				fecha_fin: null,
-				observaciones: 'Asignado desde formulario de usuario'
-			};
-
-			this.funcionService.asignarFuncion(usuarioId, request).subscribe({
-				next: (response) => {
-					funcionesAsignadas++;
-					if (funcionesAsignadas + erroresAsignacion === this.selectedFunciones.length) {
-						this.finalizarGuardado();
-					}
-				},
-				error: (error) => {
-					console.error('Error al asignar función:', error);
-					erroresAsignacion++;
-					if (funcionesAsignadas + erroresAsignacion === this.selectedFunciones.length) {
-						this.finalizarGuardado();
-					}
-				}
-			});
+		// Sincronizar todas las funciones seleccionadas (altas y bajas) en una sola llamada
+		this.funcionService.syncUsuarioFunciones(usuarioId, this.selectedFunciones).subscribe({
+			next: (response) => {
+				this.finalizarGuardado();
+			},
+			error: (error) => {
+				console.error('Error al sincronizar funciones:', error);
+				this.finalizarGuardado();
+			}
 		});
 	}
 
