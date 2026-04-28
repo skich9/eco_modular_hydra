@@ -595,7 +595,7 @@ class QrController extends Controller
             $idOrd = trim((string)($request->input('numeroOrdenOriginante', $request->input('objeto.numeroOrdenOriginante', ''))));
             if ($idOrd !== '' && is_numeric($idOrd)) {
                 $byOrd = DB::table('qr_transacciones')
-                    ->where('numeroordenoriginante', (int)$idOrd)
+                    ->where('numeroordenoriginante', (string)$idOrd)
                     ->orderByDesc('created_at')
                     ->first();
                 if ($byOrd) { $alias = (string)$byOrd->alias; }
@@ -702,7 +702,7 @@ class QrController extends Controller
             ->update([
                 'estado' => $estadoNuevo,
                 'codigo_qr' => $extIdQr !== '' ? (string)$extIdQr : $trx->codigo_qr,
-                'numeroordenoriginante' => $request->input('numeroOrdenOriginante') ? (int)$request->input('numeroOrdenOriginante') : $trx->numeroordenoriginante,
+                'numeroordenoriginante' => $request->input('numeroOrdenOriginante') ? (string)$request->input('numeroOrdenOriginante') : $trx->numeroordenoriginante,
                 'nro_transaccion' => $extId !== '' ? (int)$extId : $trx->nro_transaccion,
                 'cuenta_cliente' => (string)$request->input('cuentaCliente', $trx->cuenta_cliente),
                 'nombre_cliente' => (string)$request->input('nombreCliente', $trx->nombre_cliente),
