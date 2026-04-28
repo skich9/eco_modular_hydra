@@ -391,21 +391,17 @@
 					<label>Importe Neto</label>
 					<input type="text" [value]="importeNeto | number:'1.2-2'" disabled />
 				</div>
-				<div class="field" *ngIf="esPagoEfectivo">
-					<label [class.field-label--req-error]="reqErrors['rangoFechas'] && !mostrarRangoFechas"
-						>Fecha (día/mes/año)</label
-					>
+				<div class="field">
+					<label>Fecha</label>
 					<input
-						type="date"
+						type="text"
 						class="fecha-input-native"
-						[(ngModel)]="fechaFinIso"
-						[min]="minFechaIso"
-						[attr.max]="maxFechaIso"
-						[disabled]="importeDescuentoBloqueados"
-						(ngModelChange)="clampTodasLasFechas()"
-						autocomplete="off"
+						[value]="fechaRegistroMostrada"
+						readonly
+						disabled
+						tabindex="-1"
+						[attr.aria-label]="'Fecha de registro (día actual)'"
 					/>
-					<small *ngIf="reqErrors['rangoFechas'] && !mostrarRangoFechas" class="field-error">{{ msgCampoObligatorio }}</small>
 				</div>
 			</div>
 		</div>

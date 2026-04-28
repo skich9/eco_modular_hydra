@@ -30,6 +30,8 @@ export interface OtrosIngresosReqSnapshot {
 	nroOrdenOk: boolean;
 	fechaIniIso: string;
 	fechaFinIso: string;
+	/** Sólo Fotocopiadora / Tienda (SGA: únicos con Del–Al). */
+	requiereRangoFechas: boolean;
 	/** Pago no efectivo: debe elegirse cuenta bancaria. */
 	esPagoEfectivo: boolean;
 	ctaBanco: string;
@@ -66,7 +68,7 @@ export function listarCamposObligatoriosVacios(s: OtrosIngresosReqSnapshot): Otr
 	if (s.showOt && !s.nroOrdenOk) {
 		out.push('nroOrden');
 	}
-	if (!isoFechaValida(s.fechaIniIso) || !isoFechaValida(s.fechaFinIso)) {
+	if (!s.anular && s.requiereRangoFechas && (!isoFechaValida(s.fechaIniIso) || !isoFechaValida(s.fechaFinIso))) {
 		out.push('rangoFechas');
 	}
 	if (!s.anular && !s.esPagoEfectivo && !(s.ctaBanco || '').trim()) {

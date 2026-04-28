@@ -727,6 +727,38 @@ class LibroDiarioAggregatorService
 	}
 
 	/**
+	 * Libro Diario (columna Concepto): la glosa tipo SGA suele traer «Recibo/Fact Nro/S/N», apéndice
+	 * «Depósito en cuenta…» (duplicado respecto a Observaciones) y texto duplicado de observaciones
+	 * (sufijo «; obs» en OT/Fotocopi/Alquiler/Tienda o incrustado en «Varios»).
+	 *
+	 * @param string $obsRaw texto en BD (`otros_ingresos.observaciones`), mismo que acaba en columnas u observaciones extendidas.
+	 */
+	private function conceptoOtrosIngresosParaLibroDiario(string $linea, string $obsRaw): string
+	{
+		$linea = trim($linea);
+		if ($linea === '') {
+			return '';
+		}
+		$linea = preg_replace('/\s+Recibo:\s*\d+\.?/iu', '', $linea) ?? $linea;
+		$linea = preg_replace('/\s+Fact\s*Nro:\s*\d+\.?/iu', '', $linea) ?? $linea;
+		$linea = preg_replace('/\s+S\/N\.?/iu', '', $linea) ?? $linea;
+		// Misma línea que agrega la glosa comprobante por forma depósito; en Libro Diario queda en columnas Observaciones / datos bancarios.
+		$linea = preg_replace('/[\s;]*(Depósito|Deposito)\s+en\s+cuenta\b.*$/iu', '', $linea) ?? $linea;
+		$obsRaw = trim($obsRaw);
+		if ($obsRaw !== '') {
+			$linea = preg_replace('/;\s*' . preg_quote($obsRaw, '/') . '\s*$/iu', '', $linea) ?? $linea;
+			// «Varios»: la obs va después de «Ingreso no académico varios.» y antes de Fact/Recibo (no solo como «; obs» al final).
+			$patVarios = '/Ingreso no académico varios\.\s+' . preg_quote($obsRaw, '/') . '\s+/iu';
+			if (preg_match($patVarios, $linea)) {
+				$linea = preg_replace($patVarios, 'Ingreso no académico varios. ', $linea) ?? $linea;
+			}
+		}
+		$linea = trim((string) preg_replace('/\s+/u', ' ', $linea));
+
+		return $linea;
+	}
+
+	/**
 	 * @param object $o
 	 * @return array<string,mixed>
 	 */
@@ -743,6 +775,7 @@ class LibroDiarioAggregatorService
 		$tipoPago = $this->mapearTipoPago($codForma);
 
 		$obs = $this->armarObservacionesOtroIngreso($o);
+		$obsRawBd = trim((string) ($o->observaciones ?? ''));
 
 		$glosaComp = trim((string) ($o->glosa_comprobante ?? ''));
 		$linea = $glosaComp !== '' ? $glosaComp : $this->glosaOtrosIngresos->construirDesdeFila($o);
@@ -753,11 +786,13 @@ class LibroDiarioAggregatorService
 			$linea = trim((string) ($o->tipo_ingreso ?? 'Otros Ingresos'));
 		}
 
+		$conceptoLibro = $this->conceptoOtrosIngresosParaLibroDiario($linea, $obsRawBd);
+
 		return [
 			'numero' => 0,
 			'recibo' => $tipoDoc === 'R' ? (string) ($numRec > 0 ? $numRec : '0') : '0',
 			'factura' => $tipoDoc === 'F' ? (string) ($numFac > 0 ? $numFac : '0') : '0',
-			'concepto' => $linea,
+			'concepto' => $conceptoLibro !== '' ? $conceptoLibro : $linea,
 			'razon' => (string) ($o->razon_social ?? ''),
 			'nit' => (string) ($o->nit ?? '0'),
 			'cod_ceta' => '0',
