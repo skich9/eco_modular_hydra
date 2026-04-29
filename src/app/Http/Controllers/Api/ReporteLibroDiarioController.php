@@ -584,6 +584,26 @@ HTML;
 
         return LibroDiarioIdentificadorHelper::construirCodigoRd($codigoCarrera, $mes, $corrNum);
     }
+    private function resolverFilasPorPagina(Request $request): int
+    {
+        $raw = $request->input('filas_por_pagina');
+
+        if ($raw === null || $raw === '') {
+            return self::LIBRO_DIARIO_FILAS_POR_PAGINA_DEFAULT;
+        }
+        if (is_string($raw) && strtolower(trim($raw)) === 'auto') {
+            return self::LIBRO_DIARIO_FILAS_POR_PAGINA_DEFAULT;
+        }
+        $n = is_numeric($raw) ? (int) $raw : 0;
+        if ($n < 1) {
+            return self::LIBRO_DIARIO_FILAS_POR_PAGINA_DEFAULT;
+        }
+
+        return max(
+            self::LIBRO_DIARIO_FILAS_POR_PAGINA_MIN,
+            min(self::LIBRO_DIARIO_FILAS_POR_PAGINA_MAX, $n)
+        );
+    }
 
     /**
      * Genera filas de datos + una fila de subtotal por cada "página lógica" del PDF.
