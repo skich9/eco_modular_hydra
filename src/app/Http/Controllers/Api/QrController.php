@@ -1009,12 +1009,33 @@ class QrController extends Controller
         $alias = (string)$request->input('alias');
         if (!$alias) { return response()->json(['success' => false, 'message' => 'alias requerido'], 422); }
 
+        Log::info('QR disable: request received', [
+            'alias' => $alias,
+            'id_usuario' => $request->input('id_usuario'),
+        ]);
+
         $trx = DB::table('qr_transacciones')->where('alias', $alias)->first();
-        if (!$trx) { return response()->json(['success' => false, 'message' => 'Transaction not found'], 404); }
+        if (!$trx) {
+            Log::warning('QR disable: transaction not found', ['alias' => $alias]);
+            return response()->json(['success' => false, 'message' => 'Transaction not found'], 404);
+        }
+        Log::info('QR disable: transaction loaded', [
+            'alias' => $alias,
+            'id_qr_transaccion' => $trx->id_qr_transaccion,
+            'estado' => $trx->estado,
+            'saved_by_user' => $trx->saved_by_user,
+            'id_cuenta_bancaria' => $trx->id_cuenta_bancaria,
+            'cod_ceta' => $trx->cod_ceta,
+        ]);
         try {
             $isSaved = (bool)(isset($trx->saved_by_user) ? $trx->saved_by_user : false);
             $est = (string)(isset($trx->estado) ? $trx->estado : '');
             if ($isSaved && !in_array($est, ['completado','cancelado','expirado'], true)) {
+                Log::warning('QR disable: blocked by saved_by_user guard', [
+                    'alias' => $alias,
+                    'estado' => $est,
+                    'saved_by_user' => $isSaved,
+                ]);
                 return response()->json(['success' => false, 'message' => 'No se puede anular un QR guardado en espera.'], 422);
             }
         } catch (\Throwable $e) {}
@@ -1022,13 +1043,26 @@ class QrController extends Controller
         try { $this->applyAccountOverrides((int)(isset($trx->id_cuenta_bancaria) ? $trx->id_cuenta_bancaria : 0)); } catch (\Throwable $e) {}
 
         $auth = $gateway->authenticate();
-        if (!$auth['ok']) { return response()->json(['success' => false, 'message' => 'QR auth failed'], 500); }
+        if (!$auth['ok']) {
+            Log::error('QR disable: auth failed', [
+                'alias' => $alias,
+                'id_qr_transaccion' => $trx->id_qr_transaccion,
+            ]);
+            return response()->json(['success' => false, 'message' => 'QR auth failed'], 500);
+        }
 
         $resp = $gateway->disablePayment($auth['token'], $alias);
         if (!$resp['ok']) {
             Log::warning('QR disablePayment failed', $resp);
             return response()->json(['success' => false, 'message' => 'QR provider error', 'meta' => $resp], 502);
         }
+
+        Log::info('QR disable: provider accepted disablePayment', [
+            'alias' => $alias,
+            'id_qr_transaccion' => $trx->id_qr_transaccion,
+            'provider_code' => isset($resp['data']['codigo']) ? $resp['data']['codigo'] : null,
+            'provider_message' => isset($resp['data']['mensaje']) ? $resp['data']['mensaje'] : null,
+        ]);
 
         // Mapear INHABILITADO -> cancelado (no existe "inhabilitado" en nuestro enum)
         $estadoNuevo = 'cancelado';

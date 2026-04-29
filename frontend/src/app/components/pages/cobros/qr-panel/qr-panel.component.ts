@@ -135,8 +135,24 @@ export class QrPanelComponent implements OnDestroy, OnChanges {
 						try { this.cerrar(); } catch {}
 						return;
 					}
-					// Confirmar con sync antes de abrir modal para evitar parpadeo si saved_by_user cambia
-					// loading permanece true durante el sync para mantener el botón bloqueado
+					// Intentar restaurar desde sesión primero (tiene la imagen del QR original)
+					try {
+						const hasSession = !!sessionStorage.getItem(this.storageKey(cod));
+						if (hasSession && this.loadSession(cod)) {
+							this.loading = false;
+							if (this.savedByUser) {
+								this.warnMsg = 'QR guardado en espera. No se mostrará hasta su procesamiento.';
+								try { this.cerrar(); } catch {}
+								this.status = 'pendiente';
+								this.statusChange.emit(this.status);
+								return;
+							}
+							this.abrir();
+							return;
+						}
+					} catch {}
+					// Sesión no disponible: sincronizar con backend y obtener imagen del detalle
+					const idTx = data?.id_qr_transaccion || null;
 					try {
 						const id_usuario = (this.cabecera as FormGroup).get('id_usuario')?.value;
 						this.cobrosService.syncQrByCodCeta({ cod_ceta: cod, id_usuario }).subscribe({
@@ -156,13 +172,40 @@ export class QrPanelComponent implements OnDestroy, OnChanges {
 								}
 								this.alias = (sd?.alias || alias);
 								this.savedByUser = false;
-								this.showExisting(this.alias, '', 0, '', est2);
+								const tid = idTx || sd?.id_qr_transaccion || null;
+								if (tid) {
+									this.cobrosService.getQrTransactionDetail(tid).subscribe({
+										next: (det: any) => {
+											const tr = det?.data?.transaccion || null;
+											const b64 = (tr?.qr_image_base64 || '').toString();
+											const amt = Number(tr?.monto_total || 0);
+											const exp = (tr?.fecha_expiracion || '').toString();
+											this.showExisting(this.alias, b64, amt, exp, est2);
+										},
+										error: () => { this.showExisting(this.alias, '', 0, '', est2); }
+									});
+								} else {
+									this.showExisting(this.alias, '', 0, '', est2);
+								}
 							},
 							error: () => {
 								this.loading = false;
 								this.alias = alias;
 								this.savedByUser = false;
-								this.showExisting(this.alias, '', 0, '', est);
+								if (idTx) {
+									this.cobrosService.getQrTransactionDetail(idTx).subscribe({
+										next: (det: any) => {
+											const tr = det?.data?.transaccion || null;
+											const b64 = (tr?.qr_image_base64 || '').toString();
+											const amt = Number(tr?.monto_total || 0);
+											const exp = (tr?.fecha_expiracion || '').toString();
+											this.showExisting(this.alias, b64, amt, exp, est);
+										},
+										error: () => { this.showExisting(this.alias, '', 0, '', est); }
+									});
+								} else {
+									this.showExisting(this.alias, '', 0, '', est);
+								}
 							}
 						});
 						return;
@@ -666,12 +709,17 @@ export class QrPanelComponent implements OnDestroy, OnChanges {
 		if (!this.alias) return;
 		const id_usuario = (this.cabecera as FormGroup).get('id_usuario')?.value;
 		const cod = this.getCodCeta();
+		const prev = {
+			status: this.status,
+			imageBase64: this.imageBase64,
+			amount: this.amount,
+			expiresAt: this.expiresAt
+		};
 		this.loading = true;
 		this.isCancelling = true;
 		this.errorMsg = '';
         this.saveMsg = '';
         this.warnMsg = '';
-        this.imageBase64 = '';
         this.status = 'procesando';
         this.statusChange.emit(this.status);
 		// Pre-check: sincronizar estado real por cod_ceta para evitar 502 si ya está pagado/cancelado
@@ -679,26 +727,48 @@ export class QrPanelComponent implements OnDestroy, OnChanges {
 			next: (pre: any) => {
 				const d = pre?.data || null;
 				try { this.savedByUser = !!(d?.saved_by_user); } catch {}
-				if (d && d.estado && ['completado','cancelado','expirado'].includes(d.estado)) {
+				const estPre = (d?.estado || '').toString().toLowerCase();
+				if (d && estPre && ['completado','cancelado','expirado'].includes(estPre)) {
 					this.loading = false;
 					this.isCancelling = false;
-					this.status = d.estado;
+					this.status = estPre as any;
 					this.statusChange.emit(this.status);
 					this.clearSession(cod);
-					if (d.estado === 'cancelado') {
+					if (estPre === 'cancelado') {
 						this.saveMsg = 'QR anulado.';
 						this.alias = '';
 						this.imageBase64 = '';
 					}
 					return;
 				}
+				if (this.savedByUser) {
+					this.loading = false;
+					this.isCancelling = false;
+					this.status = prev.status;
+					this.statusChange.emit(this.status);
+					this.imageBase64 = prev.imageBase64;
+					this.amount = prev.amount;
+					this.expiresAt = prev.expiresAt;
+					this.errorMsg = 'No se puede anular el QR porque ya fue guardado en espera.';
+					return;
+				}
 				// Si no es final, intentar anular en proveedor
 				this.cobrosService.disableQr(this.alias, id_usuario).subscribe({
 					next: (res: any) => {
+						console.log('[QR-Panel] disable respuesta', res);
+						if (!res?.success) {
+							this.loading = false;
+							this.isCancelling = false;
+							this.status = prev.status;
+							this.statusChange.emit(this.status);
+							this.imageBase64 = prev.imageBase64;
+							this.amount = prev.amount;
+							this.expiresAt = prev.expiresAt;
+							this.errorMsg = (res?.message || 'No se pudo anular el QR.').toString();
+							return;
+						}
 						this.loading = false;
 						this.isCancelling = false;
-						console.log('[QR-Panel] disable respuesta', res);
-						if (!res?.success) return;
 						this.status = 'cancelado';
 						this.statusChange.emit(this.status);
 						this.clearSession(cod);
@@ -711,36 +781,70 @@ export class QrPanelComponent implements OnDestroy, OnChanges {
 						try { this.ws.disconnect(); this.teardownWs(); } catch {}
 					},
 					error: (err: any) => {
-						this.loading = false;
-						this.isCancelling = false;
 						console.error('[QR-Panel] disable error', err);
 						// Si el proveedor devuelve 502/500, re-sincronizar por cod_ceta para reflejar estado final
 						const st = Number(err?.status || 0);
 						if (st === 502 || st === 500) {
 							this.cobrosService.syncQrByCodCeta({ cod_ceta: cod, id_usuario }).subscribe({
 								next: (sx: any) => {
+									this.loading = false;
+									this.isCancelling = false;
 									const sd = sx?.data || null;
-									if (sd && sd.estado) {
-										this.status = sd.estado;
+									const estSync = (sd?.estado || '').toString().toLowerCase();
+									if (sd && estSync) {
+										this.status = estSync as any;
 										this.statusChange.emit(this.status);
-										if (['completado','cancelado','expirado'].includes(sd.estado)) {
+										if (['completado','cancelado','expirado'].includes(estSync)) {
 											this.clearSession(cod);
-											if (sd.estado === 'cancelado') {
+											if (estSync === 'cancelado') {
 												this.saveMsg = 'QR anulado.';
 												this.alias = '';
 												this.imageBase64 = '';
 											}
-											this.isCancelling = false;
+										} else {
+											this.imageBase64 = prev.imageBase64;
+											this.amount = prev.amount;
+											this.expiresAt = prev.expiresAt;
+											this.errorMsg = 'No se pudo confirmar la anulación del QR. Intente nuevamente.';
 										}
 									}
 								},
-								error: () => {}
+								error: () => {
+									this.loading = false;
+									this.isCancelling = false;
+									this.status = prev.status;
+									this.statusChange.emit(this.status);
+									this.imageBase64 = prev.imageBase64;
+									this.amount = prev.amount;
+									this.expiresAt = prev.expiresAt;
+									this.errorMsg = 'No se pudo anular el QR. Intente nuevamente.';
+								}
 							});
+						} else {
+							this.loading = false;
+							this.isCancelling = false;
+							this.status = prev.status;
+							this.statusChange.emit(this.status);
+							this.imageBase64 = prev.imageBase64;
+							this.amount = prev.amount;
+							this.expiresAt = prev.expiresAt;
+							const msg = (err?.error?.message || err?.message || 'No se pudo anular el QR.').toString();
+							this.errorMsg = msg;
 						}
 					}
 				});
 			},
-			error: (e: any) => { this.loading = false; this.isCancelling = false; console.error('[QR-Panel] pre-sync error', e); }
+			error: (e: any) => {
+				this.loading = false;
+				this.isCancelling = false;
+				this.status = prev.status;
+				this.statusChange.emit(this.status);
+				this.imageBase64 = prev.imageBase64;
+				this.amount = prev.amount;
+				this.expiresAt = prev.expiresAt;
+				this.errorMsg = (e?.error?.message || e?.message || 'No se pudo validar el estado del QR para anular.').toString();
+				console.error('[QR-Panel] pre-sync error', e);
+			}
 		});
 	}
 
