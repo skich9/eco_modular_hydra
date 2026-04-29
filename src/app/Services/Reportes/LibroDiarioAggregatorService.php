@@ -373,9 +373,11 @@ class LibroDiarioAggregatorService
 		// `recibo` y `factura` usan PK lógica (anio, nro_*). Unir solo por nro_* duplica filas
 		// cuando el mismo correlativo existe en distintos años (caso típico del libro diario).
 		$q = DB::table('cobro as c')
-			->leftJoin('factura as f', function ($j) {
+			->leftJoin('factura as f', function ($j) use ($desde, $hasta) {
 				$j->on('f.nro_factura', '=', 'c.nro_factura')
-					->on('f.anio', '=', 'c.anio_cobro');
+					->on('f.anio', '=', 'c.anio_cobro')
+					->whereDate('f.fecha_emision', '>=', $desde)
+					->whereDate('f.fecha_emision', '<=', $hasta);
 			})
 			->leftJoin('recibo as r', function ($j) {
 				$j->on('r.nro_recibo', '=', 'c.nro_recibo')
