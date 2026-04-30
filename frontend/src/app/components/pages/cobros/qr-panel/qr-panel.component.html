@@ -58,7 +58,7 @@
 							<div class="mt-2 small text-muted">{{ isCancelling ? 'Anulando QR...' : 'Generando QR...' }}</div>
 						</div>
 						<ng-template #noqr_msg>
-							<div class="text-muted small text-center">QR no generado</div>
+						<div *ngIf="!errorMsg" class="text-muted small text-center">QR no generado</div>
 						</ng-template>
 					</ng-template>
 				</div>
@@ -117,7 +117,7 @@
 				<div class="mt-2 small text-muted">{{ isCancelling ? 'Anulando QR...' : 'Generando QR...' }}</div>
 			</div>
 			<ng-template #noqr_local_msg>
-				<div class="text-muted small text-center">QR no generado</div>
+			<div *ngIf="!errorMsg" class="text-muted small text-center">QR no generado</div>
 			</ng-template>
 		</ng-template>
 		<div class="d-flex justify-content-end gap-2 mt-3">
