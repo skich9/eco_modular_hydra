@@ -42,6 +42,7 @@ use App\Http\Controllers\Api\ReporteLibroDiarioController;
 use App\Http\Controllers\Api\LibroDiarioController;
 use App\Http\Controllers\Api\Economico\OtrosIngresosController;
 use App\Http\Controllers\Api\Economico\ModOtrosIngresosController;
+use App\Http\Controllers\Api\Economico\ReimpresionReposicionOtrosIngresosController;
 use App\Http\Controllers\Api\Economico\RecepcionIngresoController;
 use App\Http\Controllers\Api\ReporteRecepcionIngresoDepositoController;
 
@@ -146,6 +147,12 @@ Route::middleware('auth:sanctum')->group(function () {
 		Route::post('factura-existe', [OtrosIngresosController::class, 'facturaExiste']);
 		Route::post('recibo-existe', [OtrosIngresosController::class, 'reciboExiste']);
 		Route::post('registrar', [OtrosIngresosController::class, 'registrar']);
+
+		Route::prefix('reimpresion-reposicion-otros-ingresos')->group(function () {
+			Route::post('buscar-fecha', [ReimpresionReposicionOtrosIngresosController::class, 'buscarPorFecha']);
+			Route::post('buscar-doc', [ReimpresionReposicionOtrosIngresosController::class, 'buscarPorDocumento']);
+			Route::post('generar-nota', [ReimpresionReposicionOtrosIngresosController::class, 'generarNotaReposicion']);
+		});
 	});
 	Route::prefix('economico/mod-otros-ingresos')->group(function () {
 		Route::get('initial', [ModOtrosIngresosController::class, 'initialData']);

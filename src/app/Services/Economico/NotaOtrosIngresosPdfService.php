@@ -864,4 +864,264 @@ class NotaOtrosIngresosPdfService
 			return null;
 		}
 	}
+
+	// --- Reimpresión (Réplica funcional de SGA `reimpresiones/comprobante_reposicion_otros_ingresos`) ---
+
+	private function nombreEstudianteConcat(?string $apPat, ?string $apMat, ?string $nombres): string
+	{
+		$apPat = trim((string) $apPat);
+		$apMat = trim((string) $apMat);
+		$noms = trim((string) $nombres);
+		if ($apPat === '' && $apMat === '' && $noms === '') {
+			return '';
+		}
+		if ($apPat === '') {
+			return trim(($apMat !== '' ? $apMat.' ' : '').$noms);
+		}
+		if ($apMat === '') {
+			return trim($apPat.' '.$noms);
+		}
+
+		return trim($apPat.' '.$apMat.' '.$noms);
+	}
+
+	private function documentoConcatSga(?string $prefijoCarrera, $anioReposicion, $correlativo): string
+	{
+		$p = mb_substr((string) ($prefijoCarrera ?? ''), 0, 1) ?: '';
+
+		return $p.(string) ((int) $anioReposicion).str_pad((string) ((int) $correlativo), 5, '0', STR_PAD_LEFT);
+	}
+
+	private function correlativoMostrarPdf(?string $prefijoCarrera, $anioReposicion, $correlativo): string
+	{
+		$p = mb_substr((string) ($prefijoCarrera ?? ''), 0, 1) ?: 'E';
+
+		return $p.'-'.((string) ((int) $anioReposicion)).str_pad((string) ((int) $correlativo), 5, '0', STR_PAD_LEFT);
+	}
+
+	/**
+	 * SGA `getDatosNotaReposicionOtrosIngresos`: `JOIN carrera ON prefijo_matricula = nr.prefijo_carrera` y muestra `nombre_carrera` en PDF.
+	 * El alta (SGA/sistemaEco) guarda en `prefijo_carrera` solo el primer carácter del código de carrera pensum (`LEFT(pe.cod_carrera,1)`).
+	 * Cuando `prefijo_matricula` en catálogo es más largo (p. ej. "EEA"), el JOIN exacto no devuelve fila → carrera vacía; replicamos SGA donde coincida,
+	 * con reserva por primera letra de `prefijo_matricula`/`codigo_carrera`.
+	 */
+	private function nombreCarreraParaReimpresoNotaReposicion(?string $prefijoAlmacenado): string
+	{
+		$raw = trim((string) ($prefijoAlmacenado ?? ''));
+		if ($raw === '' || !Schema::hasTable('carrera')) {
+			return '';
+		}
+
+		$char = mb_strtoupper(mb_substr($raw, 0, 1));
+
+		if (Schema::hasColumn('carrera', 'prefijo_matricula')) {
+			$nombre = DB::table('carrera')
+				->where('prefijo_matricula', $raw)
+				->value('nombre');
+			if ($nombre !== null && trim((string) $nombre) !== '') {
+				return trim((string) $nombre);
+			}
+
+			$nombre = DB::table('carrera')
+				->whereNotNull('prefijo_matricula')
+				->where('prefijo_matricula', '<>', '')
+				->whereRaw('UPPER(LEFT(TRIM(prefijo_matricula), 1)) = ?', [$char])
+				->orderByRaw('LENGTH(TRIM(prefijo_matricula)) ASC')
+				->orderBy('codigo_carrera')
+				->value('nombre');
+			if ($nombre !== null && trim((string) $nombre) !== '') {
+				return trim((string) $nombre);
+			}
+		}
+
+		$nombre = DB::table('carrera')
+			->whereRaw('UPPER(LEFT(TRIM(codigo_carrera), 1)) = ?', [$char])
+			->orderBy('codigo_carrera')
+			->value('nombre');
+
+		return trim((string) ($nombre ?? ''));
+	}
+
+	/**
+	 * Fila única por clave tipo SGA (`prefijo`+`yy`+`correlativo` 5 cifras — 8 caracteres).
+	 */
+	private function primeraFilaReposicionOtrosPorClave(string $claveRaw): ?\stdClass
+	{
+		$clave = strtoupper(trim($claveRaw));
+		if (strlen($clave) !== 8 || !preg_match('/^[A-Z0-9]{8}$/', $clave)) {
+			return null;
+		}
+		if (!Schema::hasTable('nota_reposicion')) {
+			return null;
+		}
+
+		return DB::table('nota_reposicion as nr')
+			->whereNotNull('nr.tipo_ingreso')
+			->whereRaw(
+				"CONCAT(nr.prefijo_carrera, nr.anio_reposicion, LPAD(nr.correlativo, 5, '0')) = ?",
+				[$clave]
+			)
+			->first();
+	}
+
+	/**
+	 * @return array<string, mixed>
+	 */
+	private function mapRowReimpresion(\stdClass $r): array
+	{
+		$doc = $this->documentoConcatSga((string) ($r->prefijo_carrera ?? ''), $r->anio_reposicion ?? 0, $r->correlativo ?? 0);
+		try {
+			$d = Carbon::parse((string) $r->fecha_nota);
+			$freg = $d->format('d/m/Y H:i:s');
+		} catch (\Throwable) {
+			$freg = (string) $r->fecha_nota;
+		}
+
+		return [
+			'documento' => $doc,
+			'correlativo' => (int) ($r->correlativo ?? 0),
+			'usuario' => (string) ($r->usuario ?? ''),
+			'fecha_registro' => $freg,
+			'fecha_nota' => (string) $r->fecha_nota,
+			'cod_ceta' => $r->cod_ceta ?? null,
+			'nombre' => $this->nombreEstudianteConcat(
+				$r->ap_paterno ?? '',
+				$r->ap_materno ?? '',
+				$r->nombres ?? ''
+			),
+			'monto' => isset($r->monto) ? (float) $r->monto : 0.0,
+			'concepto' => (string) ($r->concepto_adm ?? ''),
+			'observaciones' => (string) ($r->observaciones ?? ''),
+			'nro_recibo' => $r->nro_recibo !== null ? (string) $r->nro_recibo : '',
+		];
+	}
+
+	private function consultaListaReimpresionBase(): \Illuminate\Database\Query\Builder
+	{
+		return DB::table('nota_reposicion as nr')
+			->leftJoin('estudiantes as e', 'e.cod_ceta', '=', 'nr.cod_ceta')
+			->whereNotNull('nr.tipo_ingreso')
+			->select(
+				'nr.correlativo',
+				'nr.usuario',
+				'nr.fecha_nota',
+				'nr.cod_ceta',
+				'nr.monto',
+				'nr.concepto_adm',
+				'nr.observaciones',
+				'nr.nro_recibo',
+				'nr.prefijo_carrera',
+				'nr.anio_reposicion',
+				'e.ap_paterno',
+				'e.ap_materno',
+				'e.nombres'
+			)
+			->orderByDesc('nr.correlativo');
+	}
+
+	/**
+	 * Rango sobre `fecha_nota` como SGA (`d/m/Y` enviados por el cliente).
+	 *
+	 * @return array<int, array<string, mixed>>
+	 */
+	public function listarReimpresionOtrosPorRangoFecha(string $fechaIniDmy, string $fechaFinDmy): array
+	{
+		if (!Schema::hasTable('nota_reposicion')) {
+			return [];
+		}
+
+		try {
+			$ini = Carbon::createFromFormat('d/m/Y', trim($fechaIniDmy))->startOfDay();
+			$fin = Carbon::createFromFormat('d/m/Y', trim($fechaFinDmy))->endOfDay();
+		} catch (\Throwable $e) {
+			throw new \InvalidArgumentException('Fechas inválidas (use día/mes/año)');
+		}
+
+		if ($fin->lt($ini)) {
+			throw new \InvalidArgumentException('La fecha final debe ser igual o posterior a la inicial');
+		}
+
+		$rows = $this->consultaListaReimpresionBase()
+			->whereBetween('nr.fecha_nota', [$ini->format('Y-m-d H:i:s'), $fin->format('Y-m-d H:i:s')])
+			->get();
+
+		return $rows->map(fn (\stdClass $r) => $this->mapRowReimpresion($r))->all();
+	}
+
+	/**
+	 * @return array<int, array<string, mixed>>
+	 */
+	public function listarReimpresionOtrosPorDocumento(string $claveRaw): array
+	{
+		$claveUp = strtoupper(trim($claveRaw));
+		if (strlen($claveUp) !== 8 || !preg_match('/^[A-Z0-9]{8}$/', $claveUp) || !Schema::hasTable('nota_reposicion')) {
+			return [];
+		}
+
+		$full = DB::table('nota_reposicion as nr')
+			->leftJoin('estudiantes as e', 'e.cod_ceta', '=', 'nr.cod_ceta')
+			->whereNotNull('nr.tipo_ingreso')
+			->whereRaw(
+				"CONCAT(nr.prefijo_carrera, nr.anio_reposicion, LPAD(nr.correlativo, 5, '0')) = ?",
+				[$claveUp]
+			)
+			->select(
+				'nr.correlativo',
+				'nr.usuario',
+				'nr.fecha_nota',
+				'nr.cod_ceta',
+				'nr.monto',
+				'nr.concepto_adm',
+				'nr.observaciones',
+				'nr.nro_recibo',
+				'nr.prefijo_carrera',
+				'nr.anio_reposicion',
+				'e.ap_paterno',
+				'e.ap_materno',
+				'e.nombres'
+			)
+			->orderBy('nr.correlativo')
+			->get();
+
+		return $full->map(fn (\stdClass $r) => $this->mapRowReimpresion($r))->all();
+	}
+
+	/** URL firmada al PDF tipo nota reposición otros ingresos, o null si no existe fila válida */
+	public function generarPdfReimpresionReposicionOtros(string $clave8): ?string
+	{
+		$row = $this->primeraFilaReposicionOtrosPorClave($clave8);
+		if ($row === null) {
+			return null;
+		}
+
+		$correlativoDisplay = $this->correlativoMostrarPdf(
+			$row->prefijo_carrera ?? '',
+			$row->anio_reposicion ?? 0,
+			$row->correlativo ?? 0
+		);
+
+		try {
+			$fechaNota = Carbon::parse((string) $row->fecha_nota);
+		} catch (\Throwable) {
+			$fechaNota = Carbon::now();
+		}
+
+		$nombreCar = $this->nombreCarreraParaReimpresoNotaReposicion((string) ($row->prefijo_carrera ?? ''));
+
+		$html = $this->htmlNotaReposicion(
+			(string) ($row->usuario ?? ''),
+			$correlativoDisplay,
+			$fechaNota,
+			(string) ($row->concepto_est ?? ''),
+			(string) ($row->tipo_ingreso ?? ''),
+			$nombreCar,
+			(float) ($row->monto ?? 0),
+			(string) ($row->concepto_adm ?? ''),
+			(string) ($row->observaciones ?? ''),
+			'Recibo',
+			$row->nro_recibo !== null ? (string) $row->nro_recibo : ''
+		);
+
+		return $this->guardarPdf($correlativoDisplay.'_nota_reposicion_reimp', $html);
+	}
 }
