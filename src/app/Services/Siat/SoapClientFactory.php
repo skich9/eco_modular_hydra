@@ -63,7 +63,8 @@ class SoapClientFactory
             $xml = self::resolveWsdlImports($xml, $wsdl, $dir);
             file_put_contents($local, $xml);
         }
-		return new SoapClient($local, $options);
+        return new SoapClient($wsdl, $options);
+		//return new SoapClient($local, $options);
 	}
 
     /**
