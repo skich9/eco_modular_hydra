@@ -749,8 +749,9 @@ export class OtrosIngresosComponent implements OnInit, AfterViewInit, OnDestroy 
 		return (raw ?? '').replace(/[^\p{L}\s]/gu, '');
 	}
 
-	private static sanitizeSoloDigitos(raw: string): string {
-		return (raw ?? '').replace(/\D/g, '');
+	/** Nº depósito / transacción (depósito, tarjeta Linkser, transferencia): letras, números, espacio y guion. */
+	private static sanitizeNroReferenciaPago(raw: string): string {
+		return (raw ?? '').replace(/[^\p{L}\p{N}\s\-]/gu, '');
 	}
 
 	/**
@@ -1113,42 +1114,22 @@ export class OtrosIngresosComponent implements OnInit, AfterViewInit, OnDestroy 
 		}
 	}
 
-	/** Nº transacción (tarjeta): solo dígitos. */
+	/** Sufijo Nº operación tras prefijo Linkser (tarjeta): alfanumérico (+ espacio/guion). */
 	onNroTransaccionTarjetaSufijoChange(value: string): void {
-		const s = OtrosIngresosComponent.sanitizeSoloDigitos(value ?? '');
+		const s = OtrosIngresosComponent.sanitizeNroReferenciaPago(value ?? '');
 		if (s !== this.nroTransaccionTarjetaSufijo) {
 			this.nroTransaccionTarjetaSufijo = s;
 		}
 		this.sincronizarReqErrorsTrasEdicion();
 	}
 
-	/** Nº depósito (depósito/transferencia): solo dígitos; tarjeta usa otro campo. */
+	/** Nº depósito o referencia (depósito / transferencia): alfanumérico (+ espacio/guion). */
 	onNumDepositoChange(value: string): void {
-		const s = OtrosIngresosComponent.sanitizeSoloDigitos(value ?? '');
+		const s = OtrosIngresosComponent.sanitizeNroReferenciaPago(value ?? '');
 		if (s !== this.numDeposito) {
 			this.numDeposito = s;
 		}
 		this.sincronizarReqErrorsTrasEdicion();
-	}
-
-	onNroTransaccionSoloDigitosKeydown(ev: KeyboardEvent): void {
-		if (this.camposPagoSecundariosBloqueados) {
-			return;
-		}
-		if (ev.ctrlKey || ev.metaKey || ev.altKey) {
-			return;
-		}
-		if (ev.key.length !== 1) {
-			return;
-		}
-		if (!/[0-9]/.test(ev.key)) {
-			ev.preventDefault();
-		}
-	}
-
-	/** Solo dígitos en Nº depósito / Nº transacción (transferencia). */
-	onNumDepositoKeydown(ev: KeyboardEvent): void {
-		this.onNroTransaccionSoloDigitosKeydown(ev);
 	}
 
 	abrirModalFacturacion(): void {
