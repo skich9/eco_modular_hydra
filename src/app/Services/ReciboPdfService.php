@@ -322,12 +322,23 @@ class ReciboPdfService
 			else { $isBancario = true; }
 		}
 
-		$extras = [];
-		try {
-			$extras['fecha_dt'] = new \DateTime((string) ($recibo->created_at ?? 'now'), new \DateTimeZone('America/La_Paz'));
-		} catch (\Throwable $e) {
-			$extras['fecha_dt'] = new \DateTime('now', new \DateTimeZone('America/La_Paz'));
-		}
+        $extras = [];
+        $fechaCobro = '';
+        try {
+            foreach ($cobros as $cx) {
+                $co = (object) $cx;
+                $fc = trim((string) (isset($co->fecha_cobro) ? $co->fecha_cobro : ''));
+                if ($fc !== '') { $fechaCobro = $fc; break; }
+            }
+        } catch (\Throwable $e) {
+            $fechaCobro = '';
+        }
+        try {
+            $fechaBase = $fechaCobro !== '' ? $fechaCobro : (string) ($recibo->created_at ?? 'now');
+            $extras['fecha_dt'] = new \DateTime($fechaBase, new \DateTimeZone('America/La_Paz'));
+        } catch (\Throwable $e) {
+            $extras['fecha_dt'] = new \DateTime('now', new \DateTimeZone('America/La_Paz'));
+        }
 		try {
 			$codPensum = '';
 			if (!empty($cobros) && isset($cobros[0]) && isset($cobros[0]->cod_pensum)) {
@@ -540,12 +551,25 @@ class ReciboPdfService
 			$formaNombre = $formaId;
 		}
 
-		$extras = [];
-		try {
-			$extras['fecha_dt'] = new \DateTime((string) ($nb->fecha_nota ?? $reciboVirtual->created_at ?? 'now'), new \DateTimeZone('America/La_Paz'));
-		} catch (\Throwable $e) {
-			$extras['fecha_dt'] = new \DateTime('now', new \DateTimeZone('America/La_Paz'));
-		}
+        $extras = [];
+        $fechaCobro = '';
+        try {
+            foreach ($cobros as $cx) {
+                $co = (object) $cx;
+                $fc = trim((string) (isset($co->fecha_cobro) ? $co->fecha_cobro : ''));
+                if ($fc !== '') { $fechaCobro = $fc; break; }
+            }
+        } catch (\Throwable $e) {
+            $fechaCobro = '';
+        }
+        try {
+            $fechaBase = $fechaCobro !== ''
+                ? $fechaCobro
+                : (string) ($nb->fecha_nota ?? $reciboVirtual->created_at ?? 'now');
+            $extras['fecha_dt'] = new \DateTime($fechaBase, new \DateTimeZone('America/La_Paz'));
+        } catch (\Throwable $e) {
+            $extras['fecha_dt'] = new \DateTime('now', new \DateTimeZone('America/La_Paz'));
+        }
 		try {
 			$codPensum = '';
 			if (!empty($cobros) && isset($cobros[0]) && isset($cobros[0]->cod_pensum)) {
@@ -694,8 +718,21 @@ class ReciboPdfService
         }
 
         $extras = [];
+        $fechaCobro = '';
         try {
-            $extras['fecha_dt'] = new \DateTime((string) ($nb->fecha_nota ?? $recibo->created_at ?? 'now'), new \DateTimeZone('America/La_Paz'));
+            foreach ($cobros as $cx) {
+                $co = (object) $cx;
+                $fc = trim((string) (isset($co->fecha_cobro) ? $co->fecha_cobro : ''));
+                if ($fc !== '') { $fechaCobro = $fc; break; }
+            }
+        } catch (\Throwable $e) {
+            $fechaCobro = '';
+        }
+        try {
+            $fechaBase = $fechaCobro !== ''
+                ? $fechaCobro
+                : (string) ($nb->fecha_nota ?? $recibo->created_at ?? 'now');
+            $extras['fecha_dt'] = new \DateTime($fechaBase, new \DateTimeZone('America/La_Paz'));
         } catch (\Throwable $e) {
             $extras['fecha_dt'] = new \DateTime('now', new \DateTimeZone('America/La_Paz'));
         }
@@ -1484,7 +1521,9 @@ HTML;
     }
     private function renderHtmlOtro(object $recibo, array $cobros, ?object $est, array $extras = []): string
     {
-        $fechaDT = new \DateTime('now', new \DateTimeZone('America/La_Paz'));
+        $fechaDT = isset($extras['fecha_dt']) && $extras['fecha_dt'] instanceof \DateTimeInterface
+            ? $extras['fecha_dt']
+            : new \DateTime('now', new \DateTimeZone('America/La_Paz'));
         $fechaLiteral = $this->fechaLiteral($fechaDT);
         $total = (float)($recibo->monto_total ?? 0);
         $totalFmt = number_format($total, 2, '.', '');
@@ -1640,7 +1679,9 @@ HTML;
     }
     private function renderHtmlCombinado(object $recibo, array $cobros, ?object $est, array $extras = []): string
     {
-        $fechaDT = new \DateTime('now', new \DateTimeZone('America/La_Paz'));
+        $fechaDT = isset($extras['fecha_dt']) && $extras['fecha_dt'] instanceof \DateTimeInterface
+            ? $extras['fecha_dt']
+            : new \DateTime('now', new \DateTimeZone('America/La_Paz'));
         $fechaLiteral = $this->fechaLiteral($fechaDT);
         $total = (float)($recibo->monto_total ?? 0);
         $totalFmt = number_format($total, 2, '.', '');
