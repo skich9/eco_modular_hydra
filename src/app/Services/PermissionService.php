@@ -105,6 +105,39 @@ class PermissionService
 		return true;
 	}
 
+	/**
+	 * Sincroniza las funciones de un usuario.
+	 * Desactiva las funciones que no están en la lista y activa/crea las que sí están.
+	 */
+	public function syncFunctions(int $userId, array $functions, ?int $asignadoPor = null): bool
+	{
+		return DB::transaction(function () use ($userId, $functions, $asignadoPor) {
+			// 1. Desactivar todas las funciones actuales y marcarlas como sincronización manual
+			DB::table('asignacion_funcion')
+				->where('id_usuario', $userId)
+				->update([
+					'activo' => false,
+					'observaciones' => 'Sincronizado desde gestión de usuario',
+					'updated_at' => Carbon::now(),
+				]);
+
+			// 2. Activar/Insertar las nuevas
+			foreach ($functions as $funcionId) {
+				$this->assignFunction(
+					$userId,
+					$funcionId,
+					null, // fecha_ini por defecto hoy
+					null, // fecha_fin null
+					'Sincronizado desde gestión de usuario',
+					$asignadoPor
+				);
+			}
+
+			return true;
+		});
+	}
+
+
 	public function copyRoleFunctionsToUser(int $userId, int $rolId, bool $replace = false, ?int $asignadoPor = null): bool
 	{
 		$rol = Rol::with('funciones')->find($rolId);
@@ -114,14 +147,28 @@ class PermissionService
 		}
 
 		if ($replace) {
+			// Solo desactivar funciones que fueron copiadas del rol, NO los ajustes manuales
 			DB::table('asignacion_funcion')
 				->where('id_usuario', $userId)
+				->where('observaciones', 'like', 'Copiado desde rol%')
 				->update(['activo' => false, 'updated_at' => Carbon::now()]);
 		}
 
 		$fechaInicio = Carbon::now()->format('Y-m-d');
 
 		foreach ($rol->funciones as $funcion) {
+			// VERIFICACIÓN DE PROTECCIÓN: Si existe un ajuste manual (activo o inactivo), no sobrescribir
+			$tieneAjusteManual = DB::table('asignacion_funcion')
+				->where('id_usuario', $userId)
+				->where('id_funcion', $funcion->id_funcion)
+				->where('observaciones', 'not like', 'Copiado desde rol%')
+				->whereNotNull('observaciones')
+				->exists();
+
+			if ($tieneAjusteManual) {
+				continue; // Respetar el ajuste manual del usuario
+			}
+
 			$this->assignFunction(
 				$userId,
 				$funcion->id_funcion,
