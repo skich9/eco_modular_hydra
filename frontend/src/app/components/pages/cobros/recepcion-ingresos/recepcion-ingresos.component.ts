@@ -1,11 +1,13 @@
-import { Component, OnInit } from '@angular/core';
+import { Component, OnDestroy, OnInit } from '@angular/core';
 import { CommonModule, DecimalPipe } from '@angular/common';
 import { FormsModule } from '@angular/forms';
-import { RouterModule } from '@angular/router';
-import { firstValueFrom } from 'rxjs';
+import { Router, RouterModule, NavigationEnd } from '@angular/router';
+import { firstValueFrom, Subscription } from 'rxjs';
+import { filter } from 'rxjs/operators';
 import {
   RecepcionIngresosService,
   InitialData,
+  FilaListaRecepcionSga,
 } from '../../../../services/recepcion-ingresos.service';
 export interface FilaReporte {
   usuario_libro: string;
@@ -26,8 +28,18 @@ export interface FilaReporte {
   templateUrl: './recepcion-ingresos.component.html',
   styleUrls: ['./recepcion-ingresos.component.scss'],
 })
-export class RecepcionIngresosComponent implements OnInit {
+export class RecepcionIngresosComponent implements OnInit, OnDestroy {
 
+  private navSub?: Subscription;
+  pestana: 'recepcion' | 'lista' = 'recepcion';
+
+  // Lista recepción (SGA lista_recepcion)
+  listaRecepcion: FilaListaRecepcionSga[] = [];
+  mostrarModalAnular = false;
+  anularId: number | null = null;
+  anularCodDocumento = '';
+  motivoAnulacion = '';
+  anulando = false;
   // Catálogos
   catalogos: InitialData = {
     carreras: [], actividades: [], tesoreros: [],
@@ -72,10 +84,125 @@ export class RecepcionIngresosComponent implements OnInit {
 
   constructor(
     private readonly svc: RecepcionIngresosService,
+    private readonly router: Router,
   ) {}
 
   ngOnInit(): void {
-    this.cargarCatalogos();
+    void this.cargarCatalogos();
+    this.syncPestanaConUrl();
+
+    this.navSub = this.router.events
+      .pipe(filter((e): e is NavigationEnd => e instanceof NavigationEnd))
+      .subscribe(() => this.syncPestanaConUrl());
+  }
+
+  ngOnDestroy(): void {
+    this.navSub?.unsubscribe();
+  }
+
+  /** Misma pantalla en dos rutas: Angular reutiliza el componente; hay que leer la URL en cada navegación. */
+  private syncPestanaConUrl(): void {
+    const path = this.router.url.split('?')[0];
+    const esLista = path.includes('economico/lista-recepcion');
+    const antes = this.pestana;
+    this.pestana = esLista ? 'lista' : 'recepcion';
+    if (this.pestana === 'lista' && antes !== 'lista') {
+      void this.cargarListaRecepcion();
+    }
+  }
+
+  irFormularioRecepcion(): void {
+    void this.router.navigateByUrl('/cobros/recepcion-ingresos');
+  }
+
+  irListaRecepcion(): void {
+    void this.router.navigateByUrl('/economico/lista-recepcion');
+  }
+
+  async cargarListaRecepcion(): Promise<void> {
+    try {
+      this.listaRecepcion = await firstValueFrom(this.svc.listarTablaSga());
+    } catch {
+      this.listaRecepcion = [];
+      this.toast('Error al cargar la lista de recepciones.', false);
+    }
+  }
+
+  abrirModalAnular(row: FilaListaRecepcionSga): void {
+    this.anularId = row.id_recepcion;
+    this.anularCodDocumento = row.cod_documento;
+    this.motivoAnulacion = '';
+    this.mostrarModalAnular = true;
+  }
+
+  cerrarModalAnular(): void {
+    this.mostrarModalAnular = false;
+    this.anularId = null;
+    this.motivoAnulacion = '';
+  }
+
+  async confirmarAnulacion(): Promise<void> {
+    if (!this.motivoAnulacion?.trim()) {
+      this.toast('Debe ingresar un motivo de anulacion para poder anular', false);
+      return;
+    }
+    if (this.anularId == null) {
+      return;
+    }
+    this.anulando = true;
+    try {
+      await firstValueFrom(this.svc.anular(this.anularId, this.motivoAnulacion.trim()));
+      this.cerrarModalAnular();
+      await this.cargarListaRecepcion();
+    } catch (err: any) {
+      this.toast(err?.error?.message ?? 'Error al anular.', false);
+    } finally {
+      this.anulando = false;
+    }
+  }
+
+  async imprimirRecepcionLista(idRecepcion: number): Promise<void> {
+    try {
+      const pdf = await firstValueFrom(this.svc.documentoPdf(idRecepcion));
+      if (!pdf?.success || !pdf.url) {
+        window.alert('No se pudo generar el documento PDF por favor contacte con el administrador del sistema.');
+        return;
+      }
+      window.open(pdf.url, '_blank', 'noopener');
+    } catch {
+      window.alert('No se pudo generar el documento PDF por favor contacte con el administrador del sistema.');
+    }
+  }
+
+  /** Misma semántica que SGA lista_recepcion (row.anulado == 'f' → activa). Tolera JSON booleano/numérico. */
+  esListaNoAnulada(row: FilaListaRecepcionSga): boolean {
+    return !this.esRecepcionAnuladaLista(row);
+  }
+
+  private esRecepcionAnuladaLista(row: FilaListaRecepcionSga): boolean {
+    const a = row.anulado as unknown;
+    if (a === false || a === 0 || a === '0' || a === 'f' || a === 'F') {
+      return false;
+    }
+    if (a === true || a === 1 || a === '1' || a === 't' || a === 'T') {
+      return true;
+    }
+    if (typeof a === 'string') {
+      const s = a.trim().toLowerCase();
+      if (s === 'false' || s === 'no') {
+        return false;
+      }
+      if (s === 'true' || s === 'yes' || s === 'si' || s === 'sí') {
+        return true;
+      }
+    }
+    return false;
+  }
+
+  /** Texto mostrado al pasar el mouse sobre el ícono (motivo / observación de anulación). */
+  textoMotivoAnulacionLista(row: FilaListaRecepcionSga): string {
+    const m = row.motivo_anulacion?.trim() ?? '';
+    return m !== '' ? m : 'Sin observación de anulación registrada.';
   }
 
   // ─── Eventos UI ────────────────────────────────────────────────────────
