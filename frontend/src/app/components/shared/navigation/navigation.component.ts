@@ -72,6 +72,7 @@ export class NavigationComponent implements OnInit {
 			submenu: [
 				{ name: 'Facturación posterior', icon: 'fa-file-invoice-dollar', route: '/reimpresion/facturacion-posterior', permissionCode: 'reimpresion_facturacion_posterior' },
 				{ name: 'Nota de Reposición', icon: 'fa-file-alt', route: '/reimpresion/nota-reposicion-estudiante', permissionCode: 'economico_otros_ingresos' },
+				{ name: 'Nota de Reposición', icon: 'fa-file-alt', route: '/reimpresion/nota-reposicion', permissionCode: 'reimpresion_facturacion_posterior' },
 				{ name: 'Regenerar PDF factura', icon: 'fa-file-pdf', route: '/reimpresion/regenerar-factura', permissionCode: 'reimpresion_regenerar_pdf' },
 				{
 					name: 'Nota reposición otros ingresos',
