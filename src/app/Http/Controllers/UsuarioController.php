@@ -113,6 +113,7 @@ class UsuarioController extends Controller
                 'ci' => 'required|string|max:25|unique:usuarios,ci',
                 'estado' => 'required|boolean',
                 'id_rol' => 'required|exists:rol,id_rol',
+                'apoyoCobranzas' => 'nullable|boolean',
                 'id_actividad_economica' => 'nullable|exists:actividades_economicas,id_actividad_economica'
             ]);
 
@@ -204,6 +205,7 @@ class UsuarioController extends Controller
                 'ci' => ['sometimes', 'string', 'max:25', Rule::unique('usuarios')->ignore($id, 'id_usuario')],
                 'estado' => 'sometimes|boolean',
                 'id_rol' => 'sometimes|exists:rol,id_rol',
+                'apoyoCobranzas' => 'sometimes|boolean',
                 'id_actividad_economica' => 'nullable|exists:actividades_economicas,id_actividad_economica'
             ]);
 
@@ -211,7 +213,8 @@ class UsuarioController extends Controller
             $usuario->update($validated);
 
             // Si el rol cambió, sincronizar funciones
-            if (isset($validated['id_rol']) && $validated['id_rol'] != $oldRolId) {
+            if (isset($validated['id_rol']) && (int)$validated['id_rol'] !== (int)$oldRolId) {
+
                 $this->permissionService->copyRoleFunctionsToUser(
                     $usuario->id_usuario,
                     $validated['id_rol'],

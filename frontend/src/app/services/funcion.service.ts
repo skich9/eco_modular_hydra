@@ -81,7 +81,12 @@ export class FuncionService {
 		return this.http.delete<ApiResponse<void>>(`${this.apiUrl}/usuarios/${usuarioId}/funciones/${funcionId}`);
 	}
 
+	syncUsuarioFunciones(usuarioId: number, funciones: number[]): Observable<ApiResponse<void>> {
+		return this.http.post<ApiResponse<void>>(`${this.apiUrl}/usuarios/${usuarioId}/funciones/sync`, { funciones });
+	}
+
 	copiarFuncionesDeRol(usuarioId: number, request: CopiarFuncionesRolRequest): Observable<ApiResponse<void>> {
+
 		return this.http.post<ApiResponse<void>>(`${this.apiUrl}/usuarios/${usuarioId}/funciones/copy-from-role`, request);
 	}
 
