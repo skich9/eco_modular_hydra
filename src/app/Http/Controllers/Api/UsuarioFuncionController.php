@@ -179,7 +179,46 @@ class UsuarioFuncionController extends Controller
 		]);
 	}
 
+	public function sync(Request $request, $usuarioId)
+	{
+		$usuario = Usuario::find($usuarioId);
+
+		if (!$usuario) {
+			return response()->json([
+				'success' => false,
+				'message' => 'Usuario no encontrado'
+			], 404);
+		}
+
+		$validator = Validator::make($request->all(), [
+			'funciones' => 'required|array',
+			'funciones.*' => 'integer|exists:funciones,id_funcion'
+		]);
+
+		if ($validator->fails()) {
+			return response()->json([
+				'success' => false,
+				'message' => 'Error de validación',
+				'errors' => $validator->errors()
+			], 422);
+		}
+
+		$asignadoPor = $request->user()->id_usuario ?? null;
+
+		$this->permissionService->syncFunctions(
+			$usuarioId,
+			$request->funciones,
+			$asignadoPor
+		);
+
+		return response()->json([
+			'success' => true,
+			'message' => 'Funciones sincronizadas exitosamente'
+		]);
+	}
+
 	public function copyFromRole(Request $request, $usuarioId)
+
 	{
 		$usuario = Usuario::find($usuarioId);
 

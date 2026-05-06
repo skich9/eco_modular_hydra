@@ -93,6 +93,22 @@ export interface InitialData {
   usuarios_libros: { usuario: string }[];
 }
 
+/** Fila lista_recepcion SGA (get_list_recepcion). */
+export interface FilaListaRecepcionSga {
+  id_recepcion: number;
+  fecha_recepcion: string;
+  nombre_caja: string;
+  usuario_entregue1: string;
+  usuario_recibi1: string;
+  usuario_entregue2: string;
+  usuario_recibi2: string;
+  cod_documento: string;
+  observacion: string;
+  monto_total: number | null;
+  anulado: 't' | 'f';
+  motivo_anulacion: string;
+}
+
 // ─── Servicio ─────────────────────────────────────────────────────────────────
 
 @Injectable({ providedIn: 'root' })
@@ -124,6 +140,13 @@ export class RecepcionIngresosService {
       }
     });
     return this.http.get<any>(`${this.base}/listar`, { params });
+  }
+
+  /**
+   * Lista plana para grilla tipo SGA lista_recepcion (JSON array directo).
+   */
+  listarTablaSga(): Observable<FilaListaRecepcionSga[]> {
+    return this.http.get<FilaListaRecepcionSga[]>(`${this.base}/lista-tabla`);
   }
 
   /** Registra una nueva recepción de ingresos */

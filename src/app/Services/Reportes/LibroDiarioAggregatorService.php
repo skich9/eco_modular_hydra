@@ -435,7 +435,7 @@ class LibroDiarioAggregatorService
 			$qrRows = DB::table('qr_transacciones')
 				->whereIn('nro_recibo', $nros->all())
 				->orderBy('updated_at', 'desc')
-				->get(['nro_recibo', 'numeroordenoriginante']);
+				->get(['id_qr_transaccion', 'nro_recibo', 'numeroordenoriginante']);
 			foreach ($qrRows as $qr) {
 				$kR = (string) ($qr->nro_recibo ?? '');
 				if ($kR === '' || isset($qrByRec[$kR])) {
@@ -445,7 +445,56 @@ class LibroDiarioAggregatorService
 			}
 		}
 
-		return $rows->map(function ($r) use ($nbByRec, $nbByFac, $qrByRec) {
+		$qrAliasByObs = [];
+		foreach ($rows as $row) {
+			$obsTmp = trim((string) ($row->observaciones ?? ''));
+			if ($obsTmp === '') {
+				continue;
+			}
+			if (preg_match('/\[\s*QR[^\]]*\]\s*alias:([^\s|]+)/i', $obsTmp, $m) === 1) {
+				$aliasTmp = trim((string) ($m[1] ?? ''));
+				if ($aliasTmp !== '') {
+					$qrAliasByObs[$aliasTmp] = true;
+				}
+			}
+		}
+
+		$qrRespByAlias = [];
+		if (Schema::hasTable('qr_respuestas_banco') && $qrAliasByObs !== []) {
+			$qrRespAliasRows = DB::table('qr_respuestas_banco')
+				->whereIn('alias', array_keys($qrAliasByObs))
+				->orderBy('fecha_respuesta', 'desc')
+				->get(['alias', 'numeroordenoriginante', 'fecha_respuesta']);
+			foreach ($qrRespAliasRows as $resp) {
+				$aliasK = trim((string) ($resp->alias ?? ''));
+				if ($aliasK === '' || isset($qrRespByAlias[$aliasK])) {
+					continue;
+				}
+				$qrRespByAlias[$aliasK] = $resp;
+			}
+		}
+
+		$qrRespByTrx = [];
+		$qrTrxIds = collect($qrByRec)
+			->map(fn ($qr) => (int) ($qr->id_qr_transaccion ?? 0))
+			->filter(fn ($id) => $id > 0)
+			->unique()
+			->values();
+		if (Schema::hasTable('qr_respuestas_banco') && $qrTrxIds->count()) {
+			$qrRespRows = DB::table('qr_respuestas_banco')
+				->whereIn('id_qr_transaccion', $qrTrxIds->all())
+				->orderBy('fecha_respuesta', 'desc')
+				->get(['id_qr_transaccion', 'fecha_respuesta']);
+			foreach ($qrRespRows as $resp) {
+				$idTrx = (int) ($resp->id_qr_transaccion ?? 0);
+				if ($idTrx <= 0 || isset($qrRespByTrx[$idTrx])) {
+					continue;
+				}
+				$qrRespByTrx[$idTrx] = $resp;
+			}
+		}
+
+		return $rows->map(function ($r) use ($nbByRec, $nbByFac, $qrByRec, $qrRespByTrx, $qrRespByAlias) {
 			$kR = (string) ($r->nro_recibo ?? '');
 			$kF = (string) ($r->nro_factura ?? '');
 			$nb = null;
@@ -462,7 +511,23 @@ class LibroDiarioAggregatorService
 				$r->correlativo_nb = $nb->correlativo ?? null;
 			}
 			if ($kR !== '' && isset($qrByRec[$kR])) {
-				$r->qr_numero_originante = $qrByRec[$kR]->numeroordenoriginante ?? null;
+				$qrRec = $qrByRec[$kR];
+				$r->qr_numero_originante = $qrRec->numeroordenoriginante ?? null;
+				$idTrx = (int) ($qrRec->id_qr_transaccion ?? 0);
+				if ($idTrx > 0 && isset($qrRespByTrx[$idTrx])) {
+					$r->qr_fecha_respuesta = $qrRespByTrx[$idTrx]->fecha_respuesta ?? null;
+				}
+			}
+			if (empty($r->qr_numero_originante)) {
+				$obsTmp = trim((string) ($r->observaciones ?? ''));
+				if ($obsTmp !== '' && preg_match('/\[\s*QR[^\]]*\]\s*alias:([^\s|]+)/i', $obsTmp, $m) === 1) {
+					$aliasObs = trim((string) ($m[1] ?? ''));
+					if ($aliasObs !== '' && isset($qrRespByAlias[$aliasObs])) {
+						$respAlias = $qrRespByAlias[$aliasObs];
+						$r->qr_numero_originante = $respAlias->numeroordenoriginante ?? null;
+						$r->qr_fecha_respuesta = $respAlias->fecha_respuesta ?? ($r->qr_fecha_respuesta ?? null);
+					}
+				}
 			}
 			return $r;
 		});
@@ -941,14 +1006,27 @@ class LibroDiarioAggregatorService
 		$bancoQr = $this->bancoSoloNombre((string) ($c->banco_cuenta_cobro ?? ''));
 		$numeroOriginanteQr = trim((string) ($c->qr_numero_originante ?? ''));
 		if ($numeroOriginanteQr !== '') {
-			$fechaQr = substr((string) ($c->fecha_cobro ?? ''), 0, 10);
+			$fechaQr = substr((string) ($c->qr_fecha_respuesta ?? ''), 0, 10);
+			if ($fechaQr === '') {
+				$fechaQr = substr((string) ($c->fecha_cobro ?? ''), 0, 10);
+			}
 			if ($fechaQr === '') {
 				$fechaQr = (string) ($c->fecha_deposito ?? ($c->fecha_nota ?? ''));
 			}
 			$infoQr = trim((string) ($bancoQr !== '' ? $bancoQr : $this->bancoSoloNombre((string) ($c->banco_nb ?? ''))));
 			if ($infoQr !== '' && $fechaQr !== '') {
-				$qrObs = "Transferencia: {$infoQr}-{$numeroOriginanteQr}-{$fechaQr}";
-				return $obsOriginal !== '' ? ($qrObs . ' ' . $obsOriginal) : $qrObs;
+				$qrInfo = "{$infoQr}-{$numeroOriginanteQr}-{$fechaQr}";
+				$qrObsFormatted = "Transferencia: {$qrInfo}";
+				if ($obsOriginal !== '') {
+					$regexAlias = '/\[\s*QR[^\]]*\]\s*alias:[^\s|]+/i';
+					$obsBase = trim((string) preg_replace($regexAlias, '', $obsOriginal, 1));
+					$obsBase = trim((string) preg_replace('/^\|\s*|\s*\|$/', '', $obsBase));
+					if ($obsBase !== '') {
+						return "Transferencia: {$obsBase} | {$qrInfo}";
+					}
+					return $qrObsFormatted;
+				}
+				return $qrObsFormatted;
 			}
 		}
 

@@ -83,6 +83,35 @@ export class CobrosService {
 		);
 	}
 
+	/** SGA reimpresiones/comprobante_reposicion — búsqueda por clave documento 8 caracteres */
+	notaReposicionEstudianteBuscarDoc(nroSinGuiones: string): Observable<any> {
+		return this.http
+			.post<any>(`${this.apiUrl}/nota-reposicion-estudiante/buscar-doc`, { nro_nota_deposito: nroSinGuiones })
+			.pipe(map((res: any) => ({ success: !!res?.success, data: res?.data || [], message: res?.message })));
+	}
+
+	notaReposicionEstudianteBuscarFecha(fechaIni: string, fechaFin: string): Observable<any> {
+		return this.http
+			.post<any>(`${this.apiUrl}/nota-reposicion-estudiante/buscar-fecha`, { fecha_ini: fechaIni, fecha_fin: fechaFin })
+			.pipe(map((res: any) => ({ success: !!res?.success, data: res?.data || [], message: res?.message })));
+	}
+
+	notaReposicionEstudianteBuscarCodCeta(codCeta: number | string): Observable<any> {
+		return this.http
+			.post<any>(`${this.apiUrl}/nota-reposicion-estudiante/buscar-cod-ceta`, { cod_ceta: Number(codCeta) })
+			.pipe(map((res: any) => ({ success: !!res?.success, data: res?.data || [], message: res?.message })));
+	}
+
+	notaReposicionEstudiantePdf(numDocSinGuiones: string, cont: number): Observable<Blob> {
+		return this.http.post(`${this.apiUrl}/nota-reposicion-estudiante/pdf`, { num_doc: numDocSinGuiones, cont }, { responseType: 'blob' });
+	}
+
+	getEstudianteBasicoPorCodCeta(codCeta: number | string): Observable<any> {
+		return this.http
+			.get<any>(`${this.apiUrl}/estudiantes/${encodeURIComponent(String(codCeta))}/basico`)
+			.pipe(map((res: any) => ({ success: !!res?.success, data: res?.data || null, message: res?.message })));
+	}
+
 	// ===================== Estudiantes =====================
 	searchEstudiantes(params: { ap_paterno?: string; ap_materno?: string; nombres?: string; ci?: string; page?: number; per_page?: number }): Observable<any> {
 		let httpParams = new HttpParams();

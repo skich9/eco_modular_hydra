@@ -160,8 +160,35 @@ class NotaTraspasoPdfService
 
         // ── Fecha de nota ─────────────────────────
         $fechaNota = '';
+        $fechaCobro = '';
         try {
-            $fechaDT = new \DateTime((string) ($nota->fecha_nota ?? 'now'), new \DateTimeZone('America/La_Paz'));
+            if (!empty($nota->nro_recibo)) {
+                $fc = DB::table('cobro')
+                    ->where('anio_cobro', $anio)
+                    ->where('nro_recibo', (int) $nota->nro_recibo)
+                    ->whereNotNull('fecha_cobro')
+                    ->orderBy('fecha_cobro')
+                    ->value('fecha_cobro');
+                $fechaCobro = trim((string) (isset($fc) ? $fc : ''));
+            }
+            if ($fechaCobro === '' && !empty($nota->nro_factura)) {
+                $fc = DB::table('cobro')
+                    ->where('anio_cobro', $anio)
+                    ->where('nro_factura', (int) $nota->nro_factura)
+                    ->whereNotNull('fecha_cobro')
+                    ->orderBy('fecha_cobro')
+                    ->value('fecha_cobro');
+                $fechaCobro = trim((string) (isset($fc) ? $fc : ''));
+            }
+        } catch (\Throwable $e) {
+            $fechaCobro = '';
+        }
+
+        $fechaRaw = $fechaCobro !== ''
+            ? $fechaCobro
+            : trim((string) ($nota->fecha_nota ?? $nota->created_at ?? ''));
+        try {
+            $fechaDT = new \DateTime($fechaRaw !== '' ? $fechaRaw : 'now', new \DateTimeZone('America/La_Paz'));
             $fechaNota = $this->fechaConDiaSemana($fechaDT);
         } catch (\Throwable $e) {
             $fechaNota = '';

@@ -42,11 +42,20 @@ use App\Http\Controllers\Api\ReporteLibroDiarioController;
 use App\Http\Controllers\Api\LibroDiarioController;
 use App\Http\Controllers\Api\Economico\OtrosIngresosController;
 use App\Http\Controllers\Api\Economico\ModOtrosIngresosController;
+use App\Http\Controllers\Api\Economico\ReimpresionReposicionOtrosIngresosController;
 use App\Http\Controllers\Api\Economico\RecepcionIngresoController;
 use App\Http\Controllers\Api\ReporteRecepcionIngresoDepositoController;
 
 // Búsqueda de estudiantes
 Route::get('/estudiantes/search', [EstudianteController::class, 'search']);
+Route::get('/estudiantes/{cod_ceta}/basico', [EstudianteController::class, 'basicoPorCodCeta'])
+	->whereNumber('cod_ceta');
+
+// Reimpresión nota de reposición (estudiante / efectivo cobros — tabla nota_reposicion)
+Route::post('nota-reposicion-estudiante/buscar-doc', [\App\Http\Controllers\Api\NotaReposicionEstudianteReimpresionController::class, 'buscarPorDocumento']);
+Route::post('nota-reposicion-estudiante/buscar-fecha', [\App\Http\Controllers\Api\NotaReposicionEstudianteReimpresionController::class, 'buscarPorFecha']);
+Route::post('nota-reposicion-estudiante/buscar-cod-ceta', [\App\Http\Controllers\Api\NotaReposicionEstudianteReimpresionController::class, 'buscarPorCodCeta']);
+Route::post('nota-reposicion-estudiante/pdf', [\App\Http\Controllers\Api\NotaReposicionEstudianteReimpresionController::class, 'generarPdf']);
 
 /*
 --------------------------------------------------------------------------
@@ -146,6 +155,12 @@ Route::middleware('auth:sanctum')->group(function () {
 		Route::post('factura-existe', [OtrosIngresosController::class, 'facturaExiste']);
 		Route::post('recibo-existe', [OtrosIngresosController::class, 'reciboExiste']);
 		Route::post('registrar', [OtrosIngresosController::class, 'registrar']);
+
+		Route::prefix('reimpresion-reposicion-otros-ingresos')->group(function () {
+			Route::post('buscar-fecha', [ReimpresionReposicionOtrosIngresosController::class, 'buscarPorFecha']);
+			Route::post('buscar-doc', [ReimpresionReposicionOtrosIngresosController::class, 'buscarPorDocumento']);
+			Route::post('generar-nota', [ReimpresionReposicionOtrosIngresosController::class, 'generarNotaReposicion']);
+		});
 	});
 	Route::prefix('economico/mod-otros-ingresos')->group(function () {
 		Route::get('initial', [ModOtrosIngresosController::class, 'initialData']);
@@ -159,6 +174,7 @@ Route::middleware('auth:sanctum')->group(function () {
 		Route::get('initial', [RecepcionIngresoController::class, 'initialData']);
 		Route::get('siguiente-num-documento', [RecepcionIngresoController::class, 'siguienteNumDocumento']);
 		Route::get('listar', [RecepcionIngresoController::class, 'listar']);
+		Route::get('lista-tabla', [RecepcionIngresoController::class, 'listarTablaSga']);
 		Route::post('registrar', [RecepcionIngresoController::class, 'registrar']);
 		Route::post('generar-reporte', [RecepcionIngresoController::class, 'generarReporte']);
 		Route::post('imprimir-estructura-pdf', [ReporteRecepcionIngresoDepositoController::class, 'imprimirEstructura']);
@@ -546,7 +562,9 @@ Route::middleware('auth:sanctum')->group(function () {
 	Route::post('usuarios/{usuarioId}/funciones', [\App\Http\Controllers\Api\UsuarioFuncionController::class, 'store']);
 	Route::put('usuarios/{usuarioId}/funciones/{funcionId}', [\App\Http\Controllers\Api\UsuarioFuncionController::class, 'update']);
 	Route::delete('usuarios/{usuarioId}/funciones/{funcionId}', [\App\Http\Controllers\Api\UsuarioFuncionController::class, 'destroy']);
+	Route::post('usuarios/{usuarioId}/funciones/sync', [\App\Http\Controllers\Api\UsuarioFuncionController::class, 'sync']);
 	Route::post('usuarios/{usuarioId}/funciones/copy-from-role', [\App\Http\Controllers\Api\UsuarioFuncionController::class, 'copyFromRole']);
+
 	Route::post('usuarios/{usuarioId}/funciones/check-permission', [\App\Http\Controllers\Api\UsuarioFuncionController::class, 'checkPermission']);
 });
 
