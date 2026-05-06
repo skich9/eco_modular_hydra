@@ -119,6 +119,18 @@ class RecepcionIngresoController extends Controller
         return response()->json(['success' => true, 'data' => $datos]);
     }
 
+    /**
+     * GET /api/economico/recepcion-ingresos/lista-tabla
+     *
+     * Arreglo plano compatible con la grilla SGA `lista_recepcion/get_list_recepcion`.
+     */
+    public function listarTablaSga(): JsonResponse
+    {
+        $filas = $this->service->listarTablaRecepcionSga();
+
+        return response()->json($filas);
+    }
+
     // ─── Generar reporte ─────────────────────────────────────────────────────
 
     /**
@@ -175,10 +187,17 @@ class RecepcionIngresoController extends Controller
     public function anular(Request $request, int $id): JsonResponse
     {
         $validated = $request->validate([
-            'motivo' => 'required|string|min:5|max:500',
+            'motivo' => 'required|string|max:500',
         ]);
+        $motivo = trim($validated['motivo']);
+        if ($motivo === '') {
+            return response()->json([
+                'success' => false,
+                'message' => 'Debe ingresar un motivo de anulación.',
+            ], 422);
+        }
 
-        $ok = $this->service->anular($id, $validated['motivo']);
+        $ok = $this->service->anular($id, $motivo);
 
         if (!$ok) {
             return response()->json([

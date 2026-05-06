@@ -50,6 +50,21 @@ class ReciboPdfService
         return $literal;
     }
 
+    /**
+     * Logo de cabecera de recibo/nota: escala hasta un alto máximo similar al bloque de título (3 líneas + borde).
+     * object-fit:contain mantiene proporción; overflow en el contenedor evita que logos muy grandes desplacen el resto de la hoja.
+     */
+    private function buildReciboCabeceraLogoHtml(string $logo): string
+    {
+        if ($logo === '') {
+            return '';
+        }
+
+        return '<div style="max-height:2.5cm;max-width:100%;margin:0 auto;overflow:hidden;line-height:0;text-align:center;">'
+            . '<img src="' . $logo . '" alt="Logo" style="display:block;margin:0 auto;max-height:2.5cm;max-width:100%;width:auto;height:auto;object-fit:contain;border:0;" />'
+            . '</div>';
+    }
+
 	private function mapMesFromCuota(?string $gestion, ?int $numeroCuota): ?string
 	{
 		if (!$numeroCuota || $numeroCuota <= 0) { return null; }
@@ -112,7 +127,7 @@ class ReciboPdfService
 		return null;
 	}
 
-	private function resolveCarreraNombre(?string $codPensum): string
+	public function resolveCarreraNombre(?string $codPensum): string
 	{
 		$codPensum = trim((string) $codPensum);
 		if ($codPensum === '') { return ''; }
@@ -824,7 +839,7 @@ class ReciboPdfService
         $obsLinea = implode(' | ', array_unique(array_filter($observaciones)));
         $carrera = (string)($extras['carrera'] ?? '');
         $logo = (string)($extras['logo'] ?? '');
-        $logoHtml = $logo ? ('<img src="' . $logo . '" width="60" height="60" />') : '';
+        $logoHtml = $this->buildReciboCabeceraLogoHtml($logo);
         $nb = isset($extras['nota']) ? $extras['nota'] : null;
         $dest = isset($extras['dest']) ? $extras['dest'] : null;
         $bancoDest = $dest ? ((string)($dest->banco ?? '')) : '';
@@ -838,7 +853,7 @@ class ReciboPdfService
 <head>
     <meta charset="utf-8" />
     <style>
-        @page { size: 8.5in 5.5in; margin: 3mm; }
+        @page { size: 8.5in 5.5in; margin: 0.5cm; }
         body { font-family: DejaVu Sans, sans-serif; font-size: 8.7pt; line-height: 1.12; }
         .right { text-align:right; }
         .small { font-size: 8pt; color: #333; }
@@ -853,8 +868,8 @@ class ReciboPdfService
     <body>
         <table class="sinborde" style="width:100%">
             <tr>
-                <td style="width:20%; text-align:center; vertical-align:top">{$logoHtml}</td>
-                <td style="width:80%; text-align:center; vertical-align:top">
+                <td style="width:30%; text-align:center; vertical-align:middle">{$logoHtml}</td>
+                <td style="width:70%; text-align:center; vertical-align:top">
                     <div style="font-size:13pt; color:black; font-weight:bold;">Instituto Tecnológico de Enseñanza Automotriz CETA S.R.L.</div>
                     <div style="font-size:11pt; color:black; font-weight:bold;">Carrera: {$carrera}</div>
                     <div style="font-size:12pt; color:black; font-weight:bold; border-top:2px solid #000; margin-top:3px; padding-top:3px;">NOTA PAGO CON TARJETA</div>
@@ -1006,7 +1021,7 @@ HTML;
         $obsLinea = implode(' | ', array_unique(array_filter($observaciones)));
         $carrera = (string)($extras['carrera'] ?? '');
         $logo = (string)($extras['logo'] ?? '');
-        $logoHtml = $logo ? ('<img src="' . $logo . '" width="60" height="60" />') : '';
+        $logoHtml = $this->buildReciboCabeceraLogoHtml($logo);
         $nb = isset($extras['nota']) ? $extras['nota'] : null;
         $dest = isset($extras['dest']) ? $extras['dest'] : null;
         $bancoDest = $dest ? ((string)($dest->banco ?? '')) : '';
@@ -1031,7 +1046,7 @@ HTML;
 <head>
     <meta charset="utf-8" />
     <style>
-        @page { size: 8.5in 5.5in; margin: 3mm; }
+        @page { size: 8.5in 5.5in; margin: 0.5cm; }
         body { font-family: DejaVu Sans, sans-serif; font-size: 8.7pt; line-height: 1.12; }
         .right { text-align:right; }
         .small { font-size: 8pt; color: #333; }
@@ -1046,7 +1061,7 @@ HTML;
     <body>
         <table class="sinborde" style="width:100%">
             <tr>
-                <td style="width:20%; text-align:center; vertical-align:top">{$logoHtml}</td>
+                <td style="width:20%; text-align:center; vertical-align:middle">{$logoHtml}</td>
                 <td style="width:80%; text-align:center; vertical-align:top">
                     <div style="font-size:13pt; color:black; font-weight:bold;">Instituto Tecnológico de Enseñanza Automotriz CETA S.R.L.</div>
                     <div style="font-size:11pt; color:black; font-weight:bold;">Carrera: {$carrera}</div>
@@ -1193,7 +1208,7 @@ HTML;
         $obsLinea = implode(' | ', array_unique(array_filter($observaciones)));
         $carrera = (string)($extras['carrera'] ?? '');
         $logo = (string)($extras['logo'] ?? '');
-        $logoHtml = $logo ? ('<img src="' . $logo . '" width="60" height="60" />') : '';
+        $logoHtml = $this->buildReciboCabeceraLogoHtml($logo);
         $nb = isset($extras['nota']) ? $extras['nota'] : null;
         $dest = isset($extras['dest']) ? $extras['dest'] : null;
         $bancoDest = $dest ? ((string)($dest->banco ?? '')) : '';
@@ -1208,7 +1223,7 @@ HTML;
 <head>
     <meta charset="utf-8" />
     <style>
-        @page { size: 8.5in 5.5in; margin: 3mm; }
+        @page { size: 8.5in 5.5in; margin: 0.5cm; }
         body { font-family: DejaVu Sans, sans-serif; font-size: 8.7pt; line-height: 1.12; }
         .right { text-align:right; }
         .small { font-size: 8pt; color: #333; }
@@ -1223,7 +1238,7 @@ HTML;
     <body>
         <table class="sinborde" style="width:100%">
             <tr>
-                <td style="width:20%; text-align:center; vertical-align:top">{$logoHtml}</td>
+                <td style="width:20%; text-align:center; vertical-align:middle">{$logoHtml}</td>
                 <td style="width:80%; text-align:center; vertical-align:top">
                     <div style="font-size:13pt; color:black; font-weight:bold;">Instituto Tecnológico de Enseñanza Automotriz CETA S.R.L.</div>
                     <div style="font-size:11pt; color:black; font-weight:bold;">Carrera: {$carrera}</div>
@@ -1371,7 +1386,7 @@ HTML;
         $obsLinea = implode(' | ', array_unique(array_filter($observaciones)));
         $carrera = (string)($extras['carrera'] ?? '');
         $logo = (string)($extras['logo'] ?? '');
-        $logoHtml = $logo ? ('<img src="' . $logo . '" width="60" height="60" />') : '';
+        $logoHtml = $this->buildReciboCabeceraLogoHtml($logo);
         $nb = isset($extras['nota']) ? $extras['nota'] : null;
         $dest = isset($extras['dest']) ? $extras['dest'] : null;
         $bancoDest = $dest ? ((string)($dest->banco ?? '')) : '';
@@ -1384,7 +1399,7 @@ HTML;
 <head>
     <meta charset="utf-8" />
     <style>
-        @page { size: 8.5in 5.5in; margin: 3mm; }
+        @page { size: 8.5in 5.5in; margin: 0.5cm; }
         body { font-family: DejaVu Sans, sans-serif; font-size: 8.7pt; line-height: 1.12; }
         .right { text-align:right; }
         .small { font-size: 8pt; color: #333; }
@@ -1399,7 +1414,7 @@ HTML;
     <body>
         <table class="sinborde" style="width:100%">
             <tr>
-                <td style="width:20%; text-align:center; vertical-align:top">{$logoHtml}</td>
+                <td style="width:20%; text-align:center; vertical-align:middle">{$logoHtml}</td>
                 <td style="width:80%; text-align:center; vertical-align:top">
                     <div style="font-size:13pt; color:black; font-weight:bold;">Instituto Tecnológico de Enseñanza Automotriz CETA S.R.L.</div>
                     <div style="font-size:11pt; color:black; font-weight:bold;">Carrera: {$carrera}</div>
@@ -1540,7 +1555,7 @@ HTML;
         $obsLinea = implode(' | ', array_unique(array_filter($observaciones)));
         $carrera = (string)($extras['carrera'] ?? '');
         $logo = (string)($extras['logo'] ?? '');
-        $logoHtml = $logo ? ('<img src="' . $logo . '" width="60" height="60" />') : '';
+        $logoHtml = $this->buildReciboCabeceraLogoHtml($logo);
         $docLine = 'F- ' . ((string)($recibo->nro_factura ?? '0')) . ', R- ' . ((string)($recibo->nro_recibo ?? ''));
 
         $html = <<<HTML
@@ -1549,7 +1564,7 @@ HTML;
 <head>
     <meta charset="utf-8" />
     <style>
-        @page { size: 8.5in 5.5in; margin: 3mm; }
+        @page { size: 8.5in 5.5in; margin: 0.5cm; }
         body { font-family: DejaVu Sans, sans-serif; font-size: 8.7pt; line-height: 1.12; }
         .right { text-align:right; }
         .small { font-size: 8pt; color: #333; }
@@ -1564,7 +1579,7 @@ HTML;
     <body>
         <table class="sinborde" style="width:100%">
             <tr>
-                <td style="width:20%; text-align:center; vertical-align:top">{$logoHtml}</td>
+                <td style="width:20%; text-align:center; vertical-align:middle">{$logoHtml}</td>
                 <td style="width:80%; text-align:center; vertical-align:top">
                     <div style="font-size:13pt; color:black; font-weight:bold;">Instituto Tecnológico de Enseñanza Automotriz CETA S.R.L.</div>
                     <div style="font-size:11pt; color:black; font-weight:bold;">Carrera: {$carrera}</div>
@@ -1711,7 +1726,7 @@ HTML;
         $obsLinea = implode(' | ', array_unique(array_filter($observaciones)));
         $carrera = (string)($extras['carrera'] ?? '');
         $logo = (string)($extras['logo'] ?? '');
-        $logoHtml = $logo ? ('<img src="' . $logo . '" width="60" height="60" />') : '';
+        $logoHtml = $this->buildReciboCabeceraLogoHtml($logo);
         // Construir filas dinámicas Método/Monto
         $order = ['EFECTIVO','TARJETA','CHEQUE','DEPOSITO','TRANSFERENCIA','OTRO'];
         $rows = '';
@@ -1728,7 +1743,7 @@ HTML;
 <head>
     <meta charset="utf-8" />
     <style>
-        @page { size: 8.5in 5.5in; margin: 3mm; }
+        @page { size: 8.5in 5.5in; margin: 0.5cm; }
         body { font-family: DejaVu Sans, sans-serif; font-size: 8.7pt; line-height: 1.12; }
         .right { text-align:right; }
         .small { font-size: 8pt; color: #333; }
@@ -1743,7 +1758,7 @@ HTML;
     <body>
         <table class="sinborde" style="width:100%">
             <tr>
-                <td style="width:20%; text-align:center; vertical-align:top">{$logoHtml}</td>
+                <td style="width:20%; text-align:center; vertical-align:middle">{$logoHtml}</td>
                 <td style="width:80%; text-align:center; vertical-align:top">
                     <div style="font-size:13pt; color:black; font-weight:bold;">Instituto Tecnológico de Enseñanza Automotriz CETA S.R.L.</div>
                     <div style="font-size:11pt; color:black; font-weight:bold;">Carrera: {$carrera}</div>
@@ -1848,7 +1863,7 @@ HTML;
 
 		$carrera = (string)($extras['carrera'] ?? '');
 		$logo = (string)($extras['logo'] ?? '');
-		$logoHtml = $logo ? ('<img src="' . $logo . '" width="60" height="60" />') : '';
+		$logoHtml = $this->buildReciboCabeceraLogoHtml($logo);
 
     $html = <<<HTML
 <!DOCTYPE html>
@@ -1856,7 +1871,7 @@ HTML;
 <head>
     <meta charset="utf-8" />
     <style>
-        @page { size: 8.5in 5.5in; margin: 3mm; }
+        @page { size: 8.5in 5.5in; margin: 0.5cm; }
         body { font-family: DejaVu Sans, sans-serif; font-size: 8.7pt; line-height: 1.12; }
         .encabezado { text-align:center; font-weight:bold; }
         .titulo { color:#1E2768; font-size: 10.5pt; font-weight:bold; margin-top: 0; text-align:center; }
@@ -1875,14 +1890,14 @@ HTML;
     <body>
         <table class="sinborde" style="width:100%">
             <tr>
-                <td style="width:20%; text-align:center; vertical-align:top">{$logoHtml}</td>
+                <td style="width:20%; text-align:center; vertical-align:middle">{$logoHtml}</td>
                 <td style="width:80%; text-align:center; vertical-align:top">
                     <div style="font-size:13pt; color:black; font-weight:bold;">Instituto Tecnológico de Enseñanza Automotriz CETA S.R.L.</div>
-                    <div style="font-size:11pt; color:black; font-weight:bold; border-bottom:2px solid #000; padding-bottom:3px;">Carrera: {$carrera}</div>
+                    <div style="font-size:11pt; color:black; font-weight:bold;">Carrera: {$carrera}</div>
+                    <div class="titulo" style="border-top:2px solid #000; margin-top:3px; padding-top:4px;">NOTA DE REPOSICIÓN</div>
                 </td>
             </tr>
         </table>
-        <div class="titulo">NOTA DE REPOSICIÓN</div>
         <table class="sinborde" style="width:100%; margin-top:2px">
             <tr>
                 <td style="width:60%"></td>
@@ -1954,4 +1969,184 @@ HTML;
 HTML;
         return $html;
     }
+
+	/**
+	 * Misma maqueta, tamaño de hoja y embebido del logo público ({@see buildPdf}, {@see renderHtml}) que el PDF del recibo con reposición.
+	 *
+	 * @param  string|null  $detalleConceptoPie  Texto segunda sección «Detalle:» del duplicado (p. ej. concepto_est); si vacío, se usa {@see $detalleAdministrativo}.
+	 */
+	public function buildPdfNotaReposicionEstudianteReimpresion(
+		\DateTimeInterface $fechaNota,
+		string $carrera,
+		int $correlativoNotaReposicion,
+		string $nombreEstudiante,
+		string|int $codCeta,
+		float $monto,
+		string $detalleAdministrativo,
+		?string $detalleConceptoPie,
+		string $observacionesLinea,
+		string $numReciboDisplay,
+		string $usuarioNombre,
+	): string {
+		$h = fn (string $s): string => htmlspecialchars($s, ENT_QUOTES | ENT_SUBSTITUTE, 'UTF-8');
+
+		$fechaLiteral = $this->fechaLiteral($fechaNota);
+		$totalFmt = number_format($monto, 2, '.', '');
+		$literal = $this->numToLiteral($monto);
+
+		$detallePie = trim((string) $detalleConceptoPie);
+		if ($detallePie === '') {
+			$detallePie = $detalleAdministrativo;
+		}
+
+		$eNumero = (string) (int) $correlativoNotaReposicion;
+
+		$logoHtml = '';
+		try {
+			$logoPath = public_path('img/logo.png');
+			if (is_string($logoPath) && $logoPath !== '' && file_exists($logoPath)) {
+				$raw = file_get_contents($logoPath);
+				if ($raw !== false && $raw !== '') {
+					$dataUri = 'data:image/png;base64,'.base64_encode($raw);
+					$logoHtml = $this->buildReciboCabeceraLogoHtml($dataUri);
+				} else {
+					$logoPathNorm = str_replace('\\', '/', $logoPath);
+					$fileUrl = 'file:///'.ltrim($logoPathNorm, '/');
+					$logoHtml = $this->buildReciboCabeceraLogoHtml($fileUrl);
+				}
+			}
+		} catch (\Throwable) {
+			$logoHtml = '';
+		}
+
+		$carreraEsc = $h($carrera);
+		$nombreEsc = $h($nombreEstudiante);
+		$codEsc = $h((string) $codCeta);
+		$detEsc = $h($detalleAdministrativo);
+		$detPieEsc = $h($detallePie);
+		$obsEsc = $h($observacionesLinea);
+		$nroRecEsc = $h($numReciboDisplay ?: 'S/N');
+		$usuarioEsc = $h($usuarioNombre);
+		$fechaLitEsc = $h($fechaLiteral);
+		$literalEsc = $h($literal);
+		$eNumEsc = $h($eNumero);
+
+		$html = <<<HTML
+<!DOCTYPE html>
+<html lang="es">
+<head>
+    <meta charset="utf-8" />
+    <style>
+        @page { size: 8.5in 5.5in; margin: 0.5cm; }
+        body { font-family: DejaVu Sans, sans-serif; font-size: 8.7pt; line-height: 1.12; }
+        .encabezado { text-align:center; font-weight:bold; }
+        .titulo { color:#1E2768; font-size: 10.5pt; font-weight:bold; margin-top: 0; text-align:center; }
+        .right { text-align:right; }
+        .small { font-size: 8pt; color: #333; }
+        .tabla { width:100%; border-collapse: collapse; page-break-inside: avoid; }
+        .tabla tr, .tabla td, .tabla th { page-break-inside: avoid; }
+        .tabla th, .tabla td { border: 1px solid #000; padding: 2px; }
+        .sinborde td { border: none; }
+        .label { background:#C8C8C8; font-weight:bold; }
+        .firma { border-top:1px solid #000; padding-top:3px; }
+        .separador { border-bottom:2px dotted #000; margin: 4px 0; }
+    </style>
+    <title>{$nroRecEsc}</title>
+    </head>
+    <body>
+        <table class="sinborde" style="width:100%">
+            <tr>
+                <td style="width:20%; text-align:center; vertical-align:middle">{$logoHtml}</td>
+                <td style="width:80%; text-align:center; vertical-align:top">
+                    <div style="font-size:13pt; color:black; font-weight:bold;">Instituto Tecnológico de Enseñanza Automotriz CETA S.R.L.</div>
+                    <div style="font-size:11pt; color:black; font-weight:bold;">Carrera: {$carreraEsc}</div>
+                    <div class="titulo" style="border-top:2px solid #000; margin-top:3px; padding-top:4px;">NOTA DE REPOSICIÓN</div>
+                </td>
+            </tr>
+        </table>
+        <table class="sinborde" style="width:100%; margin-top:2px">
+            <tr>
+                <td style="width:60%"></td>
+                <td class="right" style="width:40%">
+                    ING-1<br>
+                    N° E-{$eNumEsc}<br>
+                    {$fechaLitEsc}
+                </td>
+            </tr>
+        </table>
+
+        <table class="tabla" style="margin-top:4px">
+            <tr>
+                <td class="label" style="width:20%">&nbsp;Estudiante:</td>
+                <td style="width:80%">{$nombreEsc}</td>
+            </tr>
+            <tr>
+                <td class="label">&nbsp;Código CETA:</td>
+                <td>{$codEsc}</td>
+            </tr>
+        </table>
+
+        <table class="sinborde" style="width:100%; margin-top:3px">
+            <tr>
+                <td style="width:70%">
+                    <div style="color:#0B2161; font-weight:bold">MONTO:</div>
+                    <div><span style="color:#0B2161; font-weight:bold">Literal:</span> {$literalEsc}</div>
+                    <div><span style="color:#0B2161; font-weight:bold">Detalle:</span> {$detEsc}</div>
+                    <div><span style="color:#0B2161; font-weight:bold">Observación:</span> {$obsEsc}</div>
+                    <div><span style="color:#0B2161; font-weight:bold">Recibo:</span> {$nroRecEsc}</div>
+                </td>
+                <td class="right" style="width:30%; vertical-align:top"><div style="font-weight:bold">{$totalFmt}</div></td>
+            </tr>
+        </table>
+
+        <table class="sinborde" style="width:100%; margin-top:2px">
+            <tr>
+                <td style="width:60%"></td>
+                <td style="width:40%" class="firma">{$usuarioEsc} - Firma:</td>
+            </tr>
+        </table>
+        <div class="separador"></div>
+
+        <div class="right" style="margin-top:6px; font-weight:bold">Bs. {$totalFmt}</div>
+
+        <table class="sinborde" style="width:100%; margin-top:3px">
+            <tr>
+                <td style="width:60%; vertical-align:top">
+                    <div><span style="font-weight:bold">Estudiante:</span> {$nombreEsc}</div>
+                    <div><span style="font-weight:bold">Código CETA:</span> {$codEsc}</div>
+                    <div><span style="font-weight:bold">Detalle:</span> {$detPieEsc}</div>
+                    <div><span style="font-weight:bold">Observación:</span> {$obsEsc}</div>
+                </td>
+                <td class="right" style="width:40%">
+                    N° E-{$eNumEsc}<br>
+                    {$fechaLitEsc}
+                </td>
+            </tr>
+        </table>
+
+        <table class="sinborde" style="width:100%; margin-top:3px">
+            <tr>
+                <td class="small" style="border-top:1px solid #000; padding-top:3px">&nbsp;</td>
+                <td class="small right" style="border-top:1px solid #000; padding-top:3px">usuario: {$usuarioEsc}</td>
+            </tr>
+        </table>
+    </body>
+    </html>
+HTML;
+
+		$dompdf = new Dompdf([
+			'isRemoteEnabled' => true,
+			'isHtml5ParserEnabled' => true,
+			'isPhpEnabled' => true,
+		]);
+		$dompdf->loadHtml($html, 'UTF-8');
+		$dompdf->setPaper([8.5 * 72, 5.5 * 72]);
+		$dompdf->render();
+		$pdf = $dompdf->output();
+		if (empty($pdf)) {
+			throw new \RuntimeException('PDF generado está vacío');
+		}
+
+		return $pdf;
+	}
 }

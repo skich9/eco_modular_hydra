@@ -389,6 +389,158 @@ class RecepcionIngresoService
         return $query->paginate($perPage)->toArray();
     }
 
+    /**
+     * Lista plana para la grilla tipo SGA `economico/lista_recepcion/get_list_recepcion`.
+     * Sin paginación; `anulado` como 't'|'f' para la misma condición en el front que DataTables SGA.
+     *
+     * @return list<array<string, mixed>>
+     */
+    public function listarTablaRecepcionSga(): array
+    {
+        if (! Schema::hasTable('recepcion_ingresos')) {
+            return [];
+        }
+
+        $aeJoin = Schema::hasTable('actividades_economicas');
+
+        $q = DB::table('recepcion_ingresos as r')
+            ->orderByDesc('r.fecha_recepcion')
+            ->orderByDesc('r.id');
+
+        if ($aeJoin) {
+            $q->leftJoin(
+                'actividades_economicas as ae',
+                'r.id_actividad_economica',
+                '=',
+                'ae.id_actividad_economica'
+            );
+        }
+
+        $select = [
+            'r.id as id_recepcion',
+            'r.fecha_recepcion',
+            'r.usuario_entregue1',
+            'r.usuario_recibi1',
+            'r.usuario_entregue2',
+            'r.usuario_recibi2',
+            'r.cod_documento',
+            'r.observacion',
+            'r.monto_total',
+            'r.anulado',
+            'r.motivo_anulacion',
+            $aeJoin
+                ? DB::raw("COALESCE(ae.nombre, '') as nombre_caja")
+                : DB::raw("'' as nombre_caja"),
+        ];
+
+        $rows = $q->select($select)->get();
+
+        $mapNombrePorNickname = $this->mapaNombreCompletoPorNicknameRecepcion($rows);
+
+        $out = [];
+        foreach ($rows as $row) {
+            $row = (array) $row;
+            $fecha = $row['fecha_recepcion'] ?? null;
+            $fechaStr = $fecha
+                ? Carbon::parse((string) $fecha)->format('Y-m-d')
+                : '';
+
+            $rawAnul = $row['anulado'] ?? false;
+            $anul = $rawAnul === true
+                || $rawAnul === 1
+                || $rawAnul === '1'
+                || $rawAnul === 't'
+                || $rawAnul === 'true';
+
+            $out[] = [
+                'id_recepcion'       => (int) ($row['id_recepcion'] ?? 0),
+                'fecha_recepcion'    => $fechaStr,
+                'nombre_caja'        => (string) ($row['nombre_caja'] ?? ''),
+                'usuario_entregue1'  => $this->etiquetaFirmaRecepcionLista((string) ($row['usuario_entregue1'] ?? ''), $mapNombrePorNickname),
+                'usuario_recibi1'    => $this->etiquetaFirmaRecepcionLista((string) ($row['usuario_recibi1'] ?? ''), $mapNombrePorNickname),
+                'usuario_entregue2'  => $this->etiquetaFirmaRecepcionLista((string) ($row['usuario_entregue2'] ?? ''), $mapNombrePorNickname),
+                'usuario_recibi2'    => $this->etiquetaFirmaRecepcionLista((string) ($row['usuario_recibi2'] ?? ''), $mapNombrePorNickname),
+                'cod_documento'      => (string) ($row['cod_documento'] ?? ''),
+                'observacion'        => $row['observacion'] !== null ? (string) $row['observacion'] : '',
+                'monto_total'        => $row['monto_total'] !== null ? (float) $row['monto_total'] : null,
+                'anulado'            => $anul ? 't' : 'f',
+                'motivo_anulacion'   => $row['motivo_anulacion'] !== null ? (string) $row['motivo_anulacion'] : '',
+            ];
+        }
+
+        return $out;
+    }
+
+    /**
+     * Los campos de firma en `recepcion_ingresos` guardan el nickname (selector del front).
+     * Para la lista se expone nombre + apellidos como en SGA.
+     *
+     * @param  \Illuminate\Support\Collection<int, \stdClass>  $filasRecepcion
+     * @return array<string, string>  nickname normalizado => nombre completo
+     */
+    private function mapaNombreCompletoPorNicknameRecepcion(Collection $filasRecepcion): array
+    {
+        if (! Schema::hasTable('usuarios') || $filasRecepcion->isEmpty()) {
+            return [];
+        }
+
+        $clavePorNickname = [];
+        foreach ($filasRecepcion as $fila) {
+            foreach (['usuario_entregue1', 'usuario_recibi1', 'usuario_entregue2', 'usuario_recibi2'] as $col) {
+                $k = Usuario::normalizeNickname((string) ($fila->{$col} ?? ''));
+                if ($k !== '') {
+                    $clavePorNickname[$k] = true;
+                }
+            }
+        }
+
+        $nicknames = array_keys($clavePorNickname);
+        if ($nicknames === []) {
+            return [];
+        }
+
+        $map = [];
+        foreach (array_chunk($nicknames, 500) as $chunk) {
+            $usuarios = DB::table('usuarios')
+                ->whereIn('nickname', $chunk)
+                ->get(['nickname', 'nombre', 'ap_paterno', 'ap_materno']);
+
+            foreach ($usuarios as $u) {
+                $nk = Usuario::normalizeNickname((string) $u->nickname);
+                $map[$nk] = $this->nombreCompletoUsuarioDesdePartes($u->nombre, $u->ap_paterno, $u->ap_materno);
+            }
+        }
+
+        return $map;
+    }
+
+    private function nombreCompletoUsuarioDesdePartes($nombre, $apPaterno, $apMaterno): string
+    {
+        $parts = [];
+        foreach ([$nombre, $apPaterno, $apMaterno] as $p) {
+            $t = trim((string) ($p ?? ''));
+            if ($t !== '') {
+                $parts[] = $t;
+            }
+        }
+
+        return implode(' ', $parts);
+    }
+
+    /**
+     * @param  array<string, string>  $mapNombrePorNickname
+     */
+    private function etiquetaFirmaRecepcionLista(string $valorGuardado, array $mapNombrePorNickname): string
+    {
+        $v = trim($valorGuardado);
+        if ($v === '') {
+            return '';
+        }
+        $k = Usuario::normalizeNickname($v);
+
+        return $mapNombrePorNickname[$k] ?? $v;
+    }
+
     // ─── Generar reporte ──────────────────────────────────────────────────────
 
     /**

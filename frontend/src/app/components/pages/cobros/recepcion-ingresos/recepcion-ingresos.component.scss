@@ -5,6 +5,26 @@
     color: #333;
     font-size: 1.5rem;
   }
+
+  .nav-tabs .nav-link {
+    color: #495057;
+    background: #f8f9fa;
+    border: 1px solid #dee2e6;
+    margin-right: 2px;
+    border-radius: 0.25rem 0.25rem 0 0;
+  }
+
+  .nav-tabs .nav-link:hover {
+    color: #0d6efd;
+    background: #e9ecef;
+  }
+
+  .nav-tabs .nav-link.active {
+    color: #fff;
+    background-color: #337ab7;
+    border-color: #2e6da4;
+    font-weight: 600;
+  }
 }
 
 /* Similar a panel-primary (Bootstrap 3) */
@@ -39,6 +59,89 @@
   vertical-align: middle;
   padding: 0.5rem 0.35rem;
   border-color: #ddd;
+}
+
+.lista-recepcion-table {
+  font-size: 0.85rem;
+}
+
+/* Mismo efecto que SGA DataTables: fila amarilla al pasar el mouse (striped BS5 pinta celdas) */
+.lista-recepcion-table.table > tbody > tr.lista-recepcion-tr:hover > * {
+  background-color: #ff0 !important;
+  --bs-table-bg-state: #ff0;
+  --bs-table-color-state: inherit;
+}
+
+.sga-lista-user {
+  color: #006699;
+}
+
+/* Lista: motivo anulación al hover (equiv. SGA popover + fa-eye) */
+.lista-recep-anul-motivo-wrap {
+  position: relative;
+  cursor: help;
+  padding: 0.2rem 0.35rem;
+  line-height: 1;
+
+  &:focus-visible {
+    outline: 2px solid #337ab7;
+    outline-offset: 2px;
+    border-radius: 2px;
+  }
+}
+
+.lista-recep-anul-motivo-tip {
+  display: none;
+  position: absolute;
+  left: 50%;
+  top: calc(100% + 10px);
+  bottom: auto;
+  transform: translateX(-50%);
+  min-width: 12rem;
+  max-width: 22rem;
+  padding: 0.5rem 0.65rem;
+  font-size: 0.8rem;
+  font-weight: 400;
+  line-height: 1.35;
+  text-align: left;
+  color: #212529;
+  background: #fff;
+  border: 1px solid #ccc;
+  border-radius: 0.25rem;
+  white-space: pre-wrap;
+  word-break: break-word;
+  z-index: 1080;
+  pointer-events: none;
+}
+
+.lista-recep-anul-motivo-wrap:hover .lista-recep-anul-motivo-tip,
+.lista-recep-anul-motivo-wrap:focus-visible .lista-recep-anul-motivo-tip {
+  display: block;
+}
+
+.lista-recep-anul-motivo-tip::after {
+  content: '';
+  position: absolute;
+  bottom: 100%;
+  left: 50%;
+  margin-left: -6px;
+  border-width: 0 6px 6px;
+  border-style: solid;
+  border-color: transparent transparent #fff transparent;
+  filter: drop-shadow(0 -1px 0 #ccc);
+}
+
+.recepcion-sga .card-body:has(.lista-recepcion-table) {
+  overflow: visible;
+}
+
+.recepcion-sga .table-responsive.lista-recepcion-responsive {
+  overflow-x: auto;
+  overflow-y: visible;
+}
+
+.lista-recepcion-ops-cell {
+  vertical-align: middle;
 }
 
 /* Modal / impresión */

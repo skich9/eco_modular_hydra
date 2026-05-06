@@ -48,6 +48,14 @@ use App\Http\Controllers\Api\ReporteRecepcionIngresoDepositoController;
 
 // Búsqueda de estudiantes
 Route::get('/estudiantes/search', [EstudianteController::class, 'search']);
+Route::get('/estudiantes/{cod_ceta}/basico', [EstudianteController::class, 'basicoPorCodCeta'])
+	->whereNumber('cod_ceta');
+
+// Reimpresión nota de reposición (estudiante / efectivo cobros — tabla nota_reposicion)
+Route::post('nota-reposicion-estudiante/buscar-doc', [\App\Http\Controllers\Api\NotaReposicionEstudianteReimpresionController::class, 'buscarPorDocumento']);
+Route::post('nota-reposicion-estudiante/buscar-fecha', [\App\Http\Controllers\Api\NotaReposicionEstudianteReimpresionController::class, 'buscarPorFecha']);
+Route::post('nota-reposicion-estudiante/buscar-cod-ceta', [\App\Http\Controllers\Api\NotaReposicionEstudianteReimpresionController::class, 'buscarPorCodCeta']);
+Route::post('nota-reposicion-estudiante/pdf', [\App\Http\Controllers\Api\NotaReposicionEstudianteReimpresionController::class, 'generarPdf']);
 
 /*
 --------------------------------------------------------------------------
@@ -166,6 +174,7 @@ Route::middleware('auth:sanctum')->group(function () {
 		Route::get('initial', [RecepcionIngresoController::class, 'initialData']);
 		Route::get('siguiente-num-documento', [RecepcionIngresoController::class, 'siguienteNumDocumento']);
 		Route::get('listar', [RecepcionIngresoController::class, 'listar']);
+		Route::get('lista-tabla', [RecepcionIngresoController::class, 'listarTablaSga']);
 		Route::post('registrar', [RecepcionIngresoController::class, 'registrar']);
 		Route::post('generar-reporte', [RecepcionIngresoController::class, 'generarReporte']);
 		Route::post('imprimir-estructura-pdf', [ReporteRecepcionIngresoDepositoController::class, 'imprimirEstructura']);

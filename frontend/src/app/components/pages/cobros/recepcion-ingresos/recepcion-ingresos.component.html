@@ -2,6 +2,15 @@
 
   <h3 class="mb-3 page-header-sga"><b>Recepción de ingresos</b></h3>
 
+  <ul class="nav nav-tabs mb-3">
+    <li class="nav-item">
+      <button type="button" class="nav-link" [class.active]="pestana === 'recepcion'" (click)="irFormularioRecepcion()">Recepción de ingresos</button>
+    </li>
+    <li class="nav-item">
+      <button type="button" class="nav-link" [class.active]="pestana === 'lista'" (click)="irListaRecepcion()">Lista recepción</button>
+    </li>
+  </ul>
+
   @if (alertMsg) {
     <div class="alert alert-dismissible" [class.alert-success]="alertOk" [class.alert-danger]="!alertOk" role="alert">
       <i class="bi me-2" [class.bi-check-circle]="alertOk" [class.bi-exclamation-triangle]="!alertOk"></i>
@@ -9,6 +18,7 @@
     </div>
   }
 
+  @if (pestana === 'recepcion') {
   @if (cargando) {
     <div class="text-center py-5">
       <div class="spinner-border text-primary" role="status"></div>
@@ -289,5 +299,103 @@
       </div>
     </div>
 
-  }<!-- end cargando -->
+  }
+  }
+
+  @if (pestana === 'lista') {
+    <div class="row">
+      <div class="col-12">
+        <div class="card panel-sga-primary border-0 shadow-sm">
+          <div class="card-header panel-sga-heading text-white fw-bold">
+            Lista de documentos de recepción de ingresos
+          </div>
+          <div class="card-body p-0">
+              <div class="table-responsive lista-recepcion-responsive">
+                <table class="table table-striped table-bordered mb-0 text-center lista-recepcion-table">
+                  <thead>
+                    <tr>
+                      <th>Fecha recepción</th>
+                      <th>Caja</th>
+                      <th>Entregue 1</th>
+                      <th>Recibi 1</th>
+                      <th>Entregue 2</th>
+                      <th>Recibi 2</th>
+                      <th>Cod. documento</th>
+                      <th>Observacion</th>
+                      <th>Monto Total</th>
+                      <th>Ops</th>
+                    </tr>
+                  </thead>
+                  <tbody>
+                    @for (row of listaRecepcion; track row.id_recepcion) {
+                      <tr class="lista-recepcion-tr">
+                        <td>{{ formatFecha(row.fecha_recepcion) }}</td>
+                        <td>{{ row.nombre_caja }}</td>
+                        <td class="text-start"><span class="sga-lista-user"><i class="bi bi-person"></i>&nbsp;{{ row.usuario_entregue1 }}</span></td>
+                        <td class="text-start">{{ row.usuario_recibi1 }}</td>
+                        <td class="text-start">{{ row.usuario_entregue2 }}</td>
+                        <td class="text-start">{{ row.usuario_recibi2 }}</td>
+                        <td class="font-monospace small">{{ row.cod_documento }}</td>
+                        <td class="text-start small">{{ row.observacion }}</td>
+                        <td class="text-end tabular-nums">{{ row.monto_total != null ? (row.monto_total | number:'1.2-2') : '' }}</td>
+                        <td class="text-nowrap text-center lista-recepcion-ops-cell">
+                          @if (esListaNoAnulada(row)) {
+                            <button type="button" class="btn btn-primary btn-sm me-1" (click)="imprimirRecepcionLista(row.id_recepcion)" title="Imprimir"><i class="fas fa-print" aria-hidden="true"></i></button>
+                            <button type="button" class="btn btn-danger btn-sm" (click)="abrirModalAnular(row)" title="Anular"><i class="fas fa-times" aria-hidden="true"></i></button>
+                          } @else {
+                            <span
+                              class="lista-recep-anul-motivo-wrap d-inline-block"
+                              tabindex="0"
+                              role="button"
+                              [attr.aria-label]="'Observaciones de anulación: ' + textoMotivoAnulacionLista(row)"
+                              [attr.title]="textoMotivoAnulacionLista(row)">
+                              <i class="fas fa-eye text-secondary" aria-hidden="true"></i>
+                              <span class="lista-recep-anul-motivo-tip shadow-sm">{{ textoMotivoAnulacionLista(row) }}</span>
+                            </span>
+                          }
+                        </td>
+                      </tr>
+                    }
+                  </tbody>
+                </table>
+              </div>
+          </div>
+        </div>
+      </div>
+    </div>
+  }
+
+  @if (mostrarModalAnular) {
+    <div class="modal d-block" tabindex="-1" style="background:rgba(0,0,0,0.5)">
+      <div class="modal-dialog">
+        <div class="modal-content">
+          <div class="modal-header">
+            <h3 class="modal-title">Confirmar anulación</h3>
+            <button type="button" class="btn-close" aria-label="Cerrar" (click)="cerrarModalAnular()"></button>
+          </div>
+          <div class="modal-body">
+            <div class="alert alert-warning text-center">
+              <div class="h2 mb-2"><i class="bi bi-exclamation-triangle"></i></div>
+              <span>Está seguro de querer anular la recepción con código documento: </span> <strong>{{ anularCodDocumento }}</strong>
+            </div>
+            <div class="row mb-3">
+              <label class="col-sm-4 col-form-label" for="motivo_anulacion">Motivo anulacion:</label>
+              <div class="col-sm-8">
+                <textarea id="motivo_anulacion" name="motivo_anulacion" class="form-control" rows="3" [(ngModel)]="motivoAnulacion"></textarea>
+              </div>
+            </div>
+          </div>
+          <div class="modal-footer">
+            @if (anulando) {
+              <div class="w-100 text-center"><div class="spinner-border text-primary" role="status"></div></div>
+            } @else {
+              <button type="button" class="btn btn-primary" (click)="confirmarAnulacion()">Aceptar</button>
+              <button type="button" class="btn btn-danger" (click)="cerrarModalAnular()">Cancelar</button>
+            }
+          </div>
+        </div>
+      </div>
+    </div>
+  }
+
 </div>
