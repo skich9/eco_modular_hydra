@@ -546,7 +546,9 @@ Route::middleware('auth:sanctum')->group(function () {
 	Route::post('usuarios/{usuarioId}/funciones', [\App\Http\Controllers\Api\UsuarioFuncionController::class, 'store']);
 	Route::put('usuarios/{usuarioId}/funciones/{funcionId}', [\App\Http\Controllers\Api\UsuarioFuncionController::class, 'update']);
 	Route::delete('usuarios/{usuarioId}/funciones/{funcionId}', [\App\Http\Controllers\Api\UsuarioFuncionController::class, 'destroy']);
+	Route::post('usuarios/{usuarioId}/funciones/sync', [\App\Http\Controllers\Api\UsuarioFuncionController::class, 'sync']);
 	Route::post('usuarios/{usuarioId}/funciones/copy-from-role', [\App\Http\Controllers\Api\UsuarioFuncionController::class, 'copyFromRole']);
+
 	Route::post('usuarios/{usuarioId}/funciones/check-permission', [\App\Http\Controllers\Api\UsuarioFuncionController::class, 'checkPermission']);
 });
 
