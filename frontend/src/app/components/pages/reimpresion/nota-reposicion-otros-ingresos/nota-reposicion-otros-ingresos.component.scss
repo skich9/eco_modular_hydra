@@ -1,0 +1,65 @@
+/* Color primario Bootstrap 3 / SGA `#337AB7` en esta pantalla */
+:host {
+	display: block;
+	--bs-primary: #337ab7;
+	--bs-primary-rgb: 51, 122, 183;
+	--bs-blue: #337ab7;
+	--bs-link-color: #337ab7;
+	--bs-link-hover-color: #286090;
+	--bs-focus-ring-color: rgba(51, 122, 183, 0.25);
+}
+
+/* Panel centrado medio ancho, equivalente SGA `.col-lg-6.col-lg-offset-3` */
+.sga-busqueda-card-body {
+	padding: 0.9375rem 0.9375rem 1rem; /* BS3 `.panel-body` ~15px */
+	min-height: 0;
+}
+
+/* Calendario nativo (`type="date"`): ancho estable en grupo Del / Al */
+.repo-oi-date-range input[type='date'] {
+	flex: 1 1 auto;
+	min-width: 9rem;
+	max-width: 100%;
+	accent-color: #337ab7;
+}
+
+.repo-oi-date-range {
+	flex-wrap: nowrap;
+	max-width: 100%;
+}
+
+/* SGA `plantilla/vendor/bootstrap/css/bootstrap.css`: hover fila `background-color: #fdf476` */
+.sga-repo-oi-tabla.table-hover {
+	--bs-table-hover-bg: #fdf476;
+	--bs-table-hover-color: var(--bs-body-color, #212529);
+}
+
+.nav-pills .nav-link {
+	cursor: pointer;
+	border: 1px solid transparent;
+}
+.nav-pills .nav-link.active {
+	background-color: var(--bs-primary);
+	color: #fff;
+}
+
+/* Por si la build de Bootstrap fija otros hex en `.btn-primary` */
+.sga-repo-oi-page .btn-primary {
+	--bs-btn-color: #fff;
+	--bs-btn-bg: #337ab7;
+	--bs-btn-border-color: #337ab7;
+	--bs-btn-hover-color: #fff;
+	--bs-btn-hover-bg: #286090;
+	--bs-btn-hover-border-color: #286090;
+	--bs-btn-active-color: #fff;
+	--bs-btn-active-bg: #286090;
+	--bs-btn-active-border-color: #286090;
+	--bs-btn-disabled-color: #fff;
+	--bs-btn-disabled-bg: #337ab7;
+	--bs-btn-disabled-border-color: #337ab7;
+	--bs-btn-focus-shadow-rgb: 51, 122, 183;
+}
+
+.sga-repo-oi-page .border-primary {
+	border-color: #337ab7;
+}

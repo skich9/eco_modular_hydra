@@ -165,6 +165,18 @@ export const routes: Routes = [
 				canActivate: [permissionGuard],
 				data: { requiredPermission: 'reimpresion_facturacion_posterior' }
 			},
+			{
+				path: 'reimpresion/nota-reposicion-estudiante',
+				loadComponent: () => import('./components/pages/reimpresion/nota-reposicion-estudiante/nota-reposicion-estudiante.component').then(m => m.NotaReposicionEstudianteComponent),
+				canActivate: [permissionGuard],
+				data: { requiredPermission: 'economico_otros_ingresos' }
+			},
+			{
+				path: 'reimpresion/nota-reposicion-otros-ingresos',
+				loadComponent: () => import('./components/pages/reimpresion/nota-reposicion-otros-ingresos/nota-reposicion-otros-ingresos.component').then(m => m.NotaReposicionOtrosIngresosComponent),
+				canActivate: [permissionGuard],
+				data: { requiredPermission: 'economico_otros_ingresos' }
+			},
 			// Ruta para Configuraciones Generales
 			{
 				path: 'configuraciones-generales',
@@ -208,6 +220,12 @@ export const routes: Routes = [
 			// Recepción de Ingresos
 			{
 				path: 'cobros/recepcion-ingresos',
+				loadComponent: () => import('./components/pages/cobros/recepcion-ingresos/recepcion-ingresos.component').then(m => m.RecepcionIngresosComponent),
+				canActivate: [permissionGuard],
+				data: { requiredPermission: 'economico_recepcion_ingresos' }
+			},
+			{
+				path: 'economico/lista-recepcion',
 				loadComponent: () => import('./components/pages/cobros/recepcion-ingresos/recepcion-ingresos.component').then(m => m.RecepcionIngresosComponent),
 				canActivate: [permissionGuard],
 				data: { requiredPermission: 'economico_recepcion_ingresos' }

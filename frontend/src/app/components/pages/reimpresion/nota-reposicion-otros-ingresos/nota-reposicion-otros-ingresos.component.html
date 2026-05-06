@@ -1,0 +1,147 @@
+<div class="container-fluid py-3 sga-repo-oi-page">
+	<div class="row">
+		<div class="col-md-8">
+			<h3 class="pb-2 mb-3 border-bottom"><strong>Reimpresión nota de reposición de otros ingresos</strong></h3>
+		</div>
+	</div>
+
+	<div class="row">
+		<div class="col-12 col-lg-6 offset-lg-3 mb-3">
+			<div class="card border-primary sga-busqueda-card">
+				<div class="card-header bg-primary text-white">Seleccione opción de búsqueda</div>
+				<div class="card-body sga-busqueda-card-body">
+					<ul class="nav nav-pills mb-3">
+						<li class="nav-item">
+							<button type="button" class="nav-link" [class.active]="tab === 'numero'" (click)="setTab('numero')">
+								Por número
+							</button>
+						</li>
+						<li class="nav-item">
+							<button type="button" class="nav-link" [class.active]="tab === 'fecha'" (click)="setTab('fecha')">
+								Por fechas
+							</button>
+						</li>
+					</ul>
+
+					<div *ngIf="tab === 'numero'" class="row">
+						<div class="col-sm-8 offset-sm-2 col-10 offset-1">
+							<div class="row align-items-center g-2 mb-2">
+								<label class="col-sm-6 col-form-label mb-0 pe-sm-2 small text-md-end fw-normal"
+									for="inp-num-doc">Número a buscar</label>
+								<div class="col-sm-6">
+									<div class="input-group input-group-sm">
+										<input
+											id="inp-num-doc"
+											type="text"
+											class="form-control form-control-sm"
+											maxlength="16"
+											placeholder="Introduzca número a buscar"
+											[(ngModel)]="numeroDoc"
+											(keydown)="onNumeroKeydown($event)"
+											autocomplete="off"
+										/>
+										<button type="button" class="btn btn-primary btn-sm px-3" [disabled]="loading"
+											(click)="buscarPorNumero()">
+											<i class="fas fa-search"></i>
+										</button>
+									</div>
+								</div>
+							</div>
+						</div>
+					</div>
+
+					<div *ngIf="tab === 'fecha'">
+						<div class="text-center mb-2">
+						</div>
+						<div class="row gx-2">
+							<div class="col-sm-8 offset-sm-2">
+								<div class="row align-items-center g-2">
+									<label class="col-md-4 col-form-label mb-0 small" for="inp-fecha-ini">Fecha del</label>
+									<div class="col-md-8 ps-md-2">
+										<div class="input-group input-group-sm repo-oi-date-range">
+											<input
+												id="inp-fecha-ini"
+												type="date"
+												class="form-control form-control-sm"
+												[(ngModel)]="fechaIniIso"
+												[attr.max]="fechaFinIso ? fechaFinIso : null"
+												(ngModelChange)="clampRangoFechas()"
+												autocomplete="off"
+											/>
+											<span class="input-group-text px-2">Al</span>
+											<input
+												type="date"
+												class="form-control form-control-sm"
+												[(ngModel)]="fechaFinIso"
+												[attr.min]="fechaIniIso ? fechaIniIso : null"
+												(ngModelChange)="clampRangoFechas()"
+												autocomplete="off"
+											/>
+										</div>
+									</div>
+								</div>
+							</div>
+						</div>
+						<div class="row mt-3">
+							<div class="col-sm-6 offset-sm-3">
+								<button type="button" class="btn btn-primary btn-sm w-100" [disabled]="loading" (click)="buscarPorFecha()">
+									<i class="fas fa-search me-1"></i> Buscar
+								</button>
+							</div>
+						</div>
+					</div>
+				</div>
+			</div>
+		</div>
+
+		<div class="col-12" *ngIf="alertMsg">
+			<div class="alert" [class.alert-warning]="alertType === 'warning'" [class.alert-danger]="alertType === 'danger'">
+				{{ alertMsg }}
+			</div>
+		</div>
+
+		<div class="col-12 mt-2" *ngIf="rows.length > 0">
+			<div class="card border-primary">
+				<div class="card-body table-responsive p-2 p-sm-3">
+					<table class="table table-striped table-bordered table-hover table-sm align-middle sga-repo-oi-tabla">
+						<thead class="table-light">
+							<tr>
+								<th class="text-center" style="width: 2%">Nº</th>
+								<th class="text-center">Documento</th>
+								<th class="text-center">Fecha registro</th>
+								<th class="text-center">Usuario</th>
+								<th class="text-center">Cod. CETA</th>
+								<th class="text-center">Estudiante</th>
+								<th class="text-center">Monto</th>
+								<th class="text-center">Concepto</th>
+								<th class="text-center">Observaciones</th>
+								<th class="text-center">Recibo</th>
+								<th class="text-center"></th>
+							</tr>
+						</thead>
+						<tbody>
+							<tr *ngFor="let r of rows; let i = index">
+								<td class="text-center">{{ i + 1 }}</td>
+								<td class="text-center">{{ r.documento }}</td>
+								<td class="text-center">{{ r.fecha_registro }}</td>
+								<td class="text-center">{{ r.usuario }}</td>
+								<td class="text-center">{{ r.cod_ceta ?? '' }}</td>
+								<td>{{ r.nombre }}</td>
+								<td class="text-center">{{ r.monto | number : '1.2-2' }}</td>
+								<td>{{ r.concepto }}</td>
+								<td>{{ r.observaciones }}</td>
+								<td class="text-center">{{ r.nro_recibo }}</td>
+								<td class="text-center">
+									<button type="button" class="btn btn-success btn-sm" title="Descargar documento"
+										[disabled]="loading" (click)="descargar(r.documento)">
+										<i class="fas fa-download"></i>
+									</button>
+								</td>
+							</tr>
+						</tbody>
+					</table>
+				</div>
+			</div>
+		</div>
+	</div>
+</div>
