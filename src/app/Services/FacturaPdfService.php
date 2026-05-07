@@ -163,8 +163,34 @@ class FacturaPdfService
 		} catch (\Throwable $e) {}
 
 		// Datos de la factura
-		$fecha = isset($row->fecha_emision) ? (string)$row->fecha_emision : '';
-		try { if ($fecha === '') { $fecha = date('Y-m-d H:i:s'); } } catch (\Throwable $e) { $fecha = date('Y-m-d H:i:s'); }
+		// Priorizar fecha_cobro original para reimpresiones/regeneraciones.
+		$fechaCobro = '';
+		try {
+			$fCob = DB::table('cobro')
+				->where('anio_cobro', $anio)
+				->where('nro_factura', $nro)
+				->whereNotNull('fecha_cobro')
+				->orderBy('fecha_cobro')
+				->value('fecha_cobro');
+			$fechaCobro = trim((string)(isset($fCob) ? $fCob : ''));
+		} catch (\Throwable $e) {
+			$fechaCobro = '';
+		}
+
+		$fecha = $fechaCobro;
+		if ($fecha === '') {
+			$fecha = isset($row->fecha_emision) ? trim((string)$row->fecha_emision) : '';
+		}
+		if ($fecha === '') {
+			$fecha = isset($row->created_at) ? trim((string)$row->created_at) : '';
+		}
+		try {
+			if ($fecha === '') {
+				$fecha = date('Y-m-d H:i:s');
+			}
+		} catch (\Throwable $e) {
+			$fecha = date('Y-m-d H:i:s');
+		}
 		$clienteTemp = isset($row->cliente) ? $row->cliente : (isset($row->razon) ? $row->razon : 'S/N');
 		$cliente = (string)$clienteTemp;
 		$cod_ceta = isset($row->cod_ceta) ? (int)$row->cod_ceta : 0;

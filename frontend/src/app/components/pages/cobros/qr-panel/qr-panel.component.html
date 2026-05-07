@@ -21,6 +21,7 @@
 				</div>
 				<div class="modal-body">
 					<div *ngIf="errorMsg" class="alert alert-danger py-2 px-3 small" role="alert">{{ errorMsg }}</div>
+					<div *ngIf="isCancelling" class="alert alert-info py-2 px-3 small" role="alert">Anulando QR, por favor espere la confirmación...</div>
 					<div *ngIf="warnMsg" class="alert alert-warning py-2 px-3 small" role="alert">{{ warnMsg }}</div>
 					<div *ngIf="saveMsg" class="alert alert-success py-2 px-3 small" role="alert">{{ saveMsg }}</div>
 					<div class="mb-2 d-flex align-items-center gap-2">
@@ -57,7 +58,7 @@
 							<div class="mt-2 small text-muted">{{ isCancelling ? 'Anulando QR...' : 'Generando QR...' }}</div>
 						</div>
 						<ng-template #noqr_msg>
-							<div class="text-muted small text-center">QR no generado</div>
+						<div *ngIf="!errorMsg" class="text-muted small text-center">QR no generado</div>
 						</ng-template>
 					</ng-template>
 				</div>
@@ -116,7 +117,7 @@
 				<div class="mt-2 small text-muted">{{ isCancelling ? 'Anulando QR...' : 'Generando QR...' }}</div>
 			</div>
 			<ng-template #noqr_local_msg>
-				<div class="text-muted small text-center">QR no generado</div>
+			<div *ngIf="!errorMsg" class="text-muted small text-center">QR no generado</div>
 			</ng-template>
 		</ng-template>
 		<div class="d-flex justify-content-end gap-2 mt-3">

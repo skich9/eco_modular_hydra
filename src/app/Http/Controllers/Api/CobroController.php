@@ -2807,7 +2807,8 @@ class CobroController extends Controller
 								$cliInRec = (array) ($request->input('cliente', []));
 								$cliNameRec = (string)(isset($cliInRec['razon']) ? $cliInRec['razon'] : (isset($cliInRec['razon_social']) ? $cliInRec['razon_social'] : ''));
 								$cliNumeroRec = (string)(isset($cliInRec['numero']) ? $cliInRec['numero'] : '');
-								$nroRecibo = $reciboService->nextReciboAtomic($anio);
+								$fechaCobroRec = (string) ($item['fecha_cobro'] ?? date('Y-m-d'));
+								$nroRecibo = $reciboService->nextReciboAtomic($anio, $fechaCobroRec);
 								$reciboService->create($anio, $nroRecibo, [
 									'id_usuario' => (int)$request->id_usuario,
 									'cliente' => $cliNameRec,

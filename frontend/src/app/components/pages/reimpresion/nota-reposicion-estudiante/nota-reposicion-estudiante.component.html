@@ -1,0 +1,162 @@
+<div class="container-fluid py-3">
+  <h4 class="mb-3">Reimpresión • Nota de Reposición</h4>
+
+  <div class="alert" *ngIf="mensaje" [ngClass]="{
+    'alert-success': tipoMensaje === 'success',
+    'alert-danger': tipoMensaje === 'danger',
+    'alert-warning': tipoMensaje === 'warning',
+    'alert-info': tipoMensaje === 'info'
+  }">{{ mensaje }}</div>
+
+  <div class="row justify-content-center">
+    <div class="col-lg-8">
+      <div class="card border-primary mb-3">
+        <div class="card-header bg-primary text-white">Seleccione opción de búsqueda</div>
+        <div class="card-body">
+          <ul class="nav nav-pills mb-3">
+            <li class="nav-item">
+              <button type="button" class="nav-link" [class.active]="pestanaActiva === 'numero'" (click)="elegirTab('numero')">Por número</button>
+            </li>
+            <li class="nav-item">
+              <button type="button" class="nav-link" [class.active]="pestanaActiva === 'fecha'" (click)="elegirTab('fecha')">Por fechas</button>
+            </li>
+            <li class="nav-item">
+              <button type="button" class="nav-link" [class.active]="pestanaActiva === 'estudiante'" (click)="elegirTab('estudiante')">Por estudiante</button>
+            </li>
+          </ul>
+
+          <div *ngIf="pestanaActiva === 'numero'" class="row justify-content-center">
+            <div class="col-md-10">
+              <label class="form-label">Número a buscar</label>
+              <div class="input-group mb-3">
+                <input
+                  type="text"
+                  class="form-control"
+                  [(ngModel)]="numeroDoc"
+                  maxlength="15"
+                  placeholder="Introduzca número a buscar"
+                  (keydown.enter)="buscarPorDocumento()"
+                />
+                <button type="button" class="btn btn-primary" (click)="buscarPorDocumento()" [disabled]="cargando">
+                  <i class="fas fa-search"></i>
+                </button>
+              </div>
+            </div>
+          </div>
+
+          <div *ngIf="pestanaActiva === 'fecha'" class="row justify-content-center">
+            <div class="col-md-10 col-lg-8">
+              <p class="text-muted small mb-3 mb-md-2 text-center">
+                Se listan las notas cuya <strong>fecha de registro</strong> cae en el rango elegido.
+              </p>
+              <div class="row g-3 align-items-end justify-content-center mb-3">
+                <div class="col-12 col-sm-6 col-md-5">
+                  <label class="form-label mb-1" for="nr-fecha-ini">Desde</label>
+                  <input
+                    id="nr-fecha-ini"
+                    type="date"
+                    class="form-control"
+                    [(ngModel)]="fechaIniIso"
+                    [max]="fechaFinIso"
+                    (keydown.enter)="buscarPorFecha()"
+                  />
+                </div>
+                <div class="col-12 col-sm-6 col-md-5">
+                  <label class="form-label mb-1" for="nr-fecha-fin">Hasta</label>
+                  <input
+                    id="nr-fecha-fin"
+                    type="date"
+                    class="form-control"
+                    [(ngModel)]="fechaFinIso"
+                    [min]="fechaIniIso"
+                    (keydown.enter)="buscarPorFecha()"
+                  />
+                </div>
+              </div>
+              <div class="d-grid gap-2 col-md-8 mx-auto">
+                <button type="button" class="btn btn-primary" (click)="buscarPorFecha()" [disabled]="cargando">
+                  <i class="fas fa-search me-1"></i> Buscar
+                </button>
+              </div>
+            </div>
+          </div>
+
+          <div *ngIf="pestanaActiva === 'estudiante'">
+            <div class="card border-secondary">
+              <div class="card-header">Datos del Estudiante</div>
+              <div class="card-body row g-3">
+                <div class="col-md-12 col-lg-5 text-center">
+                  <div class="rounded bg-secondary-subtle p-5 text-muted small">Foto (no configurada)</div>
+                </div>
+                <div class="col-md-12 col-lg-7">
+                  <label class="form-label">Código CETA</label>
+                  <div class="input-group mb-2">
+                    <input type="text" class="form-control" [(ngModel)]="codCeta" appSoloNumeros (keydown.enter)="buscarEstudiante()" />
+                    <button type="button" class="btn btn-primary" (click)="buscarEstudiante()" [disabled]="cargando">
+                      <i class="fas fa-search"></i>
+                    </button>
+                  </div>
+                  <label class="form-label">Apellido paterno</label>
+                  <input class="form-control mb-2" [value]="apPat" readonly />
+                  <label class="form-label">Apellido materno</label>
+                  <input class="form-control mb-2" [value]="apMat" readonly />
+                  <label class="form-label">Nombres</label>
+                  <input class="form-control mb-2" [value]="nombre" readonly />
+                  <button type="button" class="btn btn-success w-100" (click)="limpiarEstudiante()">
+                    <i class="fas fa-eraser me-1"></i> Limpiar
+                  </button>
+                </div>
+              </div>
+            </div>
+          </div>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <div class="card" *ngIf="mostrarLista">
+    <div class="card-body table-responsive p-0">
+      <table class="table table-striped table-hover table-bordered mb-0 small">
+        <thead class="table-info">
+          <tr class="text-center">
+            <th>Nº</th>
+            <th>Documento</th>
+            <th>Duplicado</th>
+            <th>Fecha Registro</th>
+            <th>Usuario</th>
+            <th>Cod. Ceta</th>
+            <th>Estudiante</th>
+            <th>Monto</th>
+            <th>Concepto</th>
+            <th>Observaciones</th>
+            <th>Recibo</th>
+            <th></th>
+          </tr>
+        </thead>
+        <tbody>
+          <tr *ngIf="lista.length === 0">
+            <td colspan="12" class="text-center">No existen resultados para la búsqueda</td>
+          </tr>
+          <tr *ngFor="let r of lista">
+            <td class="text-center">{{ r.nro }}</td>
+            <td class="text-center">{{ r.documento }}</td>
+            <td class="text-center">{{ r.cont }}</td>
+            <td class="text-center">{{ r.fecha_registro }}</td>
+            <td class="text-center">{{ r.usuario }}</td>
+            <td class="text-center">{{ r.cod_ceta }}</td>
+            <td>{{ r.estudiante }}</td>
+            <td class="text-center">{{ r.monto }}</td>
+            <td>{{ r.concepto }}</td>
+            <td>{{ r.observaciones }}</td>
+            <td class="text-center">{{ r.nro_recibo }}</td>
+            <td class="text-center">
+              <button type="button" class="btn btn-success btn-sm" (click)="descargar(r)" [disabled]="cargando">
+                <i class="fas fa-download"></i>
+              </button>
+            </td>
+          </tr>
+        </tbody>
+      </table>
+    </div>
+  </div>
+</div>
