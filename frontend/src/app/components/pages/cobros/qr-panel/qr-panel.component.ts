@@ -670,8 +670,10 @@ export class QrPanelComponent implements OnDestroy, OnChanges {
 					this.amount = 0;
 					this.expiresAt = '';
 					this.zoomed = false;
-					this.errorMsg = (res?.message || 'No se pudo generar el QR. Intente más tarde.').toString();
-					try { this.cerrar(); } catch {}
+					const provMsg = (res?.message || '').toString().trim();
+					this.errorMsg = provMsg
+						? `Problema con el servicio QR: ${provMsg}. Contacte al administrador.`
+						: 'Hay un problema con el servicio QR. Contacte al administrador.';
 					return;
 				}
 				const d = res.data || {};
@@ -697,9 +699,10 @@ export class QrPanelComponent implements OnDestroy, OnChanges {
 				this.expiresAt = '';
 				this.zoomed = false;
 				const st = Number(err?.status || 0);
-				const msg = (err?.error?.message || err?.message || (st ? `Error ${st}` : '') || '').toString();
-				this.errorMsg = msg ? `No se pudo generar el QR. ${msg}. Intente más tarde.` : 'No se pudo generar el QR. Intente más tarde.';
-				try { this.cerrar(); } catch {}
+				const httpMsg = (err?.error?.message || err?.message || (st ? `Error HTTP ${st}` : '') || '').toString().trim();
+				this.errorMsg = httpMsg
+					? `Hay un problema con el servicio QR: ${httpMsg}. Contacte al administrador.`
+					: 'Hay un problema con el servicio QR. No se pudo obtener respuesta. Contacte al administrador.';
 			}
 		});
 	}
