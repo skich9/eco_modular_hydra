@@ -71,13 +71,13 @@ export class NavigationComponent implements OnInit {
 			modulo: 'Reimpresión',
 			submenu: [
 				{ name: 'Facturación posterior', icon: 'fa-file-invoice-dollar', route: '/reimpresion/facturacion-posterior', permissionCode: 'reimpresion_facturacion_posterior' },
-				{ name: 'Nota de Reposición', icon: 'fa-file-alt', route: '/reimpresion/nota-reposicion-estudiante', permissionCode: 'economico_otros_ingresos' },
+				{ name: 'Nota de Reposición', icon: 'fa-file-alt', route: '/reimpresion/nota-reposicion-estudiante', permissionCode: 'nota_de_reposicion' },
 				{ name: 'Regenerar PDF factura', icon: 'fa-file-pdf', route: '/reimpresion/regenerar-factura', permissionCode: 'reimpresion_regenerar_pdf' },
 				{
 					name: 'Nota reposición otros ingresos',
 					icon: 'fa-file-alt',
 					route: '/reimpresion/nota-reposicion-otros-ingresos',
-					permissionCode: 'economico_otros_ingresos'
+					permissionCode: 'nota_reposicion_otros_ingresos'
 				}
 			]
 		},
@@ -103,7 +103,7 @@ export class NavigationComponent implements OnInit {
 			modulo: 'Económico',
 			submenu: [
 				{ name: 'Recepción de ingresos', icon: 'fa-inbox', route: '/cobros/recepcion-ingresos', permissionCode: 'economico_recepcion_ingresos' },
-				{ name: 'Lista recepción', icon: 'fa-list', route: '/economico/lista-recepcion', permissionCode: 'economico_recepcion_ingresos' },
+				{ name: 'Lista recepción', icon: 'fa-list', route: '/economico/lista-recepcion', permissionCode: 'lista_recepcion' },
 				{ name: 'Prórroga Mora', icon: 'fa-calendar-times', route: '/prorroga-mora', permissionCode: 'economico_prorroga_mora' },
 				{ name: 'Descuento Mora', icon: 'fa-percent', route: '/descuento-mora', permissionCode: 'economico_descuento_mora' }
 			]
