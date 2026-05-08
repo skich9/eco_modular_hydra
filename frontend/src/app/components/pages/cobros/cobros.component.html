@@ -357,7 +357,7 @@
 									</tr>
 								</thead>
 								<tbody>
-									<tr>
+									<tr *ngIf="resumen?.inscripcion?.tipo_inscripcion !== 'ARRASTRE'">
 										<td>Mensualidad</td>
 										<td>{{ (resumen?.mensualidad_next?.next_cuota?.monto ??
 											resumen?.totales?.pu_mensual) | number:'1.2-2' }}</td>

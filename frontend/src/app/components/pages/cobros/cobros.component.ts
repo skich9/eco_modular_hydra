@@ -1263,7 +1263,10 @@ export class CobrosComponent implements OnInit {
 
   // =============== Resumen económico (sidebar) ===============
   get cuotasPendientes(): Array<any> {
-    const arr = (this.resumen?.asignaciones || []) as Array<any>;
+    const tipoInscripcion = (this.resumen?.inscripcion?.tipo_inscripcion || '').toString().toUpperCase();
+    const arr = (tipoInscripcion === 'ARRASTRE'
+      ? (this.resumen?.asignaciones_arrastre || [])
+      : (this.resumen?.asignaciones || [])) as Array<any>;
     return arr.filter(a => {
       const st = (a?.estado_pago || '').toString().toUpperCase();
       return st !== 'COBRADO';
