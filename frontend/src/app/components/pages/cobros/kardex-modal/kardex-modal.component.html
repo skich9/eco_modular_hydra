@@ -198,7 +198,7 @@
 									</tr>
 								</thead>
 								<tbody>
-									<ng-container *ngFor="let m of (r?.mensualidades?.adeudadas || []); let i = index">
+									<ng-container *ngFor="let m of getAdeudadasFiltradas(r); let i = index">
 									<tr>
 										<td class="text-center">{{ (m?.tipo_inscripcion || 'NORMAL').toUpperCase() }}</td>
 										<td class="text-center">{{ getCuotaFormat(m?.numero_cuota || (i + 1)) }}</td>
@@ -232,7 +232,7 @@
 												</ng-container>
 											</ng-container>
 										</td>
-										<td class="text-end">{{ calculateCumulativeAmount(r?.mensualidades?.adeudadas, i) | number:'1.0-0' }}</td>
+										<td class="text-end">{{ calculateCumulativeAmount(getAdeudadasFiltradas(r), i) | number:'1.0-0' }}</td>
 										<td class="text-center">{{ (m?.fecha_vencimiento | date:'yyyy-MM-dd') || '-' }}</td>
 										<td>{{ '' }}</td>
 									</tr>

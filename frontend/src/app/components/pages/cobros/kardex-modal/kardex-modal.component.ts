@@ -312,6 +312,17 @@ export class KardexModalComponent implements OnChanges {
 		return montoAcumuladoUltimaCuota;
 	}
 
+	// Retorna las mensualidades adeudadas filtradas según el tipo de inscripción del estudiante.
+	// Para estudiantes ARRASTRE, solo se muestran las cuotas de tipo ARRASTRE.
+	getAdeudadasFiltradas(r: any): any[] {
+		const adeudadas: any[] = r?.mensualidades?.adeudadas || [];
+		const tipoInscripcion = (r?.inscripcion?.tipo_inscripcion || '').toString().toUpperCase();
+		if (tipoInscripcion === 'ARRASTRE') {
+			return adeudadas.filter((m: any) => (m?.tipo_inscripcion || 'NORMAL').toString().toUpperCase() === 'ARRASTRE');
+		}
+		return adeudadas;
+	}
+
 	// Formatear cuota con nombre del mes
 	getCuotaFormat(numeroCuota: number): string {
 		const mes = this.getMesByCuota(numeroCuota);
