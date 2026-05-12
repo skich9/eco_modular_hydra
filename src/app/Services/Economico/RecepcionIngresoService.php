@@ -42,6 +42,7 @@ class RecepcionIngresoService
         return [
             'carreras'             => $this->listCarreras(),
             'actividades'          => $this->listActividades(),
+            'cajas'                => DB::table('cajas_actividad')->orderBy('orden')->get(['id_caja_actividad', 'nombre_caja', 'prefijo'])->all(),
             // Mismo listado para los 4 select (alineado a SGA: contabilidad/secretaría/tesorería + aux. finanzas)
             'tesoreros'            => $firmas,
             'usuarios_activos'     => $firmas,
@@ -317,6 +318,7 @@ class RecepcionIngresoService
                 'observacion'             => $input['observacion'] ?? null,
                 'monto_total'             => $this->calcularMontoTotal($detalles),
                 'id_actividad_economica'  => $input['id_actividad_economica'] ?? null,
+                'id_caja_actividad'       => $this->resolverIdCaja($input),
                 'es_ingreso_libro_diario' => filter_var($input['es_ingreso_libro_diario'] ?? true, FILTER_VALIDATE_BOOLEAN),
                 'anulado'                 => false,
             ]);
@@ -710,6 +712,29 @@ class RecepcionIngresoService
         }
 
         return round($s, 2);
+    }
+
+    /**
+     * Resuelve id_caja_actividad para una recepción:
+     * - Si viene explícito en el input, lo usa directamente.
+     * - Si no, lo busca a través de actividades_economicas (igual que el SGA).
+     */
+    private function resolverIdCaja(array $input): ?int
+    {
+        if (!empty($input['id_caja_actividad'])) {
+            return (int) $input['id_caja_actividad'];
+        }
+
+        $idActividad = $input['id_actividad_economica'] ?? null;
+        if (!$idActividad) {
+            return null;
+        }
+
+        $actividad = DB::table('actividades_economicas')
+            ->where('id_actividad_economica', $idActividad)
+            ->value('id_caja_actividad');
+
+        return $actividad ? (int) $actividad : null;
     }
 
     /**

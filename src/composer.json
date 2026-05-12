@@ -13,6 +13,7 @@
         "laravel/framework": "^12.0",
         "laravel/sanctum": "^4.3",
         "laravel/tinker": "^2.10.1",
+        "mpdf/mpdf": "^8.3",
         "robrichards/xmlseclibs": "^3.1",
         "textalk/websocket": "^1.5",
         "workerman/workerman": "^4.1"

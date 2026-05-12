@@ -1,0 +1,249 @@
+<div class="page-wrap">
+  <div class="page-header">
+    <h1>Registro de Egresos (Caja Fuerte)</h1>
+  </div>
+
+  <!-- Alerta -->
+  <div *ngIf="alertMsg" class="alert" [ngClass]="alertOk ? 'alert-success' : 'alert-danger'">
+    {{ alertMsg }}
+  </div>
+
+  <!-- Formulario nuevo egreso -->
+  <div class="card-panel card-panel--inline-fields">
+    <h2>Datos del Registro : </h2>
+    <div class="form-grid">
+
+      <!-- Caja -->
+      <div class="field">
+        <label [class.field-label--req-error]="invalidCaja">
+          Caja : <span class="field-req">*</span>
+        </label>
+        <div class="field__control">
+          <select [(ngModel)]="idCajaSeleccionada"
+                  [class.input-invalid]="invalidCaja"
+                  (change)="cargaPrefijo()">
+            <option [ngValue]="null">-- Seleccione --</option>
+            <option *ngFor="let c of cajas" [ngValue]="c.id_caja_actividad">
+              {{ c.nombre_caja }}
+            </option>
+          </select>
+          <small *ngIf="invalidCaja" class="field-error">Seleccione una caja.</small>
+        </div>ajus
+      </div>
+
+      <!-- Prefijo (readonly) -->
+      <div class="field">
+        <label>Prefijo :</label>
+        <div class="field__control">
+          <input type="text" [value]="prefijoCaja" readonly
+                 placeholder="">
+        </div>
+      </div>
+
+      <!-- Nro. Correlativo -->
+      <div class="field">
+        <label [class.field-label--req-error]="invalidCorrelativo">
+          Nro. Correlativo :<span class="field-req">*</span>
+        </label>
+        <div class="field__control">
+          <input type="number" [(ngModel)]="correlativoNumero"
+                 [class.input-invalid]="invalidCorrelativo"
+                 min="1" placeholder="Ej: 42">
+          <small *ngIf="invalidCorrelativo" class="field-error">Ingrese un número válido.</small>
+        </div>
+      </div>
+
+      <!-- Fecha -->
+      <div class="field">
+        <label [class.field-label--req-error]="invalidFecha">
+          Fecha :<span class="field-req">*</span>
+        </label>
+        <div class="field__control">
+          <input type="date" [(ngModel)]="fechaEgreso"
+                 [class.input-invalid]="invalidFecha"
+                 (change)="onFechaChange()">
+          <small *ngIf="invalidFecha" class="field-error">Seleccione una fecha.</small>
+        </div>
+      </div>
+
+      <!-- Monto -->
+      <div class="field">
+        <label [class.field-label--req-error]="invalidMonto">
+          Monto (Bs.) :<span class="field-req">*</span>
+        </label>
+        <div class="field__control">
+          <input type="number" [(ngModel)]="monto"
+                 [class.input-invalid]="invalidMonto"
+                 min="0.01" step="0.01" placeholder="0.00">
+          <small *ngIf="invalidMonto" class="field-error">Ingrese un monto válido.</small>
+        </div>
+      </div>
+
+      <!-- Descripción -->
+      <div class="field">
+        <label [class.field-label--req-error]="invalidDescripcion">
+          Descripción :<span class="field-req">*</span>
+        </label>
+        <div class="field__control">
+          <input type="text" [(ngModel)]="descripcion"
+                 [class.input-invalid]="invalidDescripcion"
+                 maxlength="255" placeholder="Descripción del egreso">
+          <small *ngIf="invalidDescripcion" class="field-error">Ingrese una descripción.</small>
+        </div>
+      </div>
+
+      <!-- Observación -->
+      <div class="field">
+        <label>Observación :</label>
+        <div class="field__control">
+          <input type="text" [(ngModel)]="observacion" placeholder="Opcional">
+        </div>
+      </div>
+
+    </div>
+
+    <div class="form-actions">
+      <button class="btn btn-primary" (click)="registrar()" [disabled]="guardando || cargando">
+        <span *ngIf="guardando" class="spinner-border spinner-border-sm me-1"></span>
+        Registrar
+      </button>
+    </div>
+  </div>
+
+  <!-- Tabla de listado -->
+  <div class="card-panel">
+
+    <div *ngIf="egresos.length === 0" class="empty-state">
+      No hay egresos registrados.
+    </div>
+
+    <div *ngIf="egresos.length > 0" class="table-wrap">
+      <table class="sga-table">
+        <thead>
+          <tr>
+            <th>Correlativo</th>
+            <th>Caja</th>
+            <th>Fecha</th>
+            <th class="text-right">Monto (Bs.)</th>
+            <th>Descripción</th>
+            <th>Observación</th>
+            <th class="text-center">Acciones</th>
+          </tr>
+        </thead>
+        <tbody>
+          <tr *ngFor="let e of egresos"
+              [class.fila-editando]="editandoCodigo === e.codigo_egreso"
+              [class.fila-anulada]="e.anular"
+              [style.background-color]="editandoCodigo === e.codigo_egreso ? '#f0fdf4' : null">
+
+            <!-- Vista normal (no anulado, no editando) -->
+            <ng-container *ngIf="!e.anular && editandoCodigo !== e.codigo_egreso">
+              <td>{{ e.correlativo }}</td>
+              <td>{{ nombreCaja(e.id_caja_actividad) }}</td>
+              <td>{{ formatFecha(e.fecha_egreso) }}</td>
+              <td class="text-right">{{ e.monto | number:'1.2-2' }}</td>
+              <td>{{ e.descripcion }}</td>
+              <td>{{ e.observacion || '—' }}</td>
+              <td class="text-center text-nowrap">
+                <button class="btn-accion btn-accion--edit" (click)="iniciarEdicion(e)" title="Editar">
+                  <i class="fas fa-edit"></i>
+                </button>
+                <button class="btn-accion btn-accion--delete" (click)="abrirModalEliminar(e)" [disabled]="guardando" title="Anular">
+                  <i class="fas fa-trash"></i>
+                </button>
+              </td>
+            </ng-container>
+
+            <!-- Vista anulado -->
+            <ng-container *ngIf="e.anular">
+              <td><s>{{ e.correlativo }}</s></td>
+              <td>{{ nombreCaja(e.id_caja_actividad) }}</td>
+              <td>{{ formatFecha(e.fecha_egreso) }}</td>
+              <td class="text-right">{{ e.monto | number:'1.2-2' }}</td>
+              <td><s>{{ e.descripcion }}</s></td>
+              <td>{{ e.observacion || '—' }}</td>
+              <td class="text-center text-nowrap">
+                <span class="btn-accion btn-accion--view motivo-tooltip" [attr.data-motivo]="e.motivo_anulacion || 'Sin motivo registrado'" title="Ver motivo de anulación">
+                  <i class="fas fa-eye"></i>
+                </span>
+              </td>
+            </ng-container>
+
+            <!-- Vista edición inline -->
+            <ng-container *ngIf="!e.anular && editandoCodigo === e.codigo_egreso">
+              <td>
+                <div class="edit-correlativo">
+                  <input type="text" class="edit-input edit-input--prefix" [value]="editPrefijo" readonly>
+                  <span class="edit-sep">-</span>
+                  <input type="number" class="edit-input edit-input--num"
+                         [(ngModel)]="editCorrelativoNumero" min="1">
+                </div>
+              </td>
+              <td>
+                <select class="edit-select" [(ngModel)]="editCaja" (change)="cargaPrefijoEdicion()">
+                  <option *ngFor="let c of cajas" [ngValue]="c.id_caja_actividad">
+                    {{ c.nombre_caja }}
+                  </option>
+                </select>
+              </td>
+              <td>
+                <input type="date" class="edit-input" [(ngModel)]="editFecha" (change)="onFechaEditChange()">
+              </td>
+              <td>
+                <input type="number" class="edit-input edit-input--monto"
+                       [(ngModel)]="editMonto" min="0.01" step="0.01">
+              </td>
+              <td>
+                <input type="text" class="edit-input" [(ngModel)]="editDescripcion" maxlength="255">
+              </td>
+              <td>
+                <input type="text" class="edit-input" [(ngModel)]="editObservacion">
+              </td>
+              <td class="text-center text-nowrap">
+                <button class="btn-accion btn-accion--save" (click)="guardarEdicion(e)" [disabled]="guardando" title="Guardar">
+                  <span *ngIf="guardando" class="spinner-border spinner-border-sm"></span>
+                  <i *ngIf="!guardando" class="fas fa-check"></i>
+                </button>
+                <button class="btn-accion btn-accion--cancel" (click)="cancelarEdicion()" title="Cancelar">
+                  <i class="fas fa-times"></i>
+                </button>
+              </td>
+            </ng-container>
+
+          </tr>
+        </tbody>
+      </table>
+    </div>
+  </div>
+</div>
+
+<!-- Modal de anulación -->
+<div class="modal-overlay" *ngIf="mostrarModalEliminar" (click)="cerrarModalEliminar()">
+  <div class="modal-box" (click)="$event.stopPropagation()">
+    <div class="modal-box__header">
+      <i class="fas fa-exclamation-triangle me-2 text-warning"></i>
+      Anular Egreso
+    </div>
+    <div class="modal-box__body">
+      <p class="modal-egreso-label">
+        <strong>{{ egresoAEliminar?.correlativo }}</strong>
+      </p>
+      <label class="modal-motivo-label">Motivo de anulación <span class="field-req">*</span></label>
+      <textarea class="modal-motivo-input"
+                [(ngModel)]="motivoEliminacion"
+                rows="3"
+                maxlength="255"
+                placeholder="Ingrese el motivo..."></textarea>
+    </div>
+    <div class="modal-box__footer">
+      <button class="btn btn-secondary" (click)="cerrarModalEliminar()" [disabled]="guardando">
+        Cancelar
+      </button>
+      <button class="btn btn-danger" (click)="confirmarEliminar()"
+              [disabled]="guardando || !motivoEliminacion.trim()">
+        <span *ngIf="guardando" class="spinner-border spinner-border-sm me-1"></span>
+        Confirmar Anulación
+      </button>
+    </div>
+  </div>
+</div>

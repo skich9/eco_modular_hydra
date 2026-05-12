@@ -1,5 +1,12 @@
 /* Navigation Component Styles - Bootstrap 5 Enhanced */
 
+.nav-submenu-divider {
+	margin: 0.35rem 0.75rem;
+	border: none;
+	border-top: 1px solid rgba(0, 0, 0, 0.12);
+	opacity: 1;
+}
+
 /* Ensure dropdowns appear above other elements */
 .dropdown-menu {
 	z-index: 1060;
