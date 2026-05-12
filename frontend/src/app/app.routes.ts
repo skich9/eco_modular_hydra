@@ -163,7 +163,7 @@ export const routes: Routes = [
 				path: 'reimpresion/regenerar-factura',
 				loadComponent: () => import('./components/pages/reimpresion/regenerar-factura/regenerar-factura.component').then(m => m.RegenerarFacturaComponent),
 				canActivate: [permissionGuard],
-				data: { requiredPermission: 'reimpresion_facturacion_posterior' }
+				data: { requiredPermission: 'reimpresion_regenerar_pdf' }
 			},
 			{
 				path: 'reimpresion/nota-reposicion-estudiante',
