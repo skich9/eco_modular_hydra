@@ -261,6 +261,18 @@ class FuncionesSeeder extends Seeder
 				'created_at' => $now,
 				'updated_at' => $now,
 			],
+			
+			// Módulo: Sincronización
+			[
+				'codigo' => 'sincronizacion.ver',
+				'nombre' => 'Ver Sincronización',
+				'descripcion' => 'Permite visualizar la campana de notificaciones y errores de sincronización con SGA',
+				'modulo' => 'sincronizacion',
+				'icono' => 'fa-sync-alt',
+				'activo' => true,
+				'created_at' => $now,
+				'updated_at' => $now,
+			],
 		];
 		
 		DB::table('funciones')->insert($funciones);

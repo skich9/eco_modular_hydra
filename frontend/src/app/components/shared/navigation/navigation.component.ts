@@ -46,6 +46,14 @@ export class NavigationComponent implements OnInit {
 	carreras: Carrera[] = [];
 	loadingCarreras = false;
 
+	// Sincronización de Cobros (UI)
+	syncErrors: any[] = [
+		{ id: 1, documento: 'F-4502', estudiante: 'JUAN PEREZ GARCIA', concepto: 'MENSUALIDAD MAYO 2026', mensaje: 'Error de conexión con servidor SGA' },
+		{ id: 2, documento: 'R-892', estudiante: 'MARIA LOPEZ', concepto: 'REZAGADO - PROGRAMACION I', mensaje: 'Código de estudiante no encontrado en SGA' }
+	];
+	syncErrorCount: number = 2;
+	isRetrying: boolean = false;
+
 	// Definición completa de menús con módulos
 	private allMenuItems: MenuItem[] = [
 		{
@@ -267,6 +275,12 @@ export class NavigationComponent implements OnInit {
 		return 'U';
 	}
 
+	/** True si el usuario tiene permiso para ver la campana de sincronización. */
+	get canSeeSyncBell(): boolean {
+		// Usar el sistema de permisos centralizado (sincronizacion_ver)
+		return this.permissionService.hasPermission('sincronizacion_ver');
+	}
+
 	toggleDropdown(): void {
 		this.activeSubmenu = null; // Cerrar submenús
 		this.showUserDropdown = !this.showUserDropdown;
@@ -372,5 +386,34 @@ export class NavigationComponent implements OnInit {
 				this.router.navigate(['/login']);
 			}
 		});
+	}
+
+	// Métodos para Sincronización (UI)
+	openSyncModal(): void {
+		const modal = document.getElementById('syncErrorsModal');
+		if (modal) {
+			const bootstrapModal = new (window as any).bootstrap.Modal(modal);
+			bootstrapModal.show();
+		}
+	}
+
+	retrySync(err: any): void {
+		this.isRetrying = true;
+		// Simulación de reintento
+		setTimeout(() => {
+			this.isRetrying = false;
+			this.syncErrors = this.syncErrors.filter(e => e.id !== err.id);
+			this.syncErrorCount = this.syncErrors.length;
+		}, 1500);
+	}
+
+	retryAllSync(): void {
+		this.isRetrying = true;
+		// Simulación de reintento masivo
+		setTimeout(() => {
+			this.isRetrying = false;
+			this.syncErrors = [];
+			this.syncErrorCount = 0;
+		}, 2500);
 	}
 }
