@@ -130,6 +130,10 @@ export class CobrosComponent implements OnInit {
   private frontSaldoByCuota: Record<number, number> = {};
   // Forzar cuota inicial del próximo modal cuando exista saldo parcial pendiente
   private startCuotaOverrideValue: number | null = null;
+  // Tracking equivalente para cuotas de ARRASTRE parciales
+  private frontSaldoByCuotaArrastre: Record<number, number> = {};
+  private lockedArrastreCuota: number | null = null;
+  private startCuotaArrastreOverrideValue: number | null = null;
   metodoPagoLocked: boolean = false;
   descuentoInstitucionalFechaLimite: string | null = null;
   private alertTimeoutHandle: any = null;
@@ -303,6 +307,27 @@ export class CobrosComponent implements OnInit {
       }
     } catch { }
     return out;
+  }
+
+  public getFrontSaldosArrastre(): Record<number, number> {
+    const out: Record<number, number> = {};
+    try {
+      for (const k of Object.keys(this.frontSaldoByCuotaArrastre)) {
+        const n = Number(k);
+        if (isFinite(n)) out[n] = Number(this.frontSaldoByCuotaArrastre[n] || 0);
+      }
+    } catch { }
+    return out;
+  }
+
+  getNextArrastreStartCuota(): number | null {
+    if (this.startCuotaArrastreOverrideValue && this.startCuotaArrastreOverrideValue > 0) {
+      return this.startCuotaArrastreOverrideValue;
+    }
+    if (this.lockedArrastreCuota && this.frontSaldoByCuotaArrastre[this.lockedArrastreCuota] !== undefined && this.frontSaldoByCuotaArrastre[this.lockedArrastreCuota] > 0) {
+      return this.lockedArrastreCuota;
+    }
+    return null;
   }
 
   private downloadReciboPdfWithFallback(anio: number, nro: number): void {
@@ -1508,7 +1533,13 @@ export class CobrosComponent implements OnInit {
         arrNet = netoNext > 0 ? netoNext : Math.max(0, brutoNext - descNext);
       }
     } catch { arrNet = Number((next as any)?.monto || 0); }
-    this.mensualidadPU = arrNet;
+    // Si hay una cuota de arrastre bloqueada por pago parcial, usar su saldo frontal como PU
+    const lockedArr = this.lockedArrastreCuota;
+    if (lockedArr && this.frontSaldoByCuotaArrastre[lockedArr] !== undefined && this.frontSaldoByCuotaArrastre[lockedArr] > 0) {
+      this.mensualidadPU = this.frontSaldoByCuotaArrastre[lockedArr];
+    } else {
+      this.mensualidadPU = arrNet;
+    }
     this.mensualidadesPendientes = Math.max(0, Number(arr?.pending_count || 0));
     // Recalcular lista filtrada y escoger default coherente
     this.computeModalFormasFromSelection();
@@ -1879,6 +1910,9 @@ export class CobrosComponent implements OnInit {
       // Limpiar saldos parciales de frontend
       this.frontSaldoByCuota = {};
       this.startCuotaOverrideValue = null;
+      this.frontSaldoByCuotaArrastre = {};
+      this.lockedArrastreCuota = null;
+      this.startCuotaArrastreOverrideValue = null;
 
       try { (this.batchForm.get('cabecera.codigo_sin') as any)?.enable?.({ emitEvent: false }); } catch { }
     } catch { }
@@ -2305,6 +2339,12 @@ export class CobrosComponent implements OnInit {
         const puSem = Number(this.resumen?.totales?.pu_mensual || 0);
         const puNext = Number(this.resumen?.mensualidad_next?.next_cuota?.monto ?? 0);
         this.mensualidadPU = puSem > 0 ? puSem : puNext;
+      }
+      const isArrastreRow = /^\s*Arrastre\s*-/i.test(detalle) || /^\s*Mensualidad \(Arrastre\)/i.test(detalle);
+      if (isArrastreRow && esParcial && numeroCuota) {
+        delete this.frontSaldoByCuotaArrastre[numeroCuota];
+        this.lockedArrastreCuota = null;
+        this.startCuotaArrastreOverrideValue = null;
       }
     } catch { }
     this.pagos.removeAt(i);
@@ -3672,6 +3712,29 @@ export class CobrosComponent implements OnInit {
           this.startCuotaOverrideValue = null;
         }
       }
+
+      if (isArrastre && numeroCuota) {
+        if (esParcial) {
+          // Calcular saldo real desde la asignación de arrastre del backend + lo que ya estaba en front
+          const asignArr = (this.resumen?.asignaciones_arrastre || []).find((a: any) => Number(a?.numero_cuota) === numeroCuota);
+          const montoNeto = asignArr ? Math.max(0, Number(asignArr?.monto || 0) - Number(asignArr?.descuento || 0)) : 0;
+          const pagadoBackend = asignArr ? Number(asignArr?.monto_pagado || 0) : 0;
+          // Saldo = neto total - pagado en backend - lo que acaba de pagar ahora
+          const saldoArrastre = Math.max(0, montoNeto - pagadoBackend - monto);
+          this.lockedArrastreCuota = numeroCuota;
+          this.frontSaldoByCuotaArrastre[numeroCuota] = saldoArrastre;
+          if (saldoArrastre <= 0) {
+            delete this.frontSaldoByCuotaArrastre[numeroCuota];
+            this.lockedArrastreCuota = null;
+            this.startCuotaArrastreOverrideValue = (numeroCuota || 0) + 1;
+          } else {
+            this.startCuotaArrastreOverrideValue = numeroCuota;
+          }
+        } else {
+          this.lockedArrastreCuota = null;
+          this.startCuotaArrastreOverrideValue = null;
+        }
+      }
     });
     // Recalcular PU para el próximo modal según saldo guardado o fallback del backend
     if (isMensualidad) {
@@ -3683,6 +3746,12 @@ export class CobrosComponent implements OnInit {
         const puSemestral = Number(this.resumen?.totales?.pu_mensual || 0);
         const puNext = Number(this.resumen?.mensualidad_next?.next_cuota?.monto ?? 0);
         this.mensualidadPU = puSemestral > 0 ? puSemestral : puNext;
+      }
+    }
+    if (isArrastre) {
+      const lockedArr = this.lockedArrastreCuota as number | null;
+      if (lockedArr && this.frontSaldoByCuotaArrastre[lockedArr] !== undefined) {
+        this.mensualidadPU = this.frontSaldoByCuotaArrastre[lockedArr];
       }
     }
     // Aplicar cabecera si el modal la envió (p.e. id_cuentas_bancarias para TARJETA)
