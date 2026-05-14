@@ -24,6 +24,7 @@ class OtroIngreso extends Model
 		'valido',
 		'usuario',
 		'concepto',
+		'glosa_comprobante',
 		'observaciones',
 		'cod_pensum',
 		'codigo_carrera',

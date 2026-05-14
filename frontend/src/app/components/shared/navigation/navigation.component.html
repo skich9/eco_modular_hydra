@@ -12,6 +12,25 @@
 		</a>
 
 		<div class="d-flex align-items-center" *ngIf="currentUser">
+			<!-- Botón de Sincronización (Campana) -->
+			<div class="me-3 position-relative" *ngIf="canSeeSyncBell">
+				<button 
+					type="button" 
+					class="btn btn-light rounded-circle p-2 d-flex align-items-center justify-content-center shadow-sm"
+					style="width: 40px; height: 40px;"
+					(click)="openSyncModal()"
+					title="Sincronización de Cobros"
+				>
+					<i class="fas fa-bell text-secondary" [class.text-danger]="syncErrorCount > 0"></i>
+					<span 
+						*ngIf="syncErrorCount > 0" 
+						class="position-absolute top-0 start-100 translate-middle badge rounded-pill bg-danger border border-white"
+					>
+						{{ syncErrorCount }}
+					</span>
+				</button>
+			</div>
+
 			<div class="me-3 d-none d-md-block">
 				<span class="fw-semibold text-dark">{{ currentUser.nombre_completo }}</span>
 				<span class="text-muted ms-1">({{ currentUser.rol?.nombre }})</span>
@@ -157,6 +176,68 @@
 					<span class="spinner-border spinner-border-sm me-2" *ngIf="isChangingPassword"></span>
 					{{ isChangingPassword ? 'Cambiando...' : 'Cambiar Contraseña' }}
 				</button>
+			</div>
+		</div>
+	</div>
+</div>
+
+<!-- Modal de Errores de Sincronización -->
+<div class="modal fade" id="syncErrorsModal" tabindex="-1" aria-labelledby="syncErrorsModalLabel" aria-hidden="true">
+	<div class="modal-dialog modal-lg modal-dialog-centered">
+		<div class="modal-content border-0 shadow">
+			<div class="modal-header bg-danger text-white">
+				<h5 class="modal-title" id="syncErrorsModalLabel">
+					<i class="fas fa-sync-alt me-2"></i>Cobros Pendientes de Sincronización
+				</h5>
+				<button type="button" class="btn-close btn-close-white" data-bs-dismiss="modal" aria-label="Close"></button>
+			</div>
+			<div class="modal-body p-0">
+				<div class="p-3 bg-light border-bottom d-flex justify-content-between align-items-center">
+					<span class="text-muted small">Se encontraron <strong>{{ syncErrorCount }}</strong> registros que no pudieron sincronizarse con SGA.</span>
+					<button class="btn btn-sm btn-outline-danger" (click)="retryAllSync()" [disabled]="isRetrying">
+						<i class="fas fa-redo me-1" [class.fa-spin]="isRetrying"></i> Reintentar Todos
+					</button>
+				</div>
+				
+				<div class="table-responsive" style="max-height: 400px;">
+					<table class="table table-hover align-middle mb-0">
+						<thead class="table-light small text-uppercase">
+							<tr>
+								<th class="ps-3">Nro Factura o Recibo</th>
+								<th>Estudiante</th>
+								<th>Concepto</th>
+								<th>Error</th>
+								<th class="text-end pe-3">Acción</th>
+							</tr>
+						</thead>
+						<tbody class="small">
+							<tr *ngFor="let err of syncErrors">
+								<td class="ps-3 fw-bold">{{ err.documento }}</td>
+								<td>{{ err.estudiante }}</td>
+								<td>{{ err.concepto }}</td>
+								<td>
+									<span class="text-danger d-inline-block text-truncate" style="max-width: 200px;" [title]="err.mensaje">
+										{{ err.mensaje }}
+									</span>
+								</td>
+								<td class="text-end pe-3">
+									<button class="btn btn-sm btn-light border" (click)="retrySync(err)" [disabled]="isRetrying">
+										<i class="fas fa-sync-alt" [class.fa-spin]="isRetrying"></i>
+									</button>
+								</td>
+							</tr>
+							<tr *ngIf="syncErrors.length === 0">
+								<td colspan="5" class="text-center py-5 text-muted">
+									<i class="fas fa-check-circle fa-3x mb-3 text-success d-block"></i>
+									No hay errores de sincronización pendientes.
+								</td>
+							</tr>
+						</tbody>
+					</table>
+				</div>
+			</div>
+			<div class="modal-footer bg-light">
+				<button type="button" class="btn btn-secondary" data-bs-dismiss="modal">Cerrar</button>
 			</div>
 		</div>
 	</div>

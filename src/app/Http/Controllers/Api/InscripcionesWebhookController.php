@@ -66,6 +66,9 @@ class InscripcionesWebhookController extends Controller
 			'ap_materno' => 'sometimes|string|nullable',
 			'email' => 'sometimes|email|nullable',
 			'estado' => 'sometimes|boolean|nullable',
+			// Usuario que realiza la inscripción en SGA
+			'usuario' => 'sometimes|string|nullable',
+			'usuario_inscripcion' => 'sometimes|string|nullable',
 			]);
 		} catch (\Illuminate\Validation\ValidationException $ex) {
 			Log::error('HYDRA webhook validation failed', [
@@ -171,8 +174,15 @@ class InscripcionesWebhookController extends Controller
 				$pensumLocal = ($mapped && isset($mapped->cod_pensum_local)) ? $mapped->cod_pensum_local : $validated['cod_pensum'];
 				$pen = Pensum::with('carrera')->find($pensumLocal);
 				if ($pen) {
-					// Usar el codigo_carrera para guardar en inscripciones.carrera
-					$carreraVal = $pen->codigo_carrera ?? null;
+					// Mapear codigo_carrera al nombre completo para inscripciones.carrera
+					$codigoCarrera = strtoupper(trim((string) ($pen->codigo_carrera ?? '')));
+					if ($codigoCarrera === 'EEA') {
+						$carreraVal = 'Electricidad y Electrónica Automotriz';
+					} elseif ($codigoCarrera === 'MEA') {
+						$carreraVal = 'Mecánica Automotriz';
+					} else {
+						$carreraVal = $codigoCarrera !== '' ? $codigoCarrera : null;
+					}
 				}
 			} catch (\Throwable $e) { /* si falla, caer a fallback */ }
 			if (is_null($carreraVal)) {
@@ -217,15 +227,39 @@ class InscripcionesWebhookController extends Controller
 			if (Schema::hasColumn('inscripciones', 'source_cod_inscrip')) {
 				$ins->source_cod_inscrip = $sgacode;
 			}
-			// id_usuario por defecto si la columna existe y no se ha seteado
-			if (Schema::hasColumn('inscripciones', 'id_usuario') && empty($ins->id_usuario)) {
-				$ins->id_usuario = (int) (env('HYDRA_DEFAULT_USER_ID', 1));
+			// id_usuario: resolver por nickname del usuario SGA que hizo la inscripción
+			$idUsuarioResuelto = (int) (env('HYDRA_DEFAULT_USER_ID', 1));
+			if (Schema::hasColumn('inscripciones', 'id_usuario')) {
+				$usuarioSga = trim((string) ($validated['usuario_inscripcion'] ?? ($validated['usuario'] ?? '')));
+				if ($usuarioSga !== '') {
+					$usuarioEncontrado = DB::table('usuarios')
+						->where('nickname', $usuarioSga)
+						->value('id_usuario');
+
+					if (!$usuarioEncontrado) {
+						$usuarioEncontrado = DB::table('usuarios')
+							->whereRaw('LOWER(TRIM(nickname)) = ?', [mb_strtolower($usuarioSga)])
+							->value('id_usuario');
+					}
+
+					if ($usuarioEncontrado) {
+						$idUsuarioResuelto = (int) $usuarioEncontrado;
+					} else {
+						Log::warning('HYDRA webhook: usuario SGA no encontrado en usuarios, usando default', [
+							'usuario_sga' => $usuarioSga,
+							'default_id' => $idUsuarioResuelto,
+						]);
+					}
+				}
+				$ins->id_usuario = $idUsuarioResuelto;
 			}
 			// Log de derivación antes de normalizar fecha
 			Log::info('HYDRA webhook derived', [
 				'pensumLocal' => $pensumLocal,
 				'carreraVal' => $carreraVal,
 				'source_cod_inscrip' => $sgacode,
+				'usuario_sga' => $validated['usuario_inscripcion'] ?? ($validated['usuario'] ?? null),
+				'id_usuario_resuelto' => $idUsuarioResuelto,
 			]);
 
 			// Normalizar fecha antes de guardar
@@ -312,7 +346,7 @@ class InscripcionesWebhookController extends Controller
 										'cod_kardex' => $idx,
 										'sigla_materia' => $sigla,
 										'observacion' => '',
-										'id_usuario' => (int) (env('HYDRA_DEFAULT_USER_ID', 1)),
+										'id_usuario' => $idUsuarioResuelto,
 										'created_at' => now(),
 										'updated_at' => now(),
 									];

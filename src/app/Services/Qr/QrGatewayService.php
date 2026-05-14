@@ -103,9 +103,30 @@ class QrGatewayService
             return ['ok' => false, 'error' => 'connection_timeout'];
         }
         Log::info('QRGW disablePayment response', ['status' => $resp->status(), 'ok' => $resp->ok()]);
-        if (!$resp->ok()) { return ['ok' => false, 'status' => $resp->status(), 'body' => $resp->body()]; }
+        if (!$resp->ok()) {
+            Log::warning('QRGW disablePayment http failure', [
+                'alias' => $alias,
+                'status' => $resp->status(),
+                'body' => mb_substr((string)$resp->body(), 0, 2000),
+            ]);
+            return ['ok' => false, 'status' => $resp->status(), 'body' => $resp->body()];
+        }
         $j = $resp->json();
         $code = $j['codigo'] ?? null;
+        if (!in_array($code, ['0000','OK'], true)) {
+            Log::warning('QRGW disablePayment business failure', [
+                'alias' => $alias,
+                'codigo' => $code,
+                'mensaje' => $j['mensaje'] ?? null,
+                'respuesta' => $j,
+            ]);
+        } else {
+            Log::info('QRGW disablePayment success', [
+                'alias' => $alias,
+                'codigo' => $code,
+                'mensaje' => $j['mensaje'] ?? null,
+            ]);
+        }
         return ['ok' => in_array($code, ['0000','OK'], true), 'data' => $j];
     }
 

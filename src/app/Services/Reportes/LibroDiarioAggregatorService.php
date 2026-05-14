@@ -2,6 +2,7 @@
 
 namespace App\Services\Reportes;
 
+use App\Services\Economico\OtrosIngresosGlosaComprobanteService;
 use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Schema;
 
@@ -29,6 +30,11 @@ class LibroDiarioAggregatorService
 
 	/** @var array<string, string>|null id_forma_cobro => E|L|D|C|B|T|O */
 	private ?array $mapaFormaCobroIdALetra = null;
+
+	public function __construct(
+		private readonly OtrosIngresosGlosaComprobanteService $glosaOtrosIngresos,
+	) {
+	}
 
 	/**
 	 * Suma subtotales de líneas de mora/multa por factura (clave "anio:nro_factura") desde `factura_detalle`.
@@ -367,9 +373,11 @@ class LibroDiarioAggregatorService
 		// `recibo` y `factura` usan PK lógica (anio, nro_*). Unir solo por nro_* duplica filas
 		// cuando el mismo correlativo existe en distintos años (caso típico del libro diario).
 		$q = DB::table('cobro as c')
-			->leftJoin('factura as f', function ($j) {
+			->leftJoin('factura as f', function ($j) use ($desde, $hasta) {
 				$j->on('f.nro_factura', '=', 'c.nro_factura')
-					->on('f.anio', '=', 'c.anio_cobro');
+					->on('f.anio', '=', 'c.anio_cobro')
+					->whereDate('f.fecha_emision', '>=', $desde)
+					->whereDate('f.fecha_emision', '<=', $hasta);
 			})
 			->leftJoin('recibo as r', function ($j) {
 				$j->on('r.nro_recibo', '=', 'c.nro_recibo')
@@ -427,7 +435,7 @@ class LibroDiarioAggregatorService
 			$qrRows = DB::table('qr_transacciones')
 				->whereIn('nro_recibo', $nros->all())
 				->orderBy('updated_at', 'desc')
-				->get(['nro_recibo', 'numeroordenoriginante']);
+				->get(['id_qr_transaccion', 'nro_recibo', 'numeroordenoriginante']);
 			foreach ($qrRows as $qr) {
 				$kR = (string) ($qr->nro_recibo ?? '');
 				if ($kR === '' || isset($qrByRec[$kR])) {
@@ -437,7 +445,56 @@ class LibroDiarioAggregatorService
 			}
 		}
 
-		return $rows->map(function ($r) use ($nbByRec, $nbByFac, $qrByRec) {
+		$qrAliasByObs = [];
+		foreach ($rows as $row) {
+			$obsTmp = trim((string) ($row->observaciones ?? ''));
+			if ($obsTmp === '') {
+				continue;
+			}
+			if (preg_match('/\[\s*QR[^\]]*\]\s*alias:([^\s|]+)/i', $obsTmp, $m) === 1) {
+				$aliasTmp = trim((string) ($m[1] ?? ''));
+				if ($aliasTmp !== '') {
+					$qrAliasByObs[$aliasTmp] = true;
+				}
+			}
+		}
+
+		$qrRespByAlias = [];
+		if (Schema::hasTable('qr_respuestas_banco') && $qrAliasByObs !== []) {
+			$qrRespAliasRows = DB::table('qr_respuestas_banco')
+				->whereIn('alias', array_keys($qrAliasByObs))
+				->orderBy('fecha_respuesta', 'desc')
+				->get(['alias', 'numeroordenoriginante', 'fecha_respuesta']);
+			foreach ($qrRespAliasRows as $resp) {
+				$aliasK = trim((string) ($resp->alias ?? ''));
+				if ($aliasK === '' || isset($qrRespByAlias[$aliasK])) {
+					continue;
+				}
+				$qrRespByAlias[$aliasK] = $resp;
+			}
+		}
+
+		$qrRespByTrx = [];
+		$qrTrxIds = collect($qrByRec)
+			->map(fn ($qr) => (int) ($qr->id_qr_transaccion ?? 0))
+			->filter(fn ($id) => $id > 0)
+			->unique()
+			->values();
+		if (Schema::hasTable('qr_respuestas_banco') && $qrTrxIds->count()) {
+			$qrRespRows = DB::table('qr_respuestas_banco')
+				->whereIn('id_qr_transaccion', $qrTrxIds->all())
+				->orderBy('fecha_respuesta', 'desc')
+				->get(['id_qr_transaccion', 'fecha_respuesta']);
+			foreach ($qrRespRows as $resp) {
+				$idTrx = (int) ($resp->id_qr_transaccion ?? 0);
+				if ($idTrx <= 0 || isset($qrRespByTrx[$idTrx])) {
+					continue;
+				}
+				$qrRespByTrx[$idTrx] = $resp;
+			}
+		}
+
+		return $rows->map(function ($r) use ($nbByRec, $nbByFac, $qrByRec, $qrRespByTrx, $qrRespByAlias) {
 			$kR = (string) ($r->nro_recibo ?? '');
 			$kF = (string) ($r->nro_factura ?? '');
 			$nb = null;
@@ -454,7 +511,23 @@ class LibroDiarioAggregatorService
 				$r->correlativo_nb = $nb->correlativo ?? null;
 			}
 			if ($kR !== '' && isset($qrByRec[$kR])) {
-				$r->qr_numero_originante = $qrByRec[$kR]->numeroordenoriginante ?? null;
+				$qrRec = $qrByRec[$kR];
+				$r->qr_numero_originante = $qrRec->numeroordenoriginante ?? null;
+				$idTrx = (int) ($qrRec->id_qr_transaccion ?? 0);
+				if ($idTrx > 0 && isset($qrRespByTrx[$idTrx])) {
+					$r->qr_fecha_respuesta = $qrRespByTrx[$idTrx]->fecha_respuesta ?? null;
+				}
+			}
+			if (empty($r->qr_numero_originante)) {
+				$obsTmp = trim((string) ($r->observaciones ?? ''));
+				if ($obsTmp !== '' && preg_match('/\[\s*QR[^\]]*\]\s*alias:([^\s|]+)/i', $obsTmp, $m) === 1) {
+					$aliasObs = trim((string) ($m[1] ?? ''));
+					if ($aliasObs !== '' && isset($qrRespByAlias[$aliasObs])) {
+						$respAlias = $qrRespByAlias[$aliasObs];
+						$r->qr_numero_originante = $respAlias->numeroordenoriginante ?? null;
+						$r->qr_fecha_respuesta = $respAlias->fecha_respuesta ?? ($r->qr_fecha_respuesta ?? null);
+					}
+				}
 			}
 			return $r;
 		});
@@ -569,13 +642,19 @@ class LibroDiarioAggregatorService
 			$q->where('oi.codigo_carrera', $codigoCarrera);
 		}
 
-		return $q->select(
+		$sel = [
 			'oi.id', 'oi.num_factura', 'oi.num_recibo', 'oi.nit', 'oi.razon_social',
 			'oi.fecha', 'oi.monto', 'oi.concepto', 'oi.observaciones', 'oi.valido',
-			'oi.code_tipo_pago', 'oi.factura_recibo', 'oi.tipo_ingreso',
+			'oi.code_tipo_pago', 'oi.factura_recibo', 'oi.tipo_ingreso', 'oi.cod_tipo_ingreso',
+			'oi.gestion', 'oi.usuario',
 			'fc.nombre as forma_cobro_nombre',
-			'd.cta_banco', 'd.nro_deposito', 'd.fecha_deposito'
-		)->get();
+			'd.cta_banco', 'd.nro_deposito', 'd.fecha_deposito', 'd.fecha_ini', 'd.fecha_fin', 'd.nro_orden', 'd.concepto_alquiler',
+		];
+		if (Schema::hasColumn('otros_ingresos', 'glosa_comprobante')) {
+			$sel[] = 'oi.glosa_comprobante';
+		}
+
+		return $q->select($sel)->get();
 	}
 
 	/**
@@ -715,6 +794,38 @@ class LibroDiarioAggregatorService
 	}
 
 	/**
+	 * Libro Diario (columna Concepto): la glosa tipo SGA suele traer «Recibo/Fact Nro/S/N», apéndice
+	 * «Depósito en cuenta…» (duplicado respecto a Observaciones) y texto duplicado de observaciones
+	 * (sufijo «; obs» en OT/Fotocopi/Alquiler/Tienda o incrustado en «Varios»).
+	 *
+	 * @param string $obsRaw texto en BD (`otros_ingresos.observaciones`), mismo que acaba en columnas u observaciones extendidas.
+	 */
+	private function conceptoOtrosIngresosParaLibroDiario(string $linea, string $obsRaw): string
+	{
+		$linea = trim($linea);
+		if ($linea === '') {
+			return '';
+		}
+		$linea = preg_replace('/\s+Recibo:\s*\d+\.?/iu', '', $linea) ?? $linea;
+		$linea = preg_replace('/\s+Fact\s*Nro:\s*\d+\.?/iu', '', $linea) ?? $linea;
+		$linea = preg_replace('/\s+S\/N\.?/iu', '', $linea) ?? $linea;
+		// Misma línea que agrega la glosa comprobante por forma depósito; en Libro Diario queda en columnas Observaciones / datos bancarios.
+		$linea = preg_replace('/[\s;]*(Depósito|Deposito)\s+en\s+cuenta\b.*$/iu', '', $linea) ?? $linea;
+		$obsRaw = trim($obsRaw);
+		if ($obsRaw !== '') {
+			$linea = preg_replace('/;\s*' . preg_quote($obsRaw, '/') . '\s*$/iu', '', $linea) ?? $linea;
+			// «Varios»: la obs va después de «Ingreso no académico varios.» y antes de Fact/Recibo (no solo como «; obs» al final).
+			$patVarios = '/Ingreso no académico varios\.\s+' . preg_quote($obsRaw, '/') . '\s+/iu';
+			if (preg_match($patVarios, $linea)) {
+				$linea = preg_replace($patVarios, 'Ingreso no académico varios. ', $linea) ?? $linea;
+			}
+		}
+		$linea = trim((string) preg_replace('/\s+/u', ' ', $linea));
+
+		return $linea;
+	}
+
+	/**
 	 * @param object $o
 	 * @return array<string,mixed>
 	 */
@@ -731,17 +842,24 @@ class LibroDiarioAggregatorService
 		$tipoPago = $this->mapearTipoPago($codForma);
 
 		$obs = $this->armarObservacionesOtroIngreso($o);
+		$obsRawBd = trim((string) ($o->observaciones ?? ''));
 
-		$concepto = trim((string) ($o->concepto ?? ''));
-		if ($concepto === '') {
-			$concepto = trim((string) ($o->tipo_ingreso ?? 'Otros Ingresos'));
+		$glosaComp = trim((string) ($o->glosa_comprobante ?? ''));
+		$linea = $glosaComp !== '' ? $glosaComp : $this->glosaOtrosIngresos->construirDesdeFila($o);
+		if (trim($linea) === '') {
+			$linea = trim((string) ($o->concepto ?? ''));
 		}
+		if (trim($linea) === '') {
+			$linea = trim((string) ($o->tipo_ingreso ?? 'Otros Ingresos'));
+		}
+
+		$conceptoLibro = $this->conceptoOtrosIngresosParaLibroDiario($linea, $obsRawBd);
 
 		return [
 			'numero' => 0,
 			'recibo' => $tipoDoc === 'R' ? (string) ($numRec > 0 ? $numRec : '0') : '0',
 			'factura' => $tipoDoc === 'F' ? (string) ($numFac > 0 ? $numFac : '0') : '0',
-			'concepto' => $concepto,
+			'concepto' => $conceptoLibro !== '' ? $conceptoLibro : $linea,
 			'razon' => (string) ($o->razon_social ?? ''),
 			'nit' => (string) ($o->nit ?? '0'),
 			'cod_ceta' => '0',
@@ -888,14 +1006,27 @@ class LibroDiarioAggregatorService
 		$bancoQr = $this->bancoSoloNombre((string) ($c->banco_cuenta_cobro ?? ''));
 		$numeroOriginanteQr = trim((string) ($c->qr_numero_originante ?? ''));
 		if ($numeroOriginanteQr !== '') {
-			$fechaQr = substr((string) ($c->fecha_cobro ?? ''), 0, 10);
+			$fechaQr = substr((string) ($c->qr_fecha_respuesta ?? ''), 0, 10);
+			if ($fechaQr === '') {
+				$fechaQr = substr((string) ($c->fecha_cobro ?? ''), 0, 10);
+			}
 			if ($fechaQr === '') {
 				$fechaQr = (string) ($c->fecha_deposito ?? ($c->fecha_nota ?? ''));
 			}
 			$infoQr = trim((string) ($bancoQr !== '' ? $bancoQr : $this->bancoSoloNombre((string) ($c->banco_nb ?? ''))));
 			if ($infoQr !== '' && $fechaQr !== '') {
-				$qrObs = "Transferencia: {$infoQr}-{$numeroOriginanteQr}-{$fechaQr}";
-				return $obsOriginal !== '' ? ($qrObs . ' ' . $obsOriginal) : $qrObs;
+				$qrInfo = "{$infoQr}-{$numeroOriginanteQr}-{$fechaQr}";
+				$qrObsFormatted = "Transferencia: {$qrInfo}";
+				if ($obsOriginal !== '') {
+					$regexAlias = '/\[\s*QR[^\]]*\]\s*alias:[^\s|]+/i';
+					$obsBase = trim((string) preg_replace($regexAlias, '', $obsOriginal, 1));
+					$obsBase = trim((string) preg_replace('/^\|\s*|\s*\|$/', '', $obsBase));
+					if ($obsBase !== '') {
+						return "Transferencia: {$obsBase} | {$qrInfo}";
+					}
+					return $qrObsFormatted;
+				}
+				return $qrObsFormatted;
 			}
 		}
 

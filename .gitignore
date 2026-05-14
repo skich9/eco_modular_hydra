@@ -30,4 +30,5 @@ frontend/src/environments/environment.ts.docker
 frontend/src/environments/environment.production.ts
 
 
-src/public/reportes/libro_diario/*.pdf
+# Salida de reportes generados en runtime (PDF, etc.): libro diario, recepción ingresos, …
+src/public/reportes/

@@ -15,6 +15,73 @@ use Illuminate\Support\Carbon;
 
 class QrController extends Controller
 {
+    /**
+     * Si el QR está en estado activo (generado/procesando/escaneado) pero su fecha_expiracion
+     * ya pasó, lo marca automáticamente como 'expirado' en BD y retorna el nuevo estado.
+     */
+    private function markInitiateFailed(int $idQr, string $idUsuario, string $motivo, string $errorDetalle): void
+    {
+        try {
+            DB::table('qr_transacciones')->where('id_qr_transaccion', $idQr)->update([
+                'estado'        => 'cancelado',
+                'process_error' => substr($errorDetalle, 0, 2000),
+                'updated_at'    => now(),
+            ]);
+            DB::table('qr_estados_log')->insert([
+                'id_qr_transaccion' => $idQr,
+                'estado_anterior'   => 'generado',
+                'estado_nuevo'      => 'cancelado',
+                'motivo_cambio'     => $motivo,
+                'usuario'           => $idUsuario,
+                'fecha_cambio'      => now(),
+                'created_at'        => now(),
+                'updated_at'        => now(),
+            ]);
+        } catch (\Throwable $e) {
+            Log::warning('QR markInitiateFailed error', ['err' => $e->getMessage()]);
+        }
+    }
+
+    private function checkAndExpireIfNeeded($trx): string
+    {
+        $estado = (string)(isset($trx->estado) ? $trx->estado : '');
+        if (!in_array($estado, ['generado', 'procesando', 'escaneado'], true)) {
+            return $estado;
+        }
+        $fechaExp = isset($trx->fecha_expiracion) ? $trx->fecha_expiracion : null;
+        if (!$fechaExp) {
+            return $estado;
+        }
+        try {
+            $expTs = strtotime((string)$fechaExp);
+            if ($expTs !== false && $expTs < time()) {
+                DB::table('qr_transacciones')
+                    ->where('id_qr_transaccion', $trx->id_qr_transaccion)
+                    ->update(['estado' => 'expirado', 'updated_at' => now()]);
+                DB::table('qr_estados_log')->insert([
+                    'id_qr_transaccion' => $trx->id_qr_transaccion,
+                    'estado_anterior'   => $estado,
+                    'estado_nuevo'      => 'expirado',
+                    'motivo_cambio'     => 'expiracion_automatica',
+                    'usuario'           => null,
+                    'fecha_cambio'      => now(),
+                    'created_at'        => now(),
+                    'updated_at'        => now(),
+                ]);
+                Log::info('QR auto-expirado por fecha_expiracion', [
+                    'id_qr_transaccion' => $trx->id_qr_transaccion,
+                    'alias'             => isset($trx->alias) ? $trx->alias : null,
+                    'cod_ceta'          => isset($trx->cod_ceta) ? $trx->cod_ceta : null,
+                    'fecha_expiracion'  => $fechaExp,
+                ]);
+                return 'expirado';
+            }
+        } catch (\Throwable $e) {
+            Log::warning('QR checkAndExpireIfNeeded error', ['err' => $e->getMessage()]);
+        }
+        return $estado;
+    }
+
     private function applyAccountOverrides($idCuenta)
     {
         if ($idCuenta <= 0) return;
@@ -414,7 +481,8 @@ class QrController extends Controller
                 'api_key_set' => !empty(config('qr.api_key')),
             ]);
             // Marcar transacción como error para no dejarla en 'generado'
-            try { DB::table('qr_transacciones')->where('id_qr_transaccion', $idQr)->update(['estado' => 'error', 'updated_at' => now()]); } catch (\Throwable $e) {}
+            $errAuth = 'Autenticacion fallida con proveedor QR. url_auth_set=' . (!empty(config('qr.url_auth')) ? 'si' : 'no') . ' api_key_set=' . (!empty(config('qr.api_key')) ? 'si' : 'no') . (isset($auth['error']) ? (' error=' . $auth['error']) : '');
+            $this->markInitiateFailed($idQr, (string)$validated['id_usuario'], 'auth_failed', $errAuth);
             return response()->json(['success' => false, 'message' => 'No se pudo autenticar con el proveedor QR. Intente más tarde.'], 500);
         }
         $provReq = [
@@ -437,9 +505,10 @@ class QrController extends Controller
         if (!$resp['ok']) {
             Log::warning('QR createPayment failed', $resp);
             // Marcar transacción como error
-            try { DB::table('qr_transacciones')->where('id_qr_transaccion', $idQr)->update(['estado' => 'error', 'updated_at' => now()]); } catch (\Throwable $e) {}
             $errMsg = 'No se pudo generar el QR. Intente más tarde.';
             if (!empty($resp['data']['mensaje'])) { $errMsg = (string)$resp['data']['mensaje']; }
+            $errDetail = 'createPayment fallo. mensaje=' . $errMsg . ' meta=' . json_encode(array_intersect_key((array)($resp['data'] ?? []), array_flip(['codigo','mensaje'])));
+            $this->markInitiateFailed($idQr, (string)$validated['id_usuario'], 'create_payment_failed', $errDetail);
             return response()->json(['success' => false, 'message' => $errMsg, 'meta' => $resp], 502);
         }
         $data = isset($resp['data']) ? $resp['data'] : [];
@@ -447,8 +516,9 @@ class QrController extends Controller
         if (!in_array($codigo, ['0000', 'OK'], true)) {
             Log::warning('QR provider returned non-success code', ['codigo' => $codigo, 'data' => $data]);
             // Marcar transacción como error
-            try { DB::table('qr_transacciones')->where('id_qr_transaccion', $idQr)->update(['estado' => 'error', 'updated_at' => now()]); } catch (\Throwable $e) {}
             $provMsg = (string)(isset($data['mensaje']) ? $data['mensaje'] : 'No se pudo generar el QR. Intente más tarde.');
+            $errDetail2 = 'Proveedor retorno codigo no exitoso. codigo=' . $codigo . ' mensaje=' . $provMsg . ' meta=' . json_encode(array_intersect_key((array)$data, array_flip(['codigo','mensaje'])));
+            $this->markInitiateFailed($idQr, (string)$validated['id_usuario'], 'provider_non_success', $errDetail2);
             return response()->json(['success' => false, 'message' => $provMsg, 'meta' => $data], 502);
         }
         $qrBase64 = (isset($data['objeto']) && isset($data['objeto']['imagenQr'])) ? $data['objeto']['imagenQr'] : null;
@@ -595,7 +665,7 @@ class QrController extends Controller
             $idOrd = trim((string)($request->input('numeroOrdenOriginante', $request->input('objeto.numeroOrdenOriginante', ''))));
             if ($idOrd !== '' && is_numeric($idOrd)) {
                 $byOrd = DB::table('qr_transacciones')
-                    ->where('numeroordenoriginante', (int)$idOrd)
+                    ->where('numeroordenoriginante', (string)$idOrd)
                     ->orderByDesc('created_at')
                     ->first();
                 if ($byOrd) { $alias = (string)$byOrd->alias; }
@@ -702,7 +772,7 @@ class QrController extends Controller
             ->update([
                 'estado' => $estadoNuevo,
                 'codigo_qr' => $extIdQr !== '' ? (string)$extIdQr : $trx->codigo_qr,
-                'numeroordenoriginante' => $request->input('numeroOrdenOriginante') ? (int)$request->input('numeroOrdenOriginante') : $trx->numeroordenoriginante,
+                'numeroordenoriginante' => $request->input('numeroOrdenOriginante') ? (string)$request->input('numeroOrdenOriginante') : $trx->numeroordenoriginante,
                 'nro_transaccion' => $extId !== '' ? (int)$extId : $trx->nro_transaccion,
                 'cuenta_cliente' => (string)$request->input('cuentaCliente', $trx->cuenta_cliente),
                 'nombre_cliente' => (string)$request->input('nombreCliente', $trx->nombre_cliente),
@@ -1009,12 +1079,33 @@ class QrController extends Controller
         $alias = (string)$request->input('alias');
         if (!$alias) { return response()->json(['success' => false, 'message' => 'alias requerido'], 422); }
 
+        Log::info('QR disable: request received', [
+            'alias' => $alias,
+            'id_usuario' => $request->input('id_usuario'),
+        ]);
+
         $trx = DB::table('qr_transacciones')->where('alias', $alias)->first();
-        if (!$trx) { return response()->json(['success' => false, 'message' => 'Transaction not found'], 404); }
+        if (!$trx) {
+            Log::warning('QR disable: transaction not found', ['alias' => $alias]);
+            return response()->json(['success' => false, 'message' => 'Transaction not found'], 404);
+        }
+        Log::info('QR disable: transaction loaded', [
+            'alias' => $alias,
+            'id_qr_transaccion' => $trx->id_qr_transaccion,
+            'estado' => $trx->estado,
+            'saved_by_user' => $trx->saved_by_user,
+            'id_cuenta_bancaria' => $trx->id_cuenta_bancaria,
+            'cod_ceta' => $trx->cod_ceta,
+        ]);
         try {
             $isSaved = (bool)(isset($trx->saved_by_user) ? $trx->saved_by_user : false);
             $est = (string)(isset($trx->estado) ? $trx->estado : '');
             if ($isSaved && !in_array($est, ['completado','cancelado','expirado'], true)) {
+                Log::warning('QR disable: blocked by saved_by_user guard', [
+                    'alias' => $alias,
+                    'estado' => $est,
+                    'saved_by_user' => $isSaved,
+                ]);
                 return response()->json(['success' => false, 'message' => 'No se puede anular un QR guardado en espera.'], 422);
             }
         } catch (\Throwable $e) {}
@@ -1022,13 +1113,26 @@ class QrController extends Controller
         try { $this->applyAccountOverrides((int)(isset($trx->id_cuenta_bancaria) ? $trx->id_cuenta_bancaria : 0)); } catch (\Throwable $e) {}
 
         $auth = $gateway->authenticate();
-        if (!$auth['ok']) { return response()->json(['success' => false, 'message' => 'QR auth failed'], 500); }
+        if (!$auth['ok']) {
+            Log::error('QR disable: auth failed', [
+                'alias' => $alias,
+                'id_qr_transaccion' => $trx->id_qr_transaccion,
+            ]);
+            return response()->json(['success' => false, 'message' => 'QR auth failed'], 500);
+        }
 
         $resp = $gateway->disablePayment($auth['token'], $alias);
         if (!$resp['ok']) {
             Log::warning('QR disablePayment failed', $resp);
             return response()->json(['success' => false, 'message' => 'QR provider error', 'meta' => $resp], 502);
         }
+
+        Log::info('QR disable: provider accepted disablePayment', [
+            'alias' => $alias,
+            'id_qr_transaccion' => $trx->id_qr_transaccion,
+            'provider_code' => isset($resp['data']['codigo']) ? $resp['data']['codigo'] : null,
+            'provider_message' => isset($resp['data']['mensaje']) ? $resp['data']['mensaje'] : null,
+        ]);
 
         // Mapear INHABILITADO -> cancelado (no existe "inhabilitado" en nuestro enum)
         $estadoNuevo = 'cancelado';
@@ -1113,7 +1217,7 @@ class QrController extends Controller
             ->first();
         if (!$trx) { return response()->json(['success' => true, 'data' => null]); }
         $alias = (string)$trx->alias;
-        $estado = (string)$trx->estado;
+        $estado = $this->checkAndExpireIfNeeded($trx);
         if (in_array($estado, ['completado','cancelado','expirado'], true)) {
             return response()->json(['success' => true, 'data' => ['alias' => $alias, 'estado' => $estado]]);
         }
@@ -1162,9 +1266,10 @@ class QrController extends Controller
             ->orderByDesc('created_at')
             ->first();
         if (!$trx) { return response()->json(['success' => true, 'data' => null]); }
+        $estadoActual = $this->checkAndExpireIfNeeded($trx);
         return response()->json(['success' => true, 'data' => [
             'alias' => (string)$trx->alias,
-            'estado' => (string)$trx->estado,
+            'estado' => $estadoActual,
             'id_qr_transaccion' => (int)$trx->id_qr_transaccion,
             'updated_at' => (string)$trx->updated_at,
             'saved_by_user' => (bool)(isset($trx->saved_by_user) ? $trx->saved_by_user : false),

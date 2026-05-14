@@ -5,10 +5,37 @@ namespace App\Http\Controllers\Api;
 use App\Http\Controllers\Controller;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\DB;
-use Illuminate\Support\Facades\Schema;
 
 class EstudianteController extends Controller
 {
+	/**
+	 * Datos mínimos del estudiante por cod_ceta (p. ej. reimpresión nota reposición).
+	 */
+	public function basicoPorCodCeta(int $cod_ceta)
+	{
+		if ($cod_ceta <= 0) {
+			return response()->json(['success' => false, 'message' => 'Código CETA inválido'], 422);
+		}
+		try {
+			$row = DB::table('estudiantes')->where('cod_ceta', $cod_ceta)->first();
+			if (!$row) {
+				return response()->json(['success' => false, 'message' => 'Estudiante no encontrado'], 404);
+			}
+
+			return response()->json([
+				'success' => true,
+				'data' => [
+					'cod_ceta' => (int) $row->cod_ceta,
+					'ap_paterno' => (string) ($row->ap_paterno ?? ''),
+					'ap_materno' => (string) ($row->ap_materno ?? ''),
+					'nombres' => (string) ($row->nombres ?? ''),
+				],
+			]);
+		} catch (\Throwable $e) {
+			return response()->json(['success' => false, 'message' => $e->getMessage()], 500);
+		}
+	}
+
 	public function search(Request $request)
 	{
 		$apPat = trim((string)$request->input('ap_paterno', ''));

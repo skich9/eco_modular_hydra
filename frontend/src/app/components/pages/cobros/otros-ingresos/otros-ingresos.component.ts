@@ -182,6 +182,25 @@ export class OtrosIngresosComponent implements OnInit, AfterViewInit, OnDestroy 
 		return this.dmyFromIso(this.fechaFinIso);
 	}
 
+	/** Fecha de cabecera del registro: día actual local (solo lectura en SGA `#fecha`). */
+	get fechaRegistroMostrada(): string {
+		return this.dmyFromIso(this.hoyIso());
+	}
+
+	/**
+	 * Envío / detalle: así como en SGA `fecha_ini_tra` sólo si tipo Fotocopiadora o Tienda.
+	 */
+	private debeEnviarDelAlDetalle(): boolean {
+		if (this.anular) {
+			return false;
+		}
+		const c = this.codTipoIngreso;
+		return (
+			c === OtrosIngresosComponent.COD_TIPO_FOTOCOPIADORA ||
+			c === OtrosIngresosComponent.COD_TIPO_TIENDA
+		);
+	}
+
 	/**
 	 * Fuerza fechas dentro de [min, max]: corrige autocompletado del navegador o valores pegados (p. ej. 2026).
 	 */
@@ -448,17 +467,16 @@ export class OtrosIngresosComponent implements OnInit, AfterViewInit, OnDestroy 
 	}
 
 	/**
-	 * Rango Del/Al: sin efectivo siempre salvo depósito/tarjeta/transferencia (salvo ese flujo+fotocopiadora/tienda);
-	 * con efectivo solo si tipo es fotocopiadora o tienda.
+	 * Del/Al: únicamente Fotocopiadora o Tienda (SGA muestra rango sólo en esos tipos, en efectivo o con depósito/tarjeta/transf.).
 	 */
 	get mostrarRangoFechas(): boolean {
-		if (this.showFlujoDepositoTarjeta) {
-			return this.esDepositoFotocopiadoraOTienda;
+		if (this.anular || this.bloqueoFacturaComputarizado) {
+			return false;
 		}
-		if (!this.esPagoEfectivo) {
-			return true;
+		if (!this.esTipoIngresoConRangoDelAlEnEfectivo()) {
+			return false;
 		}
-		return this.esTipoIngresoConRangoDelAlEnEfectivo();
+		return this.esPagoEfectivo || this.showFlujoDepositoTarjeta;
 	}
 
 	/**
@@ -731,8 +749,9 @@ export class OtrosIngresosComponent implements OnInit, AfterViewInit, OnDestroy 
 		return (raw ?? '').replace(/[^\p{L}\s]/gu, '');
 	}
 
-	private static sanitizeSoloDigitos(raw: string): string {
-		return (raw ?? '').replace(/\D/g, '');
+	/** Nº depósito / transacción (depósito, tarjeta Linkser, transferencia): letras, números, espacio y guion. */
+	private static sanitizeNroReferenciaPago(raw: string): string {
+		return (raw ?? '').replace(/[^\p{L}\p{N}\s\-]/gu, '');
 	}
 
 	/**
@@ -1095,42 +1114,22 @@ export class OtrosIngresosComponent implements OnInit, AfterViewInit, OnDestroy 
 		}
 	}
 
-	/** Nº transacción (tarjeta): solo dígitos. */
+	/** Sufijo Nº operación tras prefijo Linkser (tarjeta): alfanumérico (+ espacio/guion). */
 	onNroTransaccionTarjetaSufijoChange(value: string): void {
-		const s = OtrosIngresosComponent.sanitizeSoloDigitos(value ?? '');
+		const s = OtrosIngresosComponent.sanitizeNroReferenciaPago(value ?? '');
 		if (s !== this.nroTransaccionTarjetaSufijo) {
 			this.nroTransaccionTarjetaSufijo = s;
 		}
 		this.sincronizarReqErrorsTrasEdicion();
 	}
 
-	/** Nº depósito (depósito/transferencia): solo dígitos; tarjeta usa otro campo. */
+	/** Nº depósito o referencia (depósito / transferencia): alfanumérico (+ espacio/guion). */
 	onNumDepositoChange(value: string): void {
-		const s = OtrosIngresosComponent.sanitizeSoloDigitos(value ?? '');
+		const s = OtrosIngresosComponent.sanitizeNroReferenciaPago(value ?? '');
 		if (s !== this.numDeposito) {
 			this.numDeposito = s;
 		}
 		this.sincronizarReqErrorsTrasEdicion();
-	}
-
-	onNroTransaccionSoloDigitosKeydown(ev: KeyboardEvent): void {
-		if (this.camposPagoSecundariosBloqueados) {
-			return;
-		}
-		if (ev.ctrlKey || ev.metaKey || ev.altKey) {
-			return;
-		}
-		if (ev.key.length !== 1) {
-			return;
-		}
-		if (!/[0-9]/.test(ev.key)) {
-			ev.preventDefault();
-		}
-	}
-
-	/** Solo dígitos en Nº depósito / Nº transacción (transferencia). */
-	onNumDepositoKeydown(ev: KeyboardEvent): void {
-		this.onNroTransaccionSoloDigitosKeydown(ev);
 	}
 
 	abrirModalFacturacion(): void {
@@ -1346,6 +1345,7 @@ export class OtrosIngresosComponent implements OnInit, AfterViewInit, OnDestroy 
 			nroOrdenOk: this.nroOrdenTieneValorValido(),
 			fechaIniIso: this.fechaIniIso,
 			fechaFinIso: this.fechaFinIso,
+			requiereRangoFechas: this.mostrarRangoFechas && !this.anular,
 			esPagoEfectivo: this.esPagoEfectivo,
 			ctaBanco: this.ctaBanco,
 			observacion: this.observacion,
@@ -1397,16 +1397,18 @@ export class OtrosIngresosComponent implements OnInit, AfterViewInit, OnDestroy 
 			return;
 		}
 		this.reqErrors = {};
-		if (!this.fechaIsoPermitida(this.fechaIniIso) || !this.fechaIsoPermitida(this.fechaFinIso)) {
-			this.toast(
-				'Las fechas Del / Al no pueden ser futuras. La más tardía permitida es ' + this.dmyFromIso(this.maxFechaIso) + '.',
-				false,
-			);
-			return;
-		}
-		if (this.fechaIniIso > this.fechaFinIso) {
-			this.toast('“Del” no puede ser posterior a “Al”.', false);
-			return;
+		if (this.debeEnviarDelAlDetalle()) {
+			if (!this.fechaIsoPermitida(this.fechaIniIso) || !this.fechaIsoPermitida(this.fechaFinIso)) {
+				this.toast(
+					'Las fechas Del / Al no pueden ser futuras. La más tardía permitida es ' + this.dmyFromIso(this.maxFechaIso) + '.',
+					false,
+				);
+				return;
+			}
+			if (this.fechaIniIso > this.fechaFinIso) {
+				this.toast('“Del” no puede ser posterior a “Al”.', false);
+				return;
+			}
 		}
 		if (this.showFlujoDepositoTarjeta && this.fechaDepositoIso && !this.fechaIsoPermitida(this.fechaDepositoIso)) {
 			this.toast('La fecha de depósito no puede ser futura.', false);
@@ -1452,9 +1454,10 @@ export class OtrosIngresosComponent implements OnInit, AfterViewInit, OnDestroy 
 
 		const conceptoAlq = this.showAlquiler ? this.periodoAlq : '';
 
-		// Fecha principal en API = día «Al» (fin del rango Del–Al).
+		const dmyDelAl = this.debeEnviarDelAlDetalle();
 		const payload: Record<string, unknown> = {
-			fecha: this.dmyFromIso(this.fechaFinIso),
+			// Igual que SGA `#fecha`: día de registro (hoy).
+			fecha: this.fechaRegistroMostrada,
 			cod_pensum: this.codPensum,
 			codigo_carrera: this.codigoCarrera || null,
 			nombre_carrera:
@@ -1479,8 +1482,8 @@ export class OtrosIngresosComponent implements OnInit, AfterViewInit, OnDestroy 
 			cta_banco: this.ctaBanco || '',
 			nro_deposito: this.nroDepositoEnvio(),
 			fecha_deposito: this.showFlujoDepositoTarjeta ? this.dmyFromIso(this.fechaDepositoIso) : '',
-			fecha_ini: this.dmyFromIso(this.fechaIniIso),
-			fecha_fin: this.dmyFromIso(this.fechaFinIso),
+			fecha_ini: dmyDelAl ? this.dmyFromIso(this.fechaIniIso) : '',
+			fecha_fin: dmyDelAl ? this.dmyFromIso(this.fechaFinIso) : '',
 			nro_orden: Number(this.nroOrden) || 0,
 			concepto_alq: conceptoAlq,
 		};

@@ -7,6 +7,11 @@ use Illuminate\Support\Facades\Log;
 
 class ReciboService
 {
+	public function __construct(
+		private readonly ReciboCorrelativoService $correlativoExtendido,
+	) {
+	}
+
 	public function nextRecibo(int $anio): int
 	{
 		$max = DB::table('recibo')->where('anio', $anio)->max('nro_recibo');
@@ -18,9 +23,16 @@ class ReciboService
 	/**
 	 * Secuencia atómica por año usando doc_counter.
 	 * Evita carreras concurrentes al asignar números de recibo.
+	 *
+	 * Si se pasa `fecha_cobro`, el correlativo sigue el formato extendido de 8 dígitos (YYMM + 4 dígitos).
+	 * Si no, se conserva la secuencia anual histórica (compatibilidad).
 	 */
-	public function nextReciboAtomic(int $anio): int
+	public function nextReciboAtomic(int $anio, ?string $fechaCobro = null): int
 	{
+		if ($fechaCobro !== null && trim($fechaCobro) !== '') {
+			return $this->correlativoExtendido->siguienteCorrelativoExtendidoAtomico($fechaCobro);
+		}
+
 		$scope = 'RECIBO:' . $anio;
 		DB::beginTransaction();
 		try {

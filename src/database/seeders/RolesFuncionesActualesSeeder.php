@@ -259,6 +259,16 @@ class RolesFuncionesActualesSeeder extends Seeder
 				'created_at' => null,
 				'updated_at' => null,
 			],
+			[
+				'id_funcion' => 80,
+				'codigo' => 'sincronizacion_ver',
+				'nombre' => 'Ver Sincronización',
+				'descripcion' => 'Acceso a la campana de notificaciones y errores de sincronización con SGA',
+				'modulo' => 'Sincronización',
+				'activo' => 1,
+				'created_at' => '2026-05-12 17:25:00',
+				'updated_at' => '2026-05-12 17:25:00',
+			],
 		];
 
 		$rolFunciones = [
@@ -281,6 +291,8 @@ class RolesFuncionesActualesSeeder extends Seeder
 			['id_rol_funcion' => 57, 'id_rol' => 1, 'id_funcion' => 76, 'created_at' => '2026-02-10 19:38:03', 'updated_at' => '2026-02-10 19:38:03'],
 			['id_rol_funcion' => 58, 'id_rol' => 2, 'id_funcion' => 77, 'created_at' => '2026-02-10 22:52:25', 'updated_at' => '2026-02-10 22:52:25'],
 			['id_rol_funcion' => 59, 'id_rol' => 2, 'id_funcion' => 78, 'created_at' => '2026-02-10 22:52:25', 'updated_at' => '2026-02-10 22:52:25'],
+			['id_rol' => 1, 'id_funcion' => 80, 'created_at' => '2026-05-12 17:25:00', 'updated_at' => '2026-05-12 17:25:00'],
+			['id_rol' => 6, 'id_funcion' => 80, 'created_at' => '2026-05-12 17:25:00', 'updated_at' => '2026-05-12 17:25:00'],
 		];
 
 		DB::transaction(function () use ($roles, $funciones, $rolFunciones) {

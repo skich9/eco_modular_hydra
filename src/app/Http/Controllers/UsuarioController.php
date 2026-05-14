@@ -113,6 +113,7 @@ class UsuarioController extends Controller
                 'ci' => 'required|string|max:25|unique:usuarios,ci',
                 'estado' => 'required|boolean',
                 'id_rol' => 'required|exists:rol,id_rol',
+                'apoyoCobranzas' => 'nullable|boolean',
                 'id_actividad_economica' => 'nullable|exists:actividades_economicas,id_actividad_economica'
             ]);
 
@@ -204,6 +205,7 @@ class UsuarioController extends Controller
                 'ci' => ['sometimes', 'string', 'max:25', Rule::unique('usuarios')->ignore($id, 'id_usuario')],
                 'estado' => 'sometimes|boolean',
                 'id_rol' => 'sometimes|exists:rol,id_rol',
+                'apoyoCobranzas' => 'sometimes|boolean',
                 'id_actividad_economica' => 'nullable|exists:actividades_economicas,id_actividad_economica'
             ]);
 

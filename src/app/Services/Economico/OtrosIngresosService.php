@@ -9,6 +9,7 @@ use App\Models\ParametrosEconomicos;
 use App\Models\Pensum;
 use App\Models\TipoOtroIngreso;
 use App\Models\Usuario;
+use App\Services\ReciboCorrelativoService;
 use Carbon\Carbon;
 use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Schema;
@@ -21,6 +22,8 @@ class OtrosIngresosService
 
 	public function __construct(
 		private readonly NotaOtrosIngresosPdfService $notaOtrosIngresosPdfService,
+		private readonly OtrosIngresosGlosaComprobanteService $glosaComprobanteService,
+		private readonly ReciboCorrelativoService $reciboCorrelativoService,
 	) {
 	}
 
@@ -510,27 +513,19 @@ class OtrosIngresosService
 
 	/**
 	 * Siguiente Nº de recibo correlativo para `otros_ingresos` (vista previa; sin bloqueo).
-	 * Si no hay registros con número > 0, devuelve 1.
+	 * Formato extendido 8 dígitos (YYMM + secuencia) según fecha de referencia (por defecto hoy).
 	 */
-	public function siguienteNumeroReciboOtrosIngresos(): int
+	public function siguienteNumeroReciboOtrosIngresos(?Carbon $fechaReferencia = null): int
 	{
-		if (!Schema::hasTable('otros_ingresos')) {
-			return 1;
-		}
-
-		$max = DB::table('otros_ingresos')->max('num_recibo');
-
-		return $max !== null && (int) $max > 0 ? (int) $max + 1 : 1;
+		return $this->reciboCorrelativoService->vistaPreviaSiguienteExtendido($fechaReferencia);
 	}
 
 	/**
 	 * Siguiente correlativo con bloqueo (usar dentro de transacción activa).
 	 */
-	private function siguienteNumeroReciboOtrosIngresosBloqueado(): int
+	private function siguienteNumeroReciboOtrosIngresosBloqueado(Carbon $fechaReferencia): int
 	{
-		$max = DB::table('otros_ingresos')->lockForUpdate()->max('num_recibo');
-
-		return $max !== null && (int) $max > 0 ? (int) $max + 1 : 1;
+		return $this->reciboCorrelativoService->siguienteCorrelativoExtendidoAtomico($fechaReferencia);
 	}
 
 	/**
@@ -642,11 +637,11 @@ class OtrosIngresosService
 			unset($head['codigo_carrera']);
 		}
 
-		$result = DB::transaction(function () use (&$head, $input, $valido, $codTipoStr, $tipoIngresoText) {
+		$result = DB::transaction(function () use (&$head, $input, $valido, $codTipoStr, $tipoIngresoText, $fecha) {
 			$fr = (string) ($head['factura_recibo'] ?? 'F');
 			$v = (string) ($head['valido'] ?? 'S');
 			if ($fr === 'R' && $v !== 'A' && (int) ($head['num_recibo'] ?? 0) <= 0) {
-				$head['num_recibo'] = $this->siguienteNumeroReciboOtrosIngresosBloqueado();
+				$head['num_recibo'] = $this->siguienteNumeroReciboOtrosIngresosBloqueado($fecha);
 			}
 			if ($fr === 'F' && $v !== 'A' && (int) ($head['num_factura'] ?? 0) <= 0) {
 				$head['num_factura'] = $this->siguienteNumeroFacturaOtrosIngresosBloqueado();
@@ -656,6 +651,17 @@ class OtrosIngresosService
 				$head['num_recibo'] = 0;
 			} elseif ($fr === 'R') {
 				$head['num_factura'] = 0;
+			}
+
+			if (Schema::hasColumn('otros_ingresos', 'glosa_comprobante')) {
+				$head['glosa_comprobante'] = $this->glosaComprobanteService->construirDesdeInput(
+					$input,
+					(string) ($head['usuario'] ?? ''),
+					$fr,
+					(int) ($head['num_factura'] ?? 0),
+					(int) ($head['num_recibo'] ?? 0),
+					(string) ($head['gestion'] ?? ''),
+				);
 			}
 
 			/** @var OtroIngreso $oi */

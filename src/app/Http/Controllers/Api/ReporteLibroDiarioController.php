@@ -351,6 +351,7 @@ class ReporteLibroDiarioController extends Controller
             white-space: normal;
             word-wrap: break-word;
             overflow-wrap: break-word;
+            vertical-align: middle;
         }
         .text-center { text-align: center; }
         .text-right { text-align: right; }
@@ -465,9 +466,8 @@ class ReporteLibroDiarioController extends Controller
 </html>
 HTML;
 
-            $sufPdfCarrera = trim((string) ($resumen['codigo_carrera'] ?? $request->input('codigo_carrera', '')));
             $svc = new LibroDiarioPdfService();
-            $path = $svc->generate($html, $usuario, $fechaCorta, $fechaHoraImp, $sufPdfCarrera !== '' ? $sufPdfCarrera : null);
+            $path = $svc->generate($html, $usuario, $fechaCorta, $fechaHoraImp);
 
             if (!is_file($path) || !is_readable($path)) {
                 return response()->json([
@@ -543,18 +543,9 @@ HTML;
                 }
                 if (! $rowCierre) {
                     $orden = (int) ($resumen['orden_cierre'] ?? $request->input('orden_cierre', 0));
-                    $codCarrFiltro = strtoupper(trim((string) ($resumen['codigo_carrera'] ?? $request->input('codigo_carrera', ''))));
                     $q = DB::table('libro_diario_cierre')
                         ->where('id_usuario', $idUsuario)
                         ->where('fecha', $fechaCorta);
-                    if ($codCarrFiltro !== '') {
-                        $q->whereRaw('UPPER(TRIM(COALESCE(codigo_carrera, ""))) = ?', [$codCarrFiltro]);
-                    } else {
-                        $q->where(function ($w) {
-                            $w->whereNull('codigo_carrera')
-                                ->orWhereRaw("TRIM(COALESCE(codigo_carrera, '')) = ''");
-                        });
-                    }
                     if ($orden > 0) {
                         $q->where('orden_cierre', $orden);
                     }
@@ -593,10 +584,6 @@ HTML;
 
         return LibroDiarioIdentificadorHelper::construirCodigoRd($codigoCarrera, $mes, $corrNum);
     }
-
-    /**
-     * Por defecto 30 filas de datos + subtotal. Manual: 5–80. `filas_por_pagina` null, '', 0, "auto" → 30.
-     */
     private function resolverFilasPorPagina(Request $request): int
     {
         $raw = $request->input('filas_por_pagina');
@@ -620,8 +607,7 @@ HTML;
 
     /**
      * Genera filas de datos + una fila de subtotal por cada "página lógica" del PDF.
-     * Suma solo ingreso/ingresos del bloque actual. Salto de hoja: `page-break-after` en el subtotal (Dompdf
-     * maneja mejor el corte al final de bloque que `page-break-before` en la primera fila del siguiente tramo).
+     * Suma solo ingreso/ingresos del bloque actual; page-break-before alinea con hojas siguientes.
      */
     private function construirFilasLibroDiarioConSubtotalesPorPagina(
         array $datos,
@@ -633,9 +619,12 @@ HTML;
         $chunks = array_chunk($datos, $filasPorPagina);
         $html = '';
         $numGlobal = 0;
-        $totalChunks = count($chunks);
 
         foreach ($chunks as $idx => $chunk) {
+            if ($idx > 0) {
+                $html .= '<tr style="page-break-before: always; height: 0;"><td colspan="11" style="height: 0; padding: 0; margin: 0; border: none; line-height: 0;"></td></tr>';
+            }
+
             $subtotalPag = 0.0;
             foreach ($chunk as $item) {
                 $numGlobal++;
@@ -652,7 +641,7 @@ HTML;
                 $hora = htmlspecialchars((string) ($it['hora'] ?? ''));
                 $ingresoStr = $ing > 0 ? $fmt($ing) : '';
 
-                $estilo = $styleBorder . ' padding:2px 3px;margin:0;vertical-align:middle;line-height:1.1;';
+                $estilo = $styleBorder . ' padding:2px 3px;margin:0;vertical-align:middle;font-size:8px;line-height:1.12;';
                 $html .= '<tr id="' . $numGlobal . '">';
                 $html .= '<td class="text-center" style="' . $estilo . '">' . $p . '</td>';
                 $html .= '<td class="text-center" style="' . $estilo . '">' . $numGlobal . '</td>';
@@ -669,12 +658,9 @@ HTML;
             }
 
             $numPag = $idx + 1;
-            $forzarSaltoHoja = ($idx < $totalChunks - 1);
-            $estiloSubtotal = 'background:#e8ecf4; page-break-inside: avoid;'
-                . ($forzarSaltoHoja ? ' page-break-after: always;' : '');
-            $html .= '<tr class="subtotal-pagina" style="' . $estiloSubtotal . '">'
-                . '<td colspan="10" style="' . $styleBorder . ' padding:3px 4px; margin:0; font-size:6pt; line-height:1.1; vertical-align:middle; ' . $styleColor . ' text-align:right;">Subtotal Página ' . $numPag . ':</td>'
-                . '<td style="' . $styleBorder . ' padding:3px 4px; margin:0; font-size:7pt; line-height:1.1; vertical-align:middle; text-align:right; font-weight:bold;">' . $fmt($subtotalPag) . '</td>'
+            $html .= '<tr class="subtotal-pagina" style="background:#e8ecf4; page-break-inside: avoid;">'
+                . '<td colspan="10" style="' . $styleBorder . ' padding:3px 4px; margin:0; font-size:8px; line-height:1.12; vertical-align:middle; ' . $styleColor . ' text-align:right;">Subtotal Página ' . $numPag . ':</td>'
+                . '<td style="' . $styleBorder . ' padding:3px 4px; margin:0; font-size:8px; line-height:1.12; vertical-align:middle; text-align:right; font-weight:bold;">' . $fmt($subtotalPag) . '</td>'
                 . '</tr>';
         }
 
@@ -809,8 +795,8 @@ HTML;
         $footerRow = 'color:#000066;font-weight:bold;font-size:9pt;';
         // Columna 2 (RESPONSABLE) más ancha; 3–5 más estrechas para dar espacio a nombre completo
         $wLab = 'width:8%;';
-        $wResp = 'width:28%;';
-        $wOt = 'width:20%;';
+        $wResp = 'width:38%;';
+        $wOt = 'width:18%;';
         $cellNombre = $cell . 'text-align:center;white-space:normal;word-wrap:break-word;word-break:normal;line-height:1.15;vertical-align:top;';
 
         return <<<HTML

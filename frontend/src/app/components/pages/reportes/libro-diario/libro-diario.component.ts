@@ -3,6 +3,7 @@ import { CommonModule } from '@angular/common';
 import { FormsModule, ReactiveFormsModule, FormBuilder, FormGroup, Validators, AbstractControl, ValidationErrors, ValidatorFn } from '@angular/forms';
 import { LibroDiarioService, LibroDiarioRequest, LibroDiarioItem, Usuario, Carrera } from '../../../../services/reportes/libro-diario.service';
 import { AuthService } from '../../../../services/auth.service';
+import { formatYmdLocal } from '../../../../utils/date-only.util';
 
 @Component({
   selector: 'app-libro-diario',
@@ -52,7 +53,7 @@ export class LibroDiarioComponent implements OnInit {
         { value: '', disabled: false },
         [Validators.required, this.usuarioDeListaValidator()]
       ],
-      fecha: [{ value: new Date().toISOString().split('T')[0], disabled: false }, Validators.required],
+      fecha: [{ value: formatYmdLocal(), disabled: false }, Validators.required],
       carrera: [{ value: '', disabled: false }, Validators.required]
     });
   }
@@ -353,7 +354,7 @@ export class LibroDiarioComponent implements OnInit {
     this.filtroForm.reset();
     this.filtroForm.patchValue({
       usuario: '',
-      fecha: new Date().toISOString().split('T')[0],
+      fecha: formatYmdLocal(),
       carrera: ''
     });
     this.usuarioLiteral = '';

@@ -46,6 +46,14 @@ export class NavigationComponent implements OnInit {
 	carreras: Carrera[] = [];
 	loadingCarreras = false;
 
+	// Sincronización de Cobros (UI)
+	syncErrors: any[] = [
+		{ id: 1, documento: 'F-4502', estudiante: 'JUAN PEREZ GARCIA', concepto: 'MENSUALIDAD MAYO 2026', mensaje: 'Error de conexión con servidor SGA' },
+		{ id: 2, documento: 'R-892', estudiante: 'MARIA LOPEZ', concepto: 'REZAGADO - PROGRAMACION I', mensaje: 'Código de estudiante no encontrado en SGA' }
+	];
+	syncErrorCount: number = 2;
+	isRetrying: boolean = false;
+
 	// Definición completa de menús con módulos
 	private allMenuItems: MenuItem[] = [
 		{
@@ -71,7 +79,14 @@ export class NavigationComponent implements OnInit {
 			modulo: 'Reimpresión',
 			submenu: [
 				{ name: 'Facturación posterior', icon: 'fa-file-invoice-dollar', route: '/reimpresion/facturacion-posterior', permissionCode: 'reimpresion_facturacion_posterior' },
-				{ name: 'Regenerar PDF factura', icon: 'fa-file-pdf', route: '/reimpresion/regenerar-factura', permissionCode: 'reimpresion_regenerar_pdf' }
+				{ name: 'Nota de Reposición', icon: 'fa-file-alt', route: '/reimpresion/nota-reposicion-estudiante', permissionCode: 'economico_otros_ingresos' },
+				{ name: 'Regenerar PDF factura', icon: 'fa-file-pdf', route: '/reimpresion/regenerar-factura', permissionCode: 'reimpresion_regenerar_pdf' },
+				{
+					name: 'Nota reposición otros ingresos',
+					icon: 'fa-file-alt',
+					route: '/reimpresion/nota-reposicion-otros-ingresos',
+					permissionCode: 'economico_otros_ingresos'
+				}
 			]
 		},
 		{
@@ -96,6 +111,7 @@ export class NavigationComponent implements OnInit {
 			modulo: 'Económico',
 			submenu: [
 				{ name: 'Recepción de ingresos', icon: 'fa-inbox', route: '/cobros/recepcion-ingresos', permissionCode: 'economico_recepcion_ingresos' },
+				{ name: 'Lista recepción', icon: 'fa-list', route: '/economico/lista-recepcion', permissionCode: 'economico_recepcion_ingresos' },
 				{ name: 'Prórroga Mora', icon: 'fa-calendar-times', route: '/prorroga-mora', permissionCode: 'economico_prorroga_mora' },
 				{ name: 'Descuento Mora', icon: 'fa-percent', route: '/descuento-mora', permissionCode: 'economico_descuento_mora' }
 			]
@@ -259,6 +275,12 @@ export class NavigationComponent implements OnInit {
 		return 'U';
 	}
 
+	/** True si el usuario tiene permiso para ver la campana de sincronización. */
+	get canSeeSyncBell(): boolean {
+		// Usar el sistema de permisos centralizado (sincronizacion_ver)
+		return this.permissionService.hasPermission('sincronizacion_ver');
+	}
+
 	toggleDropdown(): void {
 		this.activeSubmenu = null; // Cerrar submenús
 		this.showUserDropdown = !this.showUserDropdown;
@@ -364,5 +386,34 @@ export class NavigationComponent implements OnInit {
 				this.router.navigate(['/login']);
 			}
 		});
+	}
+
+	// Métodos para Sincronización (UI)
+	openSyncModal(): void {
+		const modal = document.getElementById('syncErrorsModal');
+		if (modal) {
+			const bootstrapModal = new (window as any).bootstrap.Modal(modal);
+			bootstrapModal.show();
+		}
+	}
+
+	retrySync(err: any): void {
+		this.isRetrying = true;
+		// Simulación de reintento
+		setTimeout(() => {
+			this.isRetrying = false;
+			this.syncErrors = this.syncErrors.filter(e => e.id !== err.id);
+			this.syncErrorCount = this.syncErrors.length;
+		}, 1500);
+	}
+
+	retryAllSync(): void {
+		this.isRetrying = true;
+		// Simulación de reintento masivo
+		setTimeout(() => {
+			this.isRetrying = false;
+			this.syncErrors = [];
+			this.syncErrorCount = 0;
+		}, 2500);
 	}
 }
