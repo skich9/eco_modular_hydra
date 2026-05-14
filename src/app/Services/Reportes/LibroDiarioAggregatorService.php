@@ -375,16 +375,17 @@ class LibroDiarioAggregatorService
 		$q = DB::table('cobro as c')
 			->leftJoin('factura as f', function ($j) use ($desde, $hasta) {
 				$j->on('f.nro_factura', '=', 'c.nro_factura')
-					->on('f.anio', '=', 'c.anio_cobro')
-					->whereDate('f.fecha_emision', '>=', $desde)
-					->whereDate('f.fecha_emision', '<=', $hasta);
+				  ->on('f.anio', '=', 'c.anio_cobro')
+				  ->whereDate('f.fecha_emision', '>=', $desde)
+				  ->whereDate('f.fecha_emision', '<=', $hasta);
 			})
 			->leftJoin('recibo as r', function ($j) {
 				$j->on('r.nro_recibo', '=', 'c.nro_recibo')
-					->on('r.anio', '=', 'c.anio_cobro');
+				  ->on('r.anio', '=', 'c.anio_cobro');
 			})
 			->leftJoin('cuentas_bancarias as cb', 'cb.id_cuentas_bancarias', '=', 'c.id_cuentas_bancarias')
-			->leftJoin('formas_cobro as fc', 'fc.id_forma_cobro', '=', 'c.id_forma_cobro')
+			->leftJoin('formas_cobro as fc',       'fc.id_forma_cobro',       '=', 'c.id_forma_cobro')
+			->leftJoin('inscripciones as insc',    'insc.cod_inscrip',        '=', 'c.cod_inscrip')
 			->where('c.id_usuario', $idUsuario)
 			->whereDate('c.fecha_cobro', '>=', $desde)
 			->whereDate('c.fecha_cobro', '<=', $hasta);
@@ -396,19 +397,41 @@ class LibroDiarioAggregatorService
 		}
 
 		$rows = $q->select(
-			'c.nro_cobro', 'c.anio_cobro', 'c.cod_ceta', 'c.cod_pensum', 'c.tipo_inscripcion',
-			'c.nro_factura', 'c.nro_recibo', 'c.monto',
-			'c.observaciones', 'c.concepto', 'c.fecha_cobro', 'c.id_forma_cobro',
-			'c.cod_tipo_cobro', 'c.id_cuentas_bancarias',
+			'c.nro_cobro',
+			'c.anio_cobro',
+			'c.cod_ceta',
+			'c.cod_pensum',
+			'c.tipo_inscripcion',
+			'c.nro_factura',
+			'c.nro_recibo',
+			'c.monto',
+			'c.observaciones',
+			'c.concepto',
+			'c.fecha_cobro',
+			'c.id_forma_cobro',
+			'c.cod_tipo_cobro',
+			'c.id_cuentas_bancarias',
 			DB::raw('COALESCE(r.cliente, f.cliente) as cliente'),
 			DB::raw('COALESCE(r.nro_documento_cobro, f.nro_documento_cobro) as nro_documento_cobro'),
 			'cb.banco as banco_cuenta_cobro',
 			'fc.nombre as forma_cobro_nombre',
-			'f.monto_total as factura_monto_total'
+			'f.monto_total as factura_monto_total',
+			'insc.descuento_institucional'
 		)->get();
 
-		$nros = $rows->pluck('nro_recibo')->filter(fn ($v) => $v !== null && $v !== '' && $v !== 0)->map(fn ($v) => (string) $v)->unique()->values();
-		$nfs = $rows->pluck('nro_factura')->filter(fn ($v) => $v !== null && $v !== '' && $v !== 0)->map(fn ($v) => (string) $v)->unique()->values();
+		$nros = $rows
+			->pluck('nro_recibo')
+			->filter(fn ($v) => $v !== null && $v !== '' && $v !== 0)
+			->map(fn ($v) => (string) $v)
+			->unique()
+			->values();
+
+		$nfs = $rows
+			->pluck('nro_factura')
+			->filter(fn ($v) => $v !== null && $v !== '' && $v !== 0)
+			->map(fn ($v) => (string) $v)
+			->unique()
+			->values();
 
 		$nbByRec = [];
 		$nbByFac = [];
@@ -999,10 +1022,17 @@ class LibroDiarioAggregatorService
 		return $this->mapearTipoPagoHeuristicaSobreId($c);
 	}
 
+	private function tieneDescuentoInstitucional($c): bool
+	{
+		$val = $c->descuento_institucional ?? null;
+		return $val !== null && (bool) $val === true;
+	}
+
 	private function armarObservacionesExtendidas($c): string
 	{
 		$idForma = strtoupper((string) ($c->id_forma_cobro ?? ''));
 		$obsOriginal = trim((string) ($c->observaciones ?? ''));
+		$sufijoDescu = $this->tieneDescuentoInstitucional($c) ? ' | Descuento Institucional activado' : '';
 		$bancoQr = $this->bancoSoloNombre((string) ($c->banco_cuenta_cobro ?? ''));
 		$numeroOriginanteQr = trim((string) ($c->qr_numero_originante ?? ''));
 		if ($numeroOriginanteQr !== '') {
@@ -1022,11 +1052,11 @@ class LibroDiarioAggregatorService
 					$obsBase = trim((string) preg_replace($regexAlias, '', $obsOriginal, 1));
 					$obsBase = trim((string) preg_replace('/^\|\s*|\s*\|$/', '', $obsBase));
 					if ($obsBase !== '') {
-						return "Transferencia: {$obsBase} | {$qrInfo}";
+						return "Transferencia: {$obsBase} | {$qrInfo}{$sufijoDescu}";
 					}
-					return $qrObsFormatted;
+					return $qrObsFormatted . $sufijoDescu;
 				}
-				return $qrObsFormatted;
+				return $qrObsFormatted . $sufijoDescu;
 			}
 		}
 
@@ -1081,18 +1111,20 @@ class LibroDiarioAggregatorService
 		}
 
 		if ($infoAdicional !== '') {
-			return $obsOriginal !== '' ? ($infoAdicional . ' ' . $obsOriginal) : $infoAdicional;
+			$base = $obsOriginal !== '' ? ($infoAdicional . ' ' . $obsOriginal) : $infoAdicional;
+			return $base . $sufijoDescu;
 		}
 
 		$tipoPago = trim((string) ($c->forma_cobro_nombre ?? $idForma));
 		if ($obsOriginal !== '') {
 			if ($tipoPago !== '' && stripos($obsOriginal, $tipoPago) === 0) {
-				return $obsOriginal;
+				return $obsOriginal . $sufijoDescu;
 			}
-			return $tipoPago !== '' ? ($tipoPago . ': ' . $obsOriginal) : $obsOriginal;
+			$base = $tipoPago !== '' ? ($tipoPago . ': ' . $obsOriginal) : $obsOriginal;
+			return $base . $sufijoDescu;
 		}
 
-		return $tipoPago;
+		return $tipoPago . $sufijoDescu;
 	}
 
 	private function armarObservacionesOtroIngreso($o): string
