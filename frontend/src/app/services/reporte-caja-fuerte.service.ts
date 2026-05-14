@@ -37,9 +37,11 @@ export interface ReporteCFMensual {
   fecha_fin: string;
   fecha_impresion: string;
   monto: number;
+  nombre_usuario: string;
   anulado: boolean;
   motivo_anulacion: string | null;
   id_caja_actividad: number;
+  nombre_caja: string | null;
 }
 
 export interface VerificarResponse {
@@ -82,6 +84,10 @@ export class ReporteCajaFuerteService {
       monto,
       reimpreso,
     });
+  }
+
+  listar(): Observable<ReporteCFMensual[]> {
+    return this.http.get<ReporteCFMensual[]>(`${this.base}/listar`);
   }
 
   anular(codigoReporte: number, motivoAnulacion: string): Observable<any> {

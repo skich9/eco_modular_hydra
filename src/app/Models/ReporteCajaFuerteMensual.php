@@ -50,11 +50,13 @@ class ReporteCajaFuerteMensual extends Model
             ->first();
     }
 
-    /** Reporte del mes exacto (mismo fecha_inicio). */
+    /** Reporte del mes exacto (mismo fecha_inicio). Prioriza el registro vigente sobre los anulados. */
     public static function reporteDelMes(int $idCaja, string $fechaInicio): ?self
     {
         return static::where('id_caja_actividad', $idCaja)
             ->where('fecha_inicio', $fechaInicio)
+            ->orderBy('anulado')            // 0 (vigente) antes que 1 (anulado)
+            ->orderByDesc('codigo_reporte') // más reciente primero si hay varios
             ->first();
     }
 }

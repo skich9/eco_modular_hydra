@@ -238,6 +238,13 @@ export const routes: Routes = [
 				canActivate: [permissionGuard],
 				data: { requiredPermission: 'economico_caja_fuerte' }
 			},
+			// Lista de Reportes Mensuales Caja Fuerte
+			{
+				path: 'cobros/lista-reporte-caja-fuerte',
+				loadComponent: () => import('./components/pages/cobros/lista-reporte-caja-fuerte/lista-reporte-caja-fuerte.component').then(m => m.ListaReporteCajaFuerteComponent),
+				canActivate: [permissionGuard],
+				data: { requiredPermission: 'economico_caja_fuerte' }
+			},
 			// Recepción de Ingresos
 			{
 				path: 'cobros/recepcion-ingresos',

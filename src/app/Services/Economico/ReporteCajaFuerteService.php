@@ -226,11 +226,16 @@ class ReporteCajaFuerteService
         $fechaFin = $carbon->copy()->endOfMonth()->toDateString();
         $caja     = CajaActividad::find($data['id_caja_actividad']);
 
-        $codDocumento = sprintf(
-            '%s-CF-%s',
-            $caja->prefijo,
-            $carbon->format('m')
-        );
+        // Siguiente correlativo: extrae el número base del último cod_documento de esta caja
+        $maxNum = ReporteCajaFuerteMensual::where('id_caja_actividad', $data['id_caja_actividad'])
+            ->get(['cod_documento'])
+            ->map(function ($r) {
+                preg_match('/(\d+)$/', $r->cod_documento, $m);
+                return isset($m[1]) ? (int) $m[1] : 0;
+            })
+            ->max() ?? 0;
+
+        $codDocumento = sprintf('%s-CF-%02d', $caja->prefijo, $maxNum + 1);
 
         return ReporteCajaFuerteMensual::create([
             'cod_documento'     => $codDocumento,
@@ -241,6 +246,30 @@ class ReporteCajaFuerteService
             'usuario'           => $data['usuario'],
             'id_caja_actividad' => $data['id_caja_actividad'],
         ]);
+    }
+
+    // ─── Lista de reportes ───────────────────────────────────────────────────
+
+    public function getListaReportes(): Collection
+    {
+        return DB::table('reporte_caja_fuerte_mensual as r')
+            ->leftJoin('cajas_actividad as ca', 'r.id_caja_actividad', '=', 'ca.id_caja_actividad')
+            ->leftJoin('usuarios as u', 'r.usuario', '=', 'u.id_usuario')
+            ->select(
+                'r.codigo_reporte',
+                'r.cod_documento',
+                'r.fecha_inicio',
+                'r.fecha_fin',
+                'r.fecha_impresion',
+                'r.monto',
+                'r.anulado',
+                'r.motivo_anulacion',
+                'r.id_caja_actividad',
+                'ca.nombre_caja',
+                DB::raw("TRIM(CONCAT(COALESCE(u.nombre,''), ' ', COALESCE(u.ap_paterno,''), ' ', COALESCE(u.ap_materno,''))) as nombre_usuario")
+            )
+            ->orderByDesc('r.fecha_inicio')
+            ->get();
     }
 
     // ─── Anular reporte ──────────────────────────────────────────────────────

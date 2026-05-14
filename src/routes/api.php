@@ -181,6 +181,7 @@ Route::middleware('auth:sanctum')->group(function () {
 
 	// Económico — Reporte Caja Fuerte
 	Route::prefix('economico/reporte-caja-fuerte')->group(function () {
+		Route::get('listar', [ReporteCajaFuerteController::class, 'listar']);
 		Route::get('initial', [ReporteCajaFuerteController::class, 'initial']);
 		Route::post('movimientos', [ReporteCajaFuerteController::class, 'movimientos']);
 		Route::post('verificar', [ReporteCajaFuerteController::class, 'verificar']);

@@ -82,11 +82,13 @@ class ReporteCajaFuerteController extends Controller
 
         $existente = $this->service->getReporteMes($idCaja, $fechaIni);
 
-        if ($existente && !$reimpreso) {
+        // Solo bloquear si existe un reporte VIGENTE (no anulado) y no es reimpresión
+        if ($existente && !$existente->anulado && !$reimpreso) {
             return response()->json(['message' => 'Ya existe un reporte para este mes.'], 422);
         }
 
-        if (!$existente) {
+        // Crear nuevo registro si no existe ninguno, o si el existente está anulado
+        if (!$existente || $existente->anulado) {
             $reporte = $this->service->guardarReporte([
                 'fecha_ini'         => $request->input('fecha_ini'),
                 'id_caja_actividad' => $idCaja,
@@ -107,6 +109,12 @@ class ReporteCajaFuerteController extends Controller
             'reporte' => $reporte,
             'url'     => $url,
         ]);
+    }
+
+    /** GET /api/economico/reporte-caja-fuerte/listar */
+    public function listar(): JsonResponse
+    {
+        return response()->json($this->service->getListaReportes());
     }
 
     /** POST /api/economico/reporte-caja-fuerte/anular */

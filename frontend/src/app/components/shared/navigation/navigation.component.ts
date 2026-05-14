@@ -109,7 +109,8 @@ export class NavigationComponent implements OnInit {
 				{ name: 'Descuento Mora', icon: 'fa-percent', route: '/descuento-mora', permissionCode: 'economico_descuento_mora' },
 				{ name: 'Egreso Caja Fuerte', icon: 'fa-vault', route: '/cobros/egreso-caja-fuerte', permissionCode: 'economico_caja_fuerte', separator: true },
 				{ name: 'Otros Ingresos CF', icon: 'fa-coins', route: '/cobros/otros-ingresos-cf', permissionCode: 'economico_recepcion_ingresos' },
-				{ name: 'Reporte Caja Fuerte', icon: 'fa-file-invoice-dollar', route: '/cobros/reporte-caja-fuerte', permissionCode: 'economico_caja_fuerte' }
+				{ name: 'Reporte Caja Fuerte', icon: 'fa-file-invoice-dollar', route: '/cobros/reporte-caja-fuerte', permissionCode: 'economico_caja_fuerte' },
+				{ name: 'Lista Reportes CF', icon: 'fa-list-alt', route: '/cobros/lista-reporte-caja-fuerte', permissionCode: 'economico_caja_fuerte' }
 			]
 		},
 		{

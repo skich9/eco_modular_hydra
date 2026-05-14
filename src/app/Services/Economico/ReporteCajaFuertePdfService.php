@@ -60,7 +60,6 @@ class ReporteCajaFuertePdfService
             .text-right  { text-align: right; }
             .text-center { text-align: center; }
             .row-saldo-ant td { font-weight: bold; }
-            .row-egreso td { background-color: #fff8f8; }
             .row-subtotales td { border-width: 1px; border-color: red; border-style: dotted; font-weight: bold; background-color: #e8e8e8; }
             .row-saldo-mes td { border-width: 1px; border-color: red; border-style: dotted; font-weight: bold; background-color: #d6e4f7; }
         ';

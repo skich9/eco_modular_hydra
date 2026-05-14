@@ -82,6 +82,7 @@
 	border: 1px solid var(--rcf-border);
 	border-radius: var(--rcf-radius);
 	font-size: 0.9rem;
+	appearance: auto;
 
 	&.is-invalid {
 		border-color: var(--rcf-danger);
@@ -236,6 +237,16 @@
 
 textarea.field-control {
 	resize: vertical;
+}
+
+input[type="month"].field-control {
+	appearance: auto;
+	-webkit-appearance: auto;
+	&::-webkit-calendar-picker-indicator {
+		display: block;
+		opacity: 1;
+		cursor: pointer;
+	}
 }
 
 .mb-3 { margin-bottom: 1rem; }

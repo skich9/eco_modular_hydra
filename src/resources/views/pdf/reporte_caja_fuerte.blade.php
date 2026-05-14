@@ -29,7 +29,7 @@
     @endif
 
     @foreach ($movimientos as $i => $m)
-    <tr class="{{ $m->tipo === 'egreso' ? 'row-egreso' : '' }}">
+    <tr>
       <td class="col-num">{{ $i + 1 }}</td>
       <td>{{ $m->correlativo }}</td>
       <td class="text-center">{{ $m->fecha }}</td>

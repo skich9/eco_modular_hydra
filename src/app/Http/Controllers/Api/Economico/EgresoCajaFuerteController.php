@@ -39,6 +39,8 @@ class EgresoCajaFuerteController extends Controller
             'monto'             => 'required|numeric|min:0.01',
             'descripcion'       => 'required|string|max:255',
             'observacion'       => 'nullable|string',
+        ], [
+            'correlativo.unique' => 'El correlativo ya esta en uso.',
         ]);
 
         $egreso = EgresoCajaFuerte::create([
