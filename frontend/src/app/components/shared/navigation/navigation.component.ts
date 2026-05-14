@@ -1,4 +1,4 @@
-import { Component, OnInit, HostListener } from '@angular/core';
+import { Component, OnInit, HostListener, OnDestroy } from '@angular/core';
 import { CommonModule } from '@angular/common';
 import { Router, RouterModule } from '@angular/router';
 import { ReactiveFormsModule, FormBuilder, FormGroup, Validators } from '@angular/forms';
@@ -8,6 +8,7 @@ import { Carrera } from '../../../models/carrera.model';
 import { CarreraService } from '../../../services/carrera.service';
 import { ParametrosGeneralesService } from '../../../services/parametros-generales.service';
 import { Usuario } from '../../../models/usuario.model';
+import { SgaPushService } from '../../../services/sga-push.service';
 
 interface MenuItem {
 	name: string;
@@ -47,12 +48,10 @@ export class NavigationComponent implements OnInit {
 	loadingCarreras = false;
 
 	// Sincronización de Cobros (UI)
-	syncErrors: any[] = [
-		{ id: 1, documento: 'F-4502', estudiante: 'JUAN PEREZ GARCIA', concepto: 'MENSUALIDAD MAYO 2026', mensaje: 'Error de conexión con servidor SGA' },
-		{ id: 2, documento: 'R-892', estudiante: 'MARIA LOPEZ', concepto: 'REZAGADO - PROGRAMACION I', mensaje: 'Código de estudiante no encontrado en SGA' }
-	];
-	syncErrorCount: number = 2;
+	syncErrors: any[] = [];
+	syncErrorCount: number = 0;
 	isRetrying: boolean = false;
+	private syncInterval: any;
 
 	// Definición completa de menús con módulos
 	private allMenuItems: MenuItem[] = [
@@ -142,7 +141,8 @@ export class NavigationComponent implements OnInit {
 		private router: Router,
 		private formBuilder: FormBuilder,
 		private carreraService: CarreraService,
-		private pgService: ParametrosGeneralesService
+		private pgService: ParametrosGeneralesService,
+		private sgaPushService: SgaPushService
 	) {
 		this.changePasswordForm = this.formBuilder.group({
 			contraseniaActual: ['', [Validators.required]],
@@ -174,6 +174,20 @@ export class NavigationComponent implements OnInit {
 
 		// Cargar nombre de la institución
 		this.loadInstitucionName();
+
+		// Sincronización: Cargar errores iniciales y refrescar cada 5 minutos
+		if (this.canSeeSyncBell) {
+			this.loadSyncErrors();
+			this.syncInterval = setInterval(() => {
+				this.loadSyncErrors();
+			}, 5 * 60 * 1000); // 5 minutos
+		}
+	}
+
+	ngOnDestroy(): void {
+		if (this.syncInterval) {
+			clearInterval(this.syncInterval);
+		}
 	}
 
 	private loadInstitucionName(): void {
@@ -390,6 +404,7 @@ export class NavigationComponent implements OnInit {
 
 	// Métodos para Sincronización (UI)
 	openSyncModal(): void {
+		this.loadSyncErrors();
 		const modal = document.getElementById('syncErrorsModal');
 		if (modal) {
 			const bootstrapModal = new (window as any).bootstrap.Modal(modal);
@@ -397,23 +412,55 @@ export class NavigationComponent implements OnInit {
 		}
 	}
 
+	loadSyncErrors(): void {
+		if (!this.canSeeSyncBell) return;
+
+		this.sgaPushService.getPendingSyncs().subscribe({
+			next: (res) => {
+				if (res.success) {
+					this.syncErrors = res.data;
+					this.syncErrorCount = res.count;
+				}
+			},
+			error: (err) => console.error('Error al cargar errores de sincronización:', err)
+		});
+	}
+
 	retrySync(err: any): void {
 		this.isRetrying = true;
-		// Simulación de reintento
-		setTimeout(() => {
-			this.isRetrying = false;
-			this.syncErrors = this.syncErrors.filter(e => e.id !== err.id);
-			this.syncErrorCount = this.syncErrors.length;
-		}, 1500);
+		this.sgaPushService.retrySync(err.id).subscribe({
+			next: (res) => {
+				this.isRetrying = false;
+				if (res.success) {
+					// Recargar lista
+					this.loadSyncErrors();
+				} else {
+					alert('Error al reintentar: ' + res.message);
+				}
+			},
+			error: (err) => {
+				this.isRetrying = false;
+				alert('Error de conexión al reintentar');
+			}
+		});
 	}
 
 	retryAllSync(): void {
+		if (!confirm('¿Está seguro de reintentar todas las sincronizaciones pendientes?')) return;
+		
 		this.isRetrying = true;
-		// Simulación de reintento masivo
-		setTimeout(() => {
-			this.isRetrying = false;
-			this.syncErrors = [];
-			this.syncErrorCount = 0;
-		}, 2500);
+		this.sgaPushService.retryAll().subscribe({
+			next: (res) => {
+				this.isRetrying = false;
+				if (res.success) {
+					alert(res.message);
+					this.loadSyncErrors();
+				}
+			},
+			error: (err) => {
+				this.isRetrying = false;
+				alert('Error de conexión al reintentar todos');
+			}
+		});
 	}
 }
