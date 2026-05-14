@@ -18,7 +18,7 @@ use App\Models\ParametrosEconomicos;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\Validator;
 use Illuminate\Support\Facades\DB;
-//use App\Services\Sga\SgaPushService;
+use App\Services\Sga\SgaPushService;
 use Illuminate\Support\Facades\Schema;
 use Illuminate\Support\Facades\Log;
 use App\Repositories\Sin\CuisRepository;
@@ -332,11 +332,11 @@ class CobroController extends Controller
 			$cobro = Cobro::create($data);
 
 			// Sincronizar con SGA (Efecto Dual-Write)
-			/*try {
+			try {
 				app(SgaPushService::class)->pushCobro($cobro);
 			} catch (\Throwable $e) {
 				\Log::error('Error en sincronización dual SGA (CobroController): ' . $e->getMessage());
-			}*/
+			}
 
 			return response()->json([
 				'success' => true,
@@ -3739,11 +3739,11 @@ class CobroController extends Controller
                 $created = Cobro::create($payload)->load(['usuario', 'cuota', 'formaCobro', 'cuentaBancaria', 'itemCobro']);
 
                 // Sincronizar con SGA (Efecto Dual-Write)
-                /*try {
+                try {
                     app(SgaPushService::class)->pushCobro($created);
                 } catch (\Throwable $e) {
                     \Log::error('Error en sincronización dual SGA (batchStore): ' . $e->getMessage());
-                }*/
+                }
 
                 // Si es MORA o NIVELACION y viene identificada, actualizar monto_pagado y marcar como PAGADO cuando corresponda
                 $esMoraONivelacion = in_array(strtoupper((string)$codTipoCobroItem), ['MORA', 'NIVELACION']);
