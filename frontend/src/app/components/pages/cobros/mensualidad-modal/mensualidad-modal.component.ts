@@ -2337,7 +2337,7 @@ export class MensualidadModalComponent implements OnInit, OnChanges, AfterViewIn
     const totalCuotasPendientes = this.pendientes || 0;
     let descuentoSemestreEsInstitucional = false;
 
-    if (cantSel === totalCuotasPendientes && this.descuentoSemestreIdDefDescuento) {
+    if (cantSel === totalCuotasPendientes && totalCuotasPendientes > 1 && this.descuentoSemestreIdDefDescuento) {
       if (this.descuentoSemestreActivar) {
         let dentroFecha = true;
         if (this.descuentoSemestreFechaLimite) {
