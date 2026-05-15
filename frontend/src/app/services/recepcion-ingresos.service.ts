@@ -29,6 +29,12 @@ export interface ActividadEconomica {
   descripcion: string;
 }
 
+export interface CajaActividad {
+  id_caja_actividad: number;
+  nombre_caja: string;
+  prefijo: string;
+}
+
 export interface RecepcionIngresoDetalle {
   id?: number;
   recepcion_ingreso_id?: number;
@@ -59,6 +65,7 @@ export interface RecepcionIngreso {
   observacion?: string | null;
   monto_total?: number;
   id_actividad_economica?: number | null;
+  id_caja_actividad?: number | null;
   es_ingreso_libro_diario?: boolean;
   anulado?: boolean;
   motivo_anulacion?: string | null;
@@ -88,6 +95,7 @@ export interface ReporteFiltros {
 export interface InitialData {
   carreras: CarreraRecepcion[];
   actividades: ActividadEconomica[];
+  cajas: CajaActividad[];
   tesoreros: Tesorero[];
   usuarios_activos: UsuarioActivo[];
   usuarios_libros: { usuario: string }[];
@@ -129,6 +137,14 @@ export class RecepcionIngresosService {
       .set('carrera', carrera)
       .set('fecha', fecha);
     return this.http.get<any>(`${this.base}/siguiente-num-documento`, { params });
+  }
+
+  /** Siguiente correlativo para cod_libro_diario (igual que SGA: count+1 WHERE LIKE prefijo%) */
+  correlativoDetalle(prefijo: string): Observable<{ success: boolean; data: { correlativo: number } }> {
+    const params = new HttpParams().set('prefijo', prefijo);
+    return this.http.get<{ success: boolean; data: { correlativo: number } }>(
+      `${this.base}/correlativo-detalle`, { params }
+    );
   }
 
   /** Lista recepciones con filtros opcionales */

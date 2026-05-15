@@ -42,7 +42,7 @@ export class RecepcionIngresosComponent implements OnInit, OnDestroy {
   anulando = false;
   // Catálogos
   catalogos: InitialData = {
-    carreras: [], actividades: [], tesoreros: [],
+    carreras: [], actividades: [], cajas: [], tesoreros: [],
     usuarios_activos: [], usuarios_libros: [],
   };
 

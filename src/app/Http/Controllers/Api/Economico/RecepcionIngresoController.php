@@ -7,6 +7,7 @@ use App\Services\Economico\RecepcionIngresoService;
 use Illuminate\Http\JsonResponse;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\Auth;
+use Illuminate\Support\Facades\DB;
 
 class RecepcionIngresoController extends Controller
 {
@@ -52,6 +53,25 @@ class RecepcionIngresoController extends Controller
         return response()->json(['success' => true, 'data' => $resultado]);
     }
 
+    /**
+     * GET /api/economico/recepcion-ingresos/correlativo-detalle
+     *
+     * Retorna el siguiente correlativo para cod_libro_diario de un detalle.
+     * Equivalente SGA: count(*)+1 FROM detalle_recepcion WHERE cod_libro_diario LIKE 'prefijo%'
+     *
+     * Query param: prefijo (ej: OI-EEA-05-)
+     */
+    public function correlativoDetalle(Request $request): JsonResponse
+    {
+        $prefijo = $request->query('prefijo', '');
+
+        $correlativo = DB::table('recepcion_ingreso_detalles')
+            ->where('cod_libro_diario', 'like', $prefijo . '%')
+            ->count() + 1;
+
+        return response()->json(['success' => true, 'data' => ['correlativo' => $correlativo]]);
+    }
+
     // ─── Registro ─────────────────────────────────────────────────────────────
 
     /**
@@ -69,6 +89,7 @@ class RecepcionIngresoController extends Controller
             'usuario_entregue2'       => 'nullable|string|max:100',
             'usuario_recibi2'         => 'nullable|string|max:100',
             'id_actividad_economica'  => 'nullable|integer',
+            'id_caja_actividad'       => 'nullable|integer|exists:cajas_actividad,id_caja_actividad',
             'es_ingreso_libro_diario' => 'nullable|boolean',
             'observacion'             => 'nullable|string',
             'detalles'                => 'required|array|min:1',
