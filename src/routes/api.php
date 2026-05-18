@@ -44,6 +44,8 @@ use App\Http\Controllers\Api\Economico\OtrosIngresosController;
 use App\Http\Controllers\Api\Economico\ModOtrosIngresosController;
 use App\Http\Controllers\Api\Economico\ReimpresionReposicionOtrosIngresosController;
 use App\Http\Controllers\Api\Economico\RecepcionIngresoController;
+use App\Http\Controllers\Api\Economico\EgresoCajaFuerteController;
+use App\Http\Controllers\Api\Economico\ReporteCajaFuerteController;
 use App\Http\Controllers\Api\ReporteRecepcionIngresoDepositoController;
 
 // Búsqueda de estudiantes
@@ -169,10 +171,29 @@ Route::middleware('auth:sanctum')->group(function () {
 		Route::post('registrar-mod', [ModOtrosIngresosController::class, 'registrarMod']);
 	});
 
+	// Económico — Egreso Caja Fuerte
+	Route::prefix('economico/caja-fuerte')->group(function () {
+		Route::get('initial', [EgresoCajaFuerteController::class, 'initial']);
+		Route::post('registrar', [EgresoCajaFuerteController::class, 'registrar']);
+		Route::post('editar', [EgresoCajaFuerteController::class, 'editar']);
+		Route::post('eliminar', [EgresoCajaFuerteController::class, 'eliminar']);
+	});
+
+	// Económico — Reporte Caja Fuerte
+	Route::prefix('economico/reporte-caja-fuerte')->group(function () {
+		Route::get('listar', [ReporteCajaFuerteController::class, 'listar']);
+		Route::get('initial', [ReporteCajaFuerteController::class, 'initial']);
+		Route::post('movimientos', [ReporteCajaFuerteController::class, 'movimientos']);
+		Route::post('verificar', [ReporteCajaFuerteController::class, 'verificar']);
+		Route::post('imprimir', [ReporteCajaFuerteController::class, 'imprimir']);
+		Route::post('anular', [ReporteCajaFuerteController::class, 'anular']);
+	});
+
 	// Económico — Recepción de Ingresos
 	Route::prefix('economico/recepcion-ingresos')->group(function () {
 		Route::get('initial', [RecepcionIngresoController::class, 'initialData']);
 		Route::get('siguiente-num-documento', [RecepcionIngresoController::class, 'siguienteNumDocumento']);
+		Route::get('correlativo-detalle', [RecepcionIngresoController::class, 'correlativoDetalle']);
 		Route::get('listar', [RecepcionIngresoController::class, 'listar']);
 		Route::get('lista-tabla', [RecepcionIngresoController::class, 'listarTablaSga']);
 		Route::post('registrar', [RecepcionIngresoController::class, 'registrar']);

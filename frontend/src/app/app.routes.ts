@@ -217,6 +217,34 @@ export const routes: Routes = [
 				canActivate: [permissionGuard],
 				data: { requiredPermission: 'economico_mod_otros_ingresos' }
 			},
+			// Otros Ingresos Caja Fuerte
+			{
+				path: 'cobros/otros-ingresos-cf',
+				loadComponent: () => import('./components/pages/cobros/otros-ingresos-cf/otros-ingresos-cf.component').then(m => m.OtrosIngresosCfComponent),
+				canActivate: [permissionGuard],
+				data: { requiredPermission: 'economico_recepcion_ingresos' }
+			},
+			// Egreso Caja Fuerte
+			{
+				path: 'cobros/egreso-caja-fuerte',
+				loadComponent: () => import('./components/pages/cobros/egreso-caja-fuerte/egreso-caja-fuerte.component').then(m => m.EgresoCajaFuerteComponent),
+				canActivate: [permissionGuard],
+				data: { requiredPermission: 'economico_caja_fuerte' }
+			},
+			// Reporte Caja Fuerte
+			{
+				path: 'cobros/reporte-caja-fuerte',
+				loadComponent: () => import('./components/pages/cobros/reporte-caja-fuerte/reporte-caja-fuerte.component').then(m => m.ReporteCajaFuerteComponent),
+				canActivate: [permissionGuard],
+				data: { requiredPermission: 'economico_caja_fuerte' }
+			},
+			// Lista de Reportes Mensuales Caja Fuerte
+			{
+				path: 'cobros/lista-reporte-caja-fuerte',
+				loadComponent: () => import('./components/pages/cobros/lista-reporte-caja-fuerte/lista-reporte-caja-fuerte.component').then(m => m.ListaReporteCajaFuerteComponent),
+				canActivate: [permissionGuard],
+				data: { requiredPermission: 'economico_caja_fuerte' }
+			},
 			// Recepción de Ingresos
 			{
 				path: 'cobros/recepcion-ingresos',

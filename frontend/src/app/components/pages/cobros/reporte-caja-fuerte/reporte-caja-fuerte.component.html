@@ -1,0 +1,169 @@
+<div class="page-wrap">
+
+  <div class="page-header">
+    <h1>Reporte Mensual de Caja Fuerte</h1>
+  </div>
+
+  @if (alertMsg) {
+    <div class="alert" [class.alert-success]="alertOk" [class.alert-danger]="!alertOk" role="alert">
+      <i class="bi me-2" [class.bi-check-circle]="alertOk" [class.bi-exclamation-triangle]="!alertOk"></i>
+      {{ alertMsg }}
+    </div>
+  }
+
+  @if (cargando) {
+    <div class="text-center py-5">
+      <div class="spinner-border text-primary" role="status"></div>
+      <div class="mt-2 text-muted">Cargando catálogos...</div>
+    </div>
+  } @else {
+
+    <!-- ─── Filtros ──────────────────────────────────────────────────────────── -->
+    <div class="card-panel card-panel--form">
+      <h2>Filtros</h2>
+      <div class="form-grid">
+
+        <div class="field">
+          <label class="field-label">Caja fuerte :<span class="req">*</span></label>
+          <select
+            class="field-control"
+            [class.is-invalid]="invalidCaja"
+            [(ngModel)]="idCaja"
+            (ngModelChange)="invalidCaja = false"
+          >
+            <option [ngValue]="null">Seleccione una caja</option>
+            @for (c of cajas; track c.id_caja_actividad) {
+              <option [ngValue]="c.id_caja_actividad">{{ c.nombre_caja }}</option>
+            }
+          </select>
+          @if (invalidCaja) { <div class="invalid-msg">Campo requerido</div> }
+        </div>
+
+        <div class="field">
+          <label class="field-label">Mes :<span class="req">*</span></label>
+          <input
+            type="month"
+            class="field-control"
+            [class.is-invalid]="invalidMes"
+            [(ngModel)]="mesAnio"
+            (ngModelChange)="invalidMes = false"
+          />
+          @if (invalidMes) { <div class="invalid-msg">Campo requerido</div> }
+        </div>
+
+      </div>
+
+      <div class="form-actions">
+        <button class="btn btn-primary" (click)="generarReporte()" [disabled]="generando">
+          @if (generando) {
+            <span class="spinner-border spinner-border-sm me-1"></span>
+          }
+          Generar reporte
+        </button>
+      </div>
+    </div>
+
+    <!-- ─── Tabla de resultados ──────────────────────────────────────────────── -->
+    @if (datos) {
+      <div class="card-panel card-panel--table">
+
+        <div class="table-header">
+          <h2>Movimientos del mes</h2>
+          <div class="table-badges"></div>
+          <div class="table-actions">
+            <button class="btn btn-success me-2" (click)="imprimir()" [disabled]="imprimiendo">
+              @if (imprimiendo) { <span class="spinner-border spinner-border-sm me-1"></span> }
+              Imprimir y cerrar mes
+            </button>
+          </div>
+        </div>
+
+        <div class="table-responsive">
+          <table class="data-table">
+            <thead>
+              <tr>
+                <th class="col-num">Nº</th>
+                <th>N/TRANSACCIÓN</th>
+                <th class="col-fecha">FECHA</th>
+                <th>REFERENCIA</th>
+                <th class="col-monto">INGRESOS</th>
+                <th class="col-monto">EGRESOS</th>
+                <th class="col-monto">SALDO</th>
+              </tr>
+            </thead>
+            <tbody>
+              <!-- Saldo anterior -->
+              <tr class="row-saldo-anterior">
+                <td></td>
+                <td colspan="3">Saldo anterior</td>
+                <td></td>
+                <td></td>
+                <td class="text-end">{{ datos.saldo_anterior | number:'1.2-2' }}</td>
+              </tr>
+
+              @for (m of datos.movimientos; track m.correlativo; let i = $index) {
+                <tr [class.row-egreso]="m.tipo === 'egreso'" [class.row-otro-ingreso]="m.tipo === 'otro_ingreso'">
+                  <td class="text-center">{{ i + 1 }}</td>
+                  <td>{{ m.correlativo }}</td>
+                  <td>{{ m.fecha }}</td>
+                  <td>{{ m.descripcion }}</td>
+                  <td class="text-end">{{ m.ingreso | number:'1.2-2' }}</td>
+                  <td class="text-end">{{ m.egreso | number:'1.2-2' }}</td>
+                  <td class="text-end">{{ m.saldo | number:'1.2-2' }}</td>
+                </tr>
+              }
+
+              @if (datos.movimientos.length === 0) {
+                <tr>
+                  <td colspan="7" class="text-center text-muted py-3">
+                    No hay movimientos para este mes y caja.
+                  </td>
+                </tr>
+              }
+            </tbody>
+            <tfoot>
+              <tr class="row-subtotales">
+                <td colspan="4" class="text-end">Sub Totales</td>
+                <td class="text-end">{{ datos.total_ingresos | number:'1.2-2' }}</td>
+                <td class="text-end">{{ datos.total_egresos | number:'1.2-2' }}</td>
+                <td></td>
+              </tr>
+              <tr class="row-saldo-mes">
+                <td colspan="6" class="text-end">Saldo del mes {{ labelMes }}</td>
+                <td class="text-end">{{ datos.saldo_final | number:'1.2-2' }}</td>
+              </tr>
+            </tfoot>
+          </table>
+        </div>
+
+      </div>
+    }
+
+    <!-- ─── Modal anulación ──────────────────────────────────────────────────── -->
+    @if (modalAnulando) {
+      <div class="modal-backdrop" (click)="cerrarModalAnular()"></div>
+      <div class="modal-box">
+        <h3>Anular reporte</h3>
+        <p class="modal-desc">Ingrese el motivo de anulación para el reporte <strong>{{ reporteExistente?.cod_documento }}</strong>.</p>
+
+        <div class="field mb-3">
+          <label class="field-label">Motivo :<span class="req">*</span></label>
+          <textarea
+            class="field-control"
+            [class.is-invalid]="invalidMotivo"
+            [(ngModel)]="motivoAnulacion"
+            rows="3"
+            (ngModelChange)="invalidMotivo = false"
+          ></textarea>
+          @if (invalidMotivo) { <div class="invalid-msg">Campo requerido</div> }
+        </div>
+
+        <div class="modal-actions">
+          <button class="btn btn-outline-secondary me-2" (click)="cerrarModalAnular()">Cancelar</button>
+          <button class="btn btn-danger" (click)="confirmarAnulacion()">Confirmar anulación</button>
+        </div>
+      </div>
+    }
+
+  }
+</div>

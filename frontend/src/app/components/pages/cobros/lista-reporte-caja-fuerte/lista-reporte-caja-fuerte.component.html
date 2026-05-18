@@ -1,0 +1,127 @@
+<div class="page-wrap">
+
+  <div class="page-header">
+    <h1>Lista Recepción de Caja Fuerte</h1>
+  </div>
+
+  @if (alertMsg) {
+    <div class="alert" [class.alert-success]="alertOk" [class.alert-danger]="!alertOk" role="alert">
+      <i class="bi me-2" [class.bi-check-circle]="alertOk" [class.bi-exclamation-triangle]="!alertOk"></i>
+      {{ alertMsg }}
+    </div>
+  }
+
+  @if (cargando) {
+    <div class="text-center py-5">
+      <div class="spinner-border text-primary" role="status"></div>
+      <div class="mt-2 text-muted">Cargando reportes...</div>
+    </div>
+  } @else {
+
+    <div class="card-panel card-panel--table">
+
+      <div class="table-header">
+        <h2>Reportes generados</h2>
+      </div>
+
+      <table class="data-table">
+        <thead>
+          <tr>
+            <th>Fecha Impresión</th>
+            <th>Nombre Caja Actividad</th>
+            <th>Usuario</th>
+            <th class="col-fecha">Inicio del Mes</th>
+            <th class="col-fecha">Fin del Mes</th>
+            <th class="col-monto">Monto</th>
+            <th>Cod. Documento</th>
+            <th class="col-operaciones">Operaciones</th>
+          </tr>
+        </thead>
+        <tbody>
+          @for (r of reportes; track r.codigo_reporte) {
+            <tr [class.row-anulado]="r.anulado">
+              <td>{{ r.fecha_impresion | date:'dd/MM/yyyy HH:mm' }}</td>
+              <td>{{ r.nombre_caja }}</td>
+              <td>{{ r.nombre_usuario }}</td>
+              <td class="text-center">{{ r.fecha_inicio | date:'dd/MM/yyyy' }}</td>
+              <td class="text-center">{{ r.fecha_fin | date:'dd/MM/yyyy' }}</td>
+              <td class="text-end">{{ r.monto | number:'1.2-2' }}</td>
+              <td>{{ r.cod_documento }}</td>
+              <td class="col-operaciones">
+                @if (!r.anulado) {
+                  <button
+                    class="btn btn-sm btn-outline-primary me-1"
+                    [disabled]="esReimprimiendo(r)"
+                    (click)="reimprimir(r)"
+                    title="Reimprimir PDF"
+                  >
+                    @if (esReimprimiendo(r)) {
+                      <span class="spinner-border spinner-border-sm"></span>
+                    } @else {
+                      <i class="fas fa-print" aria-hidden="true"></i>
+                    }
+                  </button>
+                  <button
+                    class="btn btn-sm btn-outline-danger"
+                    (click)="abrirModalAnular(r)"
+                    title="Anular reporte"
+                  >
+                    <i class="fas fa-times" aria-hidden="true"></i>
+                  </button>
+                } @else {
+                  <span class="badge-anulado" [title]="r.motivo_anulacion ?? ''">Anulado</span>
+                }
+              </td>
+            </tr>
+          }
+
+          @if (reportes.length === 0) {
+            <tr>
+              <td colspan="8" class="text-center text-muted py-3">
+                No hay reportes generados aún.
+              </td>
+            </tr>
+          }
+        </tbody>
+      </table>
+
+    </div>
+
+    <!-- ─── Modal anulación ──────────────────────────────────────────────────── -->
+    @if (filaAnular) {
+      <div class="modal d-block" tabindex="-1" style="background:rgba(0,0,0,0.5)">
+        <div class="modal-dialog">
+          <div class="modal-content">
+            <div class="modal-header">
+              <h5 class="modal-title">Anular reporte</h5>
+              <button type="button" class="btn-close" aria-label="Cerrar" (click)="cerrarModalAnular()"></button>
+            </div>
+            <div class="modal-body">
+              <p>Ingrese el motivo de anulación para el reporte <strong>{{ filaAnular.cod_documento }}</strong>.</p>
+              <div class="mb-3">
+                <label class="form-label">Motivo : <span class="text-danger">*</span></label>
+                <textarea
+                  class="form-control"
+                  [class.is-invalid]="invalidMotivo"
+                  [(ngModel)]="motivoAnulacion"
+                  rows="3"
+                  (ngModelChange)="invalidMotivo = false"
+                ></textarea>
+                @if (invalidMotivo) { <div class="invalid-feedback d-block">Campo requerido</div> }
+              </div>
+            </div>
+            <div class="modal-footer">
+              @if (anulando) {
+                <div class="w-100 text-center"><div class="spinner-border text-primary" role="status"></div></div>
+              } @else {
+                <button type="button" class="btn btn-outline-secondary" (click)="cerrarModalAnular()">Cancelar</button>
+                <button type="button" class="btn btn-danger" (click)="confirmarAnulacion()">Confirmar anulación</button>
+              }
+            </div>
+          </div>
+        </div>
+      </div>
+    }
+
+  }
+</div>

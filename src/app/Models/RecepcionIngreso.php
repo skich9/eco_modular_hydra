@@ -21,23 +21,30 @@ class RecepcionIngreso extends Model
         'num_documento',
         'monto_total',
         'id_actividad_economica',
+        'id_caja_actividad',
         'es_ingreso_libro_diario',
         'anulado',
         'motivo_anulacion',
         'observacion',
+        'fecha_inicial_libros',
+        'fecha_final_libros',
     ];
 
     protected $casts = [
         'fecha_recepcion'       => 'date',
+        'fecha_inicial_libros'  => 'date',
+        'fecha_final_libros'    => 'date',
         'fecha_registro'        => 'datetime',
         'monto_total'           => 'decimal:2',
         'anulado'               => 'boolean',
         'es_ingreso_libro_diario' => 'boolean',
     ];
 
-    /**
-     * Detalles (uno por tesorero/libro diario) de esta recepción.
-     */
+    public function cajaActividad()
+    {
+        return $this->belongsTo(CajaActividad::class, 'id_caja_actividad', 'id_caja_actividad');
+    }
+
     public function detalles()
     {
         return $this->hasMany(RecepcionIngresoDetalle::class, 'recepcion_ingreso_id');
