@@ -585,6 +585,7 @@ export class QrPanelComponent implements OnDestroy, OnChanges {
 			const idAsignacionMora = g.get('id_asignacion_mora')?.value ?? null;
 			const idAsignacionCosto = g.get('id_asignacion_costo')?.value ?? null;
 			const idCuota = g.get('id_cuota')?.value ?? null;
+			const idItem = g.get('id_item')?.value ?? null;
 			items.push({
 				monto: subtotal,
 				fecha_cobro: hoy,
@@ -604,7 +605,8 @@ export class QrPanelComponent implements OnDestroy, OnChanges {
 				tipo_pago: tipoPago,
 				id_asignacion_mora: idAsignacionMora,
 				id_asignacion_costo: idAsignacionCosto,
-				id_cuota: idCuota
+				id_cuota: idCuota,
+				id_item: idItem
 			});
 		}
 		if (!items.length) {

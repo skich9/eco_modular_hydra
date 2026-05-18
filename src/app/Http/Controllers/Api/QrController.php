@@ -131,6 +131,7 @@ class QrController extends Controller
             'items.*.id_asignacion_mora' => 'nullable|integer',
             'items.*.id_asignacion_costo' => 'nullable|integer',
             'items.*.id_cuota' => 'nullable|integer',
+            'items.*.id_item' => 'nullable|integer',
         ]);
 
         $alias = (string)(isset($validated['alias']) ? $validated['alias'] : '');
@@ -163,10 +164,14 @@ class QrController extends Controller
                     $obsVal = isset($it['observaciones']) ? $it['observaciones'] : null;
                     if (is_string($obsVal) && mb_strlen($obsVal) > 2000) { $obsVal = mb_substr($obsVal, 0, 2000); }
 
-                    // Determinar tipo_concepto: si es mora, marcar como 'mora'
-                    $tipoConcepto = (string)(isset($it['tipo_concepto']) ? $it['tipo_concepto'] : 'general');
-                    if (isset($it['cod_tipo_cobro']) && $it['cod_tipo_cobro'] === 'MORA') {
-                        $tipoConcepto = 'mora';
+                    // id_item tiene prioridad absoluta: es un item de catálogo sin importar el nombre
+                    if (isset($it['id_item']) && $it['id_item']) {
+                        $tipoConcepto = 'material_extra';
+                    } else {
+                        $tipoConcepto = (string)(isset($it['tipo_concepto']) ? $it['tipo_concepto'] : $this->classifyTipoConcepto((array)$it));
+                        if (isset($it['cod_tipo_cobro']) && in_array($it['cod_tipo_cobro'], ['MORA', 'NIVELACION'])) {
+                            $tipoConcepto = ($it['cod_tipo_cobro'] === 'NIVELACION') ? 'nivelacion' : 'mora';
+                        }
                     }
 
                     $insertData = [
@@ -193,6 +198,9 @@ class QrController extends Controller
                         $insertData['id_asignacion_mora'] = isset($it['id_asignacion_mora']) ? (int)$it['id_asignacion_mora'] : null;
                         $insertData['id_asignacion_costo'] = isset($it['id_asignacion_costo']) ? (int)$it['id_asignacion_costo'] : null;
                         $insertData['id_cuota'] = isset($it['id_cuota']) ? (int)$it['id_cuota'] : null;
+                    }
+                    if (\Schema::hasColumn('qr_conceptos_detalle', 'id_item')) {
+                        $insertData['id_item'] = isset($it['id_item']) && $it['id_item'] ? (int)$it['id_item'] : null;
                     }
 
                     DB::table('qr_conceptos_detalle')->insert($insertData);
@@ -223,16 +231,33 @@ class QrController extends Controller
             $obs = strtoupper(trim((string)(isset($it['observaciones']) ? $it['observaciones'] : '')));
             $src = $detalle . ' ' . $obs;
             if ($src === ' ') return 'general';
-            if (strpos($src, 'MORA') !== false) return 'mora';
+            if (strpos($src, 'NIVEL') !== false) return 'nivelacion';
+            if (strpos($src, 'MORA') !== false || strpos($src, 'MULTA') !== false) return 'mora';
             if (strpos($src, 'MENSUALIDAD') !== false) return 'mensualidad';
             if (strpos($src, 'REZAGADO') !== false) return 'rezagado';
             if (strpos($src, 'RECUPERACION') !== false) return 'recuperacion';
             if (strpos($src, 'REINCORPOR') !== false) return 'reincorporacion';
             if (strpos($src, 'ARRASTRE') !== false) return 'arrastre';
-            if (strpos($src, 'MATERIAL') !== false || strpos($src, 'LIBRO') !== false || strpos($src, 'TEXTO') !== false) return 'material_extra';
+            if (strpos($src, 'MATERIAL') !== false || strpos($src, 'LIBRO') !== false || strpos($src, 'TEXTO') !== false || strpos($src, 'CARNET') !== false) return 'material_extra';
             return 'general';
         } catch (\Throwable $e) { return 'general'; }
     }
+
+    private function mapTipoConceptoToCodTipoCobro(string $tipoConcepto): ?string
+    {
+        $map = [
+            'mora'            => 'MORA',
+            'nivelacion'      => 'NIVELACION',
+            'mensualidad'     => 'MENSUALIDAD',
+            'rezagado'        => 'REZAGADOS',
+            'recuperacion'    => 'PRUEBA_RECUPERACION',
+            'reincorporacion' => 'REINCORPORACION',
+            'arrastre'        => 'ARRASTRE',
+            'material_extra'  => 'MATERIAL_EXTRA',
+        ];
+        return isset($map[$tipoConcepto]) ? $map[$tipoConcepto] : null;
+    }
+
     public function initiate(Request $request, QrGatewayService $gateway)
     {
         $validated = $request->validate([
@@ -389,10 +414,14 @@ class QrController extends Controller
                     'concepto' => $concepto
                 ]);
             } catch (\Throwable $e) {}
-            // Determinar tipo_concepto: si es mora, marcar como 'mora'
-            $tipoConcepto = (string)(isset($it['tipo_concepto']) ? $it['tipo_concepto'] : $this->classifyTipoConcepto((array)$it));
-            if (isset($it['cod_tipo_cobro']) && $it['cod_tipo_cobro'] === 'MORA') {
-                $tipoConcepto = 'mora';
+            // id_item tiene prioridad absoluta: es un item de catálogo sin importar el nombre
+            if (isset($it['id_item']) && $it['id_item']) {
+                $tipoConcepto = 'material_extra';
+            } else {
+                $tipoConcepto = (string)(isset($it['tipo_concepto']) ? $it['tipo_concepto'] : $this->classifyTipoConcepto((array)$it));
+                if (isset($it['cod_tipo_cobro']) && in_array($it['cod_tipo_cobro'], ['MORA', 'NIVELACION'])) {
+                    $tipoConcepto = ($it['cod_tipo_cobro'] === 'NIVELACION') ? 'nivelacion' : 'mora';
+                }
             }
 
             $insertData = [
@@ -421,6 +450,9 @@ class QrController extends Controller
                 $insertData['id_asignacion_mora'] = isset($it['id_asignacion_mora']) ? (int)$it['id_asignacion_mora'] : null;
                 $insertData['id_asignacion_costo'] = isset($it['id_asignacion_costo']) ? (int)$it['id_asignacion_costo'] : null;
                 $insertData['id_cuota'] = isset($it['id_cuota']) ? (int)$it['id_cuota'] : null;
+            }
+            if (\Schema::hasColumn('qr_conceptos_detalle', 'id_item')) {
+                $insertData['id_item'] = isset($it['id_item']) && $it['id_item'] ? (int)$it['id_item'] : null;
             }
 
             DB::table('qr_conceptos_detalle')->insert($insertData);
@@ -855,29 +887,31 @@ class QrController extends Controller
 
                         // Si las columnas adicionales existen, usarlas; sino derivar de tipo_concepto
                         if (\Schema::hasColumn('qr_conceptos_detalle', 'cod_tipo_cobro')) {
-                            $item['cod_tipo_cobro'] = isset($row->cod_tipo_cobro) ? (string)$row->cod_tipo_cobro : null;
+                            $rowIdItem = isset($row->id_item) && $row->id_item ? (int)$row->id_item : null;
+                            if ($rowIdItem) {
+                                // id_item tiene prioridad absoluta: item de catálogo
+                                $storedCod = 'MATERIAL_EXTRA';
+                            } else {
+                                $storedCod = isset($row->cod_tipo_cobro) && $row->cod_tipo_cobro !== null
+                                    ? (string)$row->cod_tipo_cobro
+                                    : null;
+                                if ($storedCod === null) {
+                                    $tcFallback = isset($row->tipo_concepto) ? (string)$row->tipo_concepto : 'general';
+                                    $storedCod = $this->mapTipoConceptoToCodTipoCobro($tcFallback);
+                                }
+                            }
+                            $item['cod_tipo_cobro'] = $storedCod;
                             $item['tipo_pago'] = isset($row->tipo_pago) ? (string)$row->tipo_pago : null;
                             $item['id_asignacion_mora'] = isset($row->id_asignacion_mora) ? (int)$row->id_asignacion_mora : null;
                             $item['id_asignacion_costo'] = isset($row->id_asignacion_costo) ? (int)$row->id_asignacion_costo : null;
                             $item['id_cuota'] = isset($row->id_cuota) ? (int)$row->id_cuota : null;
+                            $item['id_item'] = $rowIdItem;
                         } else {
                             // Derivar cod_tipo_cobro y tipo_pago de tipo_concepto y nro_cobro
                             $tipoConcepto = isset($row->tipo_concepto) ? (string)$row->tipo_concepto : 'general';
 
-                            // Determinar cod_tipo_cobro
-                            if ($tipoConcepto === 'mora') {
-                                $item['cod_tipo_cobro'] = 'NIVELACION';
-                            } elseif ($tipoConcepto === 'arrastre') {
-                                $item['cod_tipo_cobro'] = 'ARRASTRE';
-                            } elseif ($tipoConcepto === 'mensualidad') {
-                                $item['cod_tipo_cobro'] = 'MENSUALIDAD';
-                            } elseif ($tipoConcepto === 'rezagado') {
-                                $item['cod_tipo_cobro'] = 'REZAGADOS';
-                            } elseif ($tipoConcepto === 'recuperacion') {
-                                $item['cod_tipo_cobro'] = 'PRUEBA_RECUPERACION';
-                            } else {
-                                $item['cod_tipo_cobro'] = null;
-                            }
+                            // Determinar cod_tipo_cobro usando el mapa centralizado
+                            $item['cod_tipo_cobro'] = $this->mapTipoConceptoToCodTipoCobro($tipoConcepto);
 
                             // Determinar tipo_pago: si tiene nro_cobro es NORMAL, sino es ARRASTRE
                             if ($nroCobroRecuperado !== null && $nroCobroRecuperado > 0) {
