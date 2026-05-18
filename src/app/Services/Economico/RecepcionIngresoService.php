@@ -317,6 +317,8 @@ class RecepcionIngresoService
                 'usuario_registro'        => $usuario->nickname ?? (string) $usuario->id_usuario,
                 'cod_documento'           => $correlativo['cod_documento'],
                 'num_documento'           => $correlativo['num_documento'],
+                'fecha_inicial_libros'    => $input['fecha_inicial_libros'] ?? null,
+                'fecha_final_libros'      => $input['fecha_final_libros'] ?? null,
                 'observacion'             => $input['observacion'] ?? null,
                 'monto_total'             => $this->calcularMontoTotal($detalles),
                 'id_actividad_economica'  => $input['id_actividad_economica'] ?? null,
