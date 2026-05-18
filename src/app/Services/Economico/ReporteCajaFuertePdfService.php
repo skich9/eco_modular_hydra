@@ -17,10 +17,10 @@ class ReporteCajaFuertePdfService
         Carbon::setLocale('es');
         $fechaLarga = ucfirst($ahora->translatedFormat('l, d \d\e F \d\e Y H:i:s'));
 
-        $logo  = DompdfInstitucionLogoHelper::logoParaEncabezadoDompdf(2);
-        $caja  = $datos['caja'];
+        $logoHtml = DompdfInstitucionLogoHelper::logoParaMpdf('1.5cm', '1.5cm');
+        $caja     = $datos['caja'];
 
-        $headerHtml = $this->renderHeader($caja, $codDocumento, $logo);
+        $headerHtml = $this->renderHeader($caja, $codDocumento, $logoHtml);
         $footerHtml = $this->renderFooter($usuario, $ahora->format('d/m/Y'), $fechaLarga);
         $bodyHtml   = View::make('pdf.reporte_caja_fuerte', [
             'caja'            => $caja,
@@ -82,7 +82,7 @@ class ReporteCajaFuertePdfService
         return url('reportes/caja-fuerte/' . $filename);
     }
 
-    private function renderHeader(object $caja, string $codDocumento, array $logo): string
+    private function renderHeader(object $caja, string $codDocumento, string $logoHtml): string
     {
         $inst       = config('app.institucion', 'Instituto Tecnológico de Enseñanza Automotriz "CETA"');
         $nombreCaja = strtoupper($caja->nombre_caja);
@@ -92,8 +92,8 @@ class ReporteCajaFuertePdfService
         return '
         <table width="100%" style="border-collapse:collapse; font-family:Arial,sans-serif; font-size:9pt;">
           <tr>
-            <td rowspan="3" style="' . $b . ' width:' . ($logo['width'] + $logo['padding'] * 2) . 'px; text-align:center; vertical-align:middle; padding:2px;">
-              ' . $logo['html'] . '
+            <td rowspan="3" style="' . $b . ' width:60px; text-align:center; vertical-align:middle; padding:2px;">
+              ' . $logoHtml . '
             </td>
             <td colspan="9" ' . $cell . ' style="' . $b . ' text-align:center; font-size:10pt; color:#000066; font-weight:bold; vertical-align:middle; padding:2px 4px;">' . $inst . '</td>
             <td ' . $cell . ' style="' . $b . ' text-align:right; font-size:8pt; color:#000066; font-weight:bold; white-space:nowrap; padding:2px 4px;">Nº:</td>
