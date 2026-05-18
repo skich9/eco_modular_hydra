@@ -64,6 +64,8 @@ export interface RecepcionIngreso {
   num_documento?: number;
   observacion?: string | null;
   monto_total?: number;
+  fecha_inicial_libros?: string | null;
+  fecha_final_libros?: string | null;
   id_actividad_economica?: number | null;
   id_caja_actividad?: number | null;
   es_ingreso_libro_diario?: boolean;

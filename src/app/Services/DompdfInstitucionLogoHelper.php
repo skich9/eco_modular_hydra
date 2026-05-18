@@ -48,4 +48,15 @@ class DompdfInstitucionLogoHelper
             'padding' => $logoPad,
         ];
     }
+
+    /** Logo para mPDF: usa ruta física file:/// en vez de base64. */
+    public static function logoParaMpdf(string $ancho = '1.5cm', string $alto = '1.5cm'): string
+    {
+        $logoPath = public_path('img' . DIRECTORY_SEPARATOR . 'logo.png');
+        if (!is_file($logoPath) || !is_readable($logoPath)) {
+            return '';
+        }
+        $fileUrl = 'file:///' . str_replace('\\', '/', $logoPath);
+        return '<img src="' . $fileUrl . '" style="width:' . $ancho . ';height:' . $alto . ';object-fit:contain;" alt="Logo" />';
+    }
 }
