@@ -5,12 +5,14 @@ namespace App\Services\Economico;
 use App\Models\RecepcionIngreso;
 use App\Models\RecepcionIngresoDetalle;
 use App\Models\Usuario;
+use App\Services\LibroDiarioIdentificadorHelper;
 use App\Services\Reportes\LibroDiarioAggregatorService;
 use App\Services\Reportes\LibroDiarioCierreTotalesService;
 use Carbon\Carbon;
 use Illuminate\Database\Query\Builder;
 use Illuminate\Support\Collection;
 use Illuminate\Support\Facades\DB;
+use Illuminate\Support\Facades\Log;
 use Illuminate\Support\Facades\Schema;
 
 class RecepcionIngresoService
@@ -565,6 +567,11 @@ class RecepcionIngresoService
         $entregue2      = trim((string) ($filtros['usuario_entregue2'] ?? '')) ?: null;
         $recibi2        = trim((string) ($filtros['usuario_recibi2'] ?? '')) ?: null;
 
+        // Cerrar automáticamente los libros olvidados de fechas anteriores a hoy
+        if ($carrera !== '') {
+            $this->autoCerrarLibrosOlvidados($carrera, $fechaDesde, $fechaHasta);
+        }
+
         $prefijoLibro = 'RD-' . $carrera . '-';
 
         $detallesParaReporte = [];
@@ -849,6 +856,100 @@ class RecepcionIngresoService
         }
 
         return $out;
+    }
+
+    /**
+     * Cierra automáticamente los libros diarios olvidados para fechas anteriores a hoy.
+     * Solo actúa sobre fechas estrictamente menores a hoy (nunca cierra el día en curso).
+     * Se llama al inicio de datosParaReporte() para que el contador vea todos los libros al consultar.
+     */
+    private function autoCerrarLibrosOlvidados(string $carrera, ?string $fechaDesde, ?string $fechaHasta): void
+    {
+        if (! Schema::hasTable('cobro') || ! Schema::hasTable('libro_diario_cierre')) {
+            return;
+        }
+
+        $hoy  = Carbon::today(self::TZ_NEGOCIO)->format('Y-m-d');
+        $desde = $fechaDesde ?? '2000-01-01';
+        $hasta = $fechaHasta ?? $hoy;
+
+        // Limitar hasta a ayer como máximo (nunca cerrar el día en curso)
+        if ($hasta >= $hoy) {
+            $hasta = Carbon::yesterday(self::TZ_NEGOCIO)->format('Y-m-d');
+        }
+
+        // Si el rango quedó vacío (ej.: consultan solo el día de hoy) no hay nada que hacer
+        if ($desde > $hasta) {
+            return;
+        }
+
+        // Pares (id_usuario, fecha) con cobros registrados en el rango y carrera dados
+        $conTransacciones = DB::table('cobro')
+            ->select('id_usuario', DB::raw('DATE(fecha_cobro) as fecha'))
+            ->whereDate('fecha_cobro', '>=', $desde)
+            ->whereDate('fecha_cobro', '<=', $hasta)
+            ->whereIn('cod_pensum', function ($sub) use ($carrera) {
+                $sub->select('cod_pensum')->from('pensums')->where('codigo_carrera', $carrera);
+            })
+            ->distinct()
+            ->get();
+
+        if ($conTransacciones->isEmpty()) {
+            return;
+        }
+
+        foreach ($conTransacciones as $row) {
+            $idUsuario = (int) $row->id_usuario;
+            $fecha     = (string) $row->fecha;
+
+            // Verificar si ya existe un cierre para ese usuario/fecha (cualquier carrera o nulo)
+            $yaCerrado = DB::table('libro_diario_cierre')
+                ->where('id_usuario', $idUsuario)
+                ->where('fecha', $fecha)
+                ->where(function ($q) use ($carrera) {
+                    $q->where('codigo_carrera', $carrera)
+                      ->orWhereNull('codigo_carrera')
+                      ->orWhere('codigo_carrera', '');
+                })
+                ->exists();
+
+            if ($yaCerrado) {
+                continue;
+            }
+
+            try {
+                DB::transaction(function () use ($idUsuario, $fecha, $carrera) {
+                    $identificador = LibroDiarioIdentificadorHelper::reservarSiguienteIdentificador($fecha, $carrera);
+
+                    $ordenCierre = DB::table('libro_diario_cierre')
+                        ->where('id_usuario', $idUsuario)
+                        ->where('fecha', $fecha)
+                        ->max('orden_cierre');
+                    $ordenCierre = $ordenCierre !== null ? (int) $ordenCierre + 1 : 1;
+
+                    $idCierre = DB::table('libro_diario_cierre')->insertGetId([
+                        'id_usuario'     => $idUsuario,
+                        'fecha'          => $fecha,
+                        'orden_cierre'   => $ordenCierre,
+                        'codigo_carrera' => $carrera,
+                        'hora_cierre'    => '23:55:00',
+                        'correlativo'    => $identificador['correlativo'],
+                        'codigo_rd'      => $identificador['codigo_rd'],
+                        'created_at'     => now(),
+                        'updated_at'     => now(),
+                    ]);
+
+                    $this->cierreTotales->syncFromCierreId($idCierre, $carrera);
+                });
+            } catch (\Throwable $e) {
+                Log::warning('[AutoCierre] No se pudo cerrar libro diario olvidado', [
+                    'id_usuario' => $idUsuario,
+                    'fecha'      => $fecha,
+                    'carrera'    => $carrera,
+                    'error'      => $e->getMessage(),
+                ]);
+            }
+        }
     }
 
     private function cierreTieneMovimientosCarreraEnLibroDiario(int $idUsuario, string $fechaYmd, string $carrera): bool
