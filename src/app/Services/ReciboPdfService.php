@@ -470,7 +470,7 @@ class ReciboPdfService
 			'isPhpEnabled' => true,
 		]);
 		$dompdf->loadHtml($html, 'UTF-8');
-		$dompdf->setPaper([8.5 * 72, 5.5 * 72]);
+		$dompdf->setPaper([0, 0, 612.28, 467.72]);
 		$dompdf->render();
 		$pdf = $dompdf->output();
 		if (empty($pdf)) {
@@ -642,7 +642,7 @@ class ReciboPdfService
 			'isPhpEnabled' => true,
 		]);
 		$dompdf->loadHtml($html, 'UTF-8');
-		$dompdf->setPaper([8.5 * 72, 5.5 * 72]);
+		$dompdf->setPaper([0, 0, 612.28, 467.72]);
 		$dompdf->render();
 		$pdf = $dompdf->output();
 		if (empty($pdf)) {
@@ -808,7 +808,7 @@ class ReciboPdfService
             'isPhpEnabled' => true,
         ]);
         $dompdf->loadHtml($html, 'UTF-8');
-        $dompdf->setPaper([8.5 * 72, 5.5 * 72]);
+        $dompdf->setPaper([0, 0, 612.28, 467.72]);
         $dompdf->render();
         $pdf = $dompdf->output();
         if (empty($pdf)) {
@@ -890,7 +890,7 @@ class ReciboPdfService
 <head>
     <meta charset="utf-8" />
     <style>
-        @page { size: 8.5in 5.5in; margin: 0.5cm; }
+        @page { size: 216mm 165mm; margin: 0.5cm; }
         body { font-family: DejaVu Sans, sans-serif; font-size: 8.7pt; line-height: 1.12; }
         .right { text-align:right; }
         .small { font-size: 8pt; color: #333; }
@@ -1083,7 +1083,7 @@ HTML;
 <head>
     <meta charset="utf-8" />
     <style>
-        @page { size: 8.5in 5.5in; margin: 0.5cm; }
+        @page { size: 216mm 165mm; margin: 0.5cm; }
         body { font-family: DejaVu Sans, sans-serif; font-size: 8.7pt; line-height: 1.12; }
         .right { text-align:right; }
         .small { font-size: 8pt; color: #333; }
@@ -1260,7 +1260,7 @@ HTML;
 <head>
     <meta charset="utf-8" />
     <style>
-        @page { size: 8.5in 5.5in; margin: 0.5cm; }
+        @page { size: 216mm 165mm; margin: 0.5cm; }
         body { font-family: DejaVu Sans, sans-serif; font-size: 8.7pt; line-height: 1.12; }
         .right { text-align:right; }
         .small { font-size: 8pt; color: #333; }
@@ -1436,7 +1436,7 @@ HTML;
 <head>
     <meta charset="utf-8" />
     <style>
-        @page { size: 8.5in 5.5in; margin: 0.5cm; }
+        @page { size: 216mm 165mm; margin: 0.5cm; }
         body { font-family: DejaVu Sans, sans-serif; font-size: 8.7pt; line-height: 1.12; }
         .right { text-align:right; }
         .small { font-size: 8pt; color: #333; }
@@ -1603,7 +1603,7 @@ HTML;
 <head>
     <meta charset="utf-8" />
     <style>
-        @page { size: 8.5in 5.5in; margin: 0.5cm; }
+        @page { size: 216mm 165mm; margin: 0.5cm; }
         body { font-family: DejaVu Sans, sans-serif; font-size: 8.7pt; line-height: 1.12; }
         .right { text-align:right; }
         .small { font-size: 8pt; color: #333; }
@@ -1784,7 +1784,7 @@ HTML;
 <head>
     <meta charset="utf-8" />
     <style>
-        @page { size: 8.5in 5.5in; margin: 0.5cm; }
+        @page { size: 216mm 165mm; margin: 0.5cm; }
         body { font-family: DejaVu Sans, sans-serif; font-size: 8.7pt; line-height: 1.12; }
         .right { text-align:right; }
         .small { font-size: 8pt; color: #333; }
@@ -1912,7 +1912,7 @@ HTML;
 <head>
     <meta charset="utf-8" />
     <style>
-        @page { size: 8.5in 5.5in; margin: 0.5cm; }
+        @page { size: 216mm 165mm; margin: 0.5cm; }
         body { font-family: DejaVu Sans, sans-serif; font-size: 8.7pt; line-height: 1.12; }
         .encabezado { text-align:center; font-weight:bold; }
         .titulo { color:#1E2768; font-size: 10.5pt; font-weight:bold; margin-top: 0; text-align:center; }
@@ -2078,7 +2078,7 @@ HTML;
 <head>
     <meta charset="utf-8" />
     <style>
-        @page { size: 8.5in 5.5in; margin: 0.5cm; }
+        @page { size: 216mm 165mm; margin: 0.5cm; }
         body { font-family: DejaVu Sans, sans-serif; font-size: 8.7pt; line-height: 1.12; }
         .encabezado { text-align:center; font-weight:bold; }
         .titulo { color:#1E2768; font-size: 10.5pt; font-weight:bold; margin-top: 0; text-align:center; }
@@ -2181,7 +2181,7 @@ HTML;
 			'isPhpEnabled' => true,
 		]);
 		$dompdf->loadHtml($html, 'UTF-8');
-		$dompdf->setPaper([8.5 * 72, 5.5 * 72]);
+		$dompdf->setPaper([0, 0, 612.28, 467.72]);
 		$dompdf->render();
 		$pdf = $dompdf->output();
 		if (empty($pdf)) {

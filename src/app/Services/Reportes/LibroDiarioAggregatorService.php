@@ -396,6 +396,10 @@ class LibroDiarioAggregatorService
 			});
 		}
 
+		$descuentoCol = Schema::hasColumn('inscripciones', 'descuento_institucional')
+			? 'insc.descuento_institucional'
+			: DB::raw('NULL as descuento_institucional');
+
 		$rows = $q->select(
 			'c.nro_cobro',
 			'c.anio_cobro',
@@ -416,7 +420,7 @@ class LibroDiarioAggregatorService
 			'cb.banco as banco_cuenta_cobro',
 			'fc.nombre as forma_cobro_nombre',
 			'f.monto_total as factura_monto_total',
-			'insc.descuento_institucional'
+			$descuentoCol
 		)->get();
 
 		$nros = $rows
