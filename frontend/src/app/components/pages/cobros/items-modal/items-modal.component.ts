@@ -176,7 +176,32 @@ export class ItemsModalComponent implements OnInit, OnChanges {
 		const nroDepCtrl = this.form.get('nro_deposito');
 		const bancoOrigenCtrl = this.form.get('banco_origen');
 
-		// Validadores generales (excluye QR)
+		// QR: sin validadores bancarios — los campos opcionales se deshabilitan
+		if (enableQR) {
+			[idCuentaCtrl, fechaDepCtrl, nroDepCtrl, bancoOrigenCtrl, first4Ctrl, last4Ctrl]
+				.forEach(c => { c?.clearValidators(); c?.enable({ emitEvent: false }); });
+			// Auto-seleccionar cuenta QR si no hay valor
+			if (!idCuentaCtrl?.value) {
+				try {
+					const list = (this.cuentasBancarias || []) as any[];
+					const first = list.find((c: any) => c?.habilitado_QR === true) || list[0];
+					if (first) idCuentaCtrl?.setValue(first.id_cuentas_bancarias, { emitEvent: false });
+				} catch {}
+			}
+			fechaDepCtrl?.setValue('', { emitEvent: false });
+			nroDepCtrl?.setValue('', { emitEvent: false });
+			bancoOrigenCtrl?.setValue('', { emitEvent: false });
+			fechaDepCtrl?.disable({ emitEvent: false });
+			nroDepCtrl?.disable({ emitEvent: false });
+			bancoOrigenCtrl?.disable({ emitEvent: false });
+			first4Ctrl?.disable({ emitEvent: false });
+			last4Ctrl?.disable({ emitEvent: false });
+			[idCuentaCtrl, fechaDepCtrl, nroDepCtrl, bancoOrigenCtrl, first4Ctrl, last4Ctrl]
+				.forEach(c => c?.updateValueAndValidity({ emitEvent: false }));
+			return;
+		}
+
+		// No-QR: validadores según tipo de pago
 		if (enableTarjeta || enableCheque || enableDeposito || enableTransfer) {
 			idCuentaCtrl?.setValidators([Validators.required]);
 			fechaDepCtrl?.setValidators([Validators.required]);
@@ -199,31 +224,11 @@ export class ItemsModalComponent implements OnInit, OnChanges {
 			last4Ctrl?.clearValidators();
 			bancoOrigenCtrl?.clearValidators();
 		}
-
-		// Comportamiento específico para QR: deshabilitar y limpiar campos, autoseleccionar cuenta si está vacía
-		if (enableQR) {
-			if (!idCuentaCtrl?.value) {
-				try {
-					const list = (this.cuentasBancarias || []) as any[];
-					const first = list.find((c: any) => c?.habilitado_QR === true) || list[0];
-					if (first) idCuentaCtrl?.setValue(first.id_cuentas_bancarias, { emitEvent: false });
-				} catch {}
-			}
-			fechaDepCtrl?.setValue('', { emitEvent: false });
-			nroDepCtrl?.setValue('', { emitEvent: false });
-			bancoOrigenCtrl?.setValue('', { emitEvent: false });
-			fechaDepCtrl?.disable({ emitEvent: false });
-			nroDepCtrl?.disable({ emitEvent: false });
-			bancoOrigenCtrl?.disable({ emitEvent: false });
-			first4Ctrl?.disable({ emitEvent: false });
-			last4Ctrl?.disable({ emitEvent: false });
-		} else {
-			fechaDepCtrl?.enable({ emitEvent: false });
-			nroDepCtrl?.enable({ emitEvent: false });
-			bancoOrigenCtrl?.enable({ emitEvent: false });
-			first4Ctrl?.enable({ emitEvent: false });
-			last4Ctrl?.enable({ emitEvent: false });
-		}
+		fechaDepCtrl?.enable({ emitEvent: false });
+		nroDepCtrl?.enable({ emitEvent: false });
+		bancoOrigenCtrl?.enable({ emitEvent: false });
+		first4Ctrl?.enable({ emitEvent: false });
+		last4Ctrl?.enable({ emitEvent: false });
 
 		idCuentaCtrl?.updateValueAndValidity({ emitEvent: false });
 		first4Ctrl?.updateValueAndValidity({ emitEvent: false });
@@ -299,8 +304,16 @@ export class ItemsModalComponent implements OnInit, OnChanges {
 		const modalEl = document.getElementById('itemsModal');
 		const bs = (window as any).bootstrap;
 		if (modalEl && bs?.Modal) {
-			// Siempre por defecto Computarizada al abrir
-			this.form.patchValue({ computarizada: 'COMPUTARIZADA' }, { emitEvent: false });
+			// Resetear selección de item y observaciones para cada apertura
+			this.form.patchValue({
+				computarizada: 'COMPUTARIZADA',
+				id_item: '',
+				observaciones: '',
+				cantidad: 1
+			}, { emitEvent: true });
+			this.search = '';
+			this.submitError = '';
+			this.updateBancarioValidators();
 			const modal = new bs.Modal(modalEl);
 			modal.show();
 		}
@@ -370,7 +383,7 @@ export class ItemsModalComponent implements OnInit, OnChanges {
 			const instance = bs.Modal.getInstance(modalEl) || new bs.Modal(modalEl);
 			instance.hide();
 		}
-		if (this.isTarjeta || this.isCheque || this.isDeposito || this.isTransferencia) {
+		if (!this.isQR && (this.isTarjeta || this.isCheque || this.isDeposito || this.isTransferencia)) {
 			this.resetTarjetaFields();
 		}
 	}
@@ -408,6 +421,8 @@ export class ItemsModalComponent implements OnInit, OnChanges {
 		const addIfMissing = (n: string) => {
 			const c = this.form.get(n);
 			if (!c) return;
+			// Controles deshabilitados (p. ej. campos bancarios en QR) no son requeridos
+			if (c.disabled) return;
 			c.updateValueAndValidity({ emitEvent: false });
 			const v = (c.value ?? '').toString().trim();
 			const invalid = !v || c.invalid;
@@ -424,7 +439,7 @@ export class ItemsModalComponent implements OnInit, OnChanges {
 		addIfMissing('cantidad');
 		if (this.isTarjeta) {
 			['id_cuentas_bancarias','fecha_deposito','nro_deposito','banco_origen','tarjeta_first4','tarjeta_last4'].forEach(addIfMissing);
-		} else if (this.isTransferencia) {
+		} else if (this.isTransferencia && !this.isQR) {
 			['id_cuentas_bancarias','fecha_deposito','nro_deposito','banco_origen'].forEach(addIfMissing);
 		} else if (this.isCheque || this.isDeposito) {
 			['id_cuentas_bancarias','fecha_deposito','nro_deposito'].forEach(addIfMissing);
