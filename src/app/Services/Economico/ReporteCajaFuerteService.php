@@ -174,7 +174,7 @@ class ReporteCajaFuerteService
                        ]);
                 });
             })
-            ->groupBy('r.id', 'r.cod_documento', 'r.fecha_recepcion', 'r.observacion');
+            ->groupBy('r.id', 'r.cod_documento', 'r.fecha_recepcion', 'r.observacion', 'r.es_ingreso_libro_diario');
 
         // Egresos: filtro simple por mes/año (mismo que SGA: EXTRACT(MONTH/YEAR))
         $egresos = DB::table('egresos_caja_fuerte')
