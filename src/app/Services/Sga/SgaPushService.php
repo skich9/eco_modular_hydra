@@ -3,6 +3,7 @@
 namespace App\Services\Sga;
 
 use App\Models\Cobro;
+use App\Models\CuentaBancaria;
 use App\Models\Inscripcion;
 use App\Models\SgaPushCobro;
 use Illuminate\Support\Facades\DB;
@@ -88,6 +89,13 @@ class SgaPushService
         );
 
         Log::info(self::LOG . ': registro sga_push_cobros guardado', ['id' => $registro->id, 'cobro_uid' => $cobroUid]);
+
+        $pushEnabled = config('sga.push_enabled') ?? (env('SGA_PUSH_ENABLED', 'false') !== 'false' && env('SGA_PUSH_ENABLED', false));
+
+        if (!$pushEnabled) {
+            Log::info(self::LOG . ': push deshabilitado (SGA_PUSH_ENABLED=false), cobro guardado como pendiente', ['cobro_uid' => $cobroUid]);
+            return true;
+        }
 
         return $this->enviarAlSga($registro, $conn, '/api/sync/pago', $payload);
     }
@@ -197,9 +205,18 @@ class SgaPushService
 
     private function buildPayloadPago(Cobro $cobro, Inscripcion $ins, int $numCuota): array
     {
-        $documento    = $cobro->recibo ?: $cobro->factura;
-        $usuario      = $cobro->usuario;
-        $notaBancaria = $this->getNotaBancaria($cobro);
+        // Cargar solo las relaciones que tienen un FK válido (> 0)
+        // Si nro_recibo/nro_factura = 0, belongsTo devolvería un documento ajeno
+        $toLoad = ['usuario'];
+        if ($cobro->nro_recibo > 0)  $toLoad[] = 'recibo';
+        if ($cobro->nro_factura > 0) $toLoad[] = 'factura';
+        $cobro->load($toLoad);
+
+        $documento = ($cobro->nro_recibo  > 0 ? $cobro->recibo  : null)
+                  ?: ($cobro->nro_factura > 0 ? $cobro->factura : null);
+        $usuario        = $cobro->usuario;
+        $notaBancaria   = $this->getNotaBancaria($cobro);
+        $cuentaBancaria = $this->getCuentaBancaria($cobro);
 
         return [
             'cod_ceta'          => $cobro->cod_ceta,
@@ -210,7 +227,9 @@ class SgaPushService
             'pu_mensualidad'    => (float) ($cobro->pu_mensualidad ?? 0),
             'descuento'         => (float) ($cobro->descuento ?? 0),
             'monto'             => (float) $cobro->monto,
-            'fecha_pago'        => $cobro->fecha_cobro,
+            'fecha_pago'        => $cobro->fecha_cobro
+                                    ? \Carbon\Carbon::parse($cobro->fecha_cobro)->format('Y-m-d H:i:s')
+                                    : null,
             'pago_completo'     => (bool) $cobro->cobro_completo,
             'num_comprobante'   => (int) ($cobro->nro_recibo ?? 0),
             'num_factura'       => (int) ($cobro->nro_factura ?? 0),
@@ -221,10 +240,16 @@ class SgaPushService
             'nro_documento_pago'=> $documento ? mb_substr($documento->nro_documento_cobro, 0, 50) : null,
             'code_tipo_pago'    => $this->mapFormaCobro($cobro->id_forma_cobro),
             'anulado'           => false,
+            'destino_tabla'     => 'pago',
             'fecha_deposito'    => $notaBancaria ? $notaBancaria->fecha_deposito : null,
-            'nro_cuenta'        => $notaBancaria ? mb_substr($notaBancaria->nro_cuenta ?? '', 0, 35) : null,
             'nro_deposito'      => $notaBancaria ? mb_substr($notaBancaria->nro_transaccion ?? '', 0, 35) : null,
-            'banco_origen'      => $notaBancaria ? mb_substr($notaBancaria->banco ?? '', 0, 200) : null,
+            'banco_origen'      => null,
+            'cuenta_bancaria'   => $cuentaBancaria ? [
+                'numero_cuenta' => $cuentaBancaria->numero_cuenta,
+                'banco'         => $cuentaBancaria->banco,
+                'tipo_cuenta'   => $cuentaBancaria->tipo_cuenta,
+                'titular'       => $cuentaBancaria->titular,
+            ] : null,
         ];
     }
 
@@ -283,15 +308,13 @@ class SgaPushService
     private function resolveApiCredentials(string $conn): array
     {
         if ($conn === 'sga_mec') {
-            return [
-                rtrim(env('SGA_API_MECANICA_URL', env('SGA_API_BASE_URL', '')), '/'),
-                env('SGA_API_MECANICA_TOKEN', env('SGA_API_TOKEN', '')),
-            ];
+            $url   = config('sga.mec_url') ?: env('SGA_MECANICA_URL') ?: env('SGA_BASE_URL', '');
+            $token = config('sga.mec_token') ?: env('SGA_API_MECANICA_TOKEN') ?: env('SGA_API_TOKEN', '');
+            return [rtrim($url, '/'), $token];
         }
-        return [
-            rtrim(env('SGA_API_BASE_URL', ''), '/'),
-            env('SGA_API_TOKEN', ''),
-        ];
+        $url   = config('sga.elec_url') ?: env('SGA_BASE_URL', '');
+        $token = config('sga.elec_token') ?: env('SGA_API_TOKEN', '');
+        return [rtrim($url, '/'), $token];
     }
 
     private function getNextNumPago(string $conn, string $table, array $where, string $column = 'num_pago'): int
@@ -308,6 +331,14 @@ class SgaPushService
                 if ($cobro->nro_factura) $q->orWhere('nro_factura', $cobro->nro_factura);
             })
             ->first();
+    }
+
+    private function getCuentaBancaria(Cobro $cobro): ?CuentaBancaria
+    {
+        if (!$cobro->id_cuentas_bancarias) {
+            return null;
+        }
+        return CuentaBancaria::find($cobro->id_cuentas_bancarias);
     }
 
     private function mapFormaCobro(?string $id): string
