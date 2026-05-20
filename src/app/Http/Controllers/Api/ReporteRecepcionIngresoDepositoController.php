@@ -359,13 +359,13 @@ HTML;
                 return strcmp($a['cod_libro_diario'], $b['cod_libro_diario']);
             });
 
-            $fechasIni = $cab->detalles->map(function ($d) {
-                $dt = $d->fecha_inicial_libros ?? $d->fecha_final_libros;
+            $fechaIniLibros = $cab->fecha_inicial_libros
+                ? $cab->fecha_inicial_libros->format('Y-m-d')
+                : $cab->detalles->map(fn ($d) => ($d->fecha_inicial_libros ?? $d->fecha_final_libros)->format('Y-m-d'))->min();
 
-                return $dt->format('Y-m-d');
-            });
-            $fechaIniLibros = $fechasIni->min();
-            $fechaFinLibros = $cab->detalles->map(fn ($d) => $d->fecha_final_libros->format('Y-m-d'))->max();
+            $fechaFinLibros = $cab->fecha_final_libros
+                ? $cab->fecha_final_libros->format('Y-m-d')
+                : $cab->detalles->map(fn ($d) => $d->fecha_final_libros->format('Y-m-d'))->max();
 
             return $this->renderRecepcionIng4Pdf([
                 'cod_num' => (string) $cab->cod_documento,

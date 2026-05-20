@@ -26,10 +26,14 @@ class RecepcionIngreso extends Model
         'anulado',
         'motivo_anulacion',
         'observacion',
+        'fecha_inicial_libros',
+        'fecha_final_libros',
     ];
 
     protected $casts = [
         'fecha_recepcion'       => 'date',
+        'fecha_inicial_libros'  => 'date',
+        'fecha_final_libros'    => 'date',
         'fecha_registro'        => 'datetime',
         'monto_total'           => 'decimal:2',
         'anulado'               => 'boolean',

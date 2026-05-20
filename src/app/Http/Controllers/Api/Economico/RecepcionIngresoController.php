@@ -95,6 +95,8 @@ class RecepcionIngresoController extends Controller
             'detalles'                => 'required|array|min:1',
             'detalles.*.usuario_libro'        => 'nullable|string|max:100',
             'detalles.*.cod_libro_diario'     => 'nullable|string|max:100',
+            'fecha_inicial_libros'            => 'nullable|date',
+            'fecha_final_libros'              => 'nullable|date',
             'detalles.*.fecha_inicial_libros' => 'nullable|date',
             'detalles.*.fecha_final_libros'   => 'required|date',
             'detalles.*.total_deposito'       => 'nullable|numeric|min:0',
