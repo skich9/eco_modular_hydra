@@ -42,7 +42,7 @@ export class RecepcionIngresosComponent implements OnInit, OnDestroy {
   anulando = false;
   // Catálogos
   catalogos: InitialData = {
-    carreras: [], actividades: [], tesoreros: [],
+    carreras: [], actividades: [], cajas: [], tesoreros: [],
     usuarios_activos: [], usuarios_libros: [],
   };
 
@@ -283,6 +283,8 @@ export class RecepcionIngresosComponent implements OnInit, OnDestroy {
         this.svc.registrar({
           codigo_carrera: this.carrera,
           fecha_recepcion: this.fechaRecepcion,
+          fecha_inicial_libros: this.fechaDesde,
+          fecha_final_libros: this.fechaHasta,
           usuario_entregue1: this.entregue1,
           usuario_recibi1: this.recibi1,
           usuario_entregue2: this.entregue2 || undefined,

@@ -47,6 +47,7 @@ class Inscripcion extends Model
 		'fecha_inscripcion',
 		'tipo_inscripcion',
 		'source_cod_inscrip',
+		'descuento_institucional',
 	];
 
 	public function estudiante()

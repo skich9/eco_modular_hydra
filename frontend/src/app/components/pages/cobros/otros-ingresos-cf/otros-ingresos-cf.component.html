@@ -1,0 +1,304 @@
+<div class="page-wrap">
+
+  <div class="page-header">
+    <h1>Otros Ingresos Caja Fuerte</h1>
+  </div>
+
+  @if (alertMsg) {
+    <div class="alert" [class.alert-success]="alertOk" [class.alert-danger]="!alertOk" role="alert">
+      <i class="bi me-2" [class.bi-check-circle]="alertOk" [class.bi-exclamation-triangle]="!alertOk"></i>
+      {{ alertMsg }}
+    </div>
+  }
+
+  @if (cargando) {
+    <div class="text-center py-5">
+      <div class="spinner-border text-primary" role="status"></div>
+      <div class="mt-2 text-muted">Cargando catálogos...</div>
+    </div>
+  } @else {
+
+    <!-- ─── Panel principal ─────────────────────────────────────────────────── -->
+    <div class="card-panel card-panel--form">
+      <h2>Datos de recepción</h2>
+
+      <div class="form-grid">
+
+        <!-- Actividad económica (fila completa) -->
+        <div class="field field--full">
+          <label class="field-label">Actividad económica :<span class="req">*</span></label>
+          <select
+            class="field-control"
+            [class.is-invalid]="invalidActividad"
+            [(ngModel)]="idActividad"
+            (ngModelChange)="onActividadChange($event)"
+          >
+            <option [ngValue]="null">Seleccione una actividad</option>
+            @for (a of catalogos.actividades; track a.id) {
+              <option [ngValue]="a.id">{{ a.descripcion }}</option>
+            }
+          </select>
+          @if (invalidActividad) { <div class="invalid-msg">Campo requerido</div> }
+        </div>
+
+        <!-- Caja actividad (fila completa) -->
+        <div class="field field--full">
+          <label class="field-label">Caja fuerte :<span class="req">*</span></label>
+          <select
+            class="field-control"
+            [class.is-invalid]="invalidCaja"
+            [(ngModel)]="idCajaActividad"
+            (ngModelChange)="invalidCaja = false"
+          >
+            <option [ngValue]="null">Seleccione una caja</option>
+            @for (c of catalogos.cajas; track c.id_caja_actividad) {
+              <option [ngValue]="c.id_caja_actividad">{{ c.nombre_caja }}</option>
+            }
+          </select>
+          @if (invalidCaja) { <div class="invalid-msg">Campo requerido</div> }
+        </div>
+
+        <!-- Carrera (fila completa) -->
+        <div class="field field--full">
+          <label class="field-label">Carrera :<span class="req">*</span></label>
+          <select
+            class="field-control"
+            [class.is-invalid]="invalidCarrera"
+            [(ngModel)]="carrera"
+            (ngModelChange)="invalidCarrera = false; actualizarCorrelativo()"
+          >
+            <option value="">Seleccione una carrera</option>
+            @for (c of catalogos.carreras; track c.codigo) {
+              <option [value]="c.codigo">{{ c.nombre }}</option>
+            }
+          </select>
+          @if (invalidCarrera) { <div class="invalid-msg">Campo requerido</div> }
+        </div>
+
+        <!-- Fecha recepción | Correlativo -->
+        <div class="field">
+          <label class="field-label">Fecha recepción :<span class="req">*</span></label>
+          <input
+            type="date"
+            class="field-control"
+            [(ngModel)]="fechaRecepcion"
+            (ngModelChange)="actualizarCorrelativo()"
+          />
+        </div>
+
+        <div class="field">
+          <label class="field-label">Correlativo de ingreso :<span class="req">*</span></label>
+          <input
+            type="text"
+            class="field-control"
+            [ngModel]="correlativoStr"
+            (ngModelChange)="onCorrelativoChange($event)"
+            (blur)="onCorrelativoBlur()"
+            maxlength="2"
+            placeholder="00"
+          />
+        </div>
+
+        <!-- Entregue 1 | Recibi 1 -->
+        <div class="field">
+          <label class="field-label">Entregue 1 :<span class="req">*</span></label>
+          <select
+            class="field-control"
+            [class.is-invalid]="invalidEntregue1"
+            [(ngModel)]="entregue1"
+            (ngModelChange)="invalidEntregue1 = false"
+          >
+            <option value="">Seleccione un usuario</option>
+            @for (u of catalogos.tesoreros; track u.nickname) {
+              <option [value]="u.nickname">{{ u.label }}</option>
+            }
+          </select>
+          @if (invalidEntregue1) { <div class="invalid-msg">Campo requerido</div> }
+        </div>
+
+        <div class="field">
+          <label class="field-label">Recibi 1 :<span class="req">*</span></label>
+          <select
+            class="field-control"
+            [class.is-invalid]="invalidRecibi1"
+            [(ngModel)]="recibi1"
+            (ngModelChange)="invalidRecibi1 = false"
+          >
+            <option value="">Seleccione un usuario</option>
+            @for (u of catalogos.tesoreros; track u.nickname) {
+              <option [value]="u.nickname">{{ u.label }}</option>
+            }
+          </select>
+          @if (invalidRecibi1) { <div class="invalid-msg">Campo requerido</div> }
+        </div>
+
+        <!-- Observación (fila completa) -->
+        <div class="field field--full field--col">
+          <label class="field-label">Observación :</label>
+          <textarea class="field-control" rows="2" [(ngModel)]="observacion" placeholder="Observaciones adicionales..."></textarea>
+        </div>
+
+      </div>
+
+      <div class="card-panel-actions">
+        <button type="button" class="btn-agregar" (click)="abrirModal()" [disabled]="!carrera">
+          <i class="fas fa-plus me-1"></i> Agregar
+        </button>
+        <button type="button" class="btn-cancelar" routerLink="/dashboard">
+          <i class="fas fa-times me-1"></i> Cancelar
+        </button>
+      </div>
+
+    </div>
+
+    <!-- ─── Panel de filas ─────────────────────────────────────────────────── -->
+    <div class="card-panel">
+      <h2>Detalle de ingresos</h2>
+
+      @if (filas.length === 0) {
+        <p class="empty-msg">No hay filas agregadas. Use el botón "Agregar ingreso".</p>
+      } @else {
+        <div class="table-wrap">
+          <table class="filas-table">
+            <thead>
+              <tr>
+                <th>Fecha</th>
+                <th>Entregado A</th>
+                <th>CodLibro</th>
+                <th class="text-end">Total Deposito</th>
+                <th class="text-end">Total Transapaso</th>
+                <th class="text-end">(a) TOTAL RECIBOS BS.</th>
+                <th class="text-end">(b) TOTAL FACTURAS BS.</th>
+                <th class="text-end">(a+b) TOTAL GENERAL EN BOLIVIANOS</th>
+                <th></th>
+              </tr>
+            </thead>
+            <tbody>
+              @for (fila of filas; track fila.cod_libro_diario; let i = $index) {
+                <tr>
+                  <td>{{ fila.fecha_libro }}</td>
+                  <td>{{ fila.usuario_libro }}</td>
+                  <td><code>{{ fila.cod_libro_diario }}</code></td>
+                  <td class="text-end">{{ fila.total_deposito | number:'1.2-2' }}</td>
+                  <td class="text-end">{{ fila.total_traspaso | number:'1.2-2' }}</td>
+                  <td class="text-end fw-semibold">{{ fila.total_recibos | number:'1.2-2' }}</td>
+                  <td class="text-end">{{ fila.total_facturas | number:'1.2-2' }}</td>
+                  <td class="text-end fw-bold">{{ (fila.total_deposito + fila.total_traspaso + fila.total_recibos + fila.total_facturas) | number:'1.2-2' }}</td>
+                  <td class="text-center">
+                    <button type="button" class="btn-eliminar" (click)="eliminarFila(i)" title="Eliminar">
+                      <i class="fas fa-times"></i>
+                    </button>
+                  </td>
+                </tr>
+              }
+            </tbody>
+            <tfoot>
+              <tr class="total-row">
+                <td colspan="7" class="text-end fw-bold">TOTAL GENERAL EN BOLIVIANOS</td>
+                <td class="text-end fw-bold">{{ totalGeneral() | number:'1.2-2' }}</td>
+                <td></td>
+              </tr>
+            </tfoot>
+          </table>
+        </div>
+      }
+    </div>
+
+    <!-- ─── Botones de acción ──────────────────────────────────────────────── -->
+    <div class="actions-bar">
+      <button
+        type="button"
+        class="btn-registrar"
+        (click)="registrar()"
+        [disabled]="guardando"
+      >
+        @if (guardando) {
+          <span class="spinner-border spinner-border-sm me-2"></span>Registrando...
+        } @else {
+          <i class="fas fa-save me-1"></i>Registrar y cerrar
+        }
+      </button>
+    </div>
+
+  }<!-- fin @else cargando -->
+
+</div><!-- fin page-wrap -->
+
+<!-- ─── Modal agregar ingreso ────────────────────────────────────────────────── -->
+@if (modalAbierto) {
+  <div class="modal-overlay" (click)="cerrarModal()">
+  <div class="modal-box" role="dialog" aria-modal="true" aria-labelledby="modal-titulo" (click)="$event.stopPropagation()">
+
+    <div class="modal-box__header">
+      <span id="modal-titulo">Agregar ingreso</span>
+      <button type="button" class="modal-box__close" (click)="cerrarModal()" aria-label="Cerrar">×</button>
+    </div>
+
+    <div class="modal-box__body">
+
+      <!-- Usuario -->
+      <div class="field mb-3">
+        <label class="field-label">Usuario <span class="req">*</span></label>
+        <select
+          class="field-control"
+          [class.is-invalid]="invalidModalUsuario"
+          [(ngModel)]="modalUsuario"
+          (ngModelChange)="invalidModalUsuario = false"
+        >
+          <option value="">Seleccione un usuario</option>
+          @for (u of catalogos.usuarios_activos; track u.nickname) {
+            <option [value]="u.nickname">{{ u.label }}</option>
+          }
+        </select>
+        @if (invalidModalUsuario) { <div class="invalid-msg">Campo requerido</div> }
+      </div>
+
+      <!-- Cod. libro (informativo) -->
+      <div class="field mb-3">
+        <label class="field-label">Cód. libro (auto)</label>
+        <input
+          type="text"
+          class="field-control field-control--readonly"
+          [value]="modalCodLibro || '...'"
+          readonly
+        />
+      </div>
+
+      <!-- Fecha libro -->
+      <div class="field mb-3">
+        <label class="field-label">Fecha Libro :<span class="req">*</span></label>
+        <input
+          type="date"
+          class="field-control"
+          [(ngModel)]="modalFecha"
+        />
+      </div>
+
+      <!-- Total recibos -->
+      <div class="field mb-3">
+        <label class="field-label">Total Recibos Bs. <span class="req">*</span></label>
+        <input
+          type="number"
+          class="field-control"
+          [class.is-invalid]="invalidModalMonto"
+          [(ngModel)]="modalMonto"
+          (ngModelChange)="invalidModalMonto = false"
+          min="0.01"
+          step="0.01"
+          placeholder="0.00"
+        />
+        @if (invalidModalMonto) { <div class="invalid-msg">Ingrese un monto mayor a 0</div> }
+      </div>
+
+    </div>
+
+    <div class="modal-box__footer">
+      <button type="button" class="btn-secondary-action" (click)="cerrarModal()">Cancelar</button>
+      <button type="button" class="btn-primary-action" (click)="agregarFila()">
+        <i class="fas fa-plus me-1"></i>Añadir
+      </button>
+    </div>
+
+  </div>
+  </div>
+}

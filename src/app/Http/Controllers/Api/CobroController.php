@@ -4988,6 +4988,34 @@ class CobroController extends Controller
 					]);
 				} catch (\Throwable $e) {}
 			}
+
+			// Cerrar mora de la inscripción complementaria (PAUSADA_DUPLICIDAD) cuando el par está completo
+			if (isset($otraAsignacion) && $otraAsignacion) {
+				$idAsignComplementaria = (int)($otraAsignacion->id_asignacion_costo ?? 0);
+				if ($idAsignComplementaria > 0) {
+					$morasComplementarias = DB::table('asignacion_mora')
+						->where('id_asignacion_costo', $idAsignComplementaria)
+						->whereIn('estado', ['PAUSADA_DUPLICIDAD', 'EN_ESPERA'])
+						->get(['id_asignacion_mora', 'estado', 'monto_mora', 'monto_descuento', 'monto_pagado']);
+
+					foreach ($morasComplementarias as $moraComp) {
+						$netoComp = max(0, (float)($moraComp->monto_mora ?? 0) - (float)($moraComp->monto_descuento ?? 0));
+						$montoPagadoComp = (float)($moraComp->monto_pagado ?? 0);
+						$estadoFinalComp = ($netoComp <= 0.0001 || $montoPagadoComp >= ($netoComp - 0.0001)) ? 'PAGADO' : 'CERRADA_SIN_CUOTA';
+						DB::table('asignacion_mora')
+							->where('id_asignacion_mora', (int)$moraComp->id_asignacion_mora)
+							->update(['estado' => $estadoFinalComp, 'updated_at' => now()]);
+						try {
+							Log::info('[CobroController] cerrarMoraPorCuotaCobrada: mora complementaria cerrada', [
+								'idx' => $idx,
+								'id_asignacion_mora' => (int)$moraComp->id_asignacion_mora,
+								'estado_anterior' => (string)($moraComp->estado ?? ''),
+								'estado_final' => $estadoFinalComp,
+							]);
+						} catch (\Throwable $e) {}
+					}
+				}
+			}
 		} catch (\Throwable $e) {
 			try {
 				Log::warning('[CobroController] cerrarMoraPorCuotaCobrada: exception', [

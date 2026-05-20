@@ -89,15 +89,17 @@
 					class="dropdown-menu"
 					[class.show]="activeSubmenu === i"
 				>
-					<a 
-						*ngFor="let subitem of item.submenu"
-						[routerLink]="subitem.route"
-						class="dropdown-item py-2"
-						[class.active]="isActiveRoute(subitem.route)"
-						(click)="closeAllMenus()"
-					>
-						<i class="fas {{ subitem.icon }} me-2"></i>{{ subitem.name }}
-					</a>
+					<ng-container *ngFor="let subitem of item.submenu">
+						<hr *ngIf="subitem.separator" class="nav-submenu-divider">
+						<a
+							[routerLink]="subitem.route"
+							class="dropdown-item py-2"
+							[class.active]="isActiveRoute(subitem.route)"
+							(click)="closeAllMenus()"
+						>
+							<i class="fas {{ subitem.icon }} me-2"></i>{{ subitem.name }}
+						</a>
+					</ng-container>
 				</div>
 			</div>
 		</div>

@@ -404,7 +404,7 @@
 											<button type="button" class="btn btn-sm btn-success"
 												(click)="openArrastreModal()"
 												[disabled]="(resumen?.arrastre?.pending_count || 0) === 0 || !resumen?.arrastre?.next_cuota">
-												<i class="bi bi-plus"></i>
+												<i class="fa fa-plus"></i>
 											</button>
 										</td>
 									</tr>
@@ -569,8 +569,8 @@
 		[morasPendientes]="morasPendientes" [tipo]="modalTipo" [pendientes]="mensualidadesPendientes"
 		[pu]="modalTipo === 'arrastre' ? mensualidadPU : getMensualidadPuForModal()" [baseNro]="getNextMensualidadNro()"
 		[defaultMetodoPago]="modalFormasCobro[0]?.id_forma_cobro || selectedFormaCobroId"
-		[startCuotaOverride]="modalTipo === 'arrastre' ? null : getNextMensualidadStartCuota()"
-		[frontSaldos]="getFrontSaldos()" [detalleFactura]="pagos.value"
+		[startCuotaOverride]="modalTipo === 'arrastre' ? getNextArrastreStartCuota() : getNextMensualidadStartCuota()"
+		[frontSaldos]="modalTipo === 'arrastre' ? getFrontSaldosArrastre() : getFrontSaldos()" [detalleFactura]="pagos.value"
 		[gestionesActivas]="allGestiones" [carreras]="carreras"
 		(addPagos)="onAddPagosFromModal($event)"></app-mensualidad-modal>
 
