@@ -2,65 +2,52 @@
 
 namespace App\Services;
 
-use Dompdf\Dompdf;
+use Mpdf\Mpdf;
 
 class LibroDiarioPdfService
 {
-    /** 10 mm (SGA mgl/mgr) — mismo criterio que @page 10mm en ReporteLibroDiarioController. */
-    private const MARGIN_H_MM = 10.0;
-
     /**
-     * Desde el borde inferior de la hoja (letter) a la baseline del texto, en línea con la fila "Fecha y Hora" / pie SGA
-     * (mPDF mgb 45 mm de zona inferior; fino: 30–36 pt suele alinear con DejaVu 9pt bold).
-     */
-    private const PAGE_NUM_BASELINE_FROM_BOTTOM_PT = 32.0;
-
-    /**
-     * Genera un PDF de Libro Diario a partir de HTML ya armado.
-     * El pie (fecha, firmas) va en el HTML; "Página X de N" se pinta vía end_document
-     * con el mismo criterio que .libro-footer (DejaVu Sans bold 9pt, #000066), alineado
-     * a la derecha con la fila "Fecha y Hora de Impresión" (1 cm de margen).
-     */
-    /**
-     * @param  string|null  $sufijoCarrera  p. ej. EEA, MEA — evita que dos PDFs el mismo día pisen el mismo archivo.
+     * Genera un PDF de Libro Diario a partir del HTML completo armado por el controlador.
+     * Extrae header, footer y body del HTML para usar mPDF SetHTMLHeader/SetHTMLFooter.
      */
     public function generate(string $html, string $usuario, string $fechaCorta, ?string $fechaHoraImp = null, ?string $sufijoCarrera = null): string
     {
-        $dompdf = new Dompdf([
-            'isRemoteEnabled' => true,
-            'isHtml5ParserEnabled' => true,
-            'isPhpEnabled' => true,
-        ]);
-        $dompdf->loadHtml($html, 'UTF-8');
+        // --- Extraer partes del HTML ---
+        preg_match('/<style[^>]*>(.*?)<\/style>/si', $html, $cssMatch);
+        $rawCss = $cssMatch[1] ?? '';
+        // Eliminar @page (mPDF usa parámetros del constructor para márgenes)
+        $css = preg_replace('/@page\s*\{[^}]*\}/s', '', $rawCss);
 
-        $dompdf->setPaper('letter', 'portrait');
+        preg_match('/<header[^>]*class="libro-header"[^>]*>(.*?)<\/header>/si', $html, $hdrMatch);
+        $headerHtml = $hdrMatch[1] ?? '';
 
-        $colorPie = [0.0, 0.0, 102 / 255];
+        preg_match('/<footer[^>]*class="libro-footer"[^>]*>(.*?)<\/footer>/si', $html, $ftrMatch);
+        $footerHtml = $ftrMatch[1] ?? '';
 
-        $dompdf->setCallbacks([
-            [
-                'event' => 'end_document',
-                'f' => function (int $pageNumber, int $pageCount, $canvas, $fontMetrics) use ($colorPie): void {
-                    $text = 'Página ' . $pageNumber . ' de ' . $pageCount;
-                    $font = $fontMetrics->getFont('DejaVu Sans', 'bold');
-                    $size = 9.0;
-                    $w = $fontMetrics->getTextWidth($text, $font, $size);
-                    $pageW = $canvas->get_width();
-                    $pageH = $canvas->get_height();
-                    $marginHpt = self::MARGIN_H_MM * 2.834645669;
-                    $x = $pageW - $marginHpt - $w;
-                    $y = $pageH - self::PAGE_NUM_BASELINE_FROM_BOTTOM_PT;
-                    $canvas->text($x, $y, $text, $font, $size, $colorPie);
-                },
-            ],
+        preg_match('/<main[^>]*>(.*?)<\/main>/si', $html, $mainMatch);
+        $bodyHtml = $mainMatch[1] ?? $html;
+
+        // --- Instanciar mPDF ---
+        $mpdf = new Mpdf([
+            'mode'          => 'utf-8',
+            'format'        => 'Letter',
+            'margin_left'   => 10,
+            'margin_right'  => 10,
+            'margin_top'    => 46,
+            'margin_bottom' => 45,
+            'margin_header' => 4,
+            'margin_footer' => 4,
         ]);
 
-        $dompdf->render();
+        $mpdf->SetHTMLHeader($headerHtml);
+        $mpdf->SetHTMLFooter($footerHtml);
 
-        $output = $dompdf->output();
+        $mpdf->WriteHTML($css, \Mpdf\HTMLParserMode::HEADER_CSS);
+        $mpdf->WriteHTML($bodyHtml, \Mpdf\HTMLParserMode::HTML_BODY);
 
+        // --- Guardar en disco ---
         $safeUsuario = preg_replace('/[^A-Za-z0-9_\-]/', '_', $usuario ?: 'usuario');
-        $safeFecha = preg_replace('/[^0-9\-]/', '_', $fechaCorta ?: date('Y-m-d'));
+        $safeFecha   = preg_replace('/[^0-9\-]/', '_', $fechaCorta ?: date('Y-m-d'));
 
         $dir = public_path('reportes' . DIRECTORY_SEPARATOR . 'libro_diario');
         if (!is_dir($dir)) {
@@ -72,9 +59,9 @@ class LibroDiarioPdfService
             $sufCarr = '_' . preg_replace('/[^A-Za-z0-9_\-]/', '_', strtoupper(trim($sufijoCarrera)));
         }
         $filename = 'libro_diario_' . $safeUsuario . '_' . $safeFecha . $sufCarr . '.pdf';
-        $path = $dir . DIRECTORY_SEPARATOR . $filename;
+        $path     = $dir . DIRECTORY_SEPARATOR . $filename;
 
-        file_put_contents($path, $output);
+        $mpdf->Output($path, 'F');
 
         return $path;
     }
