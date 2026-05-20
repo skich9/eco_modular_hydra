@@ -1088,15 +1088,20 @@ class LibroDiarioAggregatorService
 		}
 
 		$banco = $this->bancoSoloNombre((string) ($c->banco_nb ?? ''));
-		$nroTrx = (string) ($c->nro_transaccion ?? ($c->nro_deposito ?? ''));
+		if ($banco === '') {
+			$banco = $this->bancoSoloNombre((string) ($c->banco_cuenta_cobro ?? ''));
+		}
+		$nroTrx   = (string) ($c->nro_transaccion ?? ($c->nro_deposito ?? ''));
 		$fechaDep = (string) ($c->fecha_deposito ?? ($c->fecha_nota ?? ''));
 
 		$infoAdicional = '';
 
 		switch ($codigo) {
 			case 'TA':
-				if ($banco !== '' && $nroTrx !== '' && $fechaDep !== '') {
-					$infoAdicional = "Tarjeta: {$banco}-{$nroTrx}-{$fechaDep}";
+				$nroTrxTa  = $nroTrx !== '' ? $nroTrx : $obsOriginal;
+				$fechaDepTa = $fechaDep !== '' ? $fechaDep : substr((string) ($c->fecha_cobro ?? ''), 0, 10);
+				if ($banco !== '' && $nroTrxTa !== '' && $fechaDepTa !== '') {
+					$infoAdicional = "Tarjeta: {$banco}-{$nroTrxTa}-{$fechaDepTa}";
 				}
 				break;
 			case 'CH':
