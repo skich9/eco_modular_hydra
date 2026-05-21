@@ -2309,7 +2309,8 @@ class CobroController extends Controller
 				try { Log::warning('batchStore: validacion mora/arrastre fallo', ['error' => $e->getMessage()]); } catch (\Throwable $e2) {}
 			}
 			$emitGroupMeta = null; // meta para emisión agrupada post-commit
-			DB::transaction(function () use ($request, $items, $descuentosFromFrontend, $reciboService, $facturaService, $cufdRepo, $ops, $cufGen, $payloadBuilder, $cuisRepo, &$results, &$emitGroupMeta) {
+			$cobrosParaSga = []; // cobros a sincronizar en batch al SGA tras la transacción
+			DB::transaction(function () use ($request, $items, $descuentosFromFrontend, $reciboService, $facturaService, $cufdRepo, $ops, $cufGen, $payloadBuilder, $cuisRepo, &$results, &$emitGroupMeta, &$cobrosParaSga) {
                 $codigoAmbiente = env('CODIGO_AMBIENTE', '2'); // 2=PRUEBAS, 1=PRODUCCION
 
                 $codCetaCtx = (int) $request->cod_ceta;
@@ -3738,12 +3739,8 @@ class CobroController extends Controller
                 ]);
                 $created = Cobro::create($payload)->load(['usuario', 'cuota', 'formaCobro', 'cuentaBancaria', 'itemCobro']);
 
-                // Sincronizar con SGA (Efecto Dual-Write)
-                try {
-                    app(SgaPushService::class)->pushCobro($created);
-                } catch (\Throwable $e) {
-                    \Log::error('Error en sincronización dual SGA (batchStore): ' . $e->getMessage());
-                }
+                // Acumular para envío batch al SGA tras la transacción
+                $cobrosParaSga[] = $created;
 
                 // Si es MORA o NIVELACION y viene identificada, actualizar monto_pagado y marcar como PAGADO cuando corresponda
                 $esMoraONivelacion = in_array(strtoupper((string)$codTipoCobroItem), ['MORA', 'NIVELACION']);
@@ -4413,6 +4410,15 @@ class CobroController extends Controller
 					if ($aliasQr) { app(\App\Services\Qr\QrSocketNotifier::class)->notifyEvent('factura_generada', [ 'id_pago' => $aliasQr ]); }
 				} catch (\Throwable $e) { /* noop */ }
 			});
+
+			// Sincronizar con SGA en un solo envío batch (fuera de la transacción)
+			if (!empty($cobrosParaSga)) {
+				try {
+					app(SgaPushService::class)->pushCobros($cobrosParaSga);
+				} catch (\Throwable $e) {
+					Log::error('Error en sincronización batch SGA (batchStore): ' . $e->getMessage());
+				}
+			}
 
 			// Respuesta de éxito (fuera de la transacción) con el arreglo de items creado
 			return response()->json([

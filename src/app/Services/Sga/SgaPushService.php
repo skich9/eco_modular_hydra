@@ -100,6 +100,133 @@ class SgaPushService
         return $this->enviarAlSga($registro, $conn, '/api/sync/pago', $payload);
     }
 
+    /**
+     * Envía múltiples cobros al SGA en un solo POST batch.
+     * Solo aplica a MENSUALIDAD/ARRASTRE; el resto se enruta individualmente.
+     */
+    public function pushCobros(array $cobros): void
+    {
+        $pushEnabled = config('sga.push_enabled') ?? (env('SGA_PUSH_ENABLED', 'false') !== 'false' && env('SGA_PUSH_ENABLED', false));
+
+        // Separar por conexión SGA y tipo
+        $porConexion = []; // ['sga_elec' => [...], 'sga_mec' => [...]]
+
+        foreach ($cobros as $cobro) {
+            $tipo = strtoupper((string) $cobro->cod_tipo_cobro);
+
+            // Tipos que aún usan conexión directa (no batch API)
+            if (in_array($tipo, ['MORA', 'NIVELACION', 'REINCORPORACION'])) {
+                $this->pushCobro($cobro);
+                continue;
+            }
+
+            if (!in_array($tipo, ['MENSUALIDAD', 'ARRASTRE'])) {
+                Log::info(self::LOG . ': pushCobros — tipo no configurado, omitiendo', ['nro_cobro' => $cobro->nro_cobro, 'tipo' => $tipo]);
+                continue;
+            }
+
+            $inscripcion = Inscripcion::where('cod_inscrip', $cobro->cod_inscrip)->first();
+            if (!$inscripcion) {
+                Log::warning(self::LOG . ': pushCobros — inscripción no encontrada', ['nro_cobro' => $cobro->nro_cobro]);
+                continue;
+            }
+
+            $conn = $this->resolveConnection($inscripcion->carrera);
+            if (!$conn) {
+                Log::warning(self::LOG . ': pushCobros — conexión no resuelta', ['nro_cobro' => $cobro->nro_cobro, 'carrera' => $inscripcion->carrera]);
+                continue;
+            }
+
+            $cobroUid = $cobro->anio_cobro . '-' . $cobro->nro_cobro;
+            $registro  = SgaPushCobro::where('cobro_uid', $cobroUid)->first();
+            if ($registro && $registro->sincronizado) {
+                Log::info(self::LOG . ': pushCobros — ya sincronizado, omitiendo', ['cobro_uid' => $cobroUid]);
+                continue;
+            }
+
+            $numCuota = $this->resolveNumCuota($cobro);
+            $payload  = $this->buildPayloadPago($cobro, $inscripcion, $numCuota);
+
+            $registro = SgaPushCobro::updateOrCreate(
+                ['cobro_uid' => $cobroUid],
+                [
+                    'nro_cobro'     => $cobro->nro_cobro,
+                    'anio_cobro'    => $cobro->anio_cobro,
+                    'cod_ceta'      => $cobro->cod_ceta,
+                    'cod_pensum'    => $cobro->cod_pensum,
+                    'destino_conn'  => $conn,
+                    'destino_tabla' => 'pago',
+                    'payload'       => $payload,
+                    'sincronizado'  => false,
+                ]
+            );
+
+            $porConexion[$conn][] = ['registro' => $registro, 'payload' => $payload];
+        }
+
+        Log::info(self::LOG . ': pushCobros preparado', [
+            'total_cobros'  => count($cobros),
+            'por_conexion'  => array_map('count', $porConexion),
+            'push_enabled'  => $pushEnabled,
+        ]);
+
+        if (!$pushEnabled) {
+            Log::info(self::LOG . ': pushCobros — push deshabilitado, todos guardados como pendientes');
+            return;
+        }
+
+        // Enviar un POST por cada conexión SGA con todos sus pagos
+        foreach ($porConexion as $conn => $items) {
+            [$url, $token] = $this->resolveApiCredentials($conn);
+            $registros = array_column($items, 'registro');
+            $payloads  = array_column($items, 'payload');
+
+            Log::info(self::LOG . ': pushCobros enviando batch', [
+                'conn'  => $conn,
+                'url'   => $url . '/api/sync/pagos',
+                'count' => count($payloads),
+            ]);
+
+            try {
+                $response = Http::withToken($token)
+                    ->timeout(30)
+                    ->post($url . '/api/sync/pagos', ['pagos' => $payloads]);
+
+                Log::info(self::LOG . ': pushCobros respuesta SGA', [
+                    'conn'   => $conn,
+                    'status' => $response->status(),
+                    'body'   => $response->body(),
+                ]);
+
+                if ($response->successful() && ($response->json('success') ?? false)) {
+                    foreach ($registros as $reg) {
+                        $reg->update([
+                            'sincronizado'    => true,
+                            'response'        => $response->json(),
+                            'ultimo_error'    => null,
+                            'sincronizado_at' => now(),
+                        ]);
+                    }
+                    Log::info(self::LOG . ': pushCobros batch exitoso', ['conn' => $conn, 'count' => count($registros)]);
+                } else {
+                    $error = $response->json('message') ?? 'HTTP ' . $response->status();
+                    foreach ($registros as $reg) {
+                        $reg->increment('intentos');
+                        $reg->update(['response' => $response->json(), 'ultimo_error' => $error]);
+                    }
+                    Log::warning(self::LOG . ': pushCobros SGA rechazó el batch', ['conn' => $conn, 'error' => $error]);
+                }
+
+            } catch (\Throwable $e) {
+                foreach ($registros as $reg) {
+                    $reg->increment('intentos');
+                    $reg->update(['ultimo_error' => $e->getMessage()]);
+                }
+                Log::error(self::LOG . ': pushCobros error HTTP batch', ['conn' => $conn, 'error' => $e->getMessage()]);
+            }
+        }
+    }
+
     private function pushToPagoMulta(string $conn, Cobro $cobro, Inscripcion $ins)
     {
         $numCuota     = $this->resolveNumCuota($cobro);
@@ -218,6 +345,37 @@ class SgaPushService
         $notaBancaria   = $this->getNotaBancaria($cobro);
         $cuentaBancaria = $this->getCuentaBancaria($cobro);
 
+        // B = Transferencia — puede ser QR automático o transferencia manual ingresada por el usuario
+        $esQr             = strtoupper($cobro->id_forma_cobro ?? '') === 'B' && $this->isQrPayment($cobro);
+        $qrTransaccion    = $esQr ? $this->getQrTransaccion($cobro) : null;
+        $qrRespuestaBanco = ($esQr && $qrTransaccion) ? $this->getQrRespuestaBanco($qrTransaccion) : null;
+
+        if ($esQr) {
+            Log::info(self::LOG . ': QR datos encontrados', [
+                'cobro_uid'           => $cobro->anio_cobro . '-' . $cobro->nro_cobro,
+                'qr_transaccion_id'   => $qrTransaccion->id_qr_transaccion ?? null,
+                'processed_at'        => $qrTransaccion->processed_at ?? null,
+                'respuesta_banco_id'  => $qrRespuestaBanco->id_respuesta_banco ?? null,
+                'numeroordenoriginante' => $qrRespuestaBanco->numeroordenoriginante ?? null,
+            ]);
+        }
+
+        // fecha_deposito: QR usa processed_at (qr_transacciones) o fecha_respuesta (qr_respuestas_banco) como fallback
+        if ($esQr) {
+            $fechaRaw = ($qrTransaccion->processed_at ?? null)
+                     ?: ($qrRespuestaBanco->fecha_respuesta ?? null);
+            $fechaDeposito = $fechaRaw
+                ? \Carbon\Carbon::parse($fechaRaw)->format('Y-m-d')
+                : null;
+        } else {
+            $fechaDeposito = $notaBancaria ? ($notaBancaria->fecha_deposito ?: null) : null;
+        }
+
+        // nro_deposito: QR usa numeroordenoriginante de qr_respuestas_banco; otros usan nota_bancaria
+        $nroDeposito = $esQr
+            ? (mb_substr($qrRespuestaBanco->numeroordenoriginante ?? '', 0, 50) ?: null)
+            : ($notaBancaria ? (mb_substr($notaBancaria->nro_transaccion ?? '', 0, 35) ?: null) : null);
+
         return [
             'cod_ceta'          => $cobro->cod_ceta,
             'cod_pensum'        => $cobro->cod_pensum,
@@ -241,9 +399,14 @@ class SgaPushService
             'code_tipo_pago'    => $this->mapFormaCobro($cobro->id_forma_cobro),
             'anulado'           => false,
             'destino_tabla'     => 'pago',
-            'fecha_deposito'    => $notaBancaria ? $notaBancaria->fecha_deposito : null,
-            'nro_deposito'      => $notaBancaria ? mb_substr($notaBancaria->nro_transaccion ?? '', 0, 35) : null,
-            'banco_origen'      => null,
+            'fecha_deposito'    => $fechaDeposito,
+            'nro_deposito'      => $nroDeposito,
+            // banco_origen: solo para transferencia manual (B sin QR) y tarjeta (L, T)
+            // Depósito (D) y QR (B+QR) siempre null
+            'banco_origen'      => (!$esQr && in_array(strtoupper($cobro->id_forma_cobro ?? ''), ['B', 'L', 'T']))
+                                    ? ($notaBancaria ? (mb_substr($notaBancaria->banco_origen ?? '', 0, 200) ?: null) : null)
+                                    : null,
+            'nro_tarjeta'       => ($notaBancaria ? (mb_substr($notaBancaria->nro_tarjeta ?? '', 0, 200) ?: null) : null),
             'cuenta_bancaria'   => $cuentaBancaria ? [
                 'numero_cuenta' => $cuentaBancaria->numero_cuenta,
                 'banco'         => $cuentaBancaria->banco,
@@ -331,6 +494,61 @@ class SgaPushService
                 if ($cobro->nro_factura) $q->orWhere('nro_factura', $cobro->nro_factura);
             })
             ->first();
+    }
+
+    private function getQrTransaccion(Cobro $cobro)
+    {
+        $ctx = ['nro_cobro' => $cobro->nro_cobro, 'qr_alias' => $cobro->qr_alias, 'nro_factura' => $cobro->nro_factura, 'nro_recibo' => $cobro->nro_recibo];
+
+        // 1. Búsqueda directa por qr_alias
+        if ($cobro->qr_alias) {
+            $result = DB::table('qr_transacciones')->where('alias', $cobro->qr_alias)->first();
+            Log::info(self::LOG . ': getQrTransaccion paso 1 (qr_alias)', array_merge($ctx, ['encontrado' => (bool) $result]));
+            if ($result) return $result;
+        }
+
+        // 2. Extraer alias embebido en observaciones: "[QR] alias:XXXXX"
+        $aliasFromObs = null;
+        if ($cobro->observaciones && preg_match('/\[QR\]\s+alias:(\S+)/', $cobro->observaciones, $m)) {
+            $aliasFromObs = $m[1];
+            $result = DB::table('qr_transacciones')->where('alias', $aliasFromObs)->first();
+            Log::info(self::LOG . ': getQrTransaccion paso 2 (alias en observaciones)', array_merge($ctx, ['alias_extraido' => $aliasFromObs, 'encontrado' => (bool) $result]));
+            if ($result) return $result;
+        } else {
+            Log::info(self::LOG . ': getQrTransaccion paso 2 — no se encontró alias en observaciones', $ctx);
+        }
+
+        // 3. Fallback por nro_factura + cod_ceta
+        if ($cobro->nro_factura > 0) {
+            $result = DB::table('qr_transacciones')->where('nro_factura', $cobro->nro_factura)->where('cod_ceta', $cobro->cod_ceta)->first();
+            Log::info(self::LOG . ': getQrTransaccion paso 3 (nro_factura)', array_merge($ctx, ['encontrado' => (bool) $result]));
+            if ($result) return $result;
+        }
+
+        // 4. Fallback por nro_recibo + cod_ceta
+        if ($cobro->nro_recibo > 0) {
+            $result = DB::table('qr_transacciones')->where('nro_recibo', $cobro->nro_recibo)->where('cod_ceta', $cobro->cod_ceta)->first();
+            Log::info(self::LOG . ': getQrTransaccion paso 4 (nro_recibo)', array_merge($ctx, ['encontrado' => (bool) $result]));
+            if ($result) return $result;
+        }
+
+        Log::warning(self::LOG . ': getQrTransaccion — no se encontró transacción QR por ningún método', $ctx);
+        return null;
+    }
+
+    private function getQrRespuestaBanco(object $qrTransaccion)
+    {
+        return DB::table('qr_respuestas_banco')
+            ->where('id_qr_transaccion', $qrTransaccion->id_qr_transaccion)
+            ->orderByDesc('id_respuesta_banco')
+            ->first();
+    }
+
+    private function isQrPayment(Cobro $cobro): bool
+    {
+        if ($cobro->qr_alias) return true;
+        if ($cobro->observaciones && str_contains($cobro->observaciones, '[QR]')) return true;
+        return false;
     }
 
     private function getCuentaBancaria(Cobro $cobro): ?CuentaBancaria
