@@ -735,15 +735,34 @@ class RecepcionIngresoService
         }
 
         $idActividad = $input['id_actividad_economica'] ?? null;
-        if (!$idActividad) {
-            return null;
+        if ($idActividad) {
+            $caja = DB::table('actividades_economicas')
+                ->where('id_actividad_economica', $idActividad)
+                ->value('id_caja_actividad');
+
+            if ($caja) {
+                return (int) $caja;
+            }
         }
 
-        $actividad = DB::table('actividades_economicas')
-            ->where('id_actividad_economica', $idActividad)
-            ->value('id_caja_actividad');
+        // Fallback: deducir por prefijo de caja usando codigo_carrera
+        $carrera = strtoupper(trim((string) ($input['codigo_carrera'] ?? '')));
+        if ($carrera !== '') {
+            $caja = DB::table('cajas_actividad')
+                ->where('prefijo', $carrera)
+                ->value('id_caja_actividad');
 
-        return $actividad ? (int) $actividad : null;
+            if ($caja) {
+                return (int) $caja;
+            }
+        }
+
+        Log::warning('[RecepcionIngreso] No se pudo resolver id_caja_actividad', [
+            'id_actividad_economica' => $idActividad,
+            'codigo_carrera'         => $input['codigo_carrera'] ?? null,
+        ]);
+
+        return null;
     }
 
     /**
