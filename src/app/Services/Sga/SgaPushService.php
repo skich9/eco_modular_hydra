@@ -77,8 +77,7 @@ class SgaPushService
         $registro = SgaPushCobro::updateOrCreate(
             ['cobro_uid' => $cobroUid],
             [
-                'nro_cobro'     => $cobro->nro_cobro,
-                'anio_cobro'    => $cobro->anio_cobro,
+                'nro_cobro'     => (string) $cobro->nro_cobro,
                 'cod_ceta'      => $cobro->cod_ceta,
                 'cod_pensum'    => $cobro->cod_pensum,
                 'destino_conn'  => $conn,
@@ -108,8 +107,9 @@ class SgaPushService
     {
         $pushEnabled = config('sga.push_enabled') ?? (env('SGA_PUSH_ENABLED', 'false') !== 'false' && env('SGA_PUSH_ENABLED', false));
 
-        // Separar por conexión SGA y tipo
-        $porConexion = []; // ['sga_elec' => [...], 'sga_mec' => [...]]
+        // Construir payloads en memoria agrupados por conexión SGA
+        // (NO se guarda nada en BD todavía — primero construimos todo el JSON combinado)
+        $porConexion = []; // ['sga_elec' => ['payloads' => [], 'cod_ceta' => x, 'cod_pensum' => y]]
 
         foreach ($cobros as $cobro) {
             $tipo = strtoupper((string) $cobro->cod_tipo_cobro);
@@ -137,92 +137,92 @@ class SgaPushService
                 continue;
             }
 
-            $cobroUid = $cobro->anio_cobro . '-' . $cobro->nro_cobro;
-            $registro  = SgaPushCobro::where('cobro_uid', $cobroUid)->first();
-            if ($registro && $registro->sincronizado) {
-                Log::info(self::LOG . ': pushCobros — ya sincronizado, omitiendo', ['cobro_uid' => $cobroUid]);
-                continue;
-            }
-
             $numCuota = $this->resolveNumCuota($cobro);
             $payload  = $this->buildPayloadPago($cobro, $inscripcion, $numCuota);
 
-            $registro = SgaPushCobro::updateOrCreate(
-                ['cobro_uid' => $cobroUid],
-                [
-                    'nro_cobro'     => $cobro->nro_cobro,
-                    'anio_cobro'    => $cobro->anio_cobro,
-                    'cod_ceta'      => $cobro->cod_ceta,
-                    'cod_pensum'    => $cobro->cod_pensum,
-                    'destino_conn'  => $conn,
-                    'destino_tabla' => 'pago',
-                    'payload'       => $payload,
-                    'sincronizado'  => false,
-                ]
-            );
-
-            $porConexion[$conn][] = ['registro' => $registro, 'payload' => $payload];
+            if (!isset($porConexion[$conn])) {
+                $porConexion[$conn] = ['payloads' => [], 'nro_cobros' => [], 'anio' => $cobro->anio_cobro, 'cod_ceta' => $cobro->cod_ceta, 'cod_pensum' => $cobro->cod_pensum];
+            }
+            $porConexion[$conn]['payloads'][]   = $payload;
+            $porConexion[$conn]['nro_cobros'][] = $cobro->nro_cobro;
         }
 
         Log::info(self::LOG . ': pushCobros preparado', [
-            'total_cobros'  => count($cobros),
-            'por_conexion'  => array_map('count', $porConexion),
-            'push_enabled'  => $pushEnabled,
+            'total_cobros' => count($cobros),
+            'por_conexion' => array_map(fn($d) => count($d['payloads']), $porConexion),
+            'push_enabled' => $pushEnabled,
         ]);
 
-        if (!$pushEnabled) {
-            Log::info(self::LOG . ': pushCobros — push deshabilitado, todos guardados como pendientes');
-            return;
-        }
+        // Por cada conexión: guardar UNA sola fila con el JSON combinado y enviar UN solo HTTP call
+        foreach ($porConexion as $conn => $data) {
+            // Construir diccionario indexado en memoria: {"0": {...}, "1": {...}}
+            $pagosDict = [];
+            foreach (array_values($data['payloads']) as $i => $p) {
+                $pagosDict[(string) $i] = $p;
+            }
 
-        // Enviar un POST por cada conexión SGA con todos sus pagos
-        foreach ($porConexion as $conn => $items) {
-            [$url, $token] = $this->resolveApiCredentials($conn);
-            $registros = array_column($items, 'registro');
-            $payloads  = array_column($items, 'payload');
+            $nrosCsv  = implode(',', $data['nro_cobros']); // "22787,22788"
+            $anio     = $data['anio'] ?? date('Y');
+            $batchUid = $anio . '_' . $nrosCsv;            // "2026_22787,22788"
 
-            Log::info(self::LOG . ': pushCobros enviando batch', [
-                'conn'  => $conn,
-                'url'   => $url . '/api/sync/pagos',
-                'count' => count($payloads),
+            Log::info(self::LOG . ': pushCobros payload combinado (UNA fila, UN envío)', [
+                'cobro_uid' => $batchUid,
+                'conn'      => $conn,
+                'count'     => count($pagosDict),
+                'pagos'     => $pagosDict,
             ]);
+
+            // Guardar UNA sola fila con el payload combinado
+            // (object)$pagosDict fuerza serialización como objeto JSON {"0":{...},"1":{...}} en lugar de array
+            $registro = SgaPushCobro::create([
+                'cobro_uid'     => $batchUid,
+                'nro_cobro'     => $nrosCsv,
+                'cod_ceta'      => $data['cod_ceta'],
+                'cod_pensum'    => $data['cod_pensum'],
+                'destino_conn'  => $conn,
+                'destino_tabla' => 'pago',
+                'payload'       => ['pagos' => (object) $pagosDict],
+                'sincronizado'  => false,
+            ]);
+
+            if (!$pushEnabled) {
+                Log::info(self::LOG . ': pushCobros — push deshabilitado, batch guardado como pendiente', ['batch_uid' => $batchUid]);
+                continue;
+            }
+
+            [$url, $token] = $this->resolveApiCredentials($conn);
 
             try {
                 $response = Http::withToken($token)
                     ->timeout(30)
-                    ->post($url . '/api/sync/pagos', ['pagos' => $payloads]);
+                    ->post($url . '/api/sync/pagos', ['pagos' => (object) $pagosDict]);
+
+                $registro->increment('intentos');
 
                 Log::info(self::LOG . ': pushCobros respuesta SGA', [
-                    'conn'   => $conn,
-                    'status' => $response->status(),
-                    'body'   => $response->body(),
+                    'batch_uid' => $batchUid,
+                    'status'    => $response->status(),
+                    'body'      => $response->body(),
                 ]);
 
                 if ($response->successful() && ($response->json('success') ?? false)) {
-                    foreach ($registros as $reg) {
-                        $reg->update([
-                            'sincronizado'    => true,
-                            'response'        => $response->json(),
-                            'ultimo_error'    => null,
-                            'sincronizado_at' => now(),
-                        ]);
-                    }
-                    Log::info(self::LOG . ': pushCobros batch exitoso', ['conn' => $conn, 'count' => count($registros)]);
+                    $registro->update([
+                        'sincronizado'    => true,
+                        'response'        => $response->json(),
+                        'ultimo_error'    => null,
+                        'sincronizado_at' => now(),
+                    ]);
+                    Log::info(self::LOG . ': pushCobros batch exitoso', ['batch_uid' => $batchUid, 'count' => count($pagosDict)]);
                 } else {
                     $error = $response->json('message') ?? 'HTTP ' . $response->status();
-                    foreach ($registros as $reg) {
-                        $reg->increment('intentos');
-                        $reg->update(['response' => $response->json(), 'ultimo_error' => $error]);
-                    }
-                    Log::warning(self::LOG . ': pushCobros SGA rechazó el batch', ['conn' => $conn, 'error' => $error]);
+                    $registro->update(['response' => $response->json(), 'ultimo_error' => $error]);
+                    Log::warning(self::LOG . ': pushCobros SGA rechazó el batch', ['batch_uid' => $batchUid, 'error' => $error]);
                 }
 
             } catch (\Throwable $e) {
-                foreach ($registros as $reg) {
-                    $reg->increment('intentos');
-                    $reg->update(['ultimo_error' => $e->getMessage()]);
-                }
-                Log::error(self::LOG . ': pushCobros error HTTP batch', ['conn' => $conn, 'error' => $e->getMessage()]);
+                $registro->increment('intentos');
+                $registro->update(['ultimo_error' => $e->getMessage()]);
+                Log::error(self::LOG . ': pushCobros error HTTP batch', ['batch_uid' => $batchUid, 'error' => $e->getMessage()]);
             }
         }
     }

@@ -11,7 +11,6 @@ class SgaPushCobro extends Model
     protected $fillable = [
         'cobro_uid',
         'nro_cobro',
-        'anio_cobro',
         'cod_ceta',
         'cod_pensum',
         'destino_conn',
