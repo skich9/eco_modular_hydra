@@ -216,11 +216,11 @@
 											</span>
 										</td>
 										<td class="text-center">
-											<span class="badge {{ calculateDaysOverdue(m?.fecha_vencimiento) > 0 ? 'bg-danger' : 'bg-secondary' }}">
-												{{ calculateDaysOverdue(m?.fecha_vencimiento) }}
+											<span class="badge {{ (m?.dias_mora || 0) > 0 ? 'bg-danger' : 'bg-secondary' }}">
+												{{ m?.dias_mora || 0 }}
 											</span>
 										</td>
-										<td class="text-end">{{ calculateDaysOverdue(m?.fecha_vencimiento) > 0 ? calculateDaysOverdue(m?.fecha_vencimiento) : '0' }}</td>
+										<td class="text-end">{{ (m?.monto_mora || 0) | number:'1.0-0' }}</td>
 										<td class="text-center">{{ '0' }}</td>
 										<td class="text-end">
 											<ng-container [ngSwitch]="m?.estado_pago">

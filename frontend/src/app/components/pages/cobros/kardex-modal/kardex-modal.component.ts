@@ -273,32 +273,21 @@ export class KardexModalComponent implements OnChanges {
 		for (let i = 0; i <= currentIndex; i++) {
 			const item = adeudadas[i];
 
-			// Calcular monto adeudado (asegurar que sea número)
+			// Monto adeudado de la cuota
 			let montoAdeudado = 0;
 			if (item?.estado_pago === 'PARCIAL') {
-				// Para pagos parciales, usar el saldo restante
-				montoAdeudado = parseFloat((item?.monto || 0)) - parseFloat((item?.monto_pagado || 0));
+				montoAdeudado = parseFloat(item?.monto || 0) - parseFloat(item?.monto_pagado || 0);
 			} else {
-				// Para otros estados, usar el monto completo
 				montoAdeudado = parseFloat(item?.monto || 0);
 			}
 
-			// Calcular importe por mora (igual a días de mora)
-			const diasMora = this.calculateDaysOverdue(item?.fecha_vencimiento);
-			const importeMora = diasMora;
+			// Importe por mora: viene pre-calculado desde el backend (igual que SGA)
+			const importeMora = parseFloat(item?.monto_mora || 0);
 
-			// Lógica corregida según el ejemplo:
-			// - Para todas las cuotas: acumular monto adeudado + importe por mora
-			// - Esto significa que cada cuota acumula todo lo anterior
-			const itemTotal = montoAdeudado + importeMora;
-			total += itemTotal;
-
-			// Debug para cada paso
+			total += montoAdeudado + importeMora;
 		}
 
-		// Asegurar que sea un número entero sin decimales
-		const resultado = Math.round(total);
-		return resultado;
+		return Math.round(total);
 	}
 
 	// Calcular total adeudado
