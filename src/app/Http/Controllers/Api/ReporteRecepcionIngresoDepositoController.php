@@ -241,8 +241,6 @@ HTML;
                 'detalles.*.cod_libro_diario'      => 'nullable|string',
                 'detalles.*.fecha_inicial_libros'  => 'required|date',
                 'detalles.*.fecha_final_libros'   => 'nullable|date',
-                'detalles.*.total_deposito'        => 'nullable|numeric',
-                'detalles.*.total_traspaso'        => 'nullable|numeric',
                 'detalles.*.total_recibos'         => 'nullable|numeric',
                 'detalles.*.total_facturas'        => 'nullable|numeric',
                 'detalles.*.total_entregado'       => 'nullable|numeric',
