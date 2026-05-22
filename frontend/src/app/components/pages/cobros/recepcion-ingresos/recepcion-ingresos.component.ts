@@ -14,8 +14,6 @@ export interface FilaReporte {
   cod_libro_diario: string;
   fecha_inicial: string;
   fecha_final: string;
-  total_deposito: number;
-  total_traspaso: number;
   total_recibos: number;
   total_facturas: number;
   total_entregado: number;
@@ -249,8 +247,6 @@ export class RecepcionIngresosComponent implements OnInit, OnDestroy {
         cod_libro_diario: d.cod_libro_diario ?? '—',
         fecha_inicial: d.fecha_inicial_libros ?? this.fechaDesde,
         fecha_final: d.fecha_final_libros ?? this.fechaHasta,
-        total_deposito: Number(d.total_deposito ?? 0),
-        total_traspaso: Number(d.total_traspaso ?? 0),
         total_recibos: Number(d.total_recibos ?? 0),
         total_facturas: Number(d.total_facturas ?? 0),
         total_entregado: Number(d.total_entregado ?? 0),
@@ -296,8 +292,6 @@ export class RecepcionIngresosComponent implements OnInit, OnDestroy {
             cod_libro_diario: f.cod_libro_diario,
             fecha_inicial_libros: f.fecha_inicial,
             fecha_final_libros: f.fecha_final,
-            total_deposito: f.total_deposito,
-            total_traspaso: f.total_traspaso,
             total_recibos: f.total_recibos,
             total_facturas: f.total_facturas,
             total_entregado: f.total_entregado,
@@ -454,8 +448,6 @@ export class RecepcionIngresosComponent implements OnInit, OnDestroy {
     return this.filas.reduce(
       (s, f) =>
         s +
-        f.total_deposito +
-        f.total_traspaso +
         f.total_recibos +
         f.total_facturas,
       0
@@ -463,8 +455,6 @@ export class RecepcionIngresosComponent implements OnInit, OnDestroy {
   }
   get totales() {
     return {
-      deposito: this.filas.reduce((s, f) => s + f.total_deposito, 0),
-      traspaso: this.filas.reduce((s, f) => s + f.total_traspaso, 0),
       recibos:  this.filas.reduce((s, f) => s + f.total_recibos, 0),
       facturas: this.filas.reduce((s, f) => s + f.total_facturas, 0),
     };
@@ -499,8 +489,6 @@ export class RecepcionIngresosComponent implements OnInit, OnDestroy {
             cod_libro_diario: f.cod_libro_diario,
             fecha_inicial_libros: f.fecha_inicial,
             fecha_final_libros: f.fecha_final,
-            total_deposito: f.total_deposito,
-            total_traspaso: f.total_traspaso,
             total_recibos: f.total_recibos,
             total_facturas: f.total_facturas,
             total_entregado: f.total_entregado,

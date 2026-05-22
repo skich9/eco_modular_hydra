@@ -221,8 +221,6 @@
                     <th>Fecha</th>
                     <th>Entregado A:</th>
                     <th>CodLibro :</th>
-                    <th>Total Deposito</th>
-                    <th>Total Traspaso</th>
                     <th>(a)<br>TOTAL RECIBOS BS.</th>
                     <th>(b)<br>TOTAL FACTURAS BS.</th>
                     <th>(a+b)<br>TOTAL GENERAL EN BOLIVIANOS</th>
@@ -231,7 +229,7 @@
                 <tbody>
                   @if (filas.length === 0) {
                     <tr>
-                      <td colspan="8" class="text-center text-muted py-4">
+                      <td colspan="6" class="text-center text-muted py-4">
                         @if (reporteGenerado) {
                           No hay libros diarios en el periodo. Pulse Consultar tras elegir carrera y fechas.
                         } @else {
@@ -250,11 +248,9 @@
                         </td>
                         <td>{{ f.usuario_libro }}</td>
                         <td class="text-center font-monospace small">{{ f.cod_libro_diario }}</td>
-                        <td class="text-end tabular-nums">{{ f.total_deposito  | number:'1.2-2' }}</td>
-                        <td class="text-end tabular-nums">{{ f.total_traspaso  | number:'1.2-2' }}</td>
                         <td class="text-end tabular-nums">{{ f.total_recibos   | number:'1.2-2' }}</td>
                         <td class="text-end tabular-nums">{{ f.total_facturas  | number:'1.2-2' }}</td>
-                        <td class="text-end fw-bold tabular-nums">{{ f.total_entregado | number:'1.2-2' }}</td>
+                        <td class="text-end fw-bold tabular-nums">{{ f.total_recibos + f.total_facturas | number:'1.2-2' }}</td>
                       </tr>
                     }
                   }
@@ -263,8 +259,6 @@
                   <tfoot>
                     <tr class="table-active fw-bold">
                       <td colspan="3" class="text-end">Totales</td>
-                      <td class="text-end">{{ totales.deposito | number:'1.2-2' }}</td>
-                      <td class="text-end">{{ totales.traspaso | number:'1.2-2' }}</td>
                       <td class="text-end">{{ totales.recibos | number:'1.2-2' }}</td>
                       <td class="text-end">{{ totales.facturas | number:'1.2-2' }}</td>
                       <td class="text-end text-bg-success">{{ totalGeneral | number:'1.2-2' }}</td>
