@@ -38,10 +38,12 @@ class SgaRetryPushCobrosCommand extends Command
         $fallos = 0;
 
         foreach ($pendientes as $registro) {
+            $endpoint = isset($registro->payload['pagos']) ? '/api/sync/pagos' : '/api/sync/pago';
+
             $resultado = $pushService->enviarAlSga(
                 $registro,
                 $registro->destino_conn,
-                '/api/sync/pago',
+                $endpoint,
                 $registro->payload
             );
 

@@ -53,6 +53,9 @@ export class NavigationComponent implements OnInit {
 	syncErrorCount: number = 0;
 	isRetrying: boolean = false;
 	private syncInterval: any;
+	expandedErrorId: number | null = null;
+	syncDetails: any[] = [];
+	loadingDetails: boolean = false;
 
 	// Definición completa de menús con módulos
 	private allMenuItems: MenuItem[] = [
@@ -423,35 +426,44 @@ export class NavigationComponent implements OnInit {
 		this.sgaPushService.getPendingSyncs().subscribe({
 			next: (res) => {
 				if (res.success) {
-					this.syncErrors = res.data;
+					// Ordenar por ID de forma ascendente (FIFO: el más antiguo primero)
+					this.syncErrors = (res.data || []).sort((a: any, b: any) => a.id - b.id);
 					this.syncErrorCount = res.count;
+					// Limpiar estado de detalles para evitar inconsistencias
+					this.expandedErrorId = null;
+					this.syncDetails = [];
+					this.loadingDetails = false;
 				}
 			},
 			error: (err) => console.error('Error al cargar errores de sincronización:', err)
 		});
 	}
 
-	retrySync(err: any): void {
-		this.isRetrying = true;
-		this.sgaPushService.retrySync(err.id).subscribe({
-			next: (res) => {
-				this.isRetrying = false;
-				if (res.success) {
-					// Recargar lista
-					this.loadSyncErrors();
-				} else {
-					alert('Error al reintentar: ' + res.message);
+	toggleRow(err: any): void {
+		if (this.expandedErrorId === err.id) {
+			this.expandedErrorId = null;
+			this.syncDetails = [];
+		} else {
+			this.expandedErrorId = err.id;
+			this.syncDetails = [];
+			this.loadingDetails = true;
+			this.sgaPushService.getSyncDetail(err.id).subscribe({
+				next: (res) => {
+					this.loadingDetails = false;
+					if (res.success && res.data) {
+						this.syncDetails = res.data.pagos || [];
+					}
+				},
+				error: (error) => {
+					this.loadingDetails = false;
+					console.error('Error al cargar detalle del cobro:', error);
 				}
-			},
-			error: (err) => {
-				this.isRetrying = false;
-				alert('Error de conexión al reintentar');
-			}
-		});
+			});
+		}
 	}
 
 	retryAllSync(): void {
-		if (!confirm('¿Está seguro de reintentar todas las sincronizaciones pendientes?')) return;
+		if (!confirm('¿Está seguro de sincronizar todos los cobros pendientes en orden cronológico?')) return;
 		
 		this.isRetrying = true;
 		this.sgaPushService.retryAll().subscribe({

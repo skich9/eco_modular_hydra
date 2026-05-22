@@ -230,6 +230,7 @@ Route::post('sga/sync/descuentos', [SgaSyncController::class, 'syncDescuentosSga
 // Sincronización SisEco -> SGA (Push)
 Route::prefix('sga-push')->group(function () {
     Route::get('pending', [SgaPushController::class, 'index']);
+    Route::get('{id}', [SgaPushController::class, 'show'])->where('id', '[0-9]+');
     Route::post('retry/{id}', [SgaPushController::class, 'retry']);
     Route::post('retry-all', [SgaPushController::class, 'retryAll']);
 });

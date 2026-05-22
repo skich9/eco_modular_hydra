@@ -41,4 +41,11 @@ export class SgaPushService {
   retryAll(): Observable<any> {
     return this.http.post(`${this.apiUrl}/retry-all`, {});
   }
+
+  /**
+   * Obtiene el detalle estructurado de pagos para un cobro específico
+   */
+  getSyncDetail(id: number): Observable<any> {
+    return this.http.get(`${this.apiUrl}/${id}`);
+  }
 }

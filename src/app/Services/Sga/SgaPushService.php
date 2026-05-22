@@ -471,11 +471,11 @@ class SgaPushService
     private function resolveApiCredentials(string $conn): array
     {
         if ($conn === 'sga_mec') {
-            $url   = config('sga.mec_url') ?: env('SGA_MECANICA_URL') ?: env('SGA_BASE_URL', '');
+            $url   = config('sga.mec_url') ?: env('SGA_API_MECANICA_URL') ?: env('SGA_MECANICA_URL') ?: env('SGA_BASE_URL', '');
             $token = config('sga.mec_token') ?: env('SGA_API_MECANICA_TOKEN') ?: env('SGA_API_TOKEN', '');
             return [rtrim($url, '/'), $token];
         }
-        $url   = config('sga.elec_url') ?: env('SGA_BASE_URL', '');
+        $url   = config('sga.elec_url') ?: env('SGA_API_BASE_URL') ?: env('SGA_BASE_URL', '');
         $token = config('sga.elec_token') ?: env('SGA_API_TOKEN', '');
         return [rtrim($url, '/'), $token];
     }
