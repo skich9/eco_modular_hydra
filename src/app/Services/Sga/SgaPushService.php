@@ -114,13 +114,13 @@ class SgaPushService
         foreach ($cobros as $cobro) {
             $tipo = strtoupper((string) $cobro->cod_tipo_cobro);
 
-            // Tipos que aún usan conexión directa (no batch API)
-            if (in_array($tipo, ['MORA', 'NIVELACION', 'REINCORPORACION'])) {
+            // REINCORPORACION sigue con conexión directa (aún no migrada a API)
+            if ($tipo === 'REINCORPORACION') {
                 $this->pushCobro($cobro);
                 continue;
             }
 
-            if (!in_array($tipo, ['MENSUALIDAD', 'ARRASTRE'])) {
+            if (!in_array($tipo, ['MENSUALIDAD', 'ARRASTRE', 'MORA', 'NIVELACION'])) {
                 Log::info(self::LOG . ': pushCobros — tipo no configurado, omitiendo', ['nro_cobro' => $cobro->nro_cobro, 'tipo' => $tipo]);
                 continue;
             }
@@ -137,13 +137,25 @@ class SgaPushService
                 continue;
             }
 
-            $numCuota = $this->resolveNumCuota($cobro);
-            $payload  = $this->buildPayloadPago($cobro, $inscripcion, $numCuota);
-
             if (!isset($porConexion[$conn])) {
-                $porConexion[$conn] = ['payloads' => [], 'nro_cobros' => [], 'anio' => $cobro->anio_cobro, 'cod_ceta' => $cobro->cod_ceta, 'cod_pensum' => $cobro->cod_pensum];
+                $porConexion[$conn] = [
+                    'payloads'       => [],   // mensualidad/arrastre → índice "0","1"...
+                    'payloads_multa' => [],   // mora/nivelacion → índice "pago_multa_0","pago_multa_1"...
+                    'nro_cobros'     => [],
+                    'anio'           => $cobro->anio_cobro,
+                    'cod_ceta'       => $cobro->cod_ceta,
+                    'cod_pensum'     => $cobro->cod_pensum,
+                ];
             }
-            $porConexion[$conn]['payloads'][]   = $payload;
+
+            $numCuota = $this->resolveNumCuota($cobro);
+
+            if (in_array($tipo, ['MORA', 'NIVELACION'])) {
+                $porConexion[$conn]['payloads_multa'][] = $this->buildPayloadMulta($cobro, $numCuota);
+            } else {
+                $porConexion[$conn]['payloads'][] = $this->buildPayloadPago($cobro, $inscripcion, $numCuota);
+            }
+
             $porConexion[$conn]['nro_cobros'][] = $cobro->nro_cobro;
         }
 
@@ -155,25 +167,36 @@ class SgaPushService
 
         // Por cada conexión: guardar UNA sola fila con el JSON combinado y enviar UN solo HTTP call
         foreach ($porConexion as $conn => $data) {
-            // Construir diccionario indexado en memoria: {"0": {...}, "1": {...}}
+            // "pagos" → mensualidades/arrastres con índice numérico "0","1"...
             $pagosDict = [];
             foreach (array_values($data['payloads']) as $i => $p) {
                 $pagosDict[(string) $i] = $p;
             }
 
-            $nrosCsv  = implode(',', $data['nro_cobros']); // "22787,22788"
+            // "pago_multa" → moras/nivelaciones con índice "pago_multa_0","pago_multa_1"...
+            $pagoMultaDict = [];
+            foreach (array_values($data['payloads_multa']) as $i => $p) {
+                $pagoMultaDict['pago_multa_' . $i] = $p;
+            }
+
+            // Construir body con solo las secciones que tienen datos
+            $bodyPayload = [];
+            if (!empty($pagosDict))     $bodyPayload['pagos']      = (object) $pagosDict;
+            if (!empty($pagoMultaDict)) $bodyPayload['pago_multa'] = (object) $pagoMultaDict;
+
+            $nrosCsv  = implode(',', $data['nro_cobros']);
             $anio     = $data['anio'] ?? date('Y');
-            $batchUid = $anio . '_' . $nrosCsv;            // "2026_22787,22788"
+            $batchUid = $anio . '_' . $nrosCsv;
 
             Log::info(self::LOG . ': pushCobros payload combinado (UNA fila, UN envío)', [
-                'cobro_uid' => $batchUid,
-                'conn'      => $conn,
-                'count'     => count($pagosDict),
-                'pagos'     => $pagosDict,
+                'cobro_uid'    => $batchUid,
+                'conn'         => $conn,
+                'cnt_pagos'    => count($pagosDict),
+                'cnt_multas'   => count($pagoMultaDict),
+                'body'         => $bodyPayload,
             ]);
 
             // Guardar UNA sola fila con el payload combinado
-            // (object)$pagosDict fuerza serialización como objeto JSON {"0":{...},"1":{...}} en lugar de array
             $registro = SgaPushCobro::create([
                 'cobro_uid'     => $batchUid,
                 'nro_cobro'     => $nrosCsv,
@@ -181,7 +204,7 @@ class SgaPushService
                 'cod_pensum'    => $data['cod_pensum'],
                 'destino_conn'  => $conn,
                 'destino_tabla' => 'pago',
-                'payload'       => ['pagos' => (object) $pagosDict],
+                'payload'       => $bodyPayload,
                 'sincronizado'  => false,
             ]);
 
@@ -195,7 +218,7 @@ class SgaPushService
             try {
                 $response = Http::withToken($token)
                     ->timeout(30)
-                    ->post($url . '/api/sync/pagos', ['pagos' => (object) $pagosDict]);
+                    ->post($url . '/api/sync/pagos', $bodyPayload);
 
                 $registro->increment('intentos');
 
@@ -403,6 +426,72 @@ class SgaPushService
             'nro_deposito'      => $nroDeposito,
             // banco_origen: solo para transferencia manual (B sin QR) y tarjeta (L, T)
             // Depósito (D) y QR (B+QR) siempre null
+            'banco_origen'      => (!$esQr && in_array(strtoupper($cobro->id_forma_cobro ?? ''), ['B', 'L', 'T']))
+                                    ? ($notaBancaria ? (mb_substr($notaBancaria->banco_origen ?? '', 0, 200) ?: null) : null)
+                                    : null,
+            'nro_tarjeta'       => ($notaBancaria ? (mb_substr($notaBancaria->nro_tarjeta ?? '', 0, 200) ?: null) : null),
+            'cuenta_bancaria'   => $cuentaBancaria ? [
+                'numero_cuenta' => $cuentaBancaria->numero_cuenta,
+                'banco'         => $cuentaBancaria->banco,
+                'tipo_cuenta'   => $cuentaBancaria->tipo_cuenta,
+                'titular'       => $cuentaBancaria->titular,
+            ] : null,
+        ];
+    }
+
+    private function buildPayloadMulta(Cobro $cobro, int $numCuota): array
+    {
+        $toLoad = ['usuario'];
+        if ($cobro->nro_recibo > 0)  $toLoad[] = 'recibo';
+        if ($cobro->nro_factura > 0) $toLoad[] = 'factura';
+        $cobro->load($toLoad);
+
+        $documento      = ($cobro->nro_recibo  > 0 ? $cobro->recibo  : null)
+                       ?: ($cobro->nro_factura > 0 ? $cobro->factura : null);
+        $usuario        = $cobro->usuario;
+        $notaBancaria   = $this->getNotaBancaria($cobro);
+        $cuentaBancaria = $this->getCuentaBancaria($cobro);
+        $detalleMulta   = $cobro->detalleMulta;
+
+        $esQr        = strtoupper($cobro->id_forma_cobro ?? '') === 'B' && $this->isQrPayment($cobro);
+        $fechaDeposito = $esQr
+            ? (($qt = $this->getQrTransaccion($cobro))
+                ? (\Carbon\Carbon::parse(($qt->processed_at ?? null) ?: ($this->getQrRespuestaBanco($qt)->fecha_respuesta ?? null))->format('Y-m-d') ?? null)
+                : null)
+            : ($notaBancaria ? ($notaBancaria->fecha_deposito ?: null) : null);
+
+        $nroDeposito = $esQr
+            ? (($qt = $this->getQrTransaccion($cobro))
+                ? (mb_substr($this->getQrRespuestaBanco($qt)->numeroordenoriginante ?? '', 0, 50) ?: null)
+                : null)
+            : ($notaBancaria ? (mb_substr($notaBancaria->nro_transaccion ?? '', 0, 35) ?: null) : null);
+
+        return [
+            'cod_ceta'          => $cobro->cod_ceta,
+            'cod_pensum'        => $cobro->cod_pensum,
+            'kardex_economico'  => $cobro->tipo_inscripcion,
+            'gestion'           => $cobro->gestion,
+            'num_cuota'         => $numCuota,
+            'pu_multa'          => (float) ($detalleMulta->pu_multa ?? 0),
+            'dias_multa'        => (int) ($detalleMulta->dias_multa ?? 0),
+            'monto'             => (float) $cobro->monto,
+            'descuento'         => (float) ($cobro->descuento ?? 0),
+            'fecha_pago'        => $cobro->fecha_cobro
+                                    ? \Carbon\Carbon::parse($cobro->fecha_cobro)->format('Y-m-d H:i:s')
+                                    : null,
+            'pago_completo'     => (bool) $cobro->cobro_completo,
+            'num_comprobante'   => (int) ($cobro->nro_recibo ?? 0),
+            'num_factura'       => (int) ($cobro->nro_factura ?? 0),
+            'observaciones'     => $cobro->observaciones,
+            'concepto'          => $cobro->concepto ?? 'Cobro SisEco',
+            'usuario'           => $usuario ? $usuario->nickname : 'SIS_ECO',
+            'razon'             => $documento ? mb_substr($documento->cliente, 0, 100) : null,
+            'nro_documento_pago'=> $documento ? mb_substr($documento->nro_documento_cobro, 0, 50) : null,
+            'code_tipo_pago'    => $this->mapFormaCobro($cobro->id_forma_cobro),
+            'anulado'           => false,
+            'destino_tabla'     => 'pago_multa',
+            'fecha_deposito'    => $fechaDeposito,
+            'nro_deposito'      => $nroDeposito,
             'banco_origen'      => (!$esQr && in_array(strtoupper($cobro->id_forma_cobro ?? ''), ['B', 'L', 'T']))
                                     ? ($notaBancaria ? (mb_substr($notaBancaria->banco_origen ?? '', 0, 200) ?: null) : null)
                                     : null,
