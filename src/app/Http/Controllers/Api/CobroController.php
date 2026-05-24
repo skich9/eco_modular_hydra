@@ -1278,6 +1278,108 @@ class CobroController extends Controller
 				->orderByDesc('created_at')
 				->get();
 
+			// Calcular fecha_vencimiento real equivalente al SGA:
+			// SGA: vencimiento = get_previous_dia_habil(datos_multa_detalle.fecha_inicio_multa)
+			// sistemaEco: vencimiento = día hábil anterior a fecha_inicio_mora (salta fines de semana)
+			$getPreviousDiaHabil = function(string $fechaStr): string {
+				$d = \Carbon\Carbon::parse($fechaStr)->subDay();
+				while ($d->isWeekend()) {
+					$d->subDay();
+				}
+				return $d->toDateString();
+			};
+
+			// 1) Moras ya generadas: id_asignacion_costo → {fecha_inicio_mora, monto_mora, dias_mora}
+			$todosIdsAsign = $asignacionesPrimarias->pluck('id_asignacion_costo')
+				->merge($asignacionesArrastre ? $asignacionesArrastre->pluck('id_asignacion_costo') : collect())
+				->filter()
+				->map(fn($v) => (int)$v)
+				->unique()
+				->values()
+				->toArray();
+			$moraFechaInicioMap = []; // id_asignacion_costo => fecha_inicio_mora
+			$moraDatosPorAsign = [];  // id_asignacion_costo => {monto_mora, dias_mora}
+			if (!empty($todosIdsAsign)) {
+				$hoyMora = Carbon::today();
+				$moraRows = DB::table('asignacion_mora')
+					->whereIn('id_asignacion_costo', $todosIdsAsign)
+					->whereIn('estado', ['PENDIENTE', 'CONGELADA_PRORROGA', 'EN_ESPERA'])
+					->orderBy('id_asignacion_mora', 'asc')
+					->get(['id_asignacion_costo', 'fecha_inicio_mora', 'fecha_fin_mora', 'monto_mora', 'monto_descuento', 'monto_pagado']);
+				foreach ($moraRows as $mr) {
+					$id = (int)$mr->id_asignacion_costo;
+					if (!isset($moraFechaInicioMap[$id])) {
+						$moraFechaInicioMap[$id] = $mr->fecha_inicio_mora;
+						// Calcular dias_mora: desde fecha_inicio_mora hasta hoy (igual que SGA: diff+1)
+						$diasMora = 0;
+						if (!empty($mr->fecha_inicio_mora)) {
+							$fInicio = Carbon::parse($mr->fecha_inicio_mora)->startOfDay();
+							if ($fInicio->lte($hoyMora)) {
+								$fFin = !empty($mr->fecha_fin_mora)
+									? Carbon::parse($mr->fecha_fin_mora)->startOfDay()->min($hoyMora)
+									: $hoyMora;
+								$diasMora = max(0, (int)$fInicio->diffInDays($fFin) + 1);
+							}
+						}
+						$moraDatosPorAsign[$id] = [
+							'dias_mora' => $diasMora,
+							'monto_mora' => max(0, (float)$mr->monto_mora - (float)$mr->monto_descuento - (float)$mr->monto_pagado),
+						];
+					}
+				}
+			}
+
+			// 2) Configuración de mora (datos_mora_detalle): numero_cuota → fecha_inicio
+			// Cubre cuotas que aún no tienen mora generada (futuras o no vencidas aún)
+			$configMoraCuotaMap = []; // "{semestre}_{cuota}" => fecha_inicio
+			$semestrePrimaria = null;
+			try {
+				// Determinar semestre desde cod_curso de la inscripción primaria
+				if ($primaryInscripcion && !empty($primaryInscripcion->cod_curso)) {
+					$parts = explode('-', strtoupper(trim((string)$primaryInscripcion->cod_curso)));
+					$suffix = trim((string)end($parts));
+					if ($suffix !== '' && preg_match('/^([1-9])/', $suffix, $sm)) {
+						$semestrePrimaria = $sm[1];
+					}
+				}
+				if ($semestrePrimaria && $gestionToUse) {
+					$pensumNorm = strtoupper(trim((string)$codPensumToUse));
+					$pensumSuffix = '';
+					if (preg_match('/^\d+-(.+)$/', $pensumNorm, $pm)) {
+						$pensumSuffix = trim((string)$pm[1]);
+					}
+					$cfgRows = DB::table('datos_mora_detalle as dmd')
+						->join('datos_mora as dm', 'dm.id_datos_mora', '=', 'dmd.id_datos_mora')
+						->where('dm.gestion', $gestionToUse)
+						->where('dmd.semestre', $semestrePrimaria)
+						->where('dmd.activo', true)
+						->where(function($q) use ($pensumNorm, $pensumSuffix) {
+							$q->whereRaw('UPPER(TRIM(dmd.cod_pensum)) = ?', [$pensumNorm]);
+							if ($pensumSuffix !== '') {
+								$q->orWhereRaw('UPPER(TRIM(dmd.cod_pensum)) = ?', [$pensumSuffix]);
+							}
+							$q->orWhereNull('dmd.cod_pensum');
+						})
+						->select('dmd.cuota', 'dmd.fecha_inicio', 'dmd.monto', 'dmd.cod_pensum')
+						->orderByRaw('CASE WHEN dmd.cod_pensum IS NULL THEN 1 ELSE 0 END ASC') // pensum específico primero
+						->orderBy('dmd.id_datos_mora_detalle', 'desc')
+						->get();
+					foreach ($cfgRows as $row) {
+						$key = $semestrePrimaria . '_' . (int)$row->cuota;
+						if (!isset($configMoraCuotaMap[$key])) {
+							$configMoraCuotaMap[$key] = [
+								'fecha_inicio' => $row->fecha_inicio instanceof \Carbon\Carbon
+									? $row->fecha_inicio->toDateString()
+									: (string)$row->fecha_inicio,
+								'monto_diario' => (float)($row->monto ?? 0),
+							];
+						}
+					}
+				}
+			} catch (\Throwable $e) {
+				// No bloquear el flujo principal si falla la config de mora
+			}
+
 			return response()->json([
 				'success' => true,
 				'data' => [
@@ -1430,24 +1532,68 @@ class CobroController extends Controller
 								// Incluir PARCIAL (deben mostrar el saldo restante) y otros estados no cobrados
 								// Incluir todas las cuotas no cobradas (vencidas y no vencidas)
 								return $a->estado_pago !== 'COBRADO';
+							})->map(function($a) use ($moraFechaInicioMap, $moraDatosPorAsign, $configMoraCuotaMap, $semestrePrimaria, $getPreviousDiaHabil) {
+								$idAsign = (int)($a->id_asignacion_costo ?? 0);
+								$nroCuota = (int)($a->numero_cuota ?? 0);
+								// Prioridad 1: mora ya generada para esta cuota
+								$fechaInicioMora = $moraFechaInicioMap[$idAsign] ?? null;
+								if ($fechaInicioMora) {
+									$fechaVenc = $getPreviousDiaHabil((string)$fechaInicioMora);
+								} else {
+									// Prioridad 2: configuración de mora (fecha_inicio del detalle de mora)
+									$cfgKey = $semestrePrimaria . '_' . $nroCuota;
+									$cfgEntry = $configMoraCuotaMap[$cfgKey] ?? null;
+									$fechaInicioCfg = $cfgEntry ? $cfgEntry['fecha_inicio'] : null;
+									$fechaVenc = $fechaInicioCfg
+										? $getPreviousDiaHabil((string)$fechaInicioCfg)
+										: $a->fecha_vencimiento;
+								}
+								// Calcular dias_mora y monto_mora para cuotas sin asignacion_mora activa
+								$diasMoraVal  = $moraDatosPorAsign[$idAsign]['dias_mora']  ?? null;
+								$montoMoraVal = $moraDatosPorAsign[$idAsign]['monto_mora'] ?? null;
+								if ($diasMoraVal === null && !$fechaInicioMora) {
+									// Usar config de datos_mora_detalle como fallback
+									$cfgKey2  = $semestrePrimaria . '_' . $nroCuota;
+									$cfgEntry2 = $configMoraCuotaMap[$cfgKey2] ?? null;
+									if ($cfgEntry2) {
+										$fInicioCfg = Carbon::parse($cfgEntry2['fecha_inicio'])->startOfDay();
+										$hoyVal = Carbon::today();
+										if ($fInicioCfg->lte($hoyVal)) {
+											$diasMoraVal  = (int)$fInicioCfg->diffInDays($hoyVal) + 1;
+											$montoMoraVal = $diasMoraVal * $cfgEntry2['monto_diario'];
+										}
+									}
+								}
+								$arr = $a->toArray();
+								$arr['fecha_vencimiento'] = $fechaVenc;
+								$arr['dias_mora']  = $diasMoraVal  ?? 0;
+								$arr['monto_mora'] = $montoMoraVal ?? 0;
+								return $arr;
 							})->values())
 							// Agregar asignaciones de arrastre adeudadas
 							->concat($asignacionesArrastre ? $asignacionesArrastre->filter(function($a){
 								// Incluir solo las que no estén cobradas
 								return ($a->estado_pago ?? '') !== 'COBRADO';
-							})->map(function($a) use ($descuentosPorAsignArrastre){
+							})->map(function($a) use ($descuentosPorAsignArrastre, $moraFechaInicioMap, $moraDatosPorAsign, $getPreviousDiaHabil){
+								$idAsign = (int)($a->id_asignacion_costo ?? 0);
+								$fechaInicioMora = $moraFechaInicioMap[$idAsign] ?? null;
+								$fechaVenc = $fechaInicioMora
+									? $getPreviousDiaHabil((string)$fechaInicioMora)
+									: $a->fecha_vencimiento;
 								// Formatear asignaciones de arrastre con la misma estructura que las primarias
 								return [
 									'numero_cuota' => (int) ($a->numero_cuota ?? 0),
 									'monto' => (float) ($a->monto ?? 0),
-									'descuento' => (float) ($descuentosPorAsignArrastre[(int)($a->id_asignacion_costo ?? 0)] ?? 0),
-									'monto_neto' => max(0, (float) ($a->monto ?? 0) - (float) ($descuentosPorAsignArrastre[(int)($a->id_asignacion_costo ?? 0)] ?? 0)),
+									'descuento' => (float) ($descuentosPorAsignArrastre[$idAsign] ?? 0),
+									'monto_neto' => max(0, (float) ($a->monto ?? 0) - (float) ($descuentosPorAsignArrastre[$idAsign] ?? 0)),
 									'monto_pagado' => (float) ($a->monto_pagado ?? 0),
 									'estado_pago' => (string) ($a->estado_pago ?? ''),
-									'id_asignacion_costo' => (int) ($a->id_asignacion_costo ?? 0) ?: null,
+									'id_asignacion_costo' => $idAsign ?: null,
 									'id_cuota_template' => isset($a->id_cuota_template) ? ((int)$a->id_cuota_template ?: null) : null,
-									'fecha_vencimiento' => $a->fecha_vencimiento,
-									'tipo_inscripcion' => 'ARRASTRE', // Marcar como arrastre
+									'fecha_vencimiento' => $fechaVenc,
+									'tipo_inscripcion' => 'ARRASTRE',
+									'dias_mora'  => $moraDatosPorAsign[$idAsign]['dias_mora']  ?? 0,
+									'monto_mora' => $moraDatosPorAsign[$idAsign]['monto_mora'] ?? 0,
 								];
 							})->values() : collect())
 							// Ordenar por número de cuota

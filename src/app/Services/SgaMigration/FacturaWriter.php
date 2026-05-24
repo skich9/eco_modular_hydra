@@ -1,0 +1,119 @@
+<?php
+
+namespace App\Services\SgaMigration;
+
+use Illuminate\Support\Facades\DB;
+
+/**
+ * Migra `factura` de sistemaEco (eco_backup) → SGA (sga_elec / sga_mec).
+ *
+ * PK en SGA: (num_factura, anio, es_manual).
+ * Estrategia de colisión: SKIP (no sobreescribir).
+ * Al terminar la corrida real, el comando llama a fixSequence() para actualizar el nextval.
+ */
+class FacturaWriter
+{
+    public function __construct(
+        private MapperHelper $mapper,
+        private MigrationLog $log,
+    ) {}
+
+    public function run(string $from, string $until, bool $dryRun, BatchReport $report): void
+    {
+        DB::connection(MapperHelper::SOURCE_CONN)->table('factura')
+            ->whereBetween('fecha_emision', ["{$from} 00:00:00", "{$until} 23:59:59"])
+            ->orderBy('nro_factura')
+            ->chunk(200, function ($rows) use ($dryRun, $report) {
+                foreach ($rows as $r) {
+                    $this->processOne($r, $dryRun, $report);
+                }
+            });
+    }
+
+    private function processOne(object $r, bool $dryRun, BatchReport $report): void
+    {
+        $conn = $this->mapper->resolveConnByCodCeta($r->cod_ceta);
+        if (!$conn) {
+            $report->record('factura', 'sin_ruta', 'skipped');
+            return;
+        }
+
+        $sourcePk = "{$r->nro_factura}|{$r->anio}|{$r->es_manual}";
+
+        if (!$dryRun && $this->log->alreadyDone('factura', $sourcePk, $conn)) {
+            $report->record('factura', $conn, 'skipped');
+            return;
+        }
+
+        // Colisión: la PK ya existe en el SGA destino → skip
+        $exists = DB::connection($conn)->table('factura')
+            ->where('num_factura', (int) $r->nro_factura)
+            ->where('anio', (int) $r->anio)
+            ->where('es_manual', (bool) $r->es_manual)
+            ->exists();
+
+        if ($exists) {
+            if (!$dryRun) {
+                $this->log->write('factura', $sourcePk, $conn, 'factura', $sourcePk, 'skipped');
+            }
+            $report->record('factura', $conn, 'skipped');
+            return;
+        }
+
+        if ($dryRun) {
+            $report->record('factura', $conn, 'inserted');
+            return;
+        }
+
+        try {
+            DB::connection($conn)->table('factura')->insert($this->buildRow($r));
+            $this->log->write('factura', $sourcePk, $conn, 'factura', $sourcePk, 'inserted');
+            $report->record('factura', $conn, 'inserted');
+        } catch (\Throwable $e) {
+            $this->log->write('factura', $sourcePk, $conn, 'factura', null, 'error', $e->getMessage());
+            $report->record('factura', $conn, 'errors');
+        }
+    }
+
+    private function buildRow(object $r): array
+    {
+        return [
+            'num_factura'         => (int) $r->nro_factura,
+            'anio'                => (int) $r->anio,
+            'fecha_factura'       => $r->fecha_emision,
+            'usuario'             => $this->mapper->resolveUsuarioNickname($r->id_usuario),
+            'aceptado_impuestos'  => (bool) $r->aceptado_impuestos,
+            'fecha_envio'         => $r->fecha_envio ?: null,
+            'estado_factura'      => $r->estado === 'VIGENTE' ? 'Enviado' : ($r->estado ?? 'Enviado'),
+            'mensaje_impuestos'   => null,
+            'eliminacion_factura' => (bool) $r->eliminacion_factura,
+            'ruta_archivo'        => null,
+            'codigo_cufd'         => $r->codigo_cufd ?: null,
+            'codigo_recepcion'    => $r->codigo_recepcion ?: null,
+            'descuento_adicional' => 0,
+            'codigo_metodo_pago'  => $this->mapper->mapMetodoPago($r->id_forma_cobro),
+            'complemento'         => null,
+            'cod_tipo_doc_identidad' => 1,
+            'monto_gift_card'     => 0,
+            'num_gift_card'       => null,
+            'cafc'                => $r->cafc ?: null,
+            'tipo_emision'        => $r->codigo_tipo_emision ? (int) $r->codigo_tipo_emision : null,
+            'cuf'                 => $r->cuf ?: null,
+            'codigo_excepcion'    => $r->codigo_excepcion ? (int) $r->codigo_excepcion : 0,
+            'codigo_doc_sector'   => $r->codigo_doc_sector ? (int) $r->codigo_doc_sector : 11,
+            'codigo_tipo_emision' => null,
+            'periodo_facturado'   => $r->periodo_facturado ?: null,
+            'es_manual'           => (bool) $r->es_manual,
+            'codigo_evento'       => $r->codigo_evento ?: null,
+            'descripcion_evento'  => $r->descripcion_evento ?: null,
+        ];
+    }
+
+    /** Actualiza la secuencia de num_factura en el SGA para evitar conflictos futuros. */
+    public function fixSequence(string $conn): void
+    {
+        DB::connection($conn)->statement(
+            "SELECT setval('factura_num_factura_seq', (SELECT COALESCE(MAX(num_factura), 0) FROM factura))"
+        );
+    }
+}
