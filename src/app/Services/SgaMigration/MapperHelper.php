@@ -208,4 +208,28 @@ class MapperHelper
     {
         return $this->resolveConnectionByPensum($this->pensumFromCodCeta($codCeta));
     }
+
+    /**
+     * Resuelve el cod_inscrip del SGA (source_cod_inscrip) a partir del cod_inscrip
+     * interno de sistemaEco (PK auto_increment de la tabla inscripciones).
+     *
+     * IMPORTANTE: cobro.cod_inscrip es la PK interna de sistemaEco, NO el cod_inscrip
+     * del SGA. El campo correcto para el SGA es inscripciones.source_cod_inscrip.
+     *
+     * Cachea en memoria para no repetir la consulta por cada cobro del mismo alumno.
+     *
+     * @return int|null  null si no existe la inscripción en sistemaEco.
+     */
+    public function resolveSourceCodInscrip(int $ecoCodInscrip): ?int
+    {
+        static $cache = [];
+        if (array_key_exists($ecoCodInscrip, $cache)) {
+            return $cache[$ecoCodInscrip];
+        }
+        $value = $this->src()->table('inscripciones')
+            ->where('cod_inscrip', $ecoCodInscrip)
+            ->value('source_cod_inscrip');
+        $cache[$ecoCodInscrip] = $value !== null ? (int) $value : null;
+        return $cache[$ecoCodInscrip];
+    }
 }

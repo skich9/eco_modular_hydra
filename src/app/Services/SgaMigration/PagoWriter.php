@@ -40,6 +40,16 @@ class PagoWriter
             return;
         }
 
+        // cobro.cod_inscrip es la PK interna de sistemaEco.
+        // El cod_inscrip real del SGA está en inscripciones.source_cod_inscrip.
+        $sgaCodInscrip = $this->mapper->resolveSourceCodInscrip((int) $r->cod_inscrip);
+        if ($sgaCodInscrip === null) {
+            $this->log->write('cobro_pago', (string) $r->nro_cobro, $conn, 'pago', null, 'error',
+                "inscripcion eco_id={$r->cod_inscrip} sin source_cod_inscrip");
+            $report->record('pago', $conn, 'errors');
+            return;
+        }
+
         $sourcePk = (string) $r->nro_cobro;
 
         if (!$dryRun && $this->log->alreadyDone('cobro_pago', $sourcePk, $conn)) {
@@ -53,9 +63,9 @@ class PagoWriter
         }
 
         try {
-            $row = $this->buildRow($r, $conn);
+            $row = $this->buildRow($r, $conn, $sgaCodInscrip);
             DB::connection($conn)->table('pago')->insert($row);
-            $destPk = "{$r->cod_ceta}|{$r->cod_pensum}|{$r->cod_inscrip}|{$r->tipo_inscripcion}|{$row['num_cuota']}|{$row['num_pago']}";
+            $destPk = "{$r->cod_ceta}|{$r->cod_pensum}|{$sgaCodInscrip}|{$r->tipo_inscripcion}|{$row['num_cuota']}|{$row['num_pago']}";
             $this->log->write('cobro_pago', $sourcePk, $conn, 'pago', $destPk, 'inserted');
             $report->record('pago', $conn, 'inserted');
         } catch (\Throwable $e) {
@@ -64,11 +74,11 @@ class PagoWriter
         }
     }
 
-    private function buildRow(object $r, string $conn): array
+    private function buildRow(object $r, string $conn, int $sgaCodInscrip): array
     {
         $numCuota  = $this->mapper->resolveNumCuota($r);
         $numPago   = $this->mapper->getNextNumPago($conn, 'pago', [
-            'cod_inscrip' => (int) $r->cod_inscrip,
+            'cod_inscrip' => $sgaCodInscrip,
             'num_cuota'   => $numCuota,
         ]);
 
@@ -79,7 +89,7 @@ class PagoWriter
         return [
             'cod_ceta'          => $r->cod_ceta,
             'cod_pensum'        => $r->cod_pensum,
-            'cod_inscrip'       => (int) $r->cod_inscrip,
+            'cod_inscrip'       => $sgaCodInscrip,
             'kardex_economico'  => $r->tipo_inscripcion,
             'num_cuota'         => $numCuota,
             'num_pago'          => $numPago,

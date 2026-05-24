@@ -20,14 +20,31 @@ class ReciboWriter
 
     public function run(string $from, string $until, bool $dryRun, BatchReport $report): void
     {
-        DB::connection(MapperHelper::SOURCE_CONN)->table('recibo')
-            ->whereBetween('created_at', ["{$from} 00:00:00", "{$until} 23:59:59"])
-            ->orderBy('nro_recibo')
-            ->chunk(200, function ($rows) use ($dryRun, $report) {
-                foreach ($rows as $r) {
-                    $this->processOne($r, $dryRun, $report);
-                }
-            });
+        // Filtrar por fecha_cobro del cobro relacionado, NO por created_at del recibo.
+        // Razón: created_at refleja cuándo se sincronizó el registro (ej. 3:45 AM del 23/04),
+        // no la fecha real del cobro. El recibo se selecciona si al menos un cobro
+        // del rango lo referencia.
+        $nrosEnRango = DB::connection(MapperHelper::SOURCE_CONN)->table('cobro')
+            ->whereBetween('fecha_cobro', ["{$from} 00:00:00", "{$until} 23:59:59"])
+            ->whereNotNull('nro_recibo')
+            ->distinct()
+            ->pluck('nro_recibo')
+            ->all();
+
+        if (empty($nrosEnRango)) {
+            return;
+        }
+
+        foreach (array_chunk($nrosEnRango, 500) as $lote) {
+            DB::connection(MapperHelper::SOURCE_CONN)->table('recibo')
+                ->whereIn('nro_recibo', $lote)
+                ->orderBy('nro_recibo')
+                ->chunk(200, function ($rows) use ($dryRun, $report) {
+                    foreach ($rows as $r) {
+                        $this->processOne($r, $dryRun, $report);
+                    }
+                });
+        }
     }
 
     private function processOne(object $r, bool $dryRun, BatchReport $report): void

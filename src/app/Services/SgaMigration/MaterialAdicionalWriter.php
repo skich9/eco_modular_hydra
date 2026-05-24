@@ -40,6 +40,16 @@ class MaterialAdicionalWriter
             return;
         }
 
+        // cobro.cod_inscrip es la PK interna de sistemaEco.
+        // El cod_inscrip real del SGA está en inscripciones.source_cod_inscrip.
+        $sgaCodInscrip = $this->mapper->resolveSourceCodInscrip((int) $r->cod_inscrip);
+        if ($sgaCodInscrip === null) {
+            $this->log->write('cobro_material', (string) $r->nro_cobro, $conn, 'material_adicional', null, 'error',
+                "inscripcion eco_id={$r->cod_inscrip} sin source_cod_inscrip");
+            $report->record('material_adicional', $conn, 'errors');
+            return;
+        }
+
         $sourcePk = (string) $r->nro_cobro;
 
         if (!$dryRun && $this->log->alreadyDone('cobro_material', $sourcePk, $conn)) {
@@ -53,9 +63,9 @@ class MaterialAdicionalWriter
         }
 
         try {
-            $row = $this->buildRow($r, $conn);
+            $row = $this->buildRow($r, $conn, $sgaCodInscrip);
             DB::connection($conn)->table('material_adicional')->insert($row);
-            $destPk = "{$r->cod_ceta}|{$r->cod_pensum}|{$r->cod_inscrip}|{$row['num_comprobante']}|{$row['num_pago_mat']}";
+            $destPk = "{$r->cod_ceta}|{$r->cod_pensum}|{$sgaCodInscrip}|{$row['num_comprobante']}|{$row['num_pago_mat']}";
             $this->log->write('cobro_material', $sourcePk, $conn, 'material_adicional', $destPk, 'inserted');
             $report->record('material_adicional', $conn, 'inserted');
         } catch (\Throwable $e) {
@@ -64,11 +74,11 @@ class MaterialAdicionalWriter
         }
     }
 
-    private function buildRow(object $r, string $conn): array
+    private function buildRow(object $r, string $conn, int $sgaCodInscrip): array
     {
         $numComprobante = $r->nro_recibo  ? (int) $r->nro_recibo  : 0;
         $numPagMat = $this->mapper->getNextNumPago($conn, 'material_adicional', [
-            'cod_inscrip'    => (int) $r->cod_inscrip,
+            'cod_inscrip'    => $sgaCodInscrip,
             'num_comprobante'=> $numComprobante,
         ], 'num_pago_mat');
 
@@ -80,7 +90,7 @@ class MaterialAdicionalWriter
         return [
             'cod_ceta'          => $r->cod_ceta,
             'cod_pensum'        => $r->cod_pensum,
-            'cod_inscrip'       => (int) $r->cod_inscrip,
+            'cod_inscrip'       => $sgaCodInscrip,
             'kardex_economico'  => $r->tipo_inscripcion,
             'num_comprobante'   => $numComprobante,
             'num_pago_mat'      => $numPagMat,

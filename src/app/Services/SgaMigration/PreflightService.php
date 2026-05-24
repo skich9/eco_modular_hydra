@@ -73,19 +73,31 @@ class PreflightService
             });
 
         // ---- RECIBO: agrupar por conn + anio. Ruteo por cod_ceta. ----
+        // Se filtra por fecha_cobro del cobro relacionado (NO por created_at del recibo),
+        // porque created_at refleja la fecha de sincronización, no la fecha real del cobro.
         $recibosPorConn = ['sga_elec' => [], 'sga_mec' => []]; // [conn][anio] = [num,...]
         $recSinRuta = 0;
-        DB::connection(MapperHelper::SOURCE_CONN)->table('recibo')
-            ->select('nro_recibo', 'anio', 'cod_ceta')
-            ->whereBetween('created_at', [$from . ' 00:00:00', $until . ' 23:59:59'])
-            ->orderBy('nro_recibo')
-            ->chunk(1000, function ($rows) use (&$recibosPorConn, &$recSinRuta) {
-                foreach ($rows as $r) {
-                    $conn = $this->mapper->resolveConnByCodCeta($r->cod_ceta);
-                    if (!$conn) { $recSinRuta++; continue; }
-                    $recibosPorConn[$conn][(int) $r->anio][] = (int) $r->nro_recibo;
-                }
-            });
+        $nrosRecibo = DB::connection(MapperHelper::SOURCE_CONN)->table('cobro')
+            ->whereBetween('fecha_cobro', [$from . ' 00:00:00', $until . ' 23:59:59'])
+            ->whereNotNull('nro_recibo')
+            ->distinct()
+            ->pluck('nro_recibo')
+            ->all();
+        if (!empty($nrosRecibo)) {
+            foreach (array_chunk($nrosRecibo, 1000) as $lote) {
+                DB::connection(MapperHelper::SOURCE_CONN)->table('recibo')
+                    ->select('nro_recibo', 'anio', 'cod_ceta')
+                    ->whereIn('nro_recibo', $lote)
+                    ->orderBy('nro_recibo')
+                    ->chunk(1000, function ($rows) use (&$recibosPorConn, &$recSinRuta) {
+                        foreach ($rows as $r) {
+                            $conn = $this->mapper->resolveConnByCodCeta($r->cod_ceta);
+                            if (!$conn) { $recSinRuta++; continue; }
+                            $recibosPorConn[$conn][(int) $r->anio][] = (int) $r->nro_recibo;
+                        }
+                    });
+            }
+        }
 
         foreach ($this->conns as $conn) {
             try {
@@ -145,20 +157,24 @@ class PreflightService
     {
         $out = [];
 
-        // Agrupar cod_inscrip distintos del rango por conexión (según cod_pensum)
+        // Agrupar source_cod_inscrip distintos del rango por conexión (según cod_pensum).
+        // IMPORTANTE: cobro.cod_inscrip es la PK interna de sistemaEco; el cod_inscrip real
+        // del SGA (el que existe en registro_inscripcion) es inscripciones.source_cod_inscrip.
         $porConn = ['sga_elec' => [], 'sga_mec' => []];
 
         DB::connection(MapperHelper::SOURCE_CONN)->table('cobro')
-            ->select('cod_inscrip', 'cod_pensum')
-            ->whereBetween('fecha_cobro', [$from . ' 00:00:00', $until . ' 23:59:59'])
-            ->whereNotNull('cod_inscrip')
+            ->select('cobro.cod_inscrip', 'cobro.cod_pensum', 'inscripciones.source_cod_inscrip')
+            ->join('inscripciones', 'inscripciones.cod_inscrip', '=', 'cobro.cod_inscrip')
+            ->whereBetween('cobro.fecha_cobro', [$from . ' 00:00:00', $until . ' 23:59:59'])
+            ->whereNotNull('cobro.cod_inscrip')
+            ->whereNotNull('inscripciones.source_cod_inscrip')
             ->distinct()
-            ->orderBy('cod_inscrip')
+            ->orderBy('cobro.cod_inscrip')
             ->chunk(1000, function ($rows) use (&$porConn) {
                 foreach ($rows as $r) {
                     $conn = $this->mapper->resolveConnectionByPensum($r->cod_pensum);
                     if ($conn) {
-                        $porConn[$conn][(int) $r->cod_inscrip] = true;
+                        $porConn[$conn][(int) $r->source_cod_inscrip] = true;
                     }
                 }
             });

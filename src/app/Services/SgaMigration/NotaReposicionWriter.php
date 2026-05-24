@@ -7,10 +7,16 @@ use Illuminate\Support\Facades\DB;
 /**
  * Migra `nota_reposicion` de sistemaEco → SGA.
  *
+ * DIFERENCIA ESTRUCTURAL CLAVE:
+ *   sistemaEco: 1 fila por ítem cobrado (mismo cod_ceta + fecha_nota exacta = misma transacción).
+ *   SGA:        1 fila por transacción, con ítems concatenados en concepto_adm
+ *               como "Concepto1 Bs{monto1},Concepto2 Bs{monto2}" y monto = SUM().
+ *
+ * Clave de agrupación: cod_ceta + fecha_nota (timestamp exacto) + anio_reposicion + cont + prefijo_carrera.
+ * Cuando hay nro_recibo presente se incluye también en la clave para mayor precisión.
+ *
  * PK en SGA: (correlativo, anio_reposicion, cont).
- * Ruteo por prefijo_carrera (E→sga_elec, M→sga_mec). Casi todas son EEA.
- * El `correlativo` se recalcula MAX+1 por anio_reposicion en el destino; cont=0 (la
- * unicidad la garantiza el correlativo fresco).
+ * El correlativo se recalcula MAX+1 por anio_reposicion en el destino; cont=0.
  */
 class NotaReposicionWriter
 {
@@ -21,27 +27,71 @@ class NotaReposicionWriter
 
     public function run(string $from, string $until, bool $dryRun, BatchReport $report): void
     {
-        DB::connection(MapperHelper::SOURCE_CONN)->table('nota_reposicion')
+        // Leer todas las filas del rango y agruparlas en PHP por clave de transacción.
+        // No se puede hacer GROUP BY en SQL porque necesitamos mantener todos los metadatos
+        // de la primera fila (usuario, observaciones, nro_recibo, tipo_ingreso).
+        $rawRows = DB::connection(MapperHelper::SOURCE_CONN)->table('nota_reposicion')
             ->whereBetween('fecha_nota', ["{$from} 00:00:00", "{$until} 23:59:59"])
-            ->orderBy('anio_reposicion')->orderBy('correlativo')
-            ->chunk(200, function ($rows) use ($dryRun, $report) {
-                foreach ($rows as $r) {
-                    $this->processOne($r, $dryRun, $report);
-                }
-            });
+            ->orderBy('anio_reposicion')
+            ->orderBy('fecha_nota')
+            ->orderBy('correlativo')
+            ->get();
+
+        // Agrupar filas por transacción: clave = cod_ceta|fecha_nota|anio|cont|prefijo
+        $grupos = [];
+        foreach ($rawRows as $r) {
+            $fechaKey = is_string($r->fecha_nota)
+                ? $r->fecha_nota
+                : (string) $r->fecha_nota;
+
+            // Normalizar a segundos (truncar microsegundos si los hubiera)
+            $fechaKey = substr($fechaKey, 0, 19);
+
+            $key = implode('|', [
+                $r->cod_ceta,
+                $fechaKey,
+                $r->anio_reposicion,
+                $r->cont,
+                $r->prefijo_carrera,
+            ]);
+
+            if (!isset($grupos[$key])) {
+                // Primera fila del grupo: guarda metadatos base
+                $grupos[$key] = [
+                    'base'      => $r,
+                    'monto'     => 0.0,
+                    'items'     => [],      // [['concepto' => '...', 'monto' => x], ...]
+                    'source_pks'=> [],      // PKs de origen para el log de idempotencia
+                ];
+            }
+
+            $grupos[$key]['monto']      += (float) $r->monto;
+            $grupos[$key]['items'][]     = [
+                'concepto' => $r->concepto_adm,
+                'monto'    => (float) $r->monto,
+            ];
+            $grupos[$key]['source_pks'][] = "{$r->correlativo}|{$r->anio_reposicion}|{$r->cont}";
+        }
+
+        foreach ($grupos as $grupo) {
+            $this->processGrupo($grupo, $dryRun, $report);
+        }
     }
 
-    private function processOne(object $r, bool $dryRun, BatchReport $report): void
+    private function processGrupo(array $grupo, bool $dryRun, BatchReport $report): void
     {
+        $r    = $grupo['base'];
         $conn = $this->mapper->resolveConnectionByPrefijo($r->prefijo_carrera);
         if (!$conn) {
             $report->record('nota_reposicion', 'sin_ruta', 'skipped');
             return;
         }
 
-        $sourcePk = "{$r->correlativo}|{$r->anio_reposicion}|{$r->cont}";
+        // Clave de idempotencia: usamos la PK de la primera fila del grupo como representante.
+        // Todas las PKs de origen del grupo se registran en el log apuntando al mismo destino.
+        $sourcePkRepresentante = $grupo['source_pks'][0];
 
-        if (!$dryRun && $this->log->alreadyDone('nota_reposicion', $sourcePk, $conn)) {
+        if (!$dryRun && $this->log->alreadyDone('nota_reposicion', $sourcePkRepresentante, $conn)) {
             $report->record('nota_reposicion', $conn, 'skipped');
             return;
         }
@@ -56,27 +106,53 @@ class NotaReposicionWriter
                 'anio_reposicion' => (int) $r->anio_reposicion,
             ], 'correlativo');
 
-            $row = $this->buildRow($r, $correlativo);
+            $row = $this->buildRow($r, $grupo['items'], $grupo['monto'], $correlativo);
             DB::connection($conn)->table('nota_reposicion')->insert($row);
+
             $destPk = "{$correlativo}|{$r->anio_reposicion}|0";
-            $this->log->write('nota_reposicion', $sourcePk, $conn, 'nota_reposicion', $destPk, 'inserted');
+
+            // Registrar cada PK de origen apuntando al mismo destino (idempotencia completa)
+            foreach ($grupo['source_pks'] as $sourcePk) {
+                $this->log->write('nota_reposicion', $sourcePk, $conn, 'nota_reposicion', $destPk, 'inserted');
+            }
+
             $report->record('nota_reposicion', $conn, 'inserted');
         } catch (\Throwable $e) {
-            $this->log->write('nota_reposicion', $sourcePk, $conn, 'nota_reposicion', null, 'error', $e->getMessage());
+            foreach ($grupo['source_pks'] as $sourcePk) {
+                $this->log->write('nota_reposicion', $sourcePk, $conn, 'nota_reposicion', null, 'error', $e->getMessage());
+            }
             $report->record('nota_reposicion', $conn, 'errors');
         }
     }
 
-    private function buildRow(object $r, int $correlativo): array
+    /**
+     * Construye la fila para el SGA.
+     *
+     * concepto_adm: "Concepto1 Bs{monto1},Concepto2 Bs{monto2}" — igual al formato del SGA legacy.
+     * monto:        SUM de todos los ítems del grupo.
+     */
+    private function buildRow(object $r, array $items, float $montoTotal, int $correlativo): array
     {
+        // Formato SGA: "Mens. Parcial Abril Bs400.00,Mens. Abril Niv Bs3.00"
+        $conceptoAdm = implode(',', array_map(
+            fn($item) => trim($item['concepto']) . ' Bs' . number_format($item['monto'], 2, '.', ''),
+            $items
+        ));
+
+        // concepto_est: solo los nombres sin montos, separados por coma (mismo patrón SGA)
+        $conceptoEst = implode(',', array_map(
+            fn($item) => trim($item['concepto']),
+            $items
+        ));
+
         return [
             'correlativo'     => $correlativo,
             'usuario'         => $r->usuario ?: 'SIS_ECO',
             'cod_ceta'        => $r->cod_ceta,
-            'monto'           => (float) $r->monto,
-            'concepto_adm'    => $r->concepto_adm,
+            'monto'           => round($montoTotal, 2),
+            'concepto_adm'    => $conceptoAdm,
             'fecha_nota'      => $r->fecha_nota,
-            'concepto_est'    => $r->concepto_est ?: null,
+            'concepto_est'    => $conceptoEst,
             'observaciones'   => $r->observaciones ?: null,
             'prefijo_carrera' => $r->prefijo_carrera,
             'anulado'         => (bool) $r->anulado,
