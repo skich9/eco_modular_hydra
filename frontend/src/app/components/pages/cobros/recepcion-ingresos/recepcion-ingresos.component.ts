@@ -294,7 +294,7 @@ export class RecepcionIngresosComponent implements OnInit, OnDestroy {
             fecha_final_libros: f.fecha_final,
             total_recibos: f.total_recibos,
             total_facturas: f.total_facturas,
-            total_entregado: f.total_entregado,
+            total_entregado: f.total_recibos + f.total_facturas,
           })),
         })
       );
@@ -443,7 +443,7 @@ export class RecepcionIngresosComponent implements OnInit, OnDestroy {
     return true;
   }
 
-  /** Coincide con la columna (a+b): suma depósito + traspaso + recibos + facturas por fila. */
+  /** Coincide con la columna (a+b): solo efectivo — recibos + facturas. */
   get totalGeneral(): number {
     return this.filas.reduce(
       (s, f) =>
@@ -491,7 +491,7 @@ export class RecepcionIngresosComponent implements OnInit, OnDestroy {
             fecha_final_libros: f.fecha_final,
             total_recibos: f.total_recibos,
             total_facturas: f.total_facturas,
-            total_entregado: f.total_entregado,
+            total_entregado: f.total_recibos + f.total_facturas,
           })),
         })
       );
