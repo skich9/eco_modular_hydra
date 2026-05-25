@@ -78,6 +78,46 @@ class MapperHelper
     }
 
     /**
+     * tipo_documento (sistemaEco) -> tipo_documento_derivado (SGA).
+     * 1→1 (CI), 2→2 (Pasaporte), 3→3 (Cédula), default 1.
+     */
+    public function mapTipoDocumento(?string $id): int
+    {
+        return match ((int) ($id ?? 1)) {
+            1, 2, 3 => (int) $id,
+            default => 1,
+        };
+    }
+
+    /**
+     * codigo_excepcion (sistemaEco) -> codigo_excepcion (SGA). Pass-through.
+     */
+    public function mapCodigoExcepcion(?string $codigo): ?string
+    {
+        return $codigo;
+    }
+
+    /**
+     * codigo_doc_sector (sistemaEco) -> codigo_doc_sector (SGA). Pass-through.
+     */
+    public function mapCodigoDocSector(?string $codigo): ?string
+    {
+        return $codigo;
+    }
+
+    /**
+     * tipo_emision (sistemaEco) -> tipo_emision (SGA).
+     * 1→1 (Normal), 2→2 (Ajuste), default 1.
+     */
+    public function mapTipoEmision(?string $id): int
+    {
+        return match ((int) ($id ?? 1)) {
+            1, 2 => (int) $id,
+            default => 1,
+        };
+    }
+
+    /**
      * num_cuota del cobro. Prioriza asignacion_costos.numero_cuota; fallback id_cuota/order/1.
      * Copiado de SgaPushService::resolveNumCuota.
      */
