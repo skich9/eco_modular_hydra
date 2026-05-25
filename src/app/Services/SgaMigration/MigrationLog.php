@@ -9,14 +9,14 @@ use Illuminate\Support\Facades\DB;
  */
 class MigrationLog
 {
-    /** ¿Ya fue procesado (inserted o skipped) en una corrida anterior? */
+    /** ¿Ya fue procesado (inserted, skipped o excluded) en una corrida anterior? */
     public function alreadyDone(string $sourceTable, string $sourcePk, string $destConn): bool
     {
         return DB::table('sga_migration_log')
             ->where('source_table', $sourceTable)
             ->where('source_pk', $sourcePk)
             ->where('dest_conn', $destConn)
-            ->whereIn('status', ['inserted', 'skipped'])
+            ->whereIn('status', ['inserted', 'skipped', 'excluded'])
             ->exists();
     }
 

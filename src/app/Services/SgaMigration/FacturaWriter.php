@@ -10,13 +10,37 @@ use Illuminate\Support\Facades\DB;
  * PK en SGA: (num_factura, anio, es_manual).
  * Estrategia de colisión: SKIP (no sobreescribir).
  * Al terminar la corrida real, el comando llama a fixSequence() para actualizar el nextval.
+ *
+ * Exclusiones explícitas: facturas copiadas manualmente por error → config/sga_migration.php
  */
 class FacturaWriter
 {
+    /**
+     * Cache de la lista de exclusión explícita.
+     * Estructura: [conn][anio][nro_factura][cod_ceta] = true
+     *
+     * La clave incluye cod_ceta para no excluir facturas legítimas de otros
+     * estudiantes que comparten el mismo nro_factura en la misma conexión.
+     * Ver config/sga_migration.php → facturas_excluidas para el detalle.
+     */
+    private array $excluded = [];
+
     public function __construct(
         private MapperHelper $mapper,
         private MigrationLog $log,
-    ) {}
+    ) {
+        // Precarga la lista de exclusión desde config para no llamar config() en cada fila.
+        // Formato config: [conn][anio][nro_factura] = ['cod_ceta1', 'cod_ceta2', ...]
+        foreach (config('sga_migration.facturas_excluidas', []) as $conn => $porAnio) {
+            foreach ($porAnio as $anio => $porNro) {
+                foreach ($porNro as $nro => $codCetas) {
+                    foreach ($codCetas as $codCeta) {
+                        $this->excluded[$conn][(int) $anio][(int) $nro][(string) $codCeta] = true;
+                    }
+                }
+            }
+        }
+    }
 
     public function run(string $from, string $until, bool $dryRun, BatchReport $report): void
     {
@@ -39,6 +63,20 @@ class FacturaWriter
         }
 
         $sourcePk = "{$r->nro_factura}|{$r->anio}|{$r->es_manual}";
+
+        // Exclusión explícita por (conn + nro_factura + anio + cod_ceta):
+        // Copia manual detectada para este estudiante específico.
+        // El mismo nro_factura puede ser legítimo para otro cod_ceta → no se excluye.
+        // Ver config/sga_migration.php → facturas_excluidas para el detalle.
+        if (isset($this->excluded[$conn][(int) $r->anio][(int) $r->nro_factura][(string) $r->cod_ceta])) {
+            if (!$dryRun) {
+                $this->log->write('factura', $sourcePk, $conn, 'factura', null, 'excluded',
+                    "Copia manual en eco_backup (cod_ceta={$r->cod_ceta}); " .
+                    'factura ya existe en SGA vía ServiciosOnline con CUF definitivo');
+            }
+            $report->record('factura', $conn, 'skipped');
+            return;
+        }
 
         if (!$dryRun && $this->log->alreadyDone('factura', $sourcePk, $conn)) {
             $report->record('factura', $conn, 'skipped');
