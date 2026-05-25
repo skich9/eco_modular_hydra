@@ -436,7 +436,7 @@ HTML;
             $fKey = $dato['fecha_inicial'];
             $totalRec = $dato['total_recibos'];
             $totalFac = $dato['total_facturas'];
-            $totalG = $dato['total_entregado'];
+            $totalG = $totalRec + $totalFac;
             if ($fechaAnalisis === '') {
                 $fechaAnalisis = $fKey;
             } elseif ($fechaAnalisis !== $fKey) {
