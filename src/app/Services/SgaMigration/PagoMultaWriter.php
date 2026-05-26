@@ -41,6 +41,11 @@ class PagoMultaWriter
             return;
         }
 
+        if ((float) $r->monto <= 0) {
+            $report->record('pago_multa', $conn, 'skipped');
+            return;
+        }
+
         $sourcePk = (string) $r->nro_cobro;
 
         if (!$dryRun && $this->log->alreadyDone('cobro_pago_multa', $sourcePk, $conn)) {
@@ -120,12 +125,36 @@ class PagoMultaWriter
             'banco_origen'      => $banking['banco_origen'],
             'nro_tarjeta'       => $banking['nro_tarjeta'],
             'estado_factura'    => null,
-            'id_item_service'   => null,
-            'orden'             => $r->order ? (int) $r->order : null,
+            'id_item_service'   => 3,
+            'orden'             => $this->resolveOrden($conn, $r),
             'anulado'           => false,
             'fecha_anulacion'   => null,
             'usuario_anula'     => null,
         ];
+    }
+
+    /**
+     * Orden del pago-multa dentro del mismo comprobante.
+     * La mora es siempre el último ítem: MAX(orden en pago ∪ pago_multa)+1.
+     * Si no hay registros previos → 0 (es el único ítem).
+     * Para múltiples moras en el mismo comprobante, el procesamiento en
+     * fecha_cobro ASC garantiza que la mora más antigua recibe el orden menor.
+     */
+    private function resolveOrden(string $conn, object $r): int
+    {
+        if (!empty($r->nro_recibo)) {
+            $key = ['num_comprobante' => (int) $r->nro_recibo];
+        } elseif (!empty($r->nro_factura)) {
+            $key = ['num_factura' => (int) $r->nro_factura];
+        } else {
+            return 0;
+        }
+
+        $maxPago  = DB::connection($conn)->table('pago')->where($key)->max('orden');
+        $maxMulta = DB::connection($conn)->table('pago_multa')->where($key)->max('orden');
+
+        $max = max($maxPago ?? -1, $maxMulta ?? -1);
+        return $max === -1 ? 0 : (int) $max + 1;
     }
 
     private function resolveBanking(
