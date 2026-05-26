@@ -280,6 +280,69 @@ class MapperHelper
      *
      * @return array{cliente: string|null, nro_documento_cobro: string|null}
      */
+    /**
+     * Construye el texto de observaciones para pago/pago_multa combinando
+     * tipo de pago, observación original del cobro y datos bancarios.
+     *
+     * Orden: "{Tipo}: {obs_original} {banco}-{nro_deposito}-{fecha_deposito}"
+     *
+     * Efectivo:      "Efectivo: {obs}"  |  "Efectivo" si no hay obs
+     * Transferencia: "Transferencia: [{obs}] {banco}-{nro}-{fecha}"
+     * Tarjeta (L):   "Tarjeta: [{obs}] {banco}-{nro}-{fecha}"
+     * Deposito (D):  "Deposito: [{obs}] {banco}-{nro}-{fecha}"
+     * QR (B+QR):     "Transferencia: [{obs}] {nro}-{fecha}" (banco null en QR)
+     *
+     * Para D: usa $nota->banco_origen para el texto aunque banking['banco_origen'] sea null.
+     * T es un tipo de pago distinto (no es Tarjeta).
+     */
+    public function resolveObservacionesPago(
+        object  $cobro,
+        array   $banking,
+        ?object $nota,
+        bool    $esQr
+    ): ?string {
+        $tipo    = strtoupper(trim($cobro->id_forma_cobro ?? ''));
+        $obsOrig = trim($cobro->observaciones ?? '');
+
+        // Efectivo: sin datos bancarios
+        if ($tipo === 'E') {
+            return $obsOrig !== '' ? "Efectivo: {$obsOrig}" : 'Efectivo';
+        }
+
+        // Prefijo según tipo — T es un tipo diferente, NO es Tarjeta
+        $prefix = match ($tipo) {
+            'B'     => 'Transferencia',
+            'L'     => 'Tarjeta',
+            'D'     => 'Deposito',
+            'C'     => 'Cheque',
+            default => $tipo !== '' ? $tipo : null,
+        };
+
+        if ($prefix === null) {
+            return $obsOrig !== '' ? $obsOrig : null;
+        }
+
+        // Para QR banco es null; para D se toma $nota->banco_origen para la descripción
+        $banco = $esQr
+            ? null
+            : (trim($nota->banco_origen ?? '') ?: null);
+
+        $nro   = $banking['nro_deposito'];
+        $fecha = $banking['fecha_deposito'];
+
+        // Segmento banco-nro-fecha (solo partes no vacías)
+        $partesBanc = array_filter([$banco, $nro, $fecha], fn($v) => $v !== null && $v !== '');
+        $bankInfo   = !empty($partesBanc) ? implode('-', array_values($partesBanc)) : null;
+
+        // Orden: tipo → obs original → datos bancarios
+        $partesFinal = [];
+        if ($obsOrig !== '')    $partesFinal[] = $obsOrig;
+        if ($bankInfo !== null) $partesFinal[] = $bankInfo;
+
+        $suffix = implode(' ', $partesFinal);
+        return $suffix !== '' ? "{$prefix}: {$suffix}" : $prefix;
+    }
+
     public function resolveClienteDoc(object $cobro): array
     {
         $empty = ['cliente' => null, 'nro_documento_cobro' => null];

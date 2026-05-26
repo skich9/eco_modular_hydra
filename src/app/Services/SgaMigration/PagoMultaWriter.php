@@ -2,6 +2,7 @@
 
 namespace App\Services\SgaMigration;
 
+use Carbon\Carbon;
 use Illuminate\Support\Facades\DB;
 
 /**
@@ -68,20 +69,24 @@ class PagoMultaWriter
     {
         $numCuota = $this->mapper->resolveNumCuota($r);
         $numPago  = $this->mapper->getNextNumPago($conn, 'pago_multa', [
-            'cod_ceta'        => $r->cod_ceta,
-            'cod_pensum'      => $r->cod_pensum,
-            'gestion'         => $r->gestion,
-            'kardex_economico'=> $r->tipo_inscripcion,
-            'num_cuota'       => $numCuota,
+            'cod_ceta'         => $r->cod_ceta,
+            'cod_pensum'       => $r->cod_pensum,
+            'gestion'          => $r->gestion,
+            'kardex_economico' => $r->tipo_inscripcion,
+            'num_cuota'        => $numCuota,
         ]);
 
         $detalle = DB::connection(MapperHelper::SOURCE_CONN)->table('cobros_detalle_multa')
             ->where('nro_cobro', $r->nro_cobro)
             ->first();
 
-        $nota    = $this->mapper->getNotaBancaria($r);
-        $cuenta  = $this->mapper->getCuentaBancaria($r);
-        $banking = $this->resolveBanking($nota, $cuenta);
+        $nota             = $this->mapper->getNotaBancaria($r);
+        $cuenta           = $this->mapper->getCuentaBancaria($r);
+        $esQr             = strtoupper($r->id_forma_cobro ?? '') === 'B' && $this->mapper->isQrPayment($r);
+        $qrTransaccion    = $esQr ? $this->mapper->getQrTransaccion($r) : null;
+        $qrRespuestaBanco = ($esQr && $qrTransaccion) ? $this->mapper->getQrRespuestaBanco($qrTransaccion) : null;
+        $banking          = $this->resolveBanking($r, $nota, $cuenta, $esQr, $qrTransaccion, $qrRespuestaBanco);
+        $clienteDoc       = $this->mapper->resolveClienteDoc($r);
 
         return [
             'cod_ceta'          => $r->cod_ceta,
@@ -96,14 +101,14 @@ class PagoMultaWriter
             'num_factura'       => $r->nro_factura ? (int) $r->nro_factura : 0,
             'fecha_pago'        => $r->fecha_cobro,
             'pago_completo'     => (bool) $r->cobro_completo,
-            'observaciones'     => $r->observaciones ?: null,
+            'observaciones'     => $this->mapper->resolveObservacionesPago($r, $banking, $nota, $esQr),
             'usuario'           => $this->mapper->resolveUsuarioNickname($r->id_usuario),
-            'razon'             => null,
-            'nro_documento_pago'=> null,
-            'autorizacion'      => null,
+            'razon'             => $clienteDoc['cliente'],
+            'nro_documento_pago'=> $clienteDoc['nro_documento_cobro'],
+            'autorizacion'      => '0',
             'valido'            => 'V',
             'concepto'          => $r->concepto ?: null,
-            'codigo_control'    => null,
+            'codigo_control'    => 'cod_control',
             'codigo_qr'         => null,
             'descuento'         => (float) ($r->descuento ?? 0),
             'pu_multa'          => $detalle ? (float) $detalle->pu_multa : (float) $r->pu_mensualidad,
@@ -123,19 +128,39 @@ class PagoMultaWriter
         ];
     }
 
-    private function resolveBanking(?object $nota, ?object $cuenta): array
-    {
-        $out = ['fecha_deposito' => null, 'nro_cuenta' => null, 'nro_deposito' => null, 'banco_origen' => null, 'nro_tarjeta' => null];
-        if ($nota) {
-            $out['fecha_deposito'] = $nota->fecha_deposito ?: null;
-            $out['nro_deposito']   = $nota->nro_transaccion ?: null;
-            $out['banco_origen']   = $nota->banco_origen ?: null;
-            $out['nro_tarjeta']    = $nota->nro_tarjeta ?: null;
+    private function resolveBanking(
+        object  $r,
+        ?object $nota,
+        ?object $cuenta,
+        bool    $esQr,
+        ?object $qrTransaccion,
+        ?object $qrRespuestaBanco
+    ): array {
+        // fecha_deposito: QR usa processed_at / fecha_respuesta; otros usan nota_bancaria
+        if ($esQr) {
+            $fechaRaw      = ($qrTransaccion->processed_at ?? null)
+                          ?: ($qrRespuestaBanco->fecha_respuesta ?? null);
+            $fechaDeposito = $fechaRaw ? Carbon::parse($fechaRaw)->format('Y-m-d') : null;
+        } else {
+            $fechaDeposito = $nota ? ($nota->fecha_deposito ?: null) : null;
         }
-        if ($cuenta) {
-            $out['nro_cuenta']   = $out['nro_cuenta'] ?? ($cuenta->nro_cuenta ?? null);
-            $out['banco_origen'] = $out['banco_origen'] ?: ($cuenta->banco ?? null);
-        }
-        return $out;
+
+        // nro_deposito: QR → numeroordenoriginante (max 50); otros → nro_transaccion (max 35)
+        $nroDeposito = $esQr
+            ? (mb_substr($qrRespuestaBanco->numeroordenoriginante ?? '', 0, 50) ?: null)
+            : ($nota ? (mb_substr($nota->nro_transaccion ?? '', 0, 35) ?: null) : null);
+
+        // banco_origen: solo B manual (sin QR), L, T → de nota. D y QR → null
+        $bancoOrigen = (!$esQr && in_array(strtoupper($r->id_forma_cobro ?? ''), ['B', 'L', 'T']))
+            ? ($nota ? (mb_substr($nota->banco_origen ?? '', 0, 200) ?: null) : null)
+            : null;
+
+        return [
+            'fecha_deposito' => $fechaDeposito,
+            'nro_cuenta'     => $cuenta ? ($cuenta->numero_cuenta ?? null) : null,
+            'nro_deposito'   => $nroDeposito,
+            'banco_origen'   => $bancoOrigen,
+            'nro_tarjeta'    => $nota ? (mb_substr($nota->nro_tarjeta ?? '', 0, 200) ?: null) : null,
+        ];
     }
 }
