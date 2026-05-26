@@ -8,6 +8,7 @@ use App\Services\SgaMigration\MaterialAdicionalWriter;
 use App\Services\SgaMigration\NotaBancariaWriter;
 use App\Services\SgaMigration\NotaReposicionWriter;
 use App\Services\SgaMigration\OtrosIngresosWriter;
+use App\Services\SgaMigration\RecepcionIngresosWriter;
 use App\Services\SgaMigration\PagoMultaWriter;
 use App\Services\SgaMigration\PagoWriter;
 use App\Services\SgaMigration\ReciboWriter;
@@ -22,7 +23,7 @@ class SgaPushCobrosCommand extends Command
     protected $signature = 'sga:push-cobros
         {--from=   : Fecha inicial Y-m-d (default ' . self::DEFAULT_FROM . ')}
         {--until=  : Fecha final Y-m-d (default ' . self::DEFAULT_UNTIL . ')}
-        {--solo=   : Solo esta tabla (factura|recibo|pago|pago_multa|material_adicional|nota_bancaria|nota_reposicion|otros_ingresos)}
+        {--solo=   : Solo esta tabla (factura|recibo|pago|pago_multa|material_adicional|nota_bancaria|nota_reposicion|otros_ingresos|recepcion)}
         {--dry-run : Simula sin escribir nada}';
 
     protected $description = 'Migra cobros históricos de sistemaEco → SGA por lote. Sin --dry-run escribe en el SGA.';
@@ -35,7 +36,8 @@ class SgaPushCobrosCommand extends Command
         private MaterialAdicionalWriter $materialWriter,
         private NotaBancariaWriter      $notaBancariaWriter,
         private NotaReposicionWriter    $notaReposicionWriter,
-        private OtrosIngresosWriter     $otrosIngresosWriter,
+        private OtrosIngresosWriter       $otrosIngresosWriter,
+        private RecepcionIngresosWriter   $recepcionWriter,
     ) {
         parent::__construct();
     }
@@ -86,6 +88,7 @@ class SgaPushCobrosCommand extends Command
         $this->runTable('nota_bancaria',      $solo, fn() => $this->notaBancariaWriter->run($from, $until, $dryRun, $report));
         $this->runTable('nota_reposicion',    $solo, fn() => $this->notaReposicionWriter->run($from, $until, $dryRun, $report));
         $this->runTable('otros_ingresos',     $solo, fn() => $this->otrosIngresosWriter->run($from, $until, $dryRun, $report));
+        $this->runTable('recepcion',          $solo, fn() => $this->recepcionWriter->run($from, $until, $dryRun, $report));
 
         // Actualizar secuencias (solo corrida real, no dry-run)
         if (!$dryRun) {
