@@ -272,4 +272,40 @@ class MapperHelper
         $cache[$ecoCodInscrip] = $value !== null ? (int) $value : null;
         return $cache[$ecoCodInscrip];
     }
+
+    /**
+     * Resuelve cliente y nro_documento_cobro del documento asociado al cobro.
+     * Prioridad: factura (si nro_factura no es null) → recibo (si nro_recibo no es null).
+     * Usa anio_cobro para el JOIN correcto en el PK compuesto de factura/recibo.
+     *
+     * @return array{cliente: string|null, nro_documento_cobro: string|null}
+     */
+    public function resolveClienteDoc(object $cobro): array
+    {
+        $empty = ['cliente' => null, 'nro_documento_cobro' => null];
+
+        if (!empty($cobro->nro_factura)) {
+            $row = $this->src()->table('factura')
+                ->where('nro_factura', $cobro->nro_factura)
+                ->where('anio', $cobro->anio_cobro)
+                ->select('cliente', 'nro_documento_cobro')
+                ->first();
+            if ($row) {
+                return ['cliente' => $row->cliente ?: null, 'nro_documento_cobro' => $row->nro_documento_cobro ?: null];
+            }
+        }
+
+        if (!empty($cobro->nro_recibo)) {
+            $row = $this->src()->table('recibo')
+                ->where('nro_recibo', $cobro->nro_recibo)
+                ->where('anio', $cobro->anio_cobro)
+                ->select('cliente', 'nro_documento_cobro')
+                ->first();
+            if ($row) {
+                return ['cliente' => $row->cliente ?: null, 'nro_documento_cobro' => $row->nro_documento_cobro ?: null];
+            }
+        }
+
+        return $empty;
+    }
 }

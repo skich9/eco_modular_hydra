@@ -82,9 +82,10 @@ class PagoWriter
             'num_cuota'   => $numCuota,
         ]);
 
-        $nota    = $this->mapper->getNotaBancaria($r);
-        $cuenta  = $this->mapper->getCuentaBancaria($r);
-        $banking = $this->resolveBanking($r, $nota, $cuenta);
+        $nota       = $this->mapper->getNotaBancaria($r);
+        $cuenta     = $this->mapper->getCuentaBancaria($r);
+        $banking    = $this->resolveBanking($r, $nota, $cuenta);
+        $clienteDoc = $this->mapper->resolveClienteDoc($r);
 
         return [
             'cod_ceta'          => $r->cod_ceta,
@@ -100,12 +101,12 @@ class PagoWriter
             'pago_completo'     => (bool) $r->cobro_completo,
             'observaciones'     => $r->observaciones ?: null,
             'usuario'           => $this->mapper->resolveUsuarioNickname($r->id_usuario),
-            'razon'             => null,
-            'nro_documento_pago'=> null,
-            'autorizacion'      => null,
+            'razon'             => $clienteDoc['cliente'],
+            'nro_documento_pago'=> $clienteDoc['nro_documento_cobro'],
+            'autorizacion'      => '0',
             'valido'            => 'V',
             'concepto'          => $r->concepto ?: null,
-            'codigo_control'    => null,
+            'codigo_control'    => 'cod_control', // se usa cod_control por defecto en casi todo
             'codigo_qr'         => null,
             'descuento'         => (float) ($r->descuento ?? 0),
             'pu_mensualidad'    => (float) $r->pu_mensualidad,
@@ -117,8 +118,8 @@ class PagoWriter
             'banco_origen'      => $banking['banco_origen'],
             'nro_tarjeta'       => $banking['nro_tarjeta'],
             'estado_factura'    => null,
-            'id_item_service'   => null,
-            'orden'             => $r->order ? (int) $r->order : null,
+            'id_item_service'   => $r->cod_tipo_cobro === 'MENSUALIDAD' ? 1 : 2,
+            'orden'             => $this->resolveOrden($conn, $r),
             'turno'             => $this->resolveTurno($r),
             'anulado'           => false,
             'fecha_anulacion'   => null,
@@ -150,5 +151,25 @@ class PagoWriter
             ->where('nro_cobro', $r->nro_cobro)
             ->value('turno');
         return $det ?: null;
+    }
+
+    /**
+     * Orden del pago dentro del mismo comprobante (0-based).
+     * SGA agrupa los ítems de una misma transacción por num_comprobante/num_factura
+     * y los ordena desde 0. Como sistemaEco no guarda ese orden, se asigna
+     * secuencialmente: MAX(orden)+1 para el mismo comprobante, 0 si es el primero.
+     */
+    private function resolveOrden(string $conn, object $r): int
+    {
+        if (!empty($r->nro_recibo)) {
+            $where = ['num_comprobante' => (int) $r->nro_recibo];
+        } elseif (!empty($r->nro_factura)) {
+            $where = ['num_factura' => (int) $r->nro_factura];
+        } else {
+            return 0;
+        }
+
+        $max = DB::connection($conn)->table('pago')->where($where)->max('orden');
+        return $max === null ? 0 : (int) $max + 1;
     }
 }

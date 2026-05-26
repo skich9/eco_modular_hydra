@@ -43,8 +43,13 @@ class SgaPushCobrosCommand extends Command
     public function handle(): int
     {
         try {
-            $from  = $this->option('from')  ? Carbon::parse($this->option('from'))->format('Y-m-d')  : self::DEFAULT_FROM;
-            $until = $this->option('until') ? Carbon::parse($this->option('until'))->format('Y-m-d') : self::DEFAULT_UNTIL;
+            $from  = $this->option('from')
+                ? Carbon::parse($this->option('from'))->format('Y-m-d')
+                : Carbon::parse($this->ask('Fecha inicial (Y-m-d)', self::DEFAULT_FROM))->format('Y-m-d');
+
+            $until = $this->option('until')
+                ? Carbon::parse($this->option('until'))->format('Y-m-d')
+                : Carbon::parse($this->ask('Fecha final (Y-m-d)', self::DEFAULT_UNTIL))->format('Y-m-d');
         } catch (\Throwable) {
             $this->error('Fecha inválida. Use formato Y-m-d.');
             return self::FAILURE;
@@ -62,6 +67,14 @@ class SgaPushCobrosCommand extends Command
         $this->line("{$mode} Migración cobros sistemaEco → SGA   rango: {$from} → {$until}");
         if ($solo) $this->line("   Solo tabla: {$solo}");
         $this->newLine();
+
+        if (!$dryRun) {
+            if (!$this->confirm("¿Confirmar migración REAL al SGA del rango {$from} → {$until}?", false)) {
+                $this->line('Migración cancelada.');
+                return self::SUCCESS;
+            }
+            $this->newLine();
+        }
 
         $report = new BatchReport();
 
