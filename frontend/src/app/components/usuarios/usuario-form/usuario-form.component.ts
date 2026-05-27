@@ -158,7 +158,7 @@ export class UsuarioFormComponent implements OnInit {
 						estado: usuario.estado,
             			apoyoCobranzas: usuario.apoyoCobranzas || false
 					});
-					this.selectedRolId = usuario.id_rol;
+					this.selectedRolId = usuario.id_rol ? Number(usuario.id_rol) : null;
 				}
 			},
 			error: (error: any) => {
