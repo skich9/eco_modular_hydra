@@ -21,7 +21,6 @@ use Illuminate\Support\Facades\DB;
 class NotaBancariaWriter
 {
     public function __construct(
-        private MapperHelper $mapper,
         private MigrationLog $log,
     ) {}
 
@@ -73,7 +72,7 @@ class NotaBancariaWriter
     private function processGrupo(array $grupo, bool $dryRun, BatchReport $report): void
     {
         $r    = $grupo['base'];
-        $conn = $this->mapper->resolveConnectionByPrefijo($r->prefijo_carrera);
+        $conn = $this->resolveConn($r);
         if (!$conn) {
             $report->record('nota_bancaria', 'sin_ruta', 'skipped');
             return;
@@ -92,15 +91,13 @@ class NotaBancariaWriter
         }
 
         try {
-            $correlativo = $this->mapper->getNextNumPago($conn, 'nota_bancaria', [
-                'anio_deposito' => (int) $r->anio_deposito,
-                'tipo_nota'     => $r->tipo_nota,
-            ], 'correlativo');
+            $correlativo  = (int) $r->correlativo + 10000;
+            $anioDeposito = (int) $r->anio_deposito % 100;
 
-            $row = $this->buildRow($r, $grupo['items'], $grupo['monto'], $correlativo);
+            $row = $this->buildRow($r, $grupo['items'], $grupo['monto'], $correlativo, $anioDeposito);
             DB::connection($conn)->table('nota_bancaria')->insert($row);
 
-            $destPk = "{$r->anio_deposito}|{$correlativo}|{$r->tipo_nota}";
+            $destPk = "{$anioDeposito}|{$correlativo}|{$r->tipo_nota}";
 
             // Registrar cada PK de origen apuntando al mismo destino (idempotencia completa)
             foreach ($grupo['source_pks'] as $sourcePk) {
@@ -117,12 +114,42 @@ class NotaBancariaWriter
     }
 
     /**
+     * Enruta al SGA correcto en dos niveles (mismo patrón que NotaReposicionWriter):
+     *
+     * 1) Con cod_ceta: carácter en posición 5 indica carrera.
+     *    Formato: 1{YYYY}{C}{NNN} — C=1 → sga_elec, C=0 → sga_mec.
+     *
+     * 2) Sin cod_ceta: por usuario.
+     *    sga_elec: Isabel, AlejandraR, NicoleS, LuisFC
+     *    sga_mec:  JazminB, pamela, DanielM
+     */
+    private function resolveConn(object $r): ?string
+    {
+        if (!empty($r->cod_ceta)) {
+            $cod = (string) $r->cod_ceta;
+            if (strlen($cod) >= 6) {
+                if ($cod[5] === '1') return 'sga_elec';
+                if ($cod[5] === '0') return 'sga_mec';
+            }
+        }
+
+        static $elec = ['Isabel', 'AlejandraR', 'NicoleS', 'LuisFC'];
+        static $mec  = ['JazminB', 'pamela', 'DanielM'];
+
+        $usuario = trim($r->usuario ?? '');
+        if (in_array($usuario, $elec, true)) return 'sga_elec';
+        if (in_array($usuario, $mec, true))  return 'sga_mec';
+
+        return null;
+    }
+
+    /**
      * Construye la fila para el SGA.
      *
      * concepto: "Mensualidad Bs800.00,Mens. Niv Bs4.00" — igual al formato del SGA legacy.
      * monto:    SUM de todos los ítems del grupo.
      */
-    private function buildRow(object $r, array $items, float $montoTotal, int $correlativo): array
+    private function buildRow(object $r, array $items, float $montoTotal, int $correlativo, int $anioDeposito): array
     {
         // Formato SGA: "Concepto1 Bs800.00,Concepto2 Bs4.00"
         $concepto = implode(',', array_map(
@@ -137,7 +164,7 @@ class NotaBancariaWriter
         ));
 
         return [
-            'anio_deposito'   => (int) $r->anio_deposito,
+            'anio_deposito'   => $anioDeposito,
             'correlativo'     => $correlativo,
             'usuario'         => $r->usuario ?: 'SIS_ECO',
             'fecha_nota'      => $r->fecha_nota,
