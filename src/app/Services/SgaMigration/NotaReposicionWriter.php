@@ -32,6 +32,7 @@ class NotaReposicionWriter
         // de la primera fila (usuario, observaciones, nro_recibo, tipo_ingreso).
         $rawRows = DB::connection(MapperHelper::SOURCE_CONN)->table('nota_reposicion')
             ->whereBetween('fecha_nota', ["{$from} 00:00:00", "{$until} 23:59:59"])
+            ->whereNotNull('nro_recibo')        // solo notas ligadas a un recibo; las de factura no se sincronizan
             ->orderBy('anio_reposicion')
             ->orderBy('fecha_nota')
             ->orderBy('correlativo')
@@ -81,7 +82,7 @@ class NotaReposicionWriter
     private function processGrupo(array $grupo, bool $dryRun, BatchReport $report): void
     {
         $r    = $grupo['base'];
-        $conn = $this->mapper->resolveConnectionByPrefijo($r->prefijo_carrera);
+        $conn = $this->resolveConn($r);
         if (!$conn) {
             $report->record('nota_reposicion', 'sin_ruta', 'skipped');
             return;
@@ -123,6 +124,38 @@ class NotaReposicionWriter
             }
             $report->record('nota_reposicion', $conn, 'errors');
         }
+    }
+
+    /**
+     * Enruta al SGA correcto en dos niveles:
+     *
+     * 1) Con cod_ceta: el carácter en posición 5 indica carrera.
+     *    Formato cod_ceta: 1{YYYY}{C}{NNN}  — C=1 → sga_elec, C=0 → sga_mec.
+     *
+     * 2) Sin cod_ceta (pagos especiales con tipo_ingreso presente): por usuario.
+     *    sga_elec: Isabel, AlejandraR, NicoleS, LuisFC
+     *    sga_mec:  JazminB, pamela, DanielM
+     */
+    private function resolveConn(object $r): ?string
+    {
+        // Nivel 1: cod_ceta disponible → leer dígito de carrera en posición 5
+        if (!empty($r->cod_ceta)) {
+            $cod = (string) $r->cod_ceta;
+            if (strlen($cod) >= 6) {
+                if ($cod[5] === '1') return 'sga_elec';
+                if ($cod[5] === '0') return 'sga_mec';
+            }
+        }
+
+        // Nivel 2: sin cod_ceta → enrutar por usuario
+        static $elec = ['Isabel', 'AlejandraR', 'NicoleS', 'LuisFC'];
+        static $mec  = ['JazminB', 'pamela', 'DanielM'];
+
+        $usuario = trim($r->usuario ?? '');
+        if (in_array($usuario, $elec, true)) return 'sga_elec';
+        if (in_array($usuario, $mec, true))  return 'sga_mec';
+
+        return null; // sin ruta → registro se skipea
     }
 
     /**
