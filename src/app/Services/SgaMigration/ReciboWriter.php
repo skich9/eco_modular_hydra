@@ -102,12 +102,23 @@ class ReciboWriter
             'cod_tipo_doc_identidad' => $this->mapper->mapTipoDocumento($r->cod_tipo_doc_identidad),
             'monto_gift_card'        => 0,
             'num_gift_card'          => null,
-            'tipo_emision'           => $this->mapper->mapTipoEmision($r->tipo_emision),
+            'tipo_emision'           => 1,
             'codigo_excepcion'       => $this->mapper->mapCodigoExcepcion($r->codigo_excepcion),
             'codigo_doc_sector'      => $this->mapper->mapCodigoDocSector($r->codigo_doc_sector),
             'tiene_reposicion'       => (bool) $r->tiene_reposicion,
-            'periodo_facturado'      => $r->periodo_facturado ?: null,
+            'periodo_facturado'      => $this->resolveGestion($r->nro_recibo),
         ];
+    }
+
+    /**
+     * Devuelve el gestion del primer cobro asociado a este recibo (ej. "1/2026").
+     * El recibo en eco_backup no almacena gestion directamente.
+     */
+    private function resolveGestion(int $nroRecibo): ?string
+    {
+        return DB::connection(MapperHelper::SOURCE_CONN)->table('cobro')
+            ->where('nro_recibo', $nroRecibo)
+            ->value('gestion');
     }
 
     public function fixSequence(string $conn): void

@@ -142,8 +142,8 @@ class FacturaWriter
             'codigo_tipo_emision' => null,
             'periodo_facturado'   => $r->periodo_facturado ?: null,
             'es_manual'           => (bool) $r->es_manual,
-            'codigo_evento'       => $r->codigo_evento ?: null,
-            'descripcion_evento'  => $r->descripcion_evento ?: null,
+            'codigo_evento'       => 2,
+            'descripcion_evento'  => 'INACCESIBILIDAD AL SERVICIO WEB DE LA ADMINISTRACIÓN TRIBUTARIA',
         ];
     }
 
