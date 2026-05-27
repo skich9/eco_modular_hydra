@@ -62,19 +62,32 @@ class MapperHelper
     }
 
     /**
-     * id_forma_cobro -> codigo_metodo_pago (entero SIN/SGA).
-     * E=1 efectivo, L=2 tarjeta, C=3 cheque, O=4 otros/vales, B=7 transferencia, D=8 depósito, T=1.
+     * id_forma_cobro → codigo_sin de sin_forma_cobro (entero SIN/SGA).
+     * Consulta la tabla sin_forma_cobro en eco_backup (misma BD que el origen).
+     * Patrón idéntico a FacturaPayloadBuilder::buildXmlSectorEducativo().
+     * Caché estático: como mucho 6-7 consultas por corrida completa.
+     *
+     * Fallback por código conocido ausente del seeder:
+     *   T (Traspaso) → 999  (tarjeta débito/crédito, código SIN propio)
+     * Fallback final: 1 (EFECTIVO) para cualquier código desconocido.
      */
     public function mapMetodoPago(?string $id): int
     {
-        return match (strtoupper((string) $id)) {
-            'L' => 2,
-            'C' => 3,
-            'O' => 4,
-            'B' => 7,
-            'D' => 8,
-            default => 1,
-        };
+        // Códigos conocidos ausentes del seeder de sin_forma_cobro
+        static $fallback = ['T' => 999];
+        static $cache    = [];
+
+        $key = strtoupper(trim((string) $id));
+        if (!array_key_exists($key, $cache)) {
+            $codigoSin = $this->src()->table('sin_forma_cobro')
+                ->where('id_forma_cobro', $key)
+                ->orderBy('codigo_sin')
+                ->value('codigo_sin');
+            $cache[$key] = $codigoSin !== null
+                ? (int) $codigoSin
+                : ($fallback[$key] ?? 1);
+        }
+        return $cache[$key];
     }
 
     /**
