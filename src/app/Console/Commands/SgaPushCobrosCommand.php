@@ -12,13 +12,17 @@ use App\Services\SgaMigration\RecepcionIngresosWriter;
 use App\Services\SgaMigration\PagoMultaWriter;
 use App\Services\SgaMigration\PagoWriter;
 use App\Services\SgaMigration\ReciboWriter;
+use App\Services\SgaMigration\MapperHelper;
 use Carbon\Carbon;
 use Illuminate\Console\Command;
+use Illuminate\Support\Facades\DB;
 
 class SgaPushCobrosCommand extends Command
 {
     private const DEFAULT_FROM  = '2026-04-23';
     private const DEFAULT_UNTIL = '2026-05-22';
+
+    private const TABLAS_CONCATENADAS = ['nota_bancaria', 'nota_reposicion'];
 
     protected $signature = 'sga:push-cobros
         {--from=   : Fecha inicial Y-m-d (default ' . self::DEFAULT_FROM . ')}
@@ -95,7 +99,7 @@ class SgaPushCobrosCommand extends Command
             $this->fixSequences($solo);
         }
 
-        $this->printReport($report, $dryRun);
+        $this->printReport($report, $dryRun, $from, $until, $solo);
 
         return $report->totalErrors() === 0 ? self::SUCCESS : self::FAILURE;
     }
@@ -130,19 +134,65 @@ class SgaPushCobrosCommand extends Command
         }
     }
 
-    private function printReport(BatchReport $report, bool $dryRun): void
+    private function printReport(BatchReport $report, bool $dryRun, string $from, string $until, ?string $solo): void
     {
         $this->newLine();
         $label = $dryRun ? 'Reporte DRY-RUN' : 'Reporte';
         $this->line("<comment>{$label}</comment>");
-        $rows = [];
+
+        // Pivotear por tabla: una fila por tabla con columnas EEA / MEA
+        $byTable = [];
         foreach ($report->rows() as $r) {
-            $rows[] = [$r['conn'], $r['table'], $r['inserted'], $r['skipped'], $r['errors']];
+            $t = $r['table'];
+            if (!isset($byTable[$t])) {
+                $byTable[$t] = ['eea_ins' => 0, 'mea_ins' => 0, 'saltados' => 0, 'errores' => 0];
+            }
+            if ($r['conn'] === 'sga_elec') $byTable[$t]['eea_ins']  += $r['inserted'];
+            if ($r['conn'] === 'sga_mec')  $byTable[$t]['mea_ins']  += $r['inserted'];
+            $byTable[$t]['saltados'] += $r['skipped'];
+            $byTable[$t]['errores']  += $r['errors'];
         }
-        if ($rows) {
-            $this->table(['Conexión', 'Tabla', 'Insertados', 'Saltados', 'Errores'], $rows);
-        } else {
+
+        if (empty($byTable)) {
             $this->line('   (sin tablas procesadas)');
+        } else {
+            $source   = $this->getSourceCounts($from, $until, $solo);
+            $headers  = ['Tabla', 'Origen eco', 'EEA ins', 'MEA ins', 'Saltados', 'Errores'];
+
+            $buildRow = fn(string $tabla, array $d) => [
+                $tabla,
+                number_format($source[$tabla] ?? 0),
+                number_format($d['eea_ins']),
+                number_format($d['mea_ins']),
+                $d['saltados'] > 0 ? number_format($d['saltados']) : '—',
+                $d['errores']  > 0 ? number_format($d['errores'])  : '—',
+            ];
+
+            // Tabla principal (todas menos las concatenadas)
+            $rowsPrincipal = [];
+            foreach ($byTable as $tabla => $d) {
+                if (!in_array($tabla, self::TABLAS_CONCATENADAS)) {
+                    $rowsPrincipal[] = $buildRow($tabla, $d);
+                }
+            }
+            if ($rowsPrincipal) {
+                $this->table($headers, $rowsPrincipal);
+            }
+
+            // Tabla secundaria: nota_bancaria y nota_reposicion
+            $rowsConcat = [];
+            foreach (self::TABLAS_CONCATENADAS as $tabla) {
+                if (isset($byTable[$tabla])) {
+                    $rowsConcat[] = $buildRow($tabla, $byTable[$tabla]);
+                }
+            }
+            if ($rowsConcat) {
+                $this->newLine();
+                $this->line('<comment>Tablas con registros concatenados (*)</comment>');
+                $this->table($headers, $rowsConcat);
+                $this->warn('(*) Origen eco > EEA ins + MEA ins es esperado: varias filas de eco_prod_backup');
+                $this->warn('    (sistemaEco) se concatenan en un solo registro del SGA. No es un error.');
+            }
         }
 
         if ($report->totalErrors() > 0) {
@@ -150,5 +200,71 @@ class SgaPushCobrosCommand extends Command
         } else {
             $this->info('Migración completada' . ($dryRun ? ' (dry-run, nada fue escrito)' : ' OK.'));
         }
+    }
+
+    /**
+     * Cuenta cuántos registros hay en eco_prod_backup para cada tabla en el rango dado.
+     * Solo lectura — no escribe nada.
+     */
+    private function getSourceCounts(string $from, string $until, ?string $solo): array
+    {
+        $src   = MapperHelper::SOURCE_CONN;
+        $from0 = $from . ' 00:00:00';
+        $until9 = $until . ' 23:59:59';
+        $counts = [];
+
+        $run = fn(string $table) => !$solo || $solo === $table;
+
+        try {
+            if ($run('factura')) {
+                $counts['factura'] = DB::connection($src)->table('factura')
+                    ->whereBetween('fecha_emision', [$from0, $until9])->count();
+            }
+            if ($run('recibo')) {
+                $nros = DB::connection($src)->table('cobro')
+                    ->whereBetween('fecha_cobro', [$from0, $until9])
+                    ->whereNotNull('nro_recibo')->distinct()->pluck('nro_recibo');
+                $counts['recibo'] = DB::connection($src)->table('recibo')
+                    ->whereIn('nro_recibo', $nros)->count();
+            }
+            if ($run('pago')) {
+                $counts['pago'] = DB::connection($src)->table('cobro')
+                    ->whereIn('cod_tipo_cobro', ['MENSUALIDAD', 'ARRASTRE'])
+                    ->whereBetween('fecha_cobro', [$from0, $until9])
+                    ->whereNotNull('cod_inscrip')->count();
+            }
+            if ($run('pago_multa')) {
+                $counts['pago_multa'] = DB::connection($src)->table('cobro')
+                    ->whereIn('cod_tipo_cobro', ['MORA', 'NIVELACION'])
+                    ->whereBetween('fecha_cobro', [$from0, $until9])
+                    ->whereNotNull('cod_inscrip')->count();
+            }
+            if ($run('material_adicional')) {
+                $counts['material_adicional'] = DB::connection($src)->table('cobro')
+                    ->where('cod_tipo_cobro', 'MATERIAL_EXTRA')
+                    ->whereBetween('fecha_cobro', [$from0, $until9])
+                    ->whereNotNull('cod_inscrip')->count();
+            }
+            if ($run('nota_bancaria')) {
+                $counts['nota_bancaria'] = DB::connection($src)->table('nota_bancaria')
+                    ->whereBetween('fecha_nota', [$from0, $until9])->count();
+            }
+            if ($run('nota_reposicion')) {
+                $counts['nota_reposicion'] = DB::connection($src)->table('nota_reposicion')
+                    ->whereBetween('fecha_nota', [$from0, $until9])->count();
+            }
+            if ($run('otros_ingresos')) {
+                $counts['otros_ingresos'] = DB::connection($src)->table('otros_ingresos')
+                    ->whereBetween('fecha', [$from0, $until9])->count();
+            }
+            if ($run('recepcion')) {
+                $counts['recepcion'] = DB::connection($src)->table('recepcion_ingresos')
+                    ->whereBetween('fecha_recepcion', [$from, $until])->count();
+            }
+        } catch (\Throwable) {
+            // Si falla alguna consulta de origen, se muestra 0 pero no se interrumpe el reporte
+        }
+
+        return $counts;
     }
 }

@@ -69,7 +69,7 @@ class FacturaWriter
         // El mismo nro_factura puede ser legítimo para otro cod_ceta → no se excluye.
         // Ver config/sga_migration.php → facturas_excluidas para el detalle.
         if (isset($this->excluded[$conn][(int) $r->anio][(int) $r->nro_factura][(string) $r->cod_ceta])) {
-            if (!$dryRun) {
+            if (!$dryRun && !$this->log->alreadyDone('factura', $sourcePk, $conn)) {
                 $this->log->write('factura', $sourcePk, $conn, 'factura', null, 'excluded',
                     "Copia manual en eco_backup (cod_ceta={$r->cod_ceta}); " .
                     'factura ya existe en SGA vía ServiciosOnline con CUF definitivo');

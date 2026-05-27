@@ -78,8 +78,7 @@ class MaterialAdicionalWriter
     {
         $numComprobante = $r->nro_recibo  ? (int) $r->nro_recibo  : 0;
         $numPagMat = $this->mapper->getNextNumPago($conn, 'material_adicional', [
-            'cod_inscrip'    => $sgaCodInscrip,
-            'num_comprobante'=> $numComprobante,
+            'cod_inscrip' => $sgaCodInscrip,
         ], 'num_pago_mat');
 
         $nombreServicio = $this->resolveNombreServicio($r);
