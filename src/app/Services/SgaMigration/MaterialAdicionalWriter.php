@@ -2,14 +2,14 @@
 
 namespace App\Services\SgaMigration;
 
+use Carbon\Carbon;
 use Illuminate\Support\Facades\DB;
 
 /**
  * Migra cobros MATERIAL_EXTRA → tabla `material_adicional` del SGA.
  *
  * PK en SGA: (cod_ceta, cod_pensum, cod_inscrip, kardex_economico, num_comprobante, num_pago_mat).
- * num_pago_mat = MAX(num_pago_mat)+1 por (cod_inscrip, num_comprobante).
- * nombre_libro e insumo (NOT NULL): se toman de items_cobro.nombre_servicio; fallback: concepto.
+ * num_pago_mat proviene de la secuencia PostgreSQL material_adicional_num_pago_mat_seq.
  */
 class MaterialAdicionalWriter
 {
@@ -76,15 +76,18 @@ class MaterialAdicionalWriter
 
     private function buildRow(object $r, string $conn, int $sgaCodInscrip): array
     {
-        $numComprobante = $r->nro_recibo  ? (int) $r->nro_recibo  : 0;
-        $numPagMat = $this->mapper->getNextNumPago($conn, 'material_adicional', [
-            'cod_inscrip' => $sgaCodInscrip,
-        ], 'num_pago_mat');
+        $numComprobante = $r->nro_recibo ? (int) $r->nro_recibo : 0;
+        $numPagMat = (int) DB::connection($conn)
+            ->selectOne("SELECT nextval('material_adicional_num_pago_mat_seq'::regclass) as val")
+            ->val;
 
-        $nombreServicio = $this->resolveNombreServicio($r);
-
-        $nota    = $this->mapper->getNotaBancaria($r);
-        $cuenta  = $this->mapper->getCuentaBancaria($r);
+        $nota             = $this->mapper->getNotaBancaria($r);
+        $cuenta           = $this->mapper->getCuentaBancaria($r);
+        $esQr             = strtoupper($r->id_forma_cobro ?? '') === 'B' && $this->mapper->isQrPayment($r);
+        $qrTransaccion    = $esQr ? $this->mapper->getQrTransaccion($r) : null;
+        $qrRespuestaBanco = ($esQr && $qrTransaccion) ? $this->mapper->getQrRespuestaBanco($qrTransaccion) : null;
+        $banking          = $this->resolveBanking($r, $nota, $cuenta, $esQr, $qrTransaccion, $qrRespuestaBanco);
+        $clienteDoc       = $this->mapper->resolveClienteDoc($r);
 
         return [
             'cod_ceta'          => $r->cod_ceta,
@@ -94,45 +97,93 @@ class MaterialAdicionalWriter
             'num_comprobante'   => $numComprobante,
             'num_pago_mat'      => $numPagMat,
             'costo_total'       => (float) $r->monto,
-            'observaciones'     => $r->observaciones ?: null,
+            'observaciones'     => $this->mapper->resolveObservacionesPago($r, $banking, $nota, $esQr),
             'fecha_pago'        => $r->fecha_cobro,
-            'nombre_libro'      => $nombreServicio,
-            'insumo'            => $nombreServicio,
-            'pago_completo'     => (bool) $r->cobro_completo,
-            'costo_mat_ex'      => (float) $r->monto,
+            'nombre_libro'      => '',
+            'insumo'            => '',
+            'pago_completo'     => 't',
+            'costo_mat_ex'      => 0,
             'costo_libro'       => 0.0,
             'usuario'           => $this->mapper->resolveUsuarioNickname($r->id_usuario),
-            'razon'             => null,
-            'nro_documento_pago'=> null,
-            'autorizacion'      => null,
+            'razon'             => $clienteDoc['cliente'],
+            'nro_documento_pago'=> $clienteDoc['nro_documento_cobro'],
+            'autorizacion'      => 0,
             'valido'            => 'V',
             'concepto'          => $r->concepto ?: null,
-            'num_factura'       => $r->nro_factura ? (int) $r->nro_factura : null,
-            'codigo_control'    => null,
+            'num_factura'       => $r->nro_factura ? (int) $r->nro_factura : 0,
+            'codigo_control'    => 0,
             'code_tipo_pago'    => $this->mapper->mapFormaCobro($r->id_forma_cobro),
-            'fecha_deposito'    => $nota ? ($nota->fecha_deposito ?: null) : null,
-            'nro_cuenta'        => $cuenta ? ($cuenta->nro_cuenta ?? null) : null,
-            'nro_deposito'      => $nota ? ($nota->nro_transaccion ?: null) : null,
+            'fecha_deposito'    => $banking['fecha_deposito'],
+            'nro_cuenta'        => $banking['nro_cuenta'],
+            'nro_deposito'      => $banking['nro_deposito'],
             'nro_nota'          => null,
-            'banco_origen'      => $nota ? ($nota->banco_origen ?: ($cuenta->banco ?? null)) : null,
-            'nro_tarjeta'       => $nota ? ($nota->nro_tarjeta ?: null) : null,
+            'banco_origen'      => $banking['banco_origen'],
+            'nro_tarjeta'       => $banking['nro_tarjeta'],
             'estado_factura'    => null,
-            'id_item_service'   => null,
-            'orden'             => $r->order ? (int) $r->order : null,
+            'id_item_service'   => $this->resolveItemService($conn, $r->id_item ? (int) $r->id_item : null),
+            'orden'             => $r->order !== null ? (int) $r->order : null,
             'anulado'           => false,
             'fecha_anulacion'   => null,
             'usuario_anula'     => null,
         ];
     }
 
-    private function resolveNombreServicio(object $r): string
-    {
-        if (!empty($r->id_item)) {
-            $nombre = DB::connection(MapperHelper::SOURCE_CONN)->table('items_cobro')
-                ->where('id_item', $r->id_item)
-                ->value('nombre_servicio');
-            if ($nombre) return $nombre;
+    private function resolveBanking(
+        object  $r,
+        ?object $nota,
+        ?object $cuenta,
+        bool    $esQr,
+        ?object $qrTransaccion,
+        ?object $qrRespuestaBanco
+    ): array {
+        if ($esQr) {
+            $fechaRaw      = ($qrTransaccion->processed_at ?? null)
+                          ?: ($qrRespuestaBanco->fecha_respuesta ?? null);
+            $fechaDeposito = $fechaRaw ? Carbon::parse($fechaRaw)->format('Y-m-d') : null;
+        } else {
+            $fechaDeposito = $nota ? ($nota->fecha_deposito ?: null) : null;
         }
-        return $r->concepto ?: 'Material adicional';
+
+        $nroDeposito = $esQr
+            ? (mb_substr($qrRespuestaBanco->numeroordenoriginante ?? '', 0, 50) ?: null)
+            : ($nota ? (mb_substr($nota->nro_transaccion ?? '', 0, 35) ?: null) : null);
+
+        $bancoOrigen = (!$esQr && in_array(strtoupper($r->id_forma_cobro ?? ''), ['B', 'L', 'T']))
+            ? ($nota ? (mb_substr($nota->banco_origen ?? '', 0, 200) ?: null) : null)
+            : null;
+
+        $nroTarjeta = $nota ? (mb_substr($nota->nro_tarjeta ?? '', 0, 200) ?: null) : null;
+
+        return [
+            'fecha_deposito' => $fechaDeposito,
+            'nro_cuenta'     => $cuenta ? ($cuenta->numero_cuenta ?? null) : null,
+            'nro_deposito'   => $nroDeposito,
+            'banco_origen'   => $bancoOrigen,
+            'nro_tarjeta'    => $nroTarjeta,
+        ];
+    }
+
+    private function resolveItemService(string $conn, ?int $idItem): ?int
+    {
+        static $cache = [];
+        if ($idItem === null) return null;
+        $cacheKey = "{$conn}:{$idItem}";
+        if (array_key_exists($cacheKey, $cache)) return $cache[$cacheKey];
+
+        $nombre = DB::connection(MapperHelper::SOURCE_CONN)
+            ->table('items_cobro')
+            ->where('id_item', $idItem)
+            ->value('nombre_servicio');
+
+        if (!$nombre) {
+            return $cache[$cacheKey] = null;
+        }
+
+        $found = DB::connection($conn)
+            ->table('sin_item_service')
+            ->where('nombre_servicio', trim((string) $nombre))
+            ->value('id_item');
+
+        return $cache[$cacheKey] = $found !== null ? (int) $found : null;
     }
 }

@@ -22,7 +22,6 @@ use Illuminate\Support\Facades\DB;
 class NotaBancariaWriter
 {
     public function __construct(
-        private MapperHelper $mapper,
         private MigrationLog $log,
     ) {}
 
@@ -74,7 +73,7 @@ class NotaBancariaWriter
     private function processGrupo(array $grupo, bool $dryRun, BatchReport $report): void
     {
         $r    = $grupo['base'];
-        $conn = $this->mapper->resolveConnectionByPrefijo($r->prefijo_carrera);
+        $conn = $this->resolveConn($r);
         if (!$conn) {
             $report->record('nota_bancaria', 'sin_ruta', 'skipped');
             return;
@@ -119,6 +118,36 @@ class NotaBancariaWriter
             }
             $report->record('nota_bancaria', $conn, 'errors');
         }
+    }
+
+    /**
+     * Enruta al SGA correcto en dos niveles (mismo patrón que NotaReposicionWriter):
+     *
+     * 1) Con cod_ceta: carácter en posición 5 indica carrera.
+     *    Formato: 1{YYYY}{C}{NNN} — C=1 → sga_elec, C=0 → sga_mec.
+     *
+     * 2) Sin cod_ceta: por usuario.
+     *    sga_elec: Isabel, AlejandraR, NicoleS, LuisFC
+     *    sga_mec:  JazminB, pamela, DanielM
+     */
+    private function resolveConn(object $r): ?string
+    {
+        if (!empty($r->cod_ceta)) {
+            $cod = (string) $r->cod_ceta;
+            if (strlen($cod) >= 6) {
+                if ($cod[5] === '1') return 'sga_elec';
+                if ($cod[5] === '0') return 'sga_mec';
+            }
+        }
+
+        static $elec = ['Isabel', 'AlejandraR', 'NicoleS', 'LuisFC'];
+        static $mec  = ['JazminB', 'pamela', 'DanielM'];
+
+        $usuario = trim($r->usuario ?? '');
+        if (in_array($usuario, $elec, true)) return 'sga_elec';
+        if (in_array($usuario, $mec, true))  return 'sga_mec';
+
+        return null;
     }
 
     /**
