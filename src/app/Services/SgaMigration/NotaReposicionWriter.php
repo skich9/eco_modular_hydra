@@ -166,15 +166,12 @@ class NotaReposicionWriter
      */
     private function buildRow(object $r, array $items, float $montoTotal, int $correlativo): array
     {
-        // Formato SGA: "Mens. Parcial Abril Bs400.00,Mens. Abril Niv Bs3.00"
         $conceptoAdm = implode(',', array_map(
-            fn($item) => trim($item['concepto']) . ' Bs' . number_format($item['monto'], 2, '.', ''),
+            fn($item) => $this->cleanConcepto(trim($item['concepto'])) . ' Bs' . number_format($item['monto'], 2, '.', ''),
             $items
         ));
-
-        // concepto_est: solo los nombres sin montos, separados por coma (mismo patrón SGA)
         $conceptoEst = implode(',', array_map(
-            fn($item) => trim($item['concepto']),
+            fn($item) => $this->cleanConcepto(trim($item['concepto'])),
             $items
         ));
 
@@ -194,5 +191,12 @@ class NotaReposicionWriter
             'tipo_ingreso'    => $r->tipo_ingreso ?: null,
             'cont'            => 0,
         ];
+    }
+
+    private function cleanConcepto(string $concepto): string
+    {
+        $c = preg_replace('/Cuota \d+\s+/', '', $concepto);
+        $c = str_replace(['(', ')'], '', $c);
+        return preg_replace('/\s{2,}/', ' ', trim($c));
     }
 }

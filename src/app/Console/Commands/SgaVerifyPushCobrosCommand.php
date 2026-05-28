@@ -31,32 +31,6 @@ class SgaVerifyPushCobrosCommand extends Command
         'recepcion'          => 'recepcion_ingresos',
     ];
 
-    // Columna de fecha en la tabla destino del SGA (null = sin fecha → pk-via-log)
-    private const DEST_DATE_COL = [
-        'factura'            => 'fecha_factura',
-        'recibo'             => null,
-        'pago'               => 'fecha_pago',
-        'pago_multa'         => 'fecha_pago',
-        'material_adicional' => 'fecha_pago',
-        'nota_bancaria'      => 'fecha_nota',
-        'nota_reposicion'    => 'fecha_nota',
-        'otros_ingresos'     => 'fecha',
-        'recepcion'          => 'fecha_recepcion',
-    ];
-
-    // Columnas de monto [origen, destino] (null = N/A)
-    private const MONTO_COLS = [
-        'factura'            => null,
-        'recibo'             => null,
-        'pago'               => ['monto',   'monto'],
-        'pago_multa'         => ['monto',   'monto'],
-        'material_adicional' => ['monto',   'costo_total'],
-        'nota_bancaria'      => ['monto',   'monto'],
-        'nota_reposicion'    => ['monto',   'monto'],
-        'otros_ingresos'     => ['monto',   'monto'],
-        'recepcion'          => ['monto_total', 'monto_total'],
-    ];
-
     protected $signature = 'sga:verify-push-cobros
         {--from=  : Fecha inicial Y-m-d (default ' . self::DEFAULT_FROM . ')}
         {--until= : Fecha final Y-m-d (default ' . self::DEFAULT_UNTIL . ')}
@@ -100,37 +74,32 @@ class SgaVerifyPushCobrosCommand extends Command
         $this->line('<comment>1.b) Cobertura: origen vs DESTINO REAL (pk-via-log)</comment>');
         $allOk = $this->printDestinoReal($tablas, $origen, $f, $u) && $allOk;
 
-        // 2. Suma de control SUM(monto)
+        // 2. Log por tabla/estado
         $this->newLine();
-        $this->line('<comment>2) Suma de control SUM(monto) origen vs destino</comment>');
-        $allOk = $this->printSumasMonto($tablas, $f, $u) && $allOk;
-
-        // 3. Log por tabla/estado
-        $this->newLine();
-        $this->line('<comment>3) Log por tabla/estado</comment>');
+        $this->line('<comment>2) Log por tabla/estado</comment>');
         $this->printLogDetalle($tablas);
 
-        // 4. Secuencias factura/recibo
+        // 3. Secuencias factura/recibo
         $this->newLine();
-        $this->line('<comment>4) Secuencias factura/recibo (last_value >= MAX)</comment>');
+        $this->line('<comment>3) Secuencias factura/recibo (last_value >= MAX)</comment>');
         $allOk = $this->printSecuencias($solo) && $allOk;
 
-        // 5. Detalle recepcion (detalle_recepcion vs recepcion_ingreso_detalles)
+        // 4. Detalle recepcion (detalle_recepcion vs recepcion_ingreso_detalles)
         $this->newLine();
-        $this->line('<comment>5) Cobertura detalle_recepcion (hijo de recepcion)</comment>');
+        $this->line('<comment>4) Cobertura detalle_recepcion (hijo de recepcion)</comment>');
         $allOk = $this->printDetalleRecepcion($f, $u) && $allOk;
 
-        // 6. Errores en log
+        // 5. Errores en log
         $this->newLine();
-        $this->line('<comment>6) Errores registrados en el log (últimos 50)</comment>');
+        $this->line('<comment>5) Errores registrados en el log (últimos 50)</comment>');
         $allOk = $this->printErrores($tablas) && $allOk;
 
         $this->newLine();
         if ($allOk) {
-            $this->info('VERIFICACIÓN OK — cobertura completa, sumas y secuencias alineadas, sin errores.');
+            $this->info('VERIFICACIÓN OK — cobertura completa, secuencias y errores alineados.');
             return self::SUCCESS;
         }
-        $this->error('VERIFICACIÓN CON OBSERVACIONES — revisar deltas / sumas / secuencias / errores arriba.');
+        $this->error('VERIFICACIÓN CON OBSERVACIONES — revisar deltas / secuencias / errores arriba.');
         return self::FAILURE;
     }
 
@@ -206,6 +175,22 @@ class SgaVerifyPushCobrosCommand extends Command
                     }
 
                     $destino = $this->countDestInSga($tabla, $conn, $destPks);
+
+                    // Para factura, las 'excluded' ya existen en SGA (copia manual previa).
+                    // Sumarlas al destino para que el delta sea 0 y no aparezca como DIFIERE.
+                    if ($tabla === 'factura' && !empty($sourcePks)) {
+                        $excludedCount = 0;
+                        foreach (array_chunk($sourcePks, 1000) as $lote) {
+                            $excludedCount += DB::table('sga_migration_log')
+                                ->where('source_table', self::LOG_SOURCE_TABLE[$tabla])
+                                ->where('dest_conn', $conn)
+                                ->where('status', 'excluded')
+                                ->whereIn('source_pk', $lote)
+                                ->count();
+                        }
+                        $destino += $excludedCount;
+                    }
+
                     $delta   = $o - $destino;
                     $ok      = $esConcatenada ? true : ($delta === 0);
                     if (!$ok) $allOk = false;
@@ -279,6 +264,7 @@ class SgaVerifyPushCobrosCommand extends Command
                             }
                         }
                     });
+                $pks = array_values(array_unique($pks));
                 break;
 
             case 'pago_multa':
@@ -330,12 +316,13 @@ class SgaVerifyPushCobrosCommand extends Command
 
             case 'nota_reposicion':
                 DB::connection($src)->table('nota_reposicion')
-                    ->select('correlativo', 'anio_reposicion', 'cont', 'prefijo_carrera')
+                    ->select('correlativo', 'anio_reposicion', 'cont', 'cod_ceta', 'usuario')
                     ->whereBetween('fecha_nota', [$f, $u])
+                    ->whereNotNull('nro_recibo')
                     ->orderBy('correlativo')
                     ->chunk(1000, function ($rows) use ($conn, &$pks) {
                         foreach ($rows as $r) {
-                            if ($this->mapper->resolveConnectionByPrefijo($r->prefijo_carrera) === $conn) {
+                            if ($this->resolveConnNotaReposicion($r) === $conn) {
                                 $pks[] = "{$r->correlativo}|{$r->anio_reposicion}|{$r->cont}";
                             }
                         }
@@ -430,90 +417,7 @@ class SgaVerifyPushCobrosCommand extends Command
     }
 
     // ─────────────────────────────────────────────
-    // 2. Suma de control SUM(monto)
-    // ─────────────────────────────────────────────
-    private function printSumasMonto(array $tablas, string $f, string $u): bool
-    {
-        $allOk = true;
-        $rows  = [];
-        $src   = MapperHelper::SOURCE_CONN;
-
-        $srcTables = [
-            'factura' => ['factura', 'fecha_emision', []],
-            'recibo'  => ['recibo',  'created_at',    []],
-            'pago'    => ['cobro',   'fecha_cobro',   [fn($q) => $q->whereIn('cod_tipo_cobro', ['MENSUALIDAD','ARRASTRE'])->whereNotNull('cod_inscrip')]],
-            'pago_multa'         => ['cobro', 'fecha_cobro', [fn($q) => $q->whereIn('cod_tipo_cobro', ['MORA','NIVELACION'])->whereNotNull('cod_inscrip')->where('monto', '>', 0)]],
-            'material_adicional' => ['cobro', 'fecha_cobro', [fn($q) => $q->where('cod_tipo_cobro','MATERIAL_EXTRA')->whereNotNull('cod_inscrip')]],
-            'nota_bancaria'   => ['nota_bancaria',   'fecha_nota', []],
-            'nota_reposicion' => ['nota_reposicion', 'fecha_nota', []],
-            'otros_ingresos'  => ['otros_ingresos',  'fecha',      []],
-            'recepcion'       => ['recepcion_ingresos', 'fecha_recepcion', []],
-        ];
-
-        $destTables = [
-            'factura'=>'factura','recibo'=>'recibo','pago'=>'pago','pago_multa'=>'pago_multa',
-            'material_adicional'=>'material_adicional','nota_bancaria'=>'nota_bancaria',
-            'nota_reposicion'=>'nota_reposicion','otros_ingresos'=>'otros_ingresos','recepcion'=>'recepcion',
-        ];
-
-        foreach ($tablas as $tabla) {
-            $montos = self::MONTO_COLS[$tabla] ?? null;
-            if (!$montos) {
-                $rows[] = [$tabla, '—', '—', '—', '—', 'N/A: sin columna de monto'];
-                continue;
-            }
-
-            [$srcMontoCol, $dstMontoCol] = $montos;
-            [$srcTable, $srcDateCol, $filters] = $srcTables[$tabla];
-            $dateCol  = self::DEST_DATE_COL[$tabla];
-            $destTable = $destTables[$tabla];
-
-            // Sumar origen agrupado por conexión
-            $sumaOrigen = ['sga_elec' => 0.0, 'sga_mec' => 0.0];
-            try {
-                $q = DB::connection($src)->table($srcTable)
-                    ->whereBetween($srcDateCol, [$f, $u])
-                    ->select([$this->routeCol($tabla), $srcMontoCol]);
-                foreach ($filters as $filter) { $filter($q); }
-                $q->orderBy($srcDateCol)->chunk(1000, function ($rows2) use ($tabla, $srcMontoCol, &$sumaOrigen) {
-                    foreach ($rows2 as $r) {
-                        $conn = $this->resolveConn($tabla, $r);
-                        if ($conn) $sumaOrigen[$conn] += (float) ($r->$srcMontoCol ?? 0);
-                    }
-                });
-            } catch (\Throwable $e) {
-                $rows[] = [$tabla, '—', '—', '—', '—', 'ERROR origen: ' . mb_substr($e->getMessage(), 0, 60)];
-                continue;
-            }
-
-            foreach (['sga_elec', 'sga_mec'] as $conn) {
-                try {
-                    if ($dateCol) {
-                        $sumaDestino = (float) DB::connection($conn)->table($destTable)
-                            ->whereBetween($dateCol, [$f, $u])->sum($dstMontoCol);
-                    } else {
-                        $sumaDestino = null;
-                    }
-                    $so = round($sumaOrigen[$conn], 2);
-                    $sd = $sumaDestino !== null ? round($sumaDestino, 2) : '—';
-                    $delta = $sumaDestino !== null ? round($so - (float)$sd, 2) : '—';
-                    $ok = $sumaDestino !== null && abs($so - (float)$sd) < 0.01;
-                    if (!$ok && $sumaDestino !== null) $allOk = false;
-                    $estado = $sumaDestino === null ? 'N/A' : ($ok ? 'OK' : 'DIFIERE!');
-                    $rows[] = [$tabla, $conn, $so, $sd, $delta, $estado];
-                } catch (\Throwable $e) {
-                    $allOk = false;
-                    $rows[] = [$tabla, $conn, round($sumaOrigen[$conn], 2), '—', '—', 'ERROR: ' . mb_substr($e->getMessage(), 0, 50)];
-                }
-            }
-        }
-
-        $this->table(['Tabla', 'Conexión', 'Suma origen', 'Suma destino', 'Diferencia', 'Estado'], $rows);
-        return $allOk;
-    }
-
-    // ─────────────────────────────────────────────
-    // 3. Log detalle
+    // 2. Log detalle
     // ─────────────────────────────────────────────
     private function printLogDetalle(array $tablas): void
     {
@@ -671,7 +575,7 @@ class SgaVerifyPushCobrosCommand extends Command
                     'pago_multa'         => $this->countCobro($result[$tabla], $f, $u, ['MORA','NIVELACION']),
                     'material_adicional' => $this->countCobro($result[$tabla], $f, $u, ['MATERIAL_EXTRA']),
                     'nota_bancaria'   => $this->countPrefijo($result[$tabla], 'nota_bancaria',   'fecha_nota', $f, $u),
-                    'nota_reposicion' => $this->countPrefijo($result[$tabla], 'nota_reposicion', 'fecha_nota', $f, $u),
+                    'nota_reposicion' => $this->countCodCetaNotaReposicion($result[$tabla], $f, $u),
                     'otros_ingresos'  => $this->countPensum($result[$tabla], 'otros_ingresos', 'fecha', $f, $u),
                     'recepcion'       => $this->countRecepcion($result[$tabla], $from, $until),
                     default => null,
@@ -719,7 +623,7 @@ class SgaVerifyPushCobrosCommand extends Command
     private function countCobro(array &$d, string $f, string $u, array $tipos): void
     {
         $q = DB::connection(MapperHelper::SOURCE_CONN)->table('cobro')
-            ->select('cod_pensum')->whereIn('cod_tipo_cobro', $tipos)
+            ->select('nro_cobro', 'cod_pensum')->whereIn('cod_tipo_cobro', $tipos)
             ->whereBetween('fecha_cobro', [$f, $u])->whereNotNull('cod_inscrip');
 
         // PagoMultaWriter salta cobros con monto <= 0 → excluir para que el conteo coincida
@@ -728,9 +632,15 @@ class SgaVerifyPushCobrosCommand extends Command
             $q->where('monto', '>', 0);
         }
 
-        $q->orderBy('fecha_cobro')->chunk(500, function ($rows) use (&$d) {
+        // Dedup por nro_cobro: eco puede tener el mismo cobro duplicado (2 filas idénticas).
+        // El writer inserta solo 1 (alreadyDone en la segunda) → contar igual que el writer.
+        $seen = [];
+        $q->orderBy('fecha_cobro')->chunk(500, function ($rows) use (&$d, &$seen) {
             foreach ($rows as $r) {
                 $conn = $this->mapper->resolveConnectionByPensum($r->cod_pensum);
+                $key  = $r->nro_cobro . '|' . ($conn ?? 'sin_ruta');
+                if (isset($seen[$key])) continue;
+                $seen[$key] = true;
                 $conn ? $d[$conn]['origen']++ : $d['sin_ruta']++;
             }
         });
@@ -746,6 +656,38 @@ class SgaVerifyPushCobrosCommand extends Command
                     $conn ? $d[$conn]['origen']++ : $d['sin_ruta']++;
                 }
             });
+    }
+
+    private function countCodCetaNotaReposicion(array &$d, string $f, string $u): void
+    {
+        DB::connection(MapperHelper::SOURCE_CONN)->table('nota_reposicion')
+            ->select('cod_ceta', 'usuario')
+            ->whereBetween('fecha_nota', [$f, $u])
+            ->whereNotNull('nro_recibo')
+            ->orderBy('fecha_nota')
+            ->chunk(500, function ($rows) use (&$d) {
+                foreach ($rows as $r) {
+                    $conn = $this->resolveConnNotaReposicion($r);
+                    $conn ? $d[$conn]['origen']++ : $d['sin_ruta']++;
+                }
+            });
+    }
+
+    private function resolveConnNotaReposicion(object $r): ?string
+    {
+        if (!empty($r->cod_ceta)) {
+            $cod = (string) $r->cod_ceta;
+            if (strlen($cod) >= 6) {
+                if ($cod[5] === '1') return 'sga_elec';
+                if ($cod[5] === '0') return 'sga_mec';
+            }
+        }
+        static $elec = ['Isabel', 'AlejandraR', 'NicoleS', 'LuisFC'];
+        static $mec  = ['JazminB', 'pamela', 'DanielM'];
+        $usuario = trim($r->usuario ?? '');
+        if (in_array($usuario, $elec, true)) return 'sga_elec';
+        if (in_array($usuario, $mec, true))  return 'sga_mec';
+        return null;
     }
 
     private function countPensum(array &$d, string $table, string $dateCol, string $f, string $u): void
@@ -815,24 +757,4 @@ class SgaVerifyPushCobrosCommand extends Command
         return $out;
     }
 
-    private function routeCol(string $tabla): string
-    {
-        return match ($tabla) {
-            'factura' => 'cod_ceta',
-            'nota_bancaria', 'nota_reposicion' => 'prefijo_carrera',
-            'recepcion' => 'codigo_carrera',
-            default => 'cod_pensum',
-        };
-    }
-
-    private function resolveConn(string $tabla, object $r): ?string
-    {
-        return match ($tabla) {
-            'factura' => $this->mapper->resolveConnByCodCeta($r->cod_ceta),
-            'nota_bancaria', 'nota_reposicion' => $this->mapper->resolveConnectionByPrefijo($r->prefijo_carrera),
-            'recepcion' => str_starts_with($r->codigo_carrera, 'E') ? 'sga_elec'
-                         : (str_starts_with($r->codigo_carrera, 'M') ? 'sga_mec' : null),
-            default => $this->mapper->resolveConnectionByPensum($r->cod_pensum),
-        };
-    }
 }

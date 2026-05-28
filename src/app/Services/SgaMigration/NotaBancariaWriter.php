@@ -15,8 +15,9 @@ use Illuminate\Support\Facades\DB;
  * Clave de agrupación: cod_ceta + fecha_nota (timestamp exacto) + anio_deposito + tipo_nota + prefijo_carrera.
  *
  * PK en SGA: (anio_deposito, correlativo, tipo_nota).
- * El correlativo se recalcula MAX+1 por (anio_deposito, tipo_nota) en el destino para no
- * chocar con notas preexistentes del SGA.
+ * El correlativo se recalcula MAX(correlativo)+1 filtrando por EXTRACT(YEAR FROM fecha_nota)
+ * y tipo_nota, igual que getCorrelativoNotaBancaria() del SGA nativo.
+ * anio_deposito se almacena como 2 dígitos (ej. 26 para 2026), igual que el SGA nativo.
  */
 class NotaBancariaWriter
 {
@@ -92,15 +93,19 @@ class NotaBancariaWriter
         }
 
         try {
-            $correlativo = $this->mapper->getNextNumPago($conn, 'nota_bancaria', [
-                'anio_deposito' => (int) $r->anio_deposito,
-                'tipo_nota'     => $r->tipo_nota,
-            ], 'correlativo');
+            // Replicar getCorrelativoNotaBancaria() del SGA: MAX+1 filtrando por
+            // EXTRACT(YEAR FROM fecha_nota) y tipo_nota (no por anio_deposito columna).
+            $anioSga = (int) $r->anio_deposito % 100; // 2026 → 26
+            $max = DB::connection($conn)->table('nota_bancaria')
+                ->whereRaw('EXTRACT(YEAR FROM fecha_nota) = ?', [$r->anio_deposito])
+                ->where('tipo_nota', $r->tipo_nota)
+                ->max('correlativo');
+            $correlativo = (int) $max + 1;
 
-            $row = $this->buildRow($r, $grupo['items'], $grupo['monto'], $correlativo);
+            $row = $this->buildRow($r, $grupo['items'], $grupo['monto'], $correlativo, $anioSga);
             DB::connection($conn)->table('nota_bancaria')->insert($row);
 
-            $destPk = "{$r->anio_deposito}|{$correlativo}|{$r->tipo_nota}";
+            $destPk = "{$anioSga}|{$correlativo}|{$r->tipo_nota}";
 
             // Registrar cada PK de origen apuntando al mismo destino (idempotencia completa)
             foreach ($grupo['source_pks'] as $sourcePk) {
@@ -122,22 +127,19 @@ class NotaBancariaWriter
      * concepto: "Mensualidad Bs800.00,Mens. Niv Bs4.00" — igual al formato del SGA legacy.
      * monto:    SUM de todos los ítems del grupo.
      */
-    private function buildRow(object $r, array $items, float $montoTotal, int $correlativo): array
+    private function buildRow(object $r, array $items, float $montoTotal, int $correlativo, int $anioSga): array
     {
-        // Formato SGA: "Concepto1 Bs800.00,Concepto2 Bs4.00"
-        $concepto = implode(',', array_map(
-            fn($item) => trim((string) $item['concepto']) . ' Bs' . number_format($item['monto'], 2, '.', ''),
+        $concepto    = implode(',', array_map(
+            fn($item) => $this->cleanConcepto(trim((string) $item['concepto'])) . ' Bs' . number_format($item['monto'], 2, '.', ''),
             $items
         ));
-
-        // concepto_est: solo nombres sin montos
         $conceptoEst = implode(',', array_map(
-            fn($item) => trim((string) $item['concepto']),
+            fn($item) => $this->cleanConcepto(trim((string) $item['concepto'])),
             $items
         ));
 
         return [
-            'anio_deposito'   => (int) $r->anio_deposito,
+            'anio_deposito'   => $anioSga,
             'correlativo'     => $correlativo,
             'usuario'         => $r->usuario ?: 'SIS_ECO',
             'fecha_nota'      => $r->fecha_nota,
@@ -157,5 +159,12 @@ class NotaBancariaWriter
             'banco_origen'    => $r->banco_origen ?: null,
             'nro_tarjeta'     => $r->nro_tarjeta ?: null,
         ];
+    }
+
+    private function cleanConcepto(string $concepto): string
+    {
+        $c = preg_replace('/Cuota \d+\s+/', '', $concepto);
+        $c = str_replace(['(', ')'], '', $c);
+        return preg_replace('/\s{2,}/', ' ', trim($c));
     }
 }
