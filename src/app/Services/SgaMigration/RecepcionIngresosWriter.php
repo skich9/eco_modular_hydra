@@ -59,12 +59,12 @@ class RecepcionIngresosWriter
             DB::connection($conn)->transaction(function () use ($r, $conn, $idRecepcion) {
                 DB::connection($conn)->table('recepcion')->insert($this->buildHeader($r, $idRecepcion));
 
-                $detalle = DB::connection(MapperHelper::SOURCE_CONN)
+                $detalles = DB::connection(MapperHelper::SOURCE_CONN)
                     ->table('recepcion_ingreso_detalles')
                     ->where('recepcion_ingreso_id', $r->id)
-                    ->first();
+                    ->get();
 
-                if ($detalle) {
+                foreach ($detalles as $detalle) {
                     DB::connection($conn)->table('detalle_recepcion')->insert(
                         $this->buildDetalle($detalle, $idRecepcion)
                     );
@@ -78,6 +78,25 @@ class RecepcionIngresosWriter
             $this->log->write('recepcion_ingresos', $sourcePk, $conn, 'recepcion', null, 'error', $e->getMessage());
             $report->record('recepcion', $conn, 'errors');
         }
+    }
+
+    /**
+     * Resuelve el id_usuario del SGA a partir del nombre completo almacenado
+     * en recepcion_ingreso_detalles.usuario_libro (ej. "Isabel Arce Perez").
+     * El nickname de eco coincide con el id_usuario del SGA.
+     */
+    private function resolveUsuarioLibro(?string $nombreCompleto): ?string
+    {
+        if (!$nombreCompleto) return null;
+        static $cache = [];
+        if (array_key_exists($nombreCompleto, $cache)) return $cache[$nombreCompleto];
+
+        $nickname = DB::connection(MapperHelper::SOURCE_CONN)
+            ->table('usuarios')
+            ->whereRaw("CONCAT(nombre, ' ', ap_paterno, ' ', ap_materno) = ?", [trim($nombreCompleto)])
+            ->value('nickname');
+
+        return $cache[$nombreCompleto] = $nickname ?: null;
     }
 
     private function buildHeader(object $r, int $idRecepcion): array
@@ -106,7 +125,7 @@ class RecepcionIngresosWriter
     {
         return [
             'id_recepcion'      => $idRecepcion,
-            'usuario_libro'     => null,
+            'usuario_libro'     => $this->resolveUsuarioLibro($d->usuario_libro ?? null),
             'cod_libro_diario'  => $d->cod_libro_diario ?: null,
             'fecha_inicial_libros' => $d->fecha_inicial_libros ?: null,
             'fecha_final_libros'   => $d->fecha_final_libros,

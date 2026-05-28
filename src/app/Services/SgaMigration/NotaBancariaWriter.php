@@ -177,7 +177,7 @@ class NotaBancariaWriter
             'concepto'        => $concepto,
             'nro_factura'     => (string) ($r->nro_factura ?? ''),
             'nro_recibo'      => (string) ($r->nro_recibo ?? ''),
-            'banco'           => $r->banco ?: null,
+            'banco'           => $r->banco ? trim(explode(' - ', $r->banco)[0]) : null,
             'fecha_deposito'  => $r->fecha_deposito ?: null,
             'nro_transaccion' => $r->nro_transaccion ?: null,
             'prefijo_carrera' => $r->prefijo_carrera ?: null,
@@ -194,6 +194,6 @@ class NotaBancariaWriter
     {
         $c = preg_replace('/Cuota \d+\s+/', '', $concepto);
         $c = str_replace(['(', ')'], '', $c);
-        return preg_replace('/\s{2,}/', ' ', trim($c));
+        return preg_replace('/ {2,}/', ' ', trim($c));
     }
 }

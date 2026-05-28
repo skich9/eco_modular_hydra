@@ -197,6 +197,6 @@ class NotaReposicionWriter
     {
         $c = preg_replace('/Cuota \d+\s+/', '', $concepto);
         $c = str_replace(['(', ')'], '', $c);
-        return preg_replace('/\s{2,}/', ' ', trim($c));
+        return preg_replace('/ {2,}/', ' ', trim($c));
     }
 }
