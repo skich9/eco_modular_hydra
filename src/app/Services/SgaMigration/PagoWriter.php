@@ -102,7 +102,7 @@ class PagoWriter
             'num_comprobante'   => $r->nro_recibo  ? (int) $r->nro_recibo  : 0,
             'num_factura'       => $r->nro_factura ? (int) $r->nro_factura : 0,
             'fecha_pago'        => $r->fecha_cobro,
-            'pago_completo'     => (bool) $r->cobro_completo,
+            'pago_completo'     => $this->isPagoCompleto($r),
             'observaciones'     => $this->mapper->resolveObservacionesPago($r, $banking, $nota, $esQr),
             'usuario'           => $this->mapper->resolveUsuarioNickname($r->id_usuario),
             'razon'             => $clienteDoc['cliente'],
@@ -168,6 +168,28 @@ class PagoWriter
             'banco_origen'   => $bancoOrigen,
             'nro_tarjeta'    => $nroTarjeta,
         ];
+    }
+
+    private function isPagoCompleto(object $r): bool
+    {
+        if (empty($r->id_asignacion_costo)) return true;
+
+        $montoAsignado = DB::connection(MapperHelper::SOURCE_CONN)
+            ->table('asignacion_costos')
+            ->where('id_asignacion_costo', $r->id_asignacion_costo)
+            ->value('monto');
+
+        if ($montoAsignado === null) return true;
+
+        // Acumula todos los cobros de esta asignación hasta este cobro inclusive.
+        // El cobro cuyo acumulado llega a >= monto es el que cierra la cuota.
+        $acumulado = DB::connection(MapperHelper::SOURCE_CONN)
+            ->table('cobro')
+            ->where('id_asignacion_costo', $r->id_asignacion_costo)
+            ->where('nro_cobro', '<=', $r->nro_cobro)
+            ->sum('monto');
+
+        return round((float) $acumulado, 2) >= round((float) $montoAsignado, 2);
     }
 
     private function resolveTurno(object $r): ?string
