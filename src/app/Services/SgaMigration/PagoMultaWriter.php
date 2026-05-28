@@ -72,7 +72,7 @@ class PagoMultaWriter
 
     private function buildRow(object $r, string $conn): array
     {
-        $numCuota = $this->mapper->resolveNumCuota($r);
+        $numCuota = $this->resolveNumCuotaMora($r);
         $numPago  = $this->mapper->getNextNumPago($conn, 'pago_multa', [
             'cod_ceta'         => $r->cod_ceta,
             'cod_pensum'       => $r->cod_pensum,
@@ -131,6 +131,38 @@ class PagoMultaWriter
             'fecha_anulacion'   => null,
             'usuario_anula'     => null,
         ];
+    }
+
+    /**
+     * num_cuota para moras/nivelaciones.
+     * 1) asignacion_costos.numero_cuota si hay id_asignacion_costo.
+     * 2) Mes extraído del concepto entre paréntesis: "Mens. (Mayo) Niv" → 4.
+     *    Mapeo para gestión 1/YYYY (Feb-Jun): Feb=1, Mar=2, Abr=3, May=4, Jun=5.
+     * 3) Fallback id_cuota / order / 1.
+     */
+    private function resolveNumCuotaMora(object $r): int
+    {
+        if (!empty($r->id_asignacion_costo)) {
+            $cuota = DB::connection(MapperHelper::SOURCE_CONN)
+                ->table('asignacion_costos')
+                ->where('id_asignacion_costo', $r->id_asignacion_costo)
+                ->value('numero_cuota');
+            if ($cuota !== null) return (int) $cuota;
+        }
+
+        if (!empty($r->concepto) && preg_match('/\(([^)]+)\)/i', $r->concepto, $m)) {
+            static $mesMap = [
+                'febrero' => 1, 'feb' => 1,
+                'marzo'   => 2, 'mar' => 2,
+                'abril'   => 3, 'abr' => 3,
+                'mayo'    => 4, 'may' => 4,
+                'junio'   => 5, 'jun' => 5,
+            ];
+            $mes = mb_strtolower(trim($m[1]));
+            if (isset($mesMap[$mes])) return $mesMap[$mes];
+        }
+
+        return (int) (($r->id_cuota ?? 0) ?: ($r->order ?? 0) ?: 1);
     }
 
     private function isPagoCompleto(object $r): bool
