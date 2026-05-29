@@ -123,7 +123,7 @@ class PagoMultaWriter
             'num_cuota'         => $numCuota,
             'num_pago'          => $numPago,
             'monto'             => (float) $r->monto,
-            'dias_multa'        => $detalle ? (int) $detalle->dias_multa : 0,
+            'dias_multa'        => (int) $r->monto,
             'num_comprobante'   => $r->nro_recibo  ? (int) $r->nro_recibo  : 0,
             'num_factura'       => $r->nro_factura ? (int) $r->nro_factura : 0,
             'fecha_pago'        => $r->fecha_cobro,
