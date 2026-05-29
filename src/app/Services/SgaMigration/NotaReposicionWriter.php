@@ -107,10 +107,20 @@ class NotaReposicionWriter
                 'anio_reposicion' => (int) $r->anio_reposicion,
             ], 'correlativo');
 
-            $row = $this->buildRow($r, $grupo['items'], $grupo['monto'], $correlativo);
+            // cont = MAX(cont existente para este correlativo) + 1.
+            // cont=0 puede repetirse para el mismo correlativo (registros sin nro_recibo),
+            // por eso se usa MAX en lugar de COUNT para no contarlos como parte de la secuencia.
+            // Sin cod_ceta (tipo_ingreso especial): cont = 0.
+            $cont = !empty($r->cod_ceta)
+                ? (int) DB::connection($conn)->table('nota_reposicion')
+                    ->where('correlativo', $correlativo)
+                    ->max('cont') + 1
+                : 0;
+
+            $row = $this->buildRow($r, $grupo['items'], $grupo['monto'], $correlativo, $cont);
             DB::connection($conn)->table('nota_reposicion')->insert($row);
 
-            $destPk = "{$correlativo}|{$r->anio_reposicion}|0";
+            $destPk = "{$correlativo}|{$r->anio_reposicion}|{$cont}";
 
             // Registrar cada PK de origen apuntando al mismo destino (idempotencia completa)
             foreach ($grupo['source_pks'] as $sourcePk) {
@@ -138,16 +148,14 @@ class NotaReposicionWriter
      */
     private function resolveConn(object $r): ?string
     {
-        // Nivel 1: cod_ceta disponible → leer dígito de carrera en posición 5
+        // Nivel 1: pensum real vía inscripciones (cubre cod_ceta con formato
+        // de otra carrera pero pensum actual diferente).
         if (!empty($r->cod_ceta)) {
-            $cod = (string) $r->cod_ceta;
-            if (strlen($cod) >= 6) {
-                if ($cod[5] === '1') return 'sga_elec';
-                if ($cod[5] === '0') return 'sga_mec';
-            }
+            $conn = $this->mapper->resolveConnByCodCeta($r->cod_ceta);
+            if ($conn) return $conn;
         }
 
-        // Nivel 2: sin cod_ceta → enrutar por usuario
+        // Nivel 2: fallback por usuario
         static $elec = ['Isabel', 'AlejandraR', 'NicoleS', 'LuisFC'];
         static $mec  = ['JazminB', 'pamela', 'DanielM'];
 
@@ -155,7 +163,7 @@ class NotaReposicionWriter
         if (in_array($usuario, $elec, true)) return 'sga_elec';
         if (in_array($usuario, $mec, true))  return 'sga_mec';
 
-        return null; // sin ruta → registro se skipea
+        return null;
     }
 
     /**
@@ -164,7 +172,7 @@ class NotaReposicionWriter
      * concepto_adm: "Concepto1 Bs{monto1},Concepto2 Bs{monto2}" — igual al formato del SGA legacy.
      * monto:        SUM de todos los ítems del grupo.
      */
-    private function buildRow(object $r, array $items, float $montoTotal, int $correlativo): array
+    private function buildRow(object $r, array $items, float $montoTotal, int $correlativo, int $cont): array
     {
         $conceptoAdm = implode(',', array_map(
             fn($item) => $this->cleanConcepto(trim($item['concepto'])) . ' Bs' . number_format($item['monto'], 2, '.', ''),
@@ -189,7 +197,7 @@ class NotaReposicionWriter
             'anio_reposicion' => (int) $r->anio_reposicion,
             'nro_recibo'      => $r->nro_recibo ?: null,
             'tipo_ingreso'    => $r->tipo_ingreso ?: null,
-            'cont'            => 0,
+            'cont'            => $cont,
         ];
     }
 

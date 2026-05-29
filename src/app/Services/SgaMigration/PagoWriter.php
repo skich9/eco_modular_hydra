@@ -14,10 +14,22 @@ use Illuminate\Support\Facades\DB;
  */
 class PagoWriter
 {
+    private array $excludedFacturas = [];
+
     public function __construct(
         private MapperHelper $mapper,
         private MigrationLog $log,
-    ) {}
+    ) {
+        foreach (config('sga_migration.facturas_excluidas', []) as $conn => $porAnio) {
+            foreach ($porAnio as $anio => $porNro) {
+                foreach ($porNro as $nro => $codCetas) {
+                    foreach ($codCetas as $codCeta) {
+                        $this->excludedFacturas[$conn][(int) $anio][(int) $nro][(string) $codCeta] = true;
+                    }
+                }
+            }
+        }
+    }
 
     public function run(string $from, string $until, bool $dryRun, BatchReport $report): void
     {
@@ -53,6 +65,15 @@ class PagoWriter
 
         $sourcePk = (string) $r->nro_cobro;
 
+        if (!empty($r->nro_factura) && $this->isFromExcludedFactura($r, $conn)) {
+            if (!$dryRun && !$this->log->alreadyDone('cobro_pago', $sourcePk, $conn)) {
+                $this->log->write('cobro_pago', $sourcePk, $conn, 'pago', null, 'excluded',
+                    "cobro ligado a factura excluida nro={$r->nro_factura}");
+            }
+            $report->record('pago', $conn, 'skipped');
+            return;
+        }
+
         if (!$dryRun && $this->log->alreadyDone('cobro_pago', $sourcePk, $conn)) {
             $report->record('pago', $conn, 'skipped');
             return;
@@ -84,6 +105,7 @@ class PagoWriter
         ]);
 
         $nota             = $this->mapper->getNotaBancaria($r);
+        $nroNotaSga       = $this->mapper->resolveNroNotaSga($conn, $r);
         $cuenta           = $this->mapper->getCuentaBancaria($r);
         $esQr             = strtoupper($r->id_forma_cobro ?? '') === 'B' && $this->mapper->isQrPayment($r);
         $qrTransaccion    = $esQr ? $this->mapper->getQrTransaccion($r) : null;
@@ -118,7 +140,7 @@ class PagoWriter
             'fecha_deposito'    => $banking['fecha_deposito'],
             'nro_cuenta'        => $banking['nro_cuenta'],
             'nro_deposito'      => $banking['nro_deposito'],
-            'nro_nota'          => null,
+            'nro_nota'          => $nroNotaSga,
             'banco_origen'      => $banking['banco_origen'],
             'nro_tarjeta'       => $banking['nro_tarjeta'],
             'estado_factura'    => null,
@@ -168,6 +190,12 @@ class PagoWriter
             'banco_origen'   => $bancoOrigen,
             'nro_tarjeta'    => $nroTarjeta,
         ];
+    }
+
+    private function isFromExcludedFactura(object $r, string $conn): bool
+    {
+        $anio = (int) substr((string) $r->fecha_cobro, 0, 4);
+        return isset($this->excludedFacturas[$conn][$anio][(int) $r->nro_factura][(string) $r->cod_ceta]);
     }
 
     private function isPagoCompleto(object $r): bool

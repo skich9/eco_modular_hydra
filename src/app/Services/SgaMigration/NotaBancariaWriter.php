@@ -22,6 +22,7 @@ use Illuminate\Support\Facades\DB;
 class NotaBancariaWriter
 {
     public function __construct(
+        private MapperHelper $mapper,
         private MigrationLog $log,
     ) {}
 
@@ -132,14 +133,14 @@ class NotaBancariaWriter
      */
     private function resolveConn(object $r): ?string
     {
+        // Nivel 1: pensum real vía inscripciones (cubre cod_ceta con formato
+        // de otra carrera pero pensum actual diferente, ej. 220100039 en EEA).
         if (!empty($r->cod_ceta)) {
-            $cod = (string) $r->cod_ceta;
-            if (strlen($cod) >= 6) {
-                if ($cod[5] === '1') return 'sga_elec';
-                if ($cod[5] === '0') return 'sga_mec';
-            }
+            $conn = $this->mapper->resolveConnByCodCeta($r->cod_ceta);
+            if ($conn) return $conn;
         }
 
+        // Nivel 2: fallback por usuario (cuando cod_ceta no existe o no está en inscripciones)
         static $elec = ['Isabel', 'AlejandraR', 'NicoleS', 'LuisFC'];
         static $mec  = ['JazminB', 'pamela', 'DanielM'];
 

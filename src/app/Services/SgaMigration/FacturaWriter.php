@@ -62,7 +62,7 @@ class FacturaWriter
             return;
         }
 
-        $sourcePk = "{$r->nro_factura}|{$r->anio}|{$r->es_manual}";
+        $sourcePk = "{$r->nro_factura}|{$r->anio}|" . ((int)(bool) $r->es_manual);
 
         // Exclusión explícita por (conn + nro_factura + anio + cod_ceta):
         // Copia manual detectada para este estudiante específico.
@@ -83,11 +83,12 @@ class FacturaWriter
             return;
         }
 
-        // Colisión: la PK ya existe en el SGA destino → skip
+        // Colisión: cualquier variante de esta factura ya existe en SGA → skip.
+        // Se ignora es_manual para cubrir el caso donde ServiciosOnline la creó con
+        // es_manual distinto al registrado en eco_backup (contingencia vs. electrónica).
         $exists = DB::connection($conn)->table('factura')
             ->where('num_factura', (int) $r->nro_factura)
             ->where('anio', (int) $r->anio)
-            ->where('es_manual', (bool) $r->es_manual)
             ->exists();
 
         if ($exists) {
