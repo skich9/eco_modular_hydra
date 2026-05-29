@@ -166,20 +166,35 @@ class MapperHelper
     }
 
     /**
-     * Retorna el correlativo de la nota_bancaria ya migrada al SGA,
-     * buscando por nro_recibo o nro_factura del cobro.
-     * Requiere que nota_bancaria haya corrido ANTES que pago/pago_multa/material_adicional.
+     * Retorna el correlativo de la nota ya migrada al SGA para el cobro dado.
+     * Requiere que nota_bancaria y nota_reposicion hayan corrido ANTES que pago/pago_multa/material_adicional.
+     *
+     * - Efectivo (E) + nro_recibo  → nota_reposicion (filtro nro_recibo + cod_ceta)
+     * - Resto (B/L/T/D/…)          → nota_bancaria   (filtro nro_recibo o nro_factura)
      */
     public function resolveNroNotaSga(string $conn, object $cobro): ?int
     {
+        $forma      = strtoupper($cobro->id_forma_cobro ?? '');
         $nroRecibo  = !empty($cobro->nro_recibo)  ? (string) $cobro->nro_recibo  : null;
         $nroFactura = !empty($cobro->nro_factura) ? (string) $cobro->nro_factura : null;
 
         if ($nroRecibo === null && $nroFactura === null) return null;
 
+        // Efectivo con recibo: la nota es nota_reposicion
+        if ($forma === 'E' && $nroRecibo !== null) {
+            $q = DB::connection($conn)->table('nota_reposicion')
+                ->where('nro_recibo', $nroRecibo);
+            if (!empty($cobro->cod_ceta)) {
+                $q->where('cod_ceta', $cobro->cod_ceta);
+            }
+            $correlativo = $q->value('correlativo');
+            return $correlativo !== null ? (int) $correlativo : null;
+        }
+
+        // Cualquier otra forma de cobro: la nota es nota_bancaria
         $correlativo = DB::connection($conn)->table('nota_bancaria')
             ->where(function ($w) use ($nroRecibo, $nroFactura) {
-                if ($nroRecibo)  $w->where('nro_recibo', $nroRecibo);
+                if ($nroRecibo)  $w->where('nro_recibo',  $nroRecibo);
                 if ($nroFactura) $w->orWhere('nro_factura', $nroFactura);
             })
             ->value('correlativo');
@@ -271,11 +286,16 @@ class MapperHelper
      */
     public function pensumFromCodCeta($codCeta): ?string
     {
+        static $cache = [];
         if (!$codCeta) return null;
-        return $this->src()->table('inscripciones')
-            ->where('cod_ceta', $codCeta)
-            ->orderByDesc('cod_inscrip')
-            ->value('cod_pensum');
+        $key = (string) $codCeta;
+        if (!array_key_exists($key, $cache)) {
+            $cache[$key] = $this->src()->table('inscripciones')
+                ->where('cod_ceta', $codCeta)
+                ->orderByDesc('cod_inscrip')
+                ->value('cod_pensum');
+        }
+        return $cache[$key];
     }
 
     /** Conexión SGA directamente desde cod_ceta. */

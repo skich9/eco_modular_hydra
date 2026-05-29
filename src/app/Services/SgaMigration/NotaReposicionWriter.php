@@ -138,16 +138,14 @@ class NotaReposicionWriter
      */
     private function resolveConn(object $r): ?string
     {
-        // Nivel 1: cod_ceta disponible → leer dígito de carrera en posición 5
+        // Nivel 1: pensum real vía inscripciones (cubre cod_ceta con formato
+        // de otra carrera pero pensum actual diferente).
         if (!empty($r->cod_ceta)) {
-            $cod = (string) $r->cod_ceta;
-            if (strlen($cod) >= 6) {
-                if ($cod[5] === '1') return 'sga_elec';
-                if ($cod[5] === '0') return 'sga_mec';
-            }
+            $conn = $this->mapper->resolveConnByCodCeta($r->cod_ceta);
+            if ($conn) return $conn;
         }
 
-        // Nivel 2: sin cod_ceta → enrutar por usuario
+        // Nivel 2: fallback por usuario
         static $elec = ['Isabel', 'AlejandraR', 'NicoleS', 'LuisFC'];
         static $mec  = ['JazminB', 'pamela', 'DanielM'];
 
@@ -155,7 +153,7 @@ class NotaReposicionWriter
         if (in_array($usuario, $elec, true)) return 'sga_elec';
         if (in_array($usuario, $mec, true))  return 'sga_mec';
 
-        return null; // sin ruta → registro se skipea
+        return null;
     }
 
     /**
