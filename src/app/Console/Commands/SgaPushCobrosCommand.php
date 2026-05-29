@@ -86,17 +86,11 @@ class SgaPushCobrosCommand extends Command
 
         $this->runTable('factura',            $solo, fn() => $this->facturaWriter->run($from, $until, $dryRun, $report));
         $this->runTable('recibo',             $solo, fn() => $this->reciboWriter->run($from, $until, $dryRun, $report));
-        // Cobros primero — nro_nota queda NULL porque las notas aún no están en SGA.
         $this->runTable('pago',               $solo, fn() => $this->pagoWriter->run($from, $until, $dryRun, $report));
         $this->runTable('pago_multa',         $solo, fn() => $this->pagoMultaWriter->run($from, $until, $dryRun, $report));
         $this->runTable('material_adicional', $solo, fn() => $this->materialWriter->run($from, $until, $dryRun, $report));
-        // Notas después — routing por pensum (correcto para cod_ceta con carrera cruzada).
         $this->runTable('nota_bancaria',      $solo, fn() => $this->notaBancariaWriter->run($from, $until, $dryRun, $report));
         $this->runTable('nota_reposicion',    $solo, fn() => $this->notaReposicionWriter->run($from, $until, $dryRun, $report));
-        // Fix nro_nota: actualiza cobros con el correlativo de la nota ya insertada.
-        if (!$dryRun) {
-            $this->fixNroNota(['sga_elec', 'sga_mec'], $from, $until, $solo);
-        }
         $this->runTable('otros_ingresos',     $solo, fn() => $this->otrosIngresosWriter->run($from, $until, $dryRun, $report));
         $this->runTable('recepcion',          $solo, fn() => $this->recepcionWriter->run($from, $until, $dryRun, $report));
 
@@ -115,75 +109,6 @@ class SgaPushCobrosCommand extends Command
         if ($solo && $solo !== $table) return;
         $this->line("   Procesando <comment>{$table}</comment>...");
         $fn();
-    }
-
-    private function fixNroNota(array $conns, string $from, string $until, ?string $solo): void
-    {
-        static $relevant = ['pago', 'pago_multa', 'material_adicional', 'nota_bancaria', 'nota_reposicion'];
-        if ($solo && !in_array($solo, $relevant, true)) return;
-
-        $f = "{$from} 00:00:00";
-        $u = "{$until} 23:59:59";
-
-        foreach ($conns as $conn) {
-            foreach (['pago', 'pago_multa', 'material_adicional'] as $tabla) {
-                try {
-                    // Efectivo → nota_reposicion (mismo día, proximidad temporal)
-                    DB::connection($conn)->statement("
-                        UPDATE {$tabla} AS t
-                        SET nro_nota = (
-                            SELECT nr.correlativo FROM nota_reposicion nr
-                            WHERE nr.nro_recibo    = CAST(t.num_comprobante AS varchar)
-                              AND nr.cod_ceta      = t.cod_ceta
-                              AND DATE(nr.fecha_nota) = DATE(t.fecha_pago)
-                            ORDER BY ABS(EXTRACT(EPOCH FROM (nr.fecha_nota - t.fecha_pago))) ASC
-                            LIMIT 1
-                        )
-                        WHERE t.code_tipo_pago = 'E'
-                          AND t.num_comprobante > 0
-                          AND t.fecha_pago BETWEEN ? AND ?
-                          AND EXISTS (
-                              SELECT 1 FROM nota_reposicion nr2
-                              WHERE nr2.nro_recibo    = CAST(t.num_comprobante AS varchar)
-                                AND nr2.cod_ceta      = t.cod_ceta
-                                AND DATE(nr2.fecha_nota) = DATE(t.fecha_pago)
-                          )
-                    ", [$f, $u]);
-
-                    // Banco/QR/Letra → nota_bancaria (mismo día + cod_ceta + proximidad temporal)
-                    DB::connection($conn)->statement("
-                        UPDATE {$tabla} AS t
-                        SET nro_nota = (
-                            SELECT nb.correlativo FROM nota_bancaria nb
-                            WHERE nb.cod_ceta = t.cod_ceta
-                              AND DATE(nb.fecha_nota) = DATE(t.fecha_pago)
-                              AND (
-                                (nb.nro_recibo  = CAST(t.num_comprobante AS varchar) AND t.num_comprobante > 0)
-                                OR
-                                (nb.nro_factura = CAST(t.num_factura      AS varchar) AND t.num_factura > 0)
-                              )
-                            ORDER BY ABS(EXTRACT(EPOCH FROM (nb.fecha_nota - t.fecha_pago))) ASC
-                            LIMIT 1
-                        )
-                        WHERE t.code_tipo_pago <> 'E'
-                          AND (t.num_comprobante > 0 OR t.num_factura > 0)
-                          AND t.fecha_pago BETWEEN ? AND ?
-                          AND EXISTS (
-                              SELECT 1 FROM nota_bancaria nb2
-                              WHERE nb2.cod_ceta = t.cod_ceta
-                                AND DATE(nb2.fecha_nota) = DATE(t.fecha_pago)
-                                AND (
-                                  (nb2.nro_recibo  = CAST(t.num_comprobante AS varchar) AND t.num_comprobante > 0)
-                                  OR
-                                  (nb2.nro_factura = CAST(t.num_factura      AS varchar) AND t.num_factura > 0)
-                                )
-                          )
-                    ", [$f, $u]);
-                } catch (\Throwable $e) {
-                    $this->warn("   fixNroNota [{$conn}][{$tabla}]: " . $e->getMessage());
-                }
-            }
-        }
     }
 
     private function fixSequences(?string $solo): void

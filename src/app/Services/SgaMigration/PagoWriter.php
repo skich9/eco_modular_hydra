@@ -106,7 +106,7 @@ class PagoWriter
         ]);
 
         $nota             = $this->mapper->getNotaBancaria($r);
-        $nroNotaSga       = $this->mapper->resolveNroNotaSga($conn, $r);
+        $nroNotaSga       = $r->nro_recibo ? (int) $r->nro_recibo : 0;
         $cuenta           = $this->mapper->getCuentaBancaria($r);
         $esQr             = strtoupper($r->id_forma_cobro ?? '') === 'B' && $this->mapper->isQrPayment($r);
         $qrTransaccion    = $esQr ? $this->mapper->getQrTransaccion($r) : null;
