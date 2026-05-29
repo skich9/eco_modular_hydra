@@ -23,7 +23,7 @@ class SgaRollbackCobrosCommand extends Command
     protected $signature = 'sga:rollback-cobros
         {--from=   : Filtrar por pushed_at desde (Y-m-d). Sin valor: todas las entradas del log.}
         {--until=  : Filtrar por pushed_at hasta (Y-m-d). Sin valor: todas las entradas del log.}
-        {--solo=   : Solo esta tabla (factura|recibo|pago|pago_multa|material_adicional|nota_bancaria|nota_reposicion|otros_ingresos)}
+        {--solo=   : Solo esta tabla (factura|recibo|pago|pago_multa|material_adicional|nota_bancaria|nota_reposicion|otros_ingresos|recepcion)}
         {--dry-run : Muestra cuántos registros se borrarían sin ejecutar nada}';
 
     protected $description = 'Revierte registros insertados en SGA por sga:push-cobros. Borra filas del SGA y limpia sga_migration_log para permitir re-push.';
@@ -59,6 +59,10 @@ class SgaRollbackCobrosCommand extends Command
             // dest_pk almacena el valor de nit; en SGA la columna se llama nro_documento_pago
             'pk'      => ['num_factura', 'num_recibo', 'nro_documento_pago', 'fecha'],
             'cascade' => 'otros_ingresos_detalle',
+        ],
+        'recepcion' => [
+            'pk'      => ['id_recepcion'],
+            'cascade' => 'detalle_recepcion',
         ],
     ];
 
@@ -134,8 +138,9 @@ class SgaRollbackCobrosCommand extends Command
         if ($from)  $q->where('pushed_at', '>=', "{$from} 00:00:00");
         if ($until) $q->where('pushed_at', '<=', "{$until} 23:59:59");
 
-        $q->orderBy('id')
-            ->chunk(200, function ($entries) use ($table, $pkCols, $cascade, $dryRun, &$totals) {
+        // chunkById usa WHERE id > last_id en lugar de OFFSET, lo que es seguro
+        // cuando se borran entradas dentro del loop (chunk con OFFSET saltaría registros).
+        $q->chunkById(200, function ($entries) use ($table, $pkCols, $cascade, $dryRun, &$totals) {
                 foreach ($entries as $entry) {
                     $key = "{$entry->dest_conn}|{$table}";
 

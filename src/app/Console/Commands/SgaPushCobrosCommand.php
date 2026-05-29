@@ -306,13 +306,17 @@ class SgaPushCobrosCommand extends Command
                 $counts['pago'] = DB::connection($src)->table('cobro')
                     ->whereIn('cod_tipo_cobro', ['MENSUALIDAD', 'ARRASTRE'])
                     ->whereBetween('fecha_cobro', [$from0, $until9])
-                    ->whereNotNull('cod_inscrip')->count();
+                    ->whereNotNull('cod_inscrip')
+                    ->where(fn($q) => $q->whereNull('reposicion_factura')->orWhere('reposicion_factura', '!=', 1)->orWhere('tipo_documento', '!=', 'F')->orWhereNull('tipo_documento'))
+                    ->count();
             }
             if ($run('pago_multa')) {
                 $counts['pago_multa'] = DB::connection($src)->table('cobro')
                     ->whereIn('cod_tipo_cobro', ['MORA', 'NIVELACION'])
                     ->whereBetween('fecha_cobro', [$from0, $until9])
-                    ->whereNotNull('cod_inscrip')->count();
+                    ->whereNotNull('cod_inscrip')
+                    ->where(fn($q) => $q->whereNull('reposicion_factura')->orWhere('reposicion_factura', '!=', 1)->orWhere('tipo_documento', '!=', 'F')->orWhereNull('tipo_documento'))
+                    ->count();
             }
             if ($run('material_adicional')) {
                 $counts['material_adicional'] = DB::connection($src)->table('cobro')
