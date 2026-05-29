@@ -14,10 +14,22 @@ use Illuminate\Support\Facades\DB;
  */
 class PagoMultaWriter
 {
+    private array $excludedFacturas = [];
+
     public function __construct(
         private MapperHelper $mapper,
         private MigrationLog $log,
-    ) {}
+    ) {
+        foreach (config('sga_migration.facturas_excluidas', []) as $conn => $porAnio) {
+            foreach ($porAnio as $anio => $porNro) {
+                foreach ($porNro as $nro => $codCetas) {
+                    foreach ($codCetas as $codCeta) {
+                        $this->excludedFacturas[$conn][(int) $anio][(int) $nro][(string) $codCeta] = true;
+                    }
+                }
+            }
+        }
+    }
 
     public function run(string $from, string $until, bool $dryRun, BatchReport $report): void
     {
@@ -47,6 +59,15 @@ class PagoMultaWriter
         }
 
         $sourcePk = (string) $r->nro_cobro;
+
+        if (!empty($r->nro_factura) && $this->isFromExcludedFactura($r, $conn)) {
+            if (!$dryRun && !$this->log->alreadyDone('cobro_pago_multa', $sourcePk, $conn)) {
+                $this->log->write('cobro_pago_multa', $sourcePk, $conn, 'pago_multa', null, 'excluded',
+                    "cobro ligado a factura excluida nro={$r->nro_factura}");
+            }
+            $report->record('pago_multa', $conn, 'skipped');
+            return;
+        }
 
         if (!$dryRun && $this->log->alreadyDone('cobro_pago_multa', $sourcePk, $conn)) {
             $report->record('pago_multa', $conn, 'skipped');
@@ -141,6 +162,12 @@ class PagoMultaWriter
      *    Mapeo para gestión 1/YYYY (Feb-Jun): Feb=1, Mar=2, Abr=3, May=4, Jun=5.
      * 3) Fallback id_cuota / order / 1.
      */
+    private function isFromExcludedFactura(object $r, string $conn): bool
+    {
+        $anio = (int) substr((string) $r->fecha_cobro, 0, 4);
+        return isset($this->excludedFacturas[$conn][$anio][(int) $r->nro_factura][(string) $r->cod_ceta]);
+    }
+
     private function resolveNumCuotaMora(object $r): int
     {
         if (!empty($r->id_asignacion_costo)) {
