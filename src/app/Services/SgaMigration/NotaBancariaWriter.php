@@ -2,6 +2,7 @@
 
 namespace App\Services\SgaMigration;
 
+use Carbon\Carbon;
 use Illuminate\Support\Facades\DB;
 
 /**
@@ -102,7 +103,20 @@ class NotaBancariaWriter
                 ->max('correlativo');
             $correlativo = (int) $max + 1;
 
-            $row = $this->buildRow($r, $grupo['items'], $grupo['monto'], $correlativo, $anioSga);
+            // QR: alias en nota_bancaria.observacion → lookup en qr_transacciones
+            $esQr = !empty($r->observacion) && str_contains((string) $r->observacion, '[QR]');
+            $qrTransaccion    = null;
+            $qrRespuestaBanco = null;
+            if ($esQr && preg_match('/\[QR\]\s+alias:(\S+)/i', (string) $r->observacion, $m)) {
+                $qrTransaccion = DB::connection(MapperHelper::SOURCE_CONN)
+                    ->table('qr_transacciones')->where('alias', $m[1])->first();
+                if ($qrTransaccion) {
+                    $qrRespuestaBanco = $this->mapper->getQrRespuestaBanco($qrTransaccion);
+                }
+            }
+
+            $row = $this->buildRow($r, $grupo['items'], $grupo['monto'], $correlativo, $anioSga,
+                                   $esQr, $qrTransaccion, $qrRespuestaBanco);
             DB::connection($conn)->table('nota_bancaria')->insert($row);
 
             $destPk = "{$anioSga}|{$correlativo}|{$r->tipo_nota}";
@@ -157,8 +171,16 @@ class NotaBancariaWriter
      * concepto: "Mensualidad Bs800.00,Mens. Niv Bs4.00" — igual al formato del SGA legacy.
      * monto:    SUM de todos los ítems del grupo.
      */
-    private function buildRow(object $r, array $items, float $montoTotal, int $correlativo, int $anioSga): array
-    {
+    private function buildRow(
+        object  $r,
+        array   $items,
+        float   $montoTotal,
+        int     $correlativo,
+        int     $anioSga,
+        bool    $esQr            = false,
+        ?object $qrTransaccion    = null,
+        ?object $qrRespuestaBanco = null
+    ): array {
         $concepto    = implode(',', array_map(
             fn($item) => $this->cleanConcepto(trim((string) $item['concepto'])) . ' Bs' . number_format($item['monto'], 2, '.', ''),
             $items
@@ -167,6 +189,15 @@ class NotaBancariaWriter
             fn($item) => $this->cleanConcepto(trim((string) $item['concepto'])),
             $items
         ));
+
+        if ($esQr) {
+            $fechaRaw       = ($qrTransaccion?->processed_at) ?: ($qrRespuestaBanco?->fecha_respuesta);
+            $fechaDeposito  = $fechaRaw ? Carbon::parse($fechaRaw)->format('Y-m-d') : null;
+            $nroTransaccion = mb_substr($qrRespuestaBanco?->numeroordenoriginante ?? '', 0, 35) ?: null;
+        } else {
+            $fechaDeposito  = $r->fecha_deposito ?: null;
+            $nroTransaccion = $r->nro_transaccion ?: null;
+        }
 
         return [
             'anio_deposito'   => $anioSga,
@@ -179,8 +210,8 @@ class NotaBancariaWriter
             'nro_factura'     => (string) ($r->nro_factura ?? ''),
             'nro_recibo'      => (string) ($r->nro_recibo ?? ''),
             'banco'           => $r->banco ? trim(explode(' - ', $r->banco)[0]) : null,
-            'fecha_deposito'  => $r->fecha_deposito ?: null,
-            'nro_transaccion' => $r->nro_transaccion ?: null,
+            'fecha_deposito'  => $fechaDeposito,
+            'nro_transaccion' => $nroTransaccion,
             'prefijo_carrera' => $r->prefijo_carrera ?: null,
             'concepto_est'    => $conceptoEst ?: null,
             'observacion'     => $r->observacion ?: null,
