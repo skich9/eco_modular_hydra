@@ -37,6 +37,7 @@ class PagoWriter
             ->whereIn('cod_tipo_cobro', ['MENSUALIDAD', 'ARRASTRE'])
             ->whereBetween('fecha_cobro', ["{$from} 00:00:00", "{$until} 23:59:59"])
             ->whereNotNull('cod_inscrip')
+            ->where(fn($q) => $q->whereNull('reposicion_factura')->orWhere('reposicion_factura', '!=', 1)->orWhere('tipo_documento', '!=', 'F')->orWhereNull('tipo_documento'))
             ->orderBy('fecha_cobro')
             ->chunk(200, function ($rows) use ($dryRun, $report) {
                 foreach ($rows as $r) {
@@ -111,7 +112,13 @@ class PagoWriter
         $qrTransaccion    = $esQr ? $this->mapper->getQrTransaccion($r) : null;
         $qrRespuestaBanco = ($esQr && $qrTransaccion) ? $this->mapper->getQrRespuestaBanco($qrTransaccion) : null;
         $banking          = $this->resolveBanking($r, $nota, $cuenta, $esQr, $qrTransaccion, $qrRespuestaBanco);
-        $clienteDoc = $this->mapper->resolveClienteDoc($r);
+        $clienteDoc       = $this->mapper->resolveClienteDoc($r);
+        $reposicionCobro  = $this->resolveReposicionFacturaCobro($r);
+
+        $obs = $this->mapper->resolveObservacionesPago($r, $banking, $nota, $esQr);
+        if ($reposicionCobro && !empty($reposicionCobro->observaciones)) {
+            $obs = ($obs !== null && $obs !== '' ? $obs . ' | ' : '') . trim($reposicionCobro->observaciones);
+        }
 
         return [
             'cod_ceta'          => $r->cod_ceta,
@@ -122,10 +129,12 @@ class PagoWriter
             'num_pago'          => $numPago,
             'monto'             => (float) $r->monto,
             'num_comprobante'   => $r->nro_recibo  ? (int) $r->nro_recibo  : 0,
-            'num_factura'       => $r->nro_factura ? (int) $r->nro_factura : 0,
+            'num_factura'       => $r->nro_factura
+                ? (int) $r->nro_factura
+                : ($reposicionCobro?->nro_factura ? (int) $reposicionCobro->nro_factura : 0),
             'fecha_pago'        => $r->fecha_cobro,
             'pago_completo'     => $this->isPagoCompleto($r),
-            'observaciones'     => $this->mapper->resolveObservacionesPago($r, $banking, $nota, $esQr),
+            'observaciones'     => $obs,
             'usuario'           => $this->mapper->resolveUsuarioNickname($r->id_usuario),
             'razon'             => $clienteDoc['cliente'],
             'nro_documento_pago'=> $clienteDoc['nro_documento_cobro'],
@@ -190,6 +199,21 @@ class PagoWriter
             'banco_origen'   => $bancoOrigen,
             'nro_tarjeta'    => $nroTarjeta,
         ];
+    }
+
+    private function resolveReposicionFacturaCobro(object $r): ?object
+    {
+        if (empty($r->reposicion_factura) || empty($r->cod_inscrip)) return null;
+
+        return DB::connection(MapperHelper::SOURCE_CONN)->table('cobro')
+            ->where('cod_inscrip',        $r->cod_inscrip)
+            ->where('gestion',            $r->gestion)
+            ->where('cod_tipo_cobro',     $r->cod_tipo_cobro)
+            ->where('anio_cobro',         $r->anio_cobro)
+            ->where('reposicion_factura', 1)
+            ->where('tipo_documento',     'F')
+            ->whereNotNull('nro_factura')
+            ->first();
     }
 
     private function isFromExcludedFactura(object $r, string $conn): bool

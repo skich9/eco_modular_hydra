@@ -455,7 +455,7 @@ class VerifyMigrationService
             'pago' => [
                 'src_table' => 'cobro',
                 'src_date_col' => 'fecha_cobro',
-                'src_filters' => [fn($q) => $q->whereIn('cod_tipo_cobro', ['MENSUALIDAD', 'ARRASTRE'])->whereNotNull('cod_inscrip')],
+                'src_filters' => [fn($q) => $q->whereIn('cod_tipo_cobro', ['MENSUALIDAD', 'ARRASTRE'])->whereNotNull('cod_inscrip')->where(fn($q2) => $q2->whereNull('reposicion_factura')->orWhere('reposicion_factura', '!=', 1)->orWhere('tipo_documento', '!=', 'F')->orWhereNull('tipo_documento'))],
                 'route_cols' => ['cod_pensum'],
                 'route_resolver' => $byPensum,
                 'log_table' => 'cobro_pago',
@@ -481,7 +481,7 @@ class VerifyMigrationService
             'pago_multa' => [
                 'src_table' => 'cobro',
                 'src_date_col' => 'fecha_cobro',
-                'src_filters' => [fn($q) => $q->whereIn('cod_tipo_cobro', ['MORA', 'NIVELACION'])->whereNotNull('cod_inscrip')],
+                'src_filters' => [fn($q) => $q->whereIn('cod_tipo_cobro', ['MORA', 'NIVELACION'])->whereNotNull('cod_inscrip')->where(fn($q2) => $q2->whereNull('reposicion_factura')->orWhere('reposicion_factura', '!=', 1)->orWhere('tipo_documento', '!=', 'F')->orWhereNull('tipo_documento'))],
                 'route_cols' => ['cod_pensum'],
                 'route_resolver' => $byPensum,
                 'log_table' => 'cobro_pago_multa',
