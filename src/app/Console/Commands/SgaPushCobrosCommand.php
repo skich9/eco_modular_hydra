@@ -86,11 +86,13 @@ class SgaPushCobrosCommand extends Command
 
         $this->runTable('factura',            $solo, fn() => $this->facturaWriter->run($from, $until, $dryRun, $report));
         $this->runTable('recibo',             $solo, fn() => $this->reciboWriter->run($from, $until, $dryRun, $report));
+        // nota_bancaria y nota_reposicion deben correr ANTES que pago/pago_multa/material_adicional
+        // para que resolveNroNotaSga() encuentre el correlativo ya insertado en el SGA.
+        $this->runTable('nota_bancaria',      $solo, fn() => $this->notaBancariaWriter->run($from, $until, $dryRun, $report));
+        $this->runTable('nota_reposicion',    $solo, fn() => $this->notaReposicionWriter->run($from, $until, $dryRun, $report));
         $this->runTable('pago',               $solo, fn() => $this->pagoWriter->run($from, $until, $dryRun, $report));
         $this->runTable('pago_multa',         $solo, fn() => $this->pagoMultaWriter->run($from, $until, $dryRun, $report));
         $this->runTable('material_adicional', $solo, fn() => $this->materialWriter->run($from, $until, $dryRun, $report));
-        $this->runTable('nota_bancaria',      $solo, fn() => $this->notaBancariaWriter->run($from, $until, $dryRun, $report));
-        $this->runTable('nota_reposicion',    $solo, fn() => $this->notaReposicionWriter->run($from, $until, $dryRun, $report));
         $this->runTable('otros_ingresos',     $solo, fn() => $this->otrosIngresosWriter->run($from, $until, $dryRun, $report));
         $this->runTable('recepcion',          $solo, fn() => $this->recepcionWriter->run($from, $until, $dryRun, $report));
 

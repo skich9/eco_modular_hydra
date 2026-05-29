@@ -82,6 +82,7 @@ class MaterialAdicionalWriter
             ->val;
 
         $nota             = $this->mapper->getNotaBancaria($r);
+        $nroNotaSga       = $this->mapper->resolveNroNotaSga($conn, $r);
         $cuenta           = $this->mapper->getCuentaBancaria($r);
         $esQr             = strtoupper($r->id_forma_cobro ?? '') === 'B' && $this->mapper->isQrPayment($r);
         $qrTransaccion    = $esQr ? $this->mapper->getQrTransaccion($r) : null;
@@ -116,7 +117,7 @@ class MaterialAdicionalWriter
             'fecha_deposito'    => $banking['fecha_deposito'],
             'nro_cuenta'        => $banking['nro_cuenta'],
             'nro_deposito'      => $banking['nro_deposito'],
-            'nro_nota'          => null,
+            'nro_nota'          => $nroNotaSga,
             'banco_origen'      => $banking['banco_origen'],
             'nro_tarjeta'       => $banking['nro_tarjeta'],
             'estado_factura'    => null,

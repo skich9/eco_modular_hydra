@@ -165,6 +165,28 @@ class MapperHelper
             ->first();
     }
 
+    /**
+     * Retorna el correlativo de la nota_bancaria ya migrada al SGA,
+     * buscando por nro_recibo o nro_factura del cobro.
+     * Requiere que nota_bancaria haya corrido ANTES que pago/pago_multa/material_adicional.
+     */
+    public function resolveNroNotaSga(string $conn, object $cobro): ?int
+    {
+        $nroRecibo  = !empty($cobro->nro_recibo)  ? (string) $cobro->nro_recibo  : null;
+        $nroFactura = !empty($cobro->nro_factura) ? (string) $cobro->nro_factura : null;
+
+        if ($nroRecibo === null && $nroFactura === null) return null;
+
+        $correlativo = DB::connection($conn)->table('nota_bancaria')
+            ->where(function ($w) use ($nroRecibo, $nroFactura) {
+                if ($nroRecibo)  $w->where('nro_recibo', $nroRecibo);
+                if ($nroFactura) $w->orWhere('nro_factura', $nroFactura);
+            })
+            ->value('correlativo');
+
+        return $correlativo !== null ? (int) $correlativo : null;
+    }
+
     /** cuenta bancaria de sistemaEco por id_cuentas_bancarias. */
     public function getCuentaBancaria(object $cobro): ?object
     {
