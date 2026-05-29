@@ -53,6 +53,22 @@ class RecepcionIngresosWriter
             return;
         }
 
+        // Evitar duplicar registros nativos del SGA que corresponden al mismo año y cod_documento.
+        // Se filtra por año para no bloquear registros legítimos de 2026 cuando ya existen
+        // instancias del mismo cod_documento de años anteriores.
+        if (!empty($r->cod_documento)) {
+            $anio = date('Y', strtotime((string) $r->fecha_recepcion));
+            $existe = DB::connection($conn)->table('recepcion')
+                ->where('cod_documento', $r->cod_documento)
+                ->whereYear('fecha_recepcion', $anio)
+                ->exists();
+            if ($existe) {
+                $this->log->write('recepcion_ingresos', $sourcePk, $conn, 'recepcion', null, 'excluded', 'cod_documento ya existe en destino');
+                $report->record('recepcion', $conn, 'skipped');
+                return;
+            }
+        }
+
         try {
             $idRecepcion = $this->mapper->getNextNumPago($conn, 'recepcion', [], 'id_recepcion');
 

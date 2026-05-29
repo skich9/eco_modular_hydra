@@ -197,6 +197,7 @@ class NotaReposicionWriter
     {
         $c = preg_replace('/Cuota \d+\s+/', '', $concepto);
         $c = str_replace(['(', ')'], '', $c);
+        $c = preg_replace('/Mensualidad\s*-?\s*/', 'Mens. ', $c);
         return preg_replace('/ {2,}/', ' ', trim($c));
     }
 }
