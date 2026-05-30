@@ -37,7 +37,7 @@ class PagoWriter
             ->whereIn('cod_tipo_cobro', ['MENSUALIDAD', 'ARRASTRE'])
             ->whereBetween('fecha_cobro', ["{$from} 00:00:00", "{$until} 23:59:59"])
             ->whereNotNull('cod_inscrip')
-            ->where(fn($q) => $q->whereNull('reposicion_factura')->orWhere('reposicion_factura', '!=', 1)->orWhere('tipo_documento', '!=', 'F')->orWhereNull('tipo_documento'))
+            ->where(fn($q) => $q->whereNull('reposicion_factura')->orWhere('reposicion_factura', '!=', 1)->orWhere('tipo_documento', '!=', 'F')->orWhereNull('tipo_documento')->orWhereNotExists(fn($sub) => $sub->from('cobro AS sibling')->whereColumn('sibling.cod_ceta', 'cobro.cod_ceta')->whereColumn('sibling.gestion', 'cobro.gestion')->where('sibling.reposicion_factura', 1)->where('sibling.tipo_documento', 'R')->whereNotNull('sibling.nro_recibo')))
             ->orderBy('fecha_cobro')
             ->chunk(200, function ($rows) use ($dryRun, $report) {
                 foreach ($rows as $r) {
