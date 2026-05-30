@@ -114,6 +114,24 @@ return [
             'engine' => null,
         ],
 
+        // Conexión de SOLO LECTURA al backup de producción de sistemaEco.
+        // Origen de la migración histórica de cobros hacia el SGA. Apunta a una BD
+        // separada (restaurada del backup), nunca a la base de la app ni a producción directa.
+        'eco_backup' => [
+            'driver' => 'mysql',
+            'host' => env('ECO_BACKUP_DB_HOST', 'angular_laravel_mysql'),
+            'port' => env('ECO_BACKUP_DB_PORT', '3306'),
+            'database' => env('ECO_BACKUP_DB_DATABASE', 'eco_prod_backup'),
+            'username' => env('ECO_BACKUP_DB_USERNAME', 'root'),
+            'password' => env('ECO_BACKUP_DB_PASSWORD', ''),
+            'charset' => 'utf8mb4',
+            'collation' => 'utf8mb4_unicode_ci',
+            'prefix' => '',
+            'prefix_indexes' => true,
+            'strict' => false,
+            'engine' => null,
+        ],
+
         // Conexiones SGA (PostgreSQL) - Electronica y Mecanica
         'sga_elec' => [
             'driver' => 'pgsql',

@@ -1,4 +1,4 @@
-import { Component, OnInit, HostListener } from '@angular/core';
+import { Component, OnInit, HostListener, OnDestroy } from '@angular/core';
 import { CommonModule } from '@angular/common';
 import { Router, RouterModule } from '@angular/router';
 import { ReactiveFormsModule, FormBuilder, FormGroup, Validators } from '@angular/forms';
@@ -8,6 +8,7 @@ import { Carrera } from '../../../models/carrera.model';
 import { CarreraService } from '../../../services/carrera.service';
 import { ParametrosGeneralesService } from '../../../services/parametros-generales.service';
 import { Usuario } from '../../../models/usuario.model';
+import { SgaPushService } from '../../../services/sga-push.service';
 
 interface MenuItem {
 	name: string;
@@ -46,6 +47,15 @@ export class NavigationComponent implements OnInit {
 
 	carreras: Carrera[] = [];
 	loadingCarreras = false;
+
+	// Sincronización de Cobros (UI)
+	syncErrors: any[] = [];
+	syncErrorCount: number = 0;
+	isRetrying: boolean = false;
+	private syncInterval: any;
+	expandedErrorId: number | null = null;
+	syncDetails: any[] = [];
+	loadingDetails: boolean = false;
 
 	// Definición completa de menús con módulos
 	private allMenuItems: MenuItem[] = [
@@ -139,7 +149,8 @@ export class NavigationComponent implements OnInit {
 		private router: Router,
 		private formBuilder: FormBuilder,
 		private carreraService: CarreraService,
-		private pgService: ParametrosGeneralesService
+		private pgService: ParametrosGeneralesService,
+		private sgaPushService: SgaPushService
 	) {
 		this.changePasswordForm = this.formBuilder.group({
 			contraseniaActual: ['', [Validators.required]],
@@ -171,6 +182,20 @@ export class NavigationComponent implements OnInit {
 
 		// Cargar nombre de la institución
 		this.loadInstitucionName();
+
+		// Sincronización: Cargar errores iniciales y refrescar cada 5 minutos
+		if (this.canSeeSyncBell) {
+			this.loadSyncErrors();
+			this.syncInterval = setInterval(() => {
+				this.loadSyncErrors();
+			}, 5 * 60 * 1000); // 5 minutos
+		}
+	}
+
+	ngOnDestroy(): void {
+		if (this.syncInterval) {
+			clearInterval(this.syncInterval);
+		}
 	}
 
 	private loadInstitucionName(): void {
@@ -270,6 +295,12 @@ export class NavigationComponent implements OnInit {
 			return this.currentUser.nombre_completo.charAt(0).toUpperCase();
 		}
 		return 'U';
+	}
+
+	/** True si el usuario tiene permiso para ver la campana de sincronización. */
+	get canSeeSyncBell(): boolean {
+		// Usar el sistema de permisos centralizado (sincronizacion_ver)
+		return this.permissionService.hasPermission('sincronizacion_ver');
 	}
 
 	toggleDropdown(): void {
@@ -375,6 +406,77 @@ export class NavigationComponent implements OnInit {
 				// Limpiar sesión localmente aunque falle la petición al servidor
 				this.authService.clearSession();
 				this.router.navigate(['/login']);
+			}
+		});
+	}
+
+	// Métodos para Sincronización (UI)
+	openSyncModal(): void {
+		this.loadSyncErrors();
+		const modal = document.getElementById('syncErrorsModal');
+		if (modal) {
+			const bootstrapModal = new (window as any).bootstrap.Modal(modal);
+			bootstrapModal.show();
+		}
+	}
+
+	loadSyncErrors(): void {
+		if (!this.canSeeSyncBell) return;
+
+		this.sgaPushService.getPendingSyncs().subscribe({
+			next: (res) => {
+				if (res.success) {
+					// Ordenar por ID de forma ascendente (FIFO: el más antiguo primero)
+					this.syncErrors = (res.data || []).sort((a: any, b: any) => a.id - b.id);
+					this.syncErrorCount = res.count;
+					// Limpiar estado de detalles para evitar inconsistencias
+					this.expandedErrorId = null;
+					this.syncDetails = [];
+					this.loadingDetails = false;
+				}
+			},
+			error: (err) => console.error('Error al cargar errores de sincronización:', err)
+		});
+	}
+
+	toggleRow(err: any): void {
+		if (this.expandedErrorId === err.id) {
+			this.expandedErrorId = null;
+			this.syncDetails = [];
+		} else {
+			this.expandedErrorId = err.id;
+			this.syncDetails = [];
+			this.loadingDetails = true;
+			this.sgaPushService.getSyncDetail(err.id).subscribe({
+				next: (res) => {
+					this.loadingDetails = false;
+					if (res.success && res.data) {
+						this.syncDetails = res.data.pagos || [];
+					}
+				},
+				error: (error) => {
+					this.loadingDetails = false;
+					console.error('Error al cargar detalle del cobro:', error);
+				}
+			});
+		}
+	}
+
+	retryAllSync(): void {
+		if (!confirm('¿Está seguro de sincronizar todos los cobros pendientes en orden cronológico?')) return;
+		
+		this.isRetrying = true;
+		this.sgaPushService.retryAll().subscribe({
+			next: (res) => {
+				this.isRetrying = false;
+				if (res.success) {
+					alert(res.message);
+					this.loadSyncErrors();
+				}
+			},
+			error: (err) => {
+				this.isRetrying = false;
+				alert('Error de conexión al reintentar todos');
 			}
 		});
 	}

@@ -12,6 +12,25 @@
 		</a>
 
 		<div class="d-flex align-items-center" *ngIf="currentUser">
+			<!-- Botón de Sincronización (Campana) -->
+			<div class="me-3 position-relative" *ngIf="canSeeSyncBell">
+				<button 
+					type="button" 
+					class="btn btn-light rounded-circle p-2 d-flex align-items-center justify-content-center shadow-sm"
+					style="width: 40px; height: 40px;"
+					(click)="openSyncModal()"
+					title="Sincronización de Cobros"
+				>
+					<i class="fas fa-bell text-secondary" [class.text-danger]="syncErrorCount > 0"></i>
+					<span 
+						*ngIf="syncErrorCount > 0" 
+						class="position-absolute top-0 start-100 translate-middle badge rounded-pill bg-danger border border-white"
+					>
+						{{ syncErrorCount }}
+					</span>
+				</button>
+			</div>
+
 			<div class="me-3 d-none d-md-block">
 				<span class="fw-semibold text-dark">{{ currentUser.nombre_completo }}</span>
 				<span class="text-muted ms-1">({{ currentUser.rol?.nombre }})</span>
@@ -159,6 +178,127 @@
 					<span class="spinner-border spinner-border-sm me-2" *ngIf="isChangingPassword"></span>
 					{{ isChangingPassword ? 'Cambiando...' : 'Cambiar Contraseña' }}
 				</button>
+			</div>
+		</div>
+	</div>
+</div>
+
+<!-- Modal de Errores de Sincronización -->
+<div class="modal fade" id="syncErrorsModal" tabindex="-1" aria-labelledby="syncErrorsModalLabel" aria-hidden="true">
+	<div class="modal-dialog modal-lg modal-dialog-centered">
+		<div class="modal-content border-0 shadow">
+			<div class="modal-header bg-danger text-white">
+				<h5 class="modal-title" id="syncErrorsModalLabel">
+					<i class="fas fa-sync-alt me-2"></i>Cobros Pendientes de Sincronización
+				</h5>
+				<button type="button" class="btn-close btn-close-white" data-bs-dismiss="modal" aria-label="Close"></button>
+			</div>
+			<div class="modal-body p-0">
+				<div class="p-3 bg-light border-bottom d-flex justify-content-between align-items-center">
+					<span class="text-muted small">Se encontraron <strong>{{ syncErrorCount }}</strong> registros que no pudieron sincronizarse con SGA.</span>
+					<button class="btn btn-sm btn-danger shadow-sm" (click)="retryAllSync()" [disabled]="isRetrying">
+						<i class="fas fa-sync-alt me-1" [class.fa-spin]="isRetrying"></i> Sincronizar Todos en Orden
+					</button>
+				</div>
+				
+				<div class="table-responsive" style="max-height: 400px;">
+					<table class="table table-hover align-middle mb-0">
+						<thead class="table-light small text-uppercase">
+							<tr>
+								<th class="ps-3">Nro Factura o Recibo</th>
+								<th>Estudiante</th>
+								<th>Concepto</th>
+								<th>Error</th>
+								<th class="text-end pe-4">Detalle</th>
+							</tr>
+						</thead>
+						<tbody class="small">
+							<ng-container *ngFor="let err of syncErrors">
+								<tr [class.table-active]="expandedErrorId === err.id">
+									<td class="ps-3 fw-bold">{{ err.documento || 'Sin Doc.' }}</td>
+									<td>{{ err.estudiante }}</td>
+									<td>{{ err.concepto }}</td>
+									<td>
+										<span class="text-danger d-inline-block text-truncate" style="max-width: 250px;" [title]="err.mensaje">
+											{{ err.mensaje }}
+										</span>
+									</td>
+									<td class="text-end pe-3">
+										<button 
+											type="button" 
+											class="btn btn-sm btn-light border shadow-sm p-1 px-2 d-inline-flex align-items-center" 
+											(click)="toggleRow(err)" 
+											[title]="expandedErrorId === err.id ? 'Ocultar Detalle' : 'Ver Detalle'"
+										>
+											<i class="fas me-1" [class.fa-chevron-down]="expandedErrorId !== err.id" [class.fa-chevron-up]="expandedErrorId === err.id"></i>
+											<small class="fw-semibold">Detalle</small>
+										</button>
+									</td>
+								</tr>
+								<tr *ngIf="expandedErrorId === err.id">
+									<td colspan="5" class="bg-light p-3 border-bottom">
+										<div class="p-3 bg-white rounded shadow-sm border">
+											<div class="d-flex justify-content-between align-items-center mb-3">
+												<h6 class="mb-0 text-dark fw-bold">
+													<i class="fas fa-list me-2 text-primary"></i>Desglose de la Transacción
+												</h6>
+												<span class="badge" [class.bg-danger]="err.multiple" [class.bg-secondary]="!err.multiple">
+													{{ err.multiple ? 'Pago Múltiple (' + syncDetails.length + ' mensualidades)' : 'Pago Único' }}
+												</span>
+											</div>
+											
+											<!-- Spinner de carga -->
+											<div *ngIf="loadingDetails" class="text-center py-4">
+												<div class="spinner-border spinner-border-sm text-primary me-2" role="status"></div>
+												<span class="text-muted small fw-medium">Cargando desglose de cobros...</span>
+											</div>
+											
+											<!-- Tabla de sub-pagos -->
+											<div *ngIf="!loadingDetails && syncDetails.length > 0" class="table-responsive">
+												<table class="table table-sm table-bordered table-hover mb-0 bg-white small">
+													<thead class="table-light text-muted fw-bold">
+														<tr>
+															<th class="ps-2">Nro Documento</th>
+															<th class="text-center">Cuota / Nro</th>
+															<th>Concepto</th>
+															<th class="text-end pe-2">Monto</th>
+															<th class="text-end pe-2">Descuento</th>
+															<th class="text-center">Fecha Pago</th>
+														</tr>
+													</thead>
+													<tbody>
+														<tr *ngFor="let det of syncDetails">
+															<td class="ps-2 fw-semibold">{{ det.documento || '-' }}</td>
+															<td class="text-center">{{ det.cuota }}</td>
+															<td>{{ det.concepto }}</td>
+															<td class="text-end pe-2 fw-semibold text-success">{{ det.monto | number:'1.2-2' }} Bs</td>
+															<td class="text-end pe-2 text-muted">{{ det.descuento | number:'1.2-2' }} Bs</td>
+															<td class="text-center text-secondary">{{ det.fecha_pago }}</td>
+														</tr>
+													</tbody>
+												</table>
+											</div>
+											
+											<!-- Sin registros -->
+											<div *ngIf="!loadingDetails && syncDetails.length === 0" class="text-center text-muted py-3 small">
+												<i class="fas fa-exclamation-circle me-1"></i>No se pudieron cargar los detalles de este cobro.
+											</div>
+										</div>
+									</td>
+								</tr>
+							</ng-container>
+							<tr *ngIf="syncErrors.length === 0">
+								<td colspan="5" class="text-center py-5 text-muted">
+									<i class="fas fa-check-circle fa-3x mb-3 text-success d-block"></i>
+									No hay errores de sincronización pendientes.
+								</td>
+							</tr>
+						</tbody>
+					</table>
+				</div>
+			</div>
+			<div class="modal-footer bg-light">
+				<button type="button" class="btn btn-secondary" data-bs-dismiss="modal">Cerrar</button>
 			</div>
 		</div>
 	</div>

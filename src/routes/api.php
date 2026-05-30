@@ -38,6 +38,7 @@ use App\Http\Controllers\Api\FacturaEstadoController;
 use App\Http\Controllers\Api\FacturaAnulacionController;
 use App\Http\Controllers\Api\FacturaPdfController;
 use App\Http\Controllers\Api\SgaSyncController;
+use App\Http\Controllers\Api\SgaPushController;
 use App\Http\Controllers\Api\ReporteLibroDiarioController;
 use App\Http\Controllers\Api\LibroDiarioController;
 use App\Http\Controllers\Api\Economico\OtrosIngresosController;
@@ -225,6 +226,14 @@ Route::post('items-cobro/sync-sin', [ItemsCobroController::class, 'syncFromSin']
 Route::post('sga/sync/becas-descuentos', [SgaSyncController::class, 'syncBecasDescuentos']);
 // Sincronización SGA: Descuentos aplicados (kardex_economico + descuento_parcial*)
 Route::post('sga/sync/descuentos', [SgaSyncController::class, 'syncDescuentosSga']);
+
+// Sincronización SisEco -> SGA (Push)
+Route::prefix('sga-push')->group(function () {
+    Route::get('pending', [SgaPushController::class, 'index']);
+    Route::get('{id}', [SgaPushController::class, 'show'])->where('id', '[0-9]+');
+    Route::post('retry/{id}', [SgaPushController::class, 'retry']);
+    Route::post('retry-all', [SgaPushController::class, 'retryAll']);
+});
 
 // Formas de cobro (catálogo)
 Route::get('formas-cobro', [FormaCobroController::class, 'index']);
