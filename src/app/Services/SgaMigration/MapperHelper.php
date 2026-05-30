@@ -377,12 +377,9 @@ class MapperHelper
             return $obsOrig !== '' ? $obsOrig : null;
         }
 
-        // Para QR banco es null.
-        // Para L (Tarjeta) y B (Transferencia): usar nota->banco (banco receptor, igual que SGA nativo).
+        // Para L (Tarjeta), B (Transferencia) y QR: usar nota->banco (banco receptor).
         // Para D (Deposito): usar nota->banco_origen (banco desde donde se depositó).
-        if ($esQr) {
-            $banco = null;
-        } elseif ($tipo === 'D') {
+        if ($tipo === 'D') {
             $banco = trim($nota->banco_origen ?? '') ?: null;
         } else {
             // Limpiar número de cuenta que eco almacena en banco: "Banco X - 1234" → "Banco X"

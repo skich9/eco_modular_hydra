@@ -106,7 +106,7 @@ class PagoWriter
         ]);
 
         $nota             = $this->mapper->getNotaBancaria($r);
-        $nroNotaSga       = $this->mapper->resolveNroNotaSga($conn, $r);
+        $nroNotaSga       = $r->nro_recibo ? (int) $r->nro_recibo : 0;
         $cuenta           = $this->mapper->getCuentaBancaria($r);
         $esQr             = strtoupper($r->id_forma_cobro ?? '') === 'B' && $this->mapper->isQrPayment($r);
         $qrTransaccion    = $esQr ? $this->mapper->getQrTransaccion($r) : null;
@@ -235,11 +235,15 @@ class PagoWriter
 
         // Acumula todos los cobros de esta asignación hasta este cobro inclusive.
         // El cobro cuyo acumulado llega a >= monto es el que cierra la cuota.
+        // Suma monto + descuento para cubrir el precio base asignado.
+        // Sin descuento: monto=720, descuento=0 → 720 >= cuota.
+        // Con descuento: monto=720, descuento=80 → 800 >= 800 (pago completo con rebaja).
         $acumulado = DB::connection(MapperHelper::SOURCE_CONN)
             ->table('cobro')
             ->where('id_asignacion_costo', $r->id_asignacion_costo)
             ->where('nro_cobro', '<=', $r->nro_cobro)
-            ->sum('monto');
+            ->selectRaw('COALESCE(SUM(monto), 0) + COALESCE(SUM(descuento), 0) AS total')
+            ->value('total');
 
         return round((float) $acumulado, 2) >= round((float) $montoAsignado, 2);
     }

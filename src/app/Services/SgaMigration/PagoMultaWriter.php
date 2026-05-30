@@ -108,7 +108,7 @@ class PagoMultaWriter
             ->first();
 
         $nota             = $this->mapper->getNotaBancaria($r);
-        $nroNotaSga       = $this->mapper->resolveNroNotaSga($conn, $r);
+        $nroNotaSga       = $r->nro_recibo ? (int) $r->nro_recibo : 0;
         $cuenta           = $this->mapper->getCuentaBancaria($r);
         $esQr             = strtoupper($r->id_forma_cobro ?? '') === 'B' && $this->mapper->isQrPayment($r);
         $qrTransaccion    = $esQr ? $this->mapper->getQrTransaccion($r) : null;
@@ -233,7 +233,8 @@ class PagoMultaWriter
             ->table('cobro')
             ->where('id_asignacion_costo', $r->id_asignacion_costo)
             ->where('nro_cobro', '<=', $r->nro_cobro)
-            ->sum('monto');
+            ->selectRaw('COALESCE(SUM(monto), 0) + COALESCE(SUM(descuento), 0) AS total')
+            ->value('total');
 
         return round((float) $acumulado, 2) >= round((float) $montoMora, 2);
     }
