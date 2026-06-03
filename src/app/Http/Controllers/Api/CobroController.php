@@ -3864,7 +3864,11 @@ class CobroController extends Controller
 					'observaciones' => $obsCobro !== '' ? $obsCobro : null,
                     'detalle' => $detalle,
                     'id_usuario' => $idUsuarioReposicion ?: (int)$request->id_usuario,
-                    'id_forma_cobro' => isset($item['id_forma_cobro']) ? $item['id_forma_cobro'] : $formaIdItem,
+                    // Facturación posterior: solo el registro en `cobro` se marca con forma 'P'.
+                    // SIAT (codigoMetodoPago) y Notas SGA siguen usando la forma original.
+                    'id_forma_cobro' => $isReposicionFactura
+                        ? 'P'
+                        : (isset($item['id_forma_cobro']) ? $item['id_forma_cobro'] : $formaIdItem),
                     'pu_mensualidad' => $puMensualidadFinal,
                     'order' => $order,
                     'descuento' => $descuentoFinal,

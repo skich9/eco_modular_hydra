@@ -645,7 +645,7 @@ export class LibroDiarioComponent implements OnInit {
         total += item.ingreso;
       } else if (tipo === 'traspaso' && item.tipo_pago === 'T') {
         total += item.ingreso;
-      } else if (tipo === 'otro' && item.tipo_pago === 'O') {
+      } else if (tipo === 'otro' && (item.tipo_pago === 'O' || item.tipo_pago === 'P')) {
         total += item.ingreso;
       }
     });
@@ -675,7 +675,7 @@ export class LibroDiarioComponent implements OnInit {
         esMetodoPagoCorrecto = true;
       } else if (metodoPago === 'transferencia' && item.tipo_pago === 'B') {
         esMetodoPagoCorrecto = true;
-      } else if (metodoPago === 'otro' && item.tipo_pago === 'O') {
+      } else if (metodoPago === 'otro' && (item.tipo_pago === 'O' || item.tipo_pago === 'P')) {
         esMetodoPagoCorrecto = true;
       }
 

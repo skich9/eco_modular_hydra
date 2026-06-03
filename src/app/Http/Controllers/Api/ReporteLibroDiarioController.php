@@ -924,21 +924,21 @@ HTML;
     <thead>
     <tr>
         <th></th>
-        <th>Factura</th>
         <th>Recibo</th>
+        <th>Factura</th>
         <th>Mora Fac</th>
         <th>Mora Rec</th>
     </tr>
     </thead>
     <tbody>
-    <tr><td>Traspaso</td><td class="right">{$fTraspaso}</td><td class="right">{$rTraspaso}</td><td class="right">{$mfTraspaso}</td><td class="right">{$mrTraspaso}</td></tr>
-    <tr><td>Depósito</td><td class="right">{$fDeposito}</td><td class="right">{$rDeposito}</td><td class="right">{$mfDeposito}</td><td class="right">{$mrDeposito}</td></tr>
-    <tr><td>Efectivo</td><td class="right">{$fEfectivo}</td><td class="right">{$rEfectivo}</td><td class="right">{$mfEfectivo}</td><td class="right">{$mrEfectivo}</td></tr>
-    <tr><td>Cheque</td><td class="right">{$fCheque}</td><td class="right">{$rCheque}</td><td class="right">{$mfCheque}</td><td class="right">{$mrCheque}</td></tr>
-    <tr><td>Tarjeta</td><td class="right">{$fTarjeta}</td><td class="right">{$rTarjeta}</td><td class="right">{$mfTarjeta}</td><td class="right">{$mrTarjeta}</td></tr>
-    <tr><td>Transferencia Bancaria</td><td class="right">{$fTransferencia}</td><td class="right">{$rTransferencia}</td><td class="right">{$mfTransferencia}</td><td class="right">{$mrTransferencia}</td></tr>
-    <tr><td>Otro</td><td class="right">{$fOtro}</td><td class="right">{$rOtro}</td><td class="right">{$mfOtro}</td><td class="right">{$mrOtro}</td></tr>
-    <tr class="fila-resaltada"><td class="texto-modo">Total Parcial</td><td class="right">{$tFactura}</td><td class="right">{$tRecibo}</td><td class="right">{$tMoraFactura}</td><td class="right">{$tMoraRecibo}</td></tr>
+    <tr><td>Traspaso</td><td class="right">{$rTraspaso}</td><td class="right">{$fTraspaso}</td><td class="right">{$mfTraspaso}</td><td class="right">{$mrTraspaso}</td></tr>
+    <tr><td>Depósito</td><td class="right">{$rDeposito}</td><td class="right">{$fDeposito}</td><td class="right">{$mfDeposito}</td><td class="right">{$mrDeposito}</td></tr>
+    <tr><td>Efectivo</td><td class="right">{$rEfectivo}</td><td class="right">{$fEfectivo}</td><td class="right">{$mfEfectivo}</td><td class="right">{$mrEfectivo}</td></tr>
+    <tr><td>Cheque</td><td class="right">{$rCheque}</td><td class="right">{$fCheque}</td><td class="right">{$mfCheque}</td><td class="right">{$mrCheque}</td></tr>
+    <tr><td>Tarjeta</td><td class="right">{$rTarjeta}</td><td class="right">{$fTarjeta}</td><td class="right">{$mfTarjeta}</td><td class="right">{$mrTarjeta}</td></tr>
+    <tr><td>Transferencia Bancaria</td><td class="right">{$rTransferencia}</td><td class="right">{$fTransferencia}</td><td class="right">{$mfTransferencia}</td><td class="right">{$mrTransferencia}</td></tr>
+    <tr><td>Otro</td><td class="right">{$rOtro}</td><td class="right">{$fOtro}</td><td class="right">{$mfOtro}</td><td class="right">{$mrOtro}</td></tr>
+    <tr class="fila-resaltada"><td class="texto-modo">Total Parcial</td><td class="right">{$tRecibo}</td><td class="right">{$tFactura}</td><td class="right">{$tMoraFactura}</td><td class="right">{$tMoraRecibo}</td></tr>
     <tr class="fila-resaltada"><td class="texto-modo">Total Efectivo</td><td colspan="4" class="right">{$totalEfectivo}</td></tr>
     <tr class="fila-resaltada"><td class="texto-modo">Total General</td><td colspan="4" class="right texto-modo">{$totalGeneral}</td></tr>
     </tbody>
