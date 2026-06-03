@@ -408,7 +408,9 @@ export class FacturacionPosteriorComponent implements OnInit {
 			const anyIt: any = raw[0] || {};
 			const idForma = (anyIt?.id_forma_cobro || '1').toString();
 			const now = new Date();
-			const fechaIso = now.toISOString().slice(0, 19).replace('T', ' ');
+			// Usar hora local (La Paz) en vez de UTC — toISOString() devuelve UTC y provoca desfase de 4h en el PDF
+			const pad = (n: number) => String(n).padStart(2, '0');
+			const fechaIso = `${now.getFullYear()}-${pad(now.getMonth() + 1)}-${pad(now.getDate())} ${pad(now.getHours())}:${pad(now.getMinutes())}:${pad(now.getSeconds())}`;
 
 			// Agregar "Generado por [usuario]" a las observaciones
 			const obsBase = (this.observaciones || '').toString().trim();
@@ -429,7 +431,8 @@ export class FacturacionPosteriorComponent implements OnInit {
 					concepto: (r?.concepto || '').toString(),
 					detalle: conceptoStr || (r?.observaciones || '').toString().trim() || 'Reposición',
 					observaciones: obsConGeneradoPor,
-					reposicion_factura: 1
+					reposicion_factura: 1,
+					cod_tipo_cobro: r?.cod_tipo_cobro || null
 				};
 			});
 

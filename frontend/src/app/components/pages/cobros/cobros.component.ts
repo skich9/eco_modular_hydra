@@ -760,7 +760,7 @@ export class CobrosComponent implements OnInit {
       this.showAlert('No se encontró el costo de Reincorporación en costo_semestral', 'warning');
       return;
     }
-    if (!this.ensureMetodoPagoPermitido(['EFECTIVO', 'TARJETA', 'CHEQUE', 'DEPOSITO', 'TRANSFERENCIA', 'QR', 'OTRO', 'TRASPASO'])) return;
+    if (!this.ensureMetodoPagoPermitido(['EFECTIVO', 'TARJETA', 'CHEQUE', 'DEPOSITO', 'TRANSFERENCIA', 'QR', 'OTROS', 'TRASPASO'])) return;
     this.computeModalFormasFromSelection();
     this.modalTipo = 'reincorporacion';
     // Abrir modal de Reincorporación
@@ -798,7 +798,7 @@ export class CobrosComponent implements OnInit {
       this.showAlert('Ya agregó Reincorporación al detalle', 'warning');
       return;
     }
-    if (!this.ensureMetodoPagoPermitido(['EFECTIVO', 'TARJETA', 'CHEQUE', 'DEPOSITO', 'TRANSFERENCIA', 'QR', 'OTRO', 'TRASPASO'])) return;
+    if (!this.ensureMetodoPagoPermitido(['EFECTIVO', 'TARJETA', 'CHEQUE', 'DEPOSITO', 'TRANSFERENCIA', 'QR', 'OTROS', 'TRASPASO'])) return;
     const hoy = formatYmdLocal();
     const nro = this.getNextCobroNro();
     this.pagos.push(this.fb.group({
@@ -1366,7 +1366,7 @@ export class CobrosComponent implements OnInit {
       return;
     }
     // Permitir todos los métodos disponibles en el catálogo
-    if (!this.ensureMetodoPagoPermitido(['EFECTIVO', 'TARJETA', 'CHEQUE', 'DEPOSITO', 'TRANSFERENCIA', 'QR', 'OTRO', 'TRASPASO'])) return;
+    if (!this.ensureMetodoPagoPermitido(['EFECTIVO', 'TARJETA', 'CHEQUE', 'DEPOSITO', 'TRANSFERENCIA', 'QR', 'OTROS', 'TRASPASO'])) return;
     // Recalcular lista filtrada para el modal según selección actual
     this.computeModalFormasFromSelection();
     // Abrir modal hijo
@@ -1467,7 +1467,7 @@ export class CobrosComponent implements OnInit {
       this.showAlert('No hay cuotas de arrastre pendientes', 'warning');
       return;
     }
-    if (!this.ensureMetodoPagoPermitido(['EFECTIVO', 'TARJETA', 'CHEQUE', 'DEPOSITO', 'TRANSFERENCIA', 'QR', 'OTRO', 'TRASPASO'])) return;
+    if (!this.ensureMetodoPagoPermitido(['EFECTIVO', 'TARJETA', 'CHEQUE', 'DEPOSITO', 'TRANSFERENCIA', 'QR', 'OTROS', 'TRASPASO'])) return;
     // Definir tipo antes de propagar inputs al modal
     this.modalTipo = 'arrastre';
     // Configurar PU y pendientes para arrastre
@@ -3157,7 +3157,7 @@ export class CobrosComponent implements OnInit {
       this.showAlert('Debe consultar primero un estudiante/gestión', 'warning');
       return;
     }
-    if (!this.ensureMetodoPagoPermitido(['EFECTIVO', 'TARJETA', 'CHEQUE', 'DEPOSITO', 'TRANSFERENCIA', 'QR', 'OTRO', 'TRASPASO'])) return;
+    if (!this.ensureMetodoPagoPermitido(['EFECTIVO', 'TARJETA', 'CHEQUE', 'DEPOSITO', 'TRANSFERENCIA', 'QR', 'OTROS', 'TRASPASO'])) return;
     const pendFromNext = Number(this.resumen?.mensualidad_next?.pending_count ?? 0) || 0;
     const parcialesCnt = Number(this.resumen?.mensualidad_next?.parcial_count ?? 0) || 0;
     // Mostrar suma pedida por usuario (pendientes + parciales)
@@ -3264,7 +3264,7 @@ export class CobrosComponent implements OnInit {
       this.showAlert('Debe consultar primero un estudiante/gestión', 'warning');
       return;
     }
-    if (!this.ensureMetodoPagoPermitido(['EFECTIVO', 'TARJETA', 'CHEQUE', 'DEPOSITO', 'TRANSFERENCIA', 'QR', 'OTRO', 'TRASPASO'])) return;
+    if (!this.ensureMetodoPagoPermitido(['EFECTIVO', 'TARJETA', 'CHEQUE', 'DEPOSITO', 'TRANSFERENCIA', 'QR', 'OTROS', 'TRASPASO'])) return;
     // Calcular lista de métodos permitidos en el modal según selección actual
     this.computeModalFormasFromSelection();
     this.modalTipo = 'rezagado';
@@ -3277,7 +3277,7 @@ export class CobrosComponent implements OnInit {
       this.showAlert('Debe consultar primero un estudiante/gestión', 'warning');
       return;
     }
-    if (!this.ensureMetodoPagoPermitido(['EFECTIVO', 'TARJETA', 'CHEQUE', 'DEPOSITO', 'TRANSFERENCIA', 'QR', 'OTRO', 'TRASPASO'])) return;
+    if (!this.ensureMetodoPagoPermitido(['EFECTIVO', 'TARJETA', 'CHEQUE', 'DEPOSITO', 'TRANSFERENCIA', 'QR', 'OTROS', 'TRASPASO'])) return;
     // Calcular lista de métodos permitidos en el modal según selección actual
     this.computeModalFormasFromSelection();
     this.modalTipo = 'recuperacion';
@@ -3301,7 +3301,7 @@ export class CobrosComponent implements OnInit {
       this.showAlert('No hay moras pendientes para este estudiante', 'warning');
       return;
     }
-    if (!this.ensureMetodoPagoPermitido(['EFECTIVO', 'TARJETA', 'CHEQUE', 'DEPOSITO', 'TRANSFERENCIA', 'QR', 'OTRO', 'TRASPASO'])) return;
+    if (!this.ensureMetodoPagoPermitido(['EFECTIVO', 'TARJETA', 'CHEQUE', 'DEPOSITO', 'TRANSFERENCIA', 'QR', 'OTROS', 'TRASPASO'])) return;
     this.computeModalFormasFromSelection();
 
     const modalEl = document.getElementById('moraModal');
@@ -4463,7 +4463,7 @@ export class CobrosComponent implements OnInit {
       this.showAlert('No hay cuotas de arrastre pendientes', 'warning');
       return;
     }
-    if (!this.ensureMetodoPagoPermitido(['EFECTIVO', 'TARJETA', 'CHEQUE', 'DEPOSITO', 'TRANSFERENCIA', 'QR', 'OTRO', 'TRASPASO'])) return;
+    if (!this.ensureMetodoPagoPermitido(['EFECTIVO', 'TARJETA', 'CHEQUE', 'DEPOSITO', 'TRANSFERENCIA', 'QR', 'OTROS', 'TRASPASO'])) return;
     const hoy = formatYmdLocal();
     const nro = this.getNextMensualidadNro();
     // Monto/PU de arrastre debe ser NETO (preferir datos de arrastre.asignacion_costos/asignaciones_arrastre)
