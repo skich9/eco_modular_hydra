@@ -40,6 +40,13 @@ export class ProrrogaMoraComponent implements OnInit {
 	motivo: string = '';
 	fechaInicioProrrogaTmp: string = '';
 	fechaFinProrrogaTmp: string = '';
+	// Filtros tabla
+	filtroGestion: string = '';
+	filtroCodCeta: string = '';
+	filtroUsuario: string = '';
+	// Paginación
+	pageSize: number = 10;
+	currentPage: number = 1;
 
 	constructor(
 		private fb: FormBuilder,
@@ -522,6 +529,45 @@ export class ProrrogaMoraComponent implements OnInit {
 				this.loading = false;
 			}
 		});
+	}
+
+	get prorrogasFiltradas(): any[] {
+		return this.prorrogas.filter(p => {
+			const gestion = String(p.asignacion_costo?.inscripcion?.gestion || '');
+			const codCeta = String(p.cod_ceta || '');
+			const usuario = String(p.usuario?.nombre || '').toLowerCase();
+			if (this.filtroGestion && !gestion.includes(this.filtroGestion)) return false;
+			if (this.filtroCodCeta && !codCeta.includes(this.filtroCodCeta)) return false;
+			if (this.filtroUsuario && !usuario.includes(this.filtroUsuario.toLowerCase())) return false;
+			return true;
+		});
+	}
+
+	get prorrogasPaginadas(): any[] {
+		const start = (this.currentPage - 1) * this.pageSize;
+		return this.prorrogasFiltradas.slice(start, start + this.pageSize);
+	}
+
+	get totalPages(): number {
+		return Math.max(1, Math.ceil(this.prorrogasFiltradas.length / this.pageSize));
+	}
+
+	get pages(): number[] {
+		return Array.from({ length: this.totalPages }, (_, i) => i + 1);
+	}
+
+	get endIndex(): number {
+		return Math.min(this.currentPage * this.pageSize, this.prorrogasFiltradas.length);
+	}
+
+	onFiltroChange(): void {
+		this.currentPage = 1;
+	}
+
+	goToPage(page: number): void {
+		if (page >= 1 && page <= this.totalPages) {
+			this.currentPage = page;
+		}
 	}
 
 	limpiarBusqueda(): void {

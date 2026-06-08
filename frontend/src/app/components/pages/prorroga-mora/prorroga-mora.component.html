@@ -135,6 +135,24 @@
 				Prórrogas Registradas
 			</h3>
 		</div>
+		<!-- Filtros -->
+		<div class="table-filters">
+			<div class="filter-group">
+				<label class="form-label">Gestión</label>
+				<input type="text" class="search-input" [(ngModel)]="filtroGestion"
+					(ngModelChange)="onFiltroChange()" placeholder="Ej: 1/2025" />
+			</div>
+			<div class="filter-group">
+				<label class="form-label">Código Estudiante</label>
+				<input type="text" class="search-input" [(ngModel)]="filtroCodCeta"
+					(ngModelChange)="onFiltroChange()" placeholder="Código CETA" inputmode="numeric" />
+			</div>
+			<div class="filter-group">
+				<label class="form-label">Usuario</label>
+				<input type="text" class="search-input" [(ngModel)]="filtroUsuario"
+					(ngModelChange)="onFiltroChange()" placeholder="Nombre de usuario" />
+			</div>
+		</div>
 		<div class="table-responsive">
 			<table class="table">
 				<thead>
@@ -153,7 +171,7 @@
 					</tr>
 				</thead>
 				<tbody>
-					<tr *ngFor="let prorroga of prorrogas">
+					<tr *ngFor="let prorroga of prorrogasPaginadas">
 						<td>{{ prorroga.asignacion_costo?.inscripcion?.gestion || 'N/A' }}</td>
 						<td>{{ prorroga.cod_ceta }}</td>
 						<td>{{ getNombreCompleto(prorroga.estudiante) }}</td>
@@ -181,11 +199,28 @@
 							</button>
 						</td>
 					</tr>
-					<tr *ngIf="prorrogas.length === 0">
-						<td colspan="12" class="text-center">No hay prórrogas registradas</td>
+					<tr *ngIf="prorrogasPaginadas.length === 0">
+						<td colspan="11" class="text-center">No hay prórrogas que coincidan con los filtros</td>
 					</tr>
 				</tbody>
 			</table>
+		</div>
+		<!-- Paginador -->
+		<div class="table-pagination" *ngIf="prorrogasFiltradas.length > 0">
+			<span class="pagination-info">
+				Mostrando {{ (currentPage - 1) * pageSize + 1 }}–{{ endIndex }} de {{ prorrogasFiltradas.length }} registros
+			</span>
+			<div class="pagination-controls">
+				<button class="btn btn-sm btn-secondary" (click)="goToPage(currentPage - 1)" [disabled]="currentPage === 1">
+					<i class="fas fa-chevron-left"></i>
+				</button>
+				<button *ngFor="let p of pages" class="btn btn-sm"
+					[ngClass]="p === currentPage ? 'btn-primary' : 'btn-secondary'"
+					(click)="goToPage(p)">{{ p }}</button>
+				<button class="btn btn-sm btn-secondary" (click)="goToPage(currentPage + 1)" [disabled]="currentPage === totalPages">
+					<i class="fas fa-chevron-right"></i>
+				</button>
+			</div>
 		</div>
 	</div>
 </div>
