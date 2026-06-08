@@ -417,17 +417,21 @@ export class ProrrogaMoraComponent implements OnInit {
 			}
 		}
 
-		// Crear array de payloads para todas las asignaciones de la cuota (NORMAL y ARRASTRE)
+		// Enviar un solo payload: preferir la asignación NORMAL (el backend la resuelve igual)
 		const codCetaInt = parseInt(rawCod, 10);
-		const payloads = cuotasSeleccionadas.map((cuota: any) => ({
-			id_asignacion_costo: cuota.id_asignacion_costo,
+		const cuotaAEnviar = cuotasSeleccionadas.find((c: any) => {
+			const tipo = String(c?.tipo_inscripcion || c?.inscripcion?.tipo_inscripcion || '').toUpperCase();
+			return tipo !== 'ARRASTRE';
+		}) ?? cuotasSeleccionadas[0];
+		const payloads = [{
+			id_asignacion_costo: cuotaAEnviar.id_asignacion_costo,
 			fecha_inicio_prorroga: fechaInicio,
 			fecha_fin_prorroga: fechaFin,
 			id_usuario: this.currentUser.id_usuario,
 			cod_ceta: codCetaInt,
 			activo: true,
 			motivo: this.motivo
-		}));
+		}];
 
 		this.loading = true;
 		// Enviar todas las prórrogas al backend
