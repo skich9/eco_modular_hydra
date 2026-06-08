@@ -36,7 +36,9 @@ class CarreraController extends Controller
 	public function getPensums($codigoCarrera)
 	{
 		try {
-			$pensums = Pensum::where('codigo_carrera', $codigoCarrera)->get();
+			$pensums = Pensum::where('codigo_carrera', $codigoCarrera)
+					->where('activo', true)
+					->get();
 			return response()->json([
 				'success' => true,
 				'data' => $pensums
