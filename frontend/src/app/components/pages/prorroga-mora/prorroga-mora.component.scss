@@ -526,6 +526,47 @@
 	}
 }
 
+.table-filters {
+	display: grid;
+	grid-template-columns: 1fr 1fr 1fr;
+	gap: 1rem;
+	padding: 1.25rem 1.5rem;
+	border-bottom: 1px solid #e9ecef;
+	background: #fafafa;
+
+	.filter-group {
+		display: flex;
+		flex-direction: column;
+		gap: 0.4rem;
+
+		.search-input {
+			min-width: unset;
+			width: 100%;
+		}
+	}
+}
+
+.table-pagination {
+	display: flex;
+	justify-content: space-between;
+	align-items: center;
+	padding: 1rem 1.5rem;
+	border-top: 1px solid #e9ecef;
+	flex-wrap: wrap;
+	gap: 0.5rem;
+
+	.pagination-info {
+		font-size: 0.875rem;
+		color: #6b7280;
+	}
+
+	.pagination-controls {
+		display: flex;
+		gap: 0.25rem;
+		flex-wrap: wrap;
+	}
+}
+
 @media (max-width: 768px) {
 	.prorroga-mora-container {
 		padding: 1rem;
@@ -540,6 +581,10 @@
 	}
 
 	.cuotas-grid {
+		grid-template-columns: 1fr;
+	}
+
+	.table-filters {
 		grid-template-columns: 1fr;
 	}
 

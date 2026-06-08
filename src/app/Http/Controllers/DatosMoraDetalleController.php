@@ -11,9 +11,7 @@ use Illuminate\Support\Facades\Validator;
 
 class DatosMoraDetalleController extends Controller
 {
-	/**
-	 * Display a listing of the resource.
-	 */
+
 	public function index(): JsonResponse
 	{
 		try {
@@ -34,9 +32,7 @@ class DatosMoraDetalleController extends Controller
 		}
 	}
 
-	/**
-	 * Store a newly created resource in storage.
-	 */
+
 	public function store(Request $request): JsonResponse
 	{
 		try {
@@ -88,7 +84,7 @@ class DatosMoraDetalleController extends Controller
 				'id_datos_mora' => 'required|exists:datos_mora,id_datos_mora',
 				'cuota' => 'required|integer|min:1|max:5',
 				'semestre' => 'required|string|max:30',
-				'cod_pensum' => 'nullable|string|max:50|exists:pensums,cod_pensum',
+				'cod_pensum' => 'nullable|string|max:50|exists:pensums,cod_pensum,activo,1',
 				'monto' => 'nullable|numeric|min:0',
 				'fecha_inicio' => 'required|date',
 				'fecha_fin' => 'nullable|date|after_or_equal:fecha_inicio',
@@ -100,7 +96,7 @@ class DatosMoraDetalleController extends Controller
 				'cuota.integer' => 'La cuota debe ser un número entero.',
 				'cuota.min' => 'La cuota debe ser al menos 1.',
 				'cuota.max' => 'La cuota no puede ser mayor a 5.',
-				'cod_pensum.exists' => 'El pensum no existe.',
+				'cod_pensum.exists' => 'El pensum no existe o no está activo.',
 				'semestre.required' => 'El semestre es requerido.',
 				'semestre.string' => 'El semestre debe ser un texto.',
 				'semestre.max' => 'El semestre no puede exceder 30 caracteres.',
@@ -147,9 +143,7 @@ class DatosMoraDetalleController extends Controller
 		}
 	}
 
-	/**
-	 * Display the specified resource.
-	 */
+	
 	public function show(string $id): JsonResponse
 	{
 		try {
@@ -168,9 +162,7 @@ class DatosMoraDetalleController extends Controller
 		}
 	}
 
-	/**
-	 * Update the specified resource in storage.
-	 */
+	
 	public function update(Request $request, string $id): JsonResponse
 	{
 		try {
@@ -195,7 +187,7 @@ class DatosMoraDetalleController extends Controller
 			$validator = Validator::make($input, [
 				'cuota' => 'required|integer|min:1|max:5',
 				'semestre' => 'required|string|max:30',
-				'cod_pensum' => 'nullable|string|max:50|exists:pensums,cod_pensum',
+				'cod_pensum' => 'nullable|string|max:50|exists:pensums,cod_pensum,activo,1',
 				'monto' => 'nullable|numeric|min:0',
 				'fecha_inicio' => 'required|date',
 				'fecha_fin' => 'nullable|date|after_or_equal:fecha_inicio',
@@ -205,7 +197,7 @@ class DatosMoraDetalleController extends Controller
 				'cuota.integer' => 'La cuota debe ser un número entero.',
 				'cuota.min' => 'La cuota debe ser al menos 1.',
 				'cuota.max' => 'La cuota no puede ser mayor a 5.',
-				'cod_pensum.exists' => 'El pensum no existe.',
+				'cod_pensum.exists' => 'El pensum no existe o no está activo.',
 				'semestre.required' => 'El semestre es requerido.',
 				'semestre.string' => 'El semestre debe ser un texto.',
 				'semestre.max' => 'El semestre no puede exceder 30 caracteres.',
@@ -243,9 +235,7 @@ class DatosMoraDetalleController extends Controller
 		}
 	}
 
-	/**
-	 * Toggle the status of the specified resource.
-	 */
+	
 	public function toggleStatus(string $id): JsonResponse
 	{
 		try {

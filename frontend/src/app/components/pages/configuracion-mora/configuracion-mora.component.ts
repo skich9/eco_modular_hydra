@@ -364,27 +364,22 @@ export class ConfiguracionMoraComponent implements OnInit {
 
 				const idDatosMora = resMora.data.id_datos_mora;
 
-				// Filtrar solo los pensums activos (muy flexible para debug)
-				const pensumsActivos = this.pensums.filter(p => {
-					const val = p.activo !== undefined ? p.activo : p.estado;
-					// Consideramos activo si es 1, true, o si es algo distinto de 0/false/null/undefined
-					return val == 1 || val === true || (val !== 0 && val !== false && val != null);
-				});
+				const pensumsActivos = this.pensums.filter(p => p.activo === true || p.activo === 1);
 
 				if (pensumsActivos.length === 0) {
 					this.showAlert('La carrera seleccionada no tiene pensums activos', 'warning');
 					return;
 				}
 
-				// Obtener todos los pensums activos (ahora es obligatorio tener al menos uno)
-				const pensumsAConfigurar = pensumsActivos;
+				const carreraCode = this.moraForm.get('carrera')?.value;
+				const nombreCarrera = this.carreras.find((c: any) => c.codigo === carreraCode)?.nombre || carreraCode;
+				const listaPensums = pensumsActivos.map((p: any) => p.cod_pensum).join(', ');
 
 				// Crear una configuración por cada combinación de pensum, semestre y cuota
 				const configuraciones: any[] = [];
-				pensumsAConfigurar.forEach(p => {
+				pensumsActivos.forEach(p => {
 					semestresSeleccionados.forEach(semestre => {
 						cuotasSeleccionadas.forEach(numeroCuota => {
-							// Obtener la fecha específica para esta cuota
 							const fechaInicioCuota = this.cuotasGroup.get(`fecha_${numeroCuota}`)?.value || baseData.fecha_inicio;
 
 							configuraciones.push({
@@ -404,6 +399,7 @@ export class ConfiguracionMoraComponent implements OnInit {
 				// Enviar todas las configuraciones
 				let completadas = 0;
 				let errores = 0;
+				const mensajesError: string[] = [];
 
 				if (configuraciones.length === 0) {
 					this.showAlert('No hay configuraciones para crear', 'warning');
@@ -418,19 +414,32 @@ export class ConfiguracionMoraComponent implements OnInit {
 								this.loadConfiguraciones();
 								this.closeModals();
 								if (errores === 0) {
-									this.showAlert(`${completadas} registro(s) creado(s) exitosamente`, 'success');
+									this.showAlert(
+										`Para la carrera ${nombreCarrera} se agregaron configuraciones a los siguientes pensums: ${listaPensums}`,
+										'success'
+									);
 								} else {
-									this.showAlert(`${completadas} creadas, ${errores} con error`, 'warning');
+									const detalle = mensajesError.length > 0 ? mensajesError.join(' | ') : `${errores} registro(s) fallaron`;
+									this.showAlert(
+										`No se pudo completar la creación. Errores: ${detalle}`,
+										'warning'
+									);
 								}
 							}
 						},
 						error: (err: any) => {
 							errores++;
+							const msg = err?.error?.message || err?.error?.errors?.cod_pensum?.[0] || 'Error desconocido';
+							mensajesError.push(msg);
 							console.error('Mora create:', err);
 							if (completadas + errores === configuraciones.length) {
 								this.loadConfiguraciones();
 								this.closeModals();
-								this.showAlert(`${completadas} creadas, ${errores} con error`, 'warning');
+								const detalle = mensajesError.join(' | ');
+								this.showAlert(
+									`No se pudo completar la creación. Errores: ${detalle}`,
+									'warning'
+								);
 							}
 						}
 					});
