@@ -15,21 +15,21 @@ class ReporteCajaFuertePdfService
     {
         $ahora = Carbon::now(self::TZ);
         Carbon::setLocale('es');
-        $fechaLarga = ucfirst($ahora->translatedFormat('l, d \d\e F \d\e Y H:i:s'));
-
         $logoHtml = DompdfInstitucionLogoHelper::logoParaMpdf('1.5cm', '1.5cm');
         $caja     = $datos['caja'];
 
         $headerHtml = $this->renderHeader($caja, $codDocumento, $logoHtml);
-        $footerHtml = $this->renderFooter($usuario, $ahora->format('d/m/Y'), $fechaLarga);
+        $footerHtml = $this->renderFooter($usuario, $ahora->format('d/m/Y'));
         $bodyHtml   = View::make('pdf.reporte_caja_fuerte', [
-            'caja'            => $caja,
-            'mes'             => $datos['mes'],
-            'saldo_anterior'  => $datos['saldo_anterior'],
-            'movimientos'     => $datos['movimientos'],
-            'total_ingresos'  => $datos['total_ingresos'],
-            'total_egresos'   => $datos['total_egresos'],
-            'saldo_final'     => $datos['saldo_final'],
+            'caja'                   => $caja,
+            'mes'                    => $datos['mes'],
+            'saldo_anterior'         => $datos['saldo_anterior'],
+            'es_mes_futuro'          => $datos['es_mes_futuro'],
+            'fecha_fin_mes_anterior' => $datos['fecha_fin_mes_anterior'],
+            'movimientos'            => $datos['movimientos'],
+            'total_ingresos'         => $datos['total_ingresos'],
+            'total_egresos'          => $datos['total_egresos'],
+            'saldo_final'            => $datos['saldo_final'],
         ])->render();
 
         $mpdf = new Mpdf([
@@ -54,7 +54,7 @@ class ReporteCajaFuertePdfService
             .data-table td { border-width: 1px; border-color: red; border-style: dotted; padding: 3px 5px; font-size: 12px; }
             .col-num    { width: 5%;  text-align: center; }
             .col-trans  { width: 15%; white-space: nowrap; }
-            .col-fecha  { width: 10%; text-align: center; }
+            .col-fecha  { width: 12%; text-align: center; white-space: nowrap; }
             .col-ref    { width: 40%; }
             .col-monto  { width: 12%; text-align: right; }
             .text-right  { text-align: right; }
@@ -113,7 +113,7 @@ class ReporteCajaFuertePdfService
         </table>';
     }
 
-    private function renderFooter(string $usuario, string $fechaCorta, string $fechaLarga): string
+    private function renderFooter(string $usuario, string $fechaCorta): string
     {
         $bs  = 'border-width:1px; border-color:#cc0000; border-style:solid;';
         $btu = 'border-width:1px 1px 0 1px; border-color:#cc0000; border-style:solid;';

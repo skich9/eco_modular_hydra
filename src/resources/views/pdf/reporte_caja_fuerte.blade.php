@@ -16,7 +16,13 @@
     {{-- Saldo anterior --}}
     <tr class="row-saldo-ant">
       <td></td>
-      <td colspan="3"><strong>Saldo anterior</strong></td>
+      <td></td>
+      <td class="text-center" style="white-space:nowrap;">{{ $fecha_fin_mes_anterior }}</td>
+      @if ($es_mes_futuro)
+        <td style="color:#b45309; font-style:italic;">Sin dato — no se cerró el reporte del mes anterior</td>
+      @else
+        <td><strong>Saldo anterior</strong></td>
+      @endif
       <td class="text-right"></td>
       <td class="text-right"></td>
       <td class="text-right">{{ number_format($saldo_anterior, 2) }}</td>
@@ -51,6 +57,7 @@
       <td colspan="6" class="text-right">Saldo del mes {{ $mes }}</td>
       <td class="text-right">{{ number_format($saldo_final, 2) }}</td>
     </tr>
+
 
   </tbody>
 </table>

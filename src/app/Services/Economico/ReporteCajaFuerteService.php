@@ -152,7 +152,7 @@ class ReporteCajaFuerteService
                         ELSE r.observacion
                     END as descripcion
                 "),
-                DB::raw('SUM(dr.total_entregado) as ingreso'),
+                DB::raw('SUM(dr.total_recibos + dr.total_deposito + dr.total_traspaso) as ingreso'),
                 DB::raw('0.00 as egreso')
             )
             ->where('r.id_caja_actividad', $idCaja)
@@ -286,6 +286,7 @@ class ReporteCajaFuerteService
 
     public function datosParaPdf(int $idCaja, string $fechaIni): array
     {
+        Carbon::setLocale('es');
         $carbon        = Carbon::parse($fechaIni, self::TZ);
         $caja          = CajaActividad::find($idCaja);
         $saldoAnterior = $this->getSaldoAnterior($idCaja, $carbon->startOfMonth()->toDateString());
@@ -296,14 +297,21 @@ class ReporteCajaFuerteService
         $totalEgresos  = $movimientos->sum('egreso');
         $saldoFinal    = $saldoAnterior + $totalIngresos - $totalEgresos;
 
+        $ahora        = Carbon::now(self::TZ);
+        $esMesFuturo  = $carbon->year > $ahora->year
+                     || ($carbon->year === $ahora->year && $carbon->month > $ahora->month);
+        $finMesAnt    = $carbon->copy()->subMonth()->endOfMonth()->format('Y-m-d');
+
         return [
-            'caja'           => $caja,
-            'mes'            => $carbon->translatedFormat('F Y'),
-            'saldo_anterior' => $saldoAnterior,
-            'movimientos'    => $conSaldos->values(),
-            'total_ingresos' => $totalIngresos,
-            'total_egresos'  => $totalEgresos,
-            'saldo_final'    => $saldoFinal,
+            'caja'                  => $caja,
+            'mes'                   => ucfirst($carbon->translatedFormat('F \d\e Y')),
+            'saldo_anterior'        => $esMesFuturo ? 0 : $saldoAnterior,
+            'es_mes_futuro'         => $esMesFuturo,
+            'fecha_fin_mes_anterior'=> $finMesAnt,
+            'movimientos'           => $conSaldos->values(),
+            'total_ingresos'        => $totalIngresos,
+            'total_egresos'         => $totalEgresos,
+            'saldo_final'           => $esMesFuturo ? 0 : $saldoFinal,
         ];
     }
 }

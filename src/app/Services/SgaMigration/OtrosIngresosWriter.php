@@ -95,7 +95,7 @@ class OtrosIngresosWriter
             'descuento'             => (float) $r->descuento,
             'code_tipo_pago'        => $this->mapper->mapFormaCobro($r->code_tipo_pago),
             'tipo_ingreso'          => $r->tipo_ingreso ?: null,
-            'codigo_tipo_documento' => null,
+            'codigo_tipo_documento' => 5,
             'estado_factura'        => null,
             'id_item_service'       => null,
         ];
@@ -115,7 +115,7 @@ class OtrosIngresosWriter
             'nro_orden'             => $d->nro_orden ?: null,
             'concepto_alquiler'     => $d->concepto_alquiler ?: null,
             'cta_banco'             => $d->cta_banco ?: null,
-            'codigo_tipo_documento' => null,
+            'codigo_tipo_documento' => 5,
         ];
     }
 }

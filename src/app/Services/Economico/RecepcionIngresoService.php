@@ -409,7 +409,12 @@ class RecepcionIngresoService
 
         $aeJoin = Schema::hasTable('actividades_economicas');
 
+        $subDetalles = DB::table('recepcion_ingreso_detalles')
+            ->select('recepcion_ingreso_id', DB::raw('SUM(total_recibos + total_deposito + total_traspaso) as monto_caja'))
+            ->groupBy('recepcion_ingreso_id');
+
         $q = DB::table('recepcion_ingresos as r')
+            ->leftJoinSub($subDetalles, 'det', 'r.id', '=', 'det.recepcion_ingreso_id')
             ->orderByDesc('r.fecha_recepcion')
             ->orderByDesc('r.id');
 
@@ -431,7 +436,7 @@ class RecepcionIngresoService
             'r.usuario_recibi2',
             'r.cod_documento',
             'r.observacion',
-            'r.monto_total',
+            DB::raw('COALESCE(det.monto_caja, r.monto_total) as monto_total'),
             'r.anulado',
             'r.motivo_anulacion',
             $aeJoin

@@ -13,7 +13,6 @@
 
   @if (cargando) {
     <div class="text-center py-5">
-      <div class="spinner-border text-primary" role="status"></div>
       <div class="mt-2 text-muted">Cargando catálogos...</div>
     </div>
   } @else {
@@ -55,9 +54,6 @@
 
       <div class="form-actions">
         <button class="btn btn-primary" (click)="generarReporte()" [disabled]="generando">
-          @if (generando) {
-            <span class="spinner-border spinner-border-sm me-1"></span>
-          }
           Generar reporte
         </button>
       </div>
@@ -65,15 +61,14 @@
 
     <!-- ─── Tabla de resultados ──────────────────────────────────────────────── -->
     @if (datos) {
-      <div class="card-panel card-panel--table">
+      <div class="tabla-seccion">
 
         <div class="table-header">
           <h2>Movimientos del mes</h2>
           <div class="table-badges"></div>
           <div class="table-actions">
             <button class="btn btn-success me-2" (click)="imprimir()" [disabled]="imprimiendo">
-              @if (imprimiendo) { <span class="spinner-border spinner-border-sm me-1"></span> }
-              Imprimir y cerrar mes
+              Imprimir y Cerrar Mes
             </button>
           </div>
         </div>
@@ -93,12 +88,20 @@
             </thead>
             <tbody>
               <!-- Saldo anterior -->
-              <tr class="row-saldo-anterior">
-                <td></td>
-                <td colspan="3">Saldo anterior</td>
+              <tr class="row-saldo-anterior" [class.row-saldo-sin-dato]="mesFuturo">
                 <td></td>
                 <td></td>
-                <td class="text-end">{{ datos.saldo_anterior | number:'1.2-2' }}</td>
+                <td>{{ fechaFinMesAnterior }}</td>
+                <td>
+                  @if (mesFuturo) {
+                    <span class="saldo-sin-dato">Sin dato — no se cerró el reporte del mes anterior</span>
+                  } @else {
+                    Saldo anterior
+                  }
+                </td>
+                <td></td>
+                <td></td>
+                <td class="text-end">{{ mesFuturo ? '0,00' : (datos.saldo_anterior | number:'1.2-2') }}</td>
               </tr>
 
               @for (m of datos.movimientos; track m.correlativo; let i = $index) {
@@ -130,12 +133,27 @@
               </tr>
               <tr class="row-saldo-mes">
                 <td colspan="6" class="text-end">Saldo del mes {{ labelMes }}</td>
-                <td class="text-end">{{ datos.saldo_final | number:'1.2-2' }}</td>
+                <td class="text-end">{{ mesFuturo ? '0,00' : (datos.saldo_final | number:'1.2-2') }}</td>
               </tr>
             </tfoot>
           </table>
         </div>
 
+      </div>
+    }
+
+    <!-- ─── Overlay imprimiendo ─────────────────────────────────────────────── -->
+    @if (imprimiendo) {
+      <div class="print-overlay">
+        <div class="print-card">
+          <div class="print-logo-wrap">
+            <img src="assets/images/logo-ceta.png" alt="CETA" class="print-logo" />
+          </div>
+          <p class="print-label">Generando PDF...</p>
+          <div class="print-dots">
+            <span></span><span></span><span></span>
+          </div>
+        </div>
       </div>
     }
 

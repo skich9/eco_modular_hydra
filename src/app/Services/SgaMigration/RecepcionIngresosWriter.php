@@ -58,13 +58,15 @@ class RecepcionIngresosWriter
         // instancias del mismo cod_documento de años anteriores.
         if (!empty($r->cod_documento)) {
             $anio = date('Y', strtotime((string) $r->fecha_recepcion));
-            $existe = DB::connection($conn)->table('recepcion')
+            $idExistente = DB::connection($conn)->table('recepcion')
                 ->where('cod_documento', $r->cod_documento)
                 ->whereYear('fecha_recepcion', $anio)
-                ->exists();
-            if ($existe) {
+                ->value('id_recepcion');
+            if ($idExistente) {
                 $this->log->write('recepcion_ingresos', $sourcePk, $conn, 'recepcion', null, 'excluded', 'cod_documento ya existe en destino');
                 $report->record('recepcion', $conn, 'skipped');
+                // Actualizar caja para registros nativos que ya existían en el SGA
+                $this->updateCajaOrdenCierre($conn, (int) $idExistente);
                 return;
             }
         }
@@ -87,12 +89,44 @@ class RecepcionIngresosWriter
                 }
             });
 
+            // Fuera de la transacción: leer detalle ya insertado en SGA para actualizar caja
+            $this->updateCajaOrdenCierre($conn, $idRecepcion);
+
             $destPk = (string) $idRecepcion;
             $this->log->write('recepcion_ingresos', $sourcePk, $conn, 'recepcion', $destPk, 'inserted');
             $report->record('recepcion', $conn, 'inserted');
         } catch (\Throwable $e) {
             $this->log->write('recepcion_ingresos', $sourcePk, $conn, 'recepcion', null, 'error', $e->getMessage());
             $report->record('recepcion', $conn, 'errors');
+        }
+    }
+
+    /**
+     * Actualiza caja.orden_cierre leyendo detalle_recepcion ya insertado en el SGA.
+     * Lee directo del SGA (no depende de resolveUsuarioLibro) para cubrir tanto
+     * registros insertados por nosotros como registros nativos excluidos.
+     * Solo actualiza filas con orden_cierre = 0 para no sobreescribir valores correctos.
+     */
+    private function updateCajaOrdenCierre(string $conn, int $idRecepcion): void
+    {
+        $detalles = DB::connection($conn)->table('detalle_recepcion')
+            ->where('id_recepcion', $idRecepcion)
+            ->whereNotNull('cod_libro_diario')
+            ->whereNotNull('fecha_inicial_libros')
+            ->whereNotNull('usuario_libro')
+            ->get();
+
+        foreach ($detalles as $d) {
+            $numOrden = (int) substr($d->cod_libro_diario, -3);
+            DB::connection($conn)->table('caja')
+                ->where('fecha', $d->fecha_inicial_libros)
+                ->where('usuario_asignado', $d->usuario_libro)
+                ->where('orden_cierre', 0)
+                ->update([
+                    'orden_cierre' => $numOrden,
+                    'hora_cierre'  => '23:59:00',
+                    'estado_caja'  => 'cerrada',
+                ]);
         }
     }
 
