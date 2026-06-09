@@ -1010,12 +1010,32 @@ class CobroController extends Controller
 			$pPorcentaje = DB::table('parametros_economicos')->where('nombre', 'descuento_semestre_completo_porcentaje')->first();
 
 			if (optional($pActivar)->valor === 'true' && (float)optional($pPorcentaje)->valor > 0) {
-				$porcentajeSistemicos = (float)$pPorcentaje->valor;
-				$descuentoSistemicoCalculado = $montoSemestre * ($porcentajeSistemicos / 100);
+				$codBeca = (int)$pPorcentaje->valor;
+				$porcentajeSistemicos = 0.0;
+				$descuentoSistemicoCalculado = 0.0;
+
+				// Buscar la definición del descuento para obtener el porcentaje real
+				$defDescuento = DB::table('def_descuentos_beca')->where('cod_beca', $codBeca)->first();
+				if ($defDescuento) {
+					if (($defDescuento->porcentaje ?? 0) == 1) {
+						// Si es porcentaje, el valor del porcentaje real se almacena en la columna 'monto'
+						$porcentajeSistemicos = (float)($defDescuento->monto ?? 0);
+						$descuentoSistemicoCalculado = $montoSemestre * ($porcentajeSistemicos / 100);
+					} else {
+						// Si es un descuento de monto fijo, el descuento directo es el valor en 'monto'
+						$descuentoSistemicoCalculado = (float)($defDescuento->monto ?? 0);
+					}
+				} else {
+					// Fallback de seguridad: si no se encuentra la definición, pero el valor del parámetro 
+					// es un porcentaje válido directo (ej. <= 100), usarlo directamente.
+					if ($codBeca <= 100) {
+						$porcentajeSistemicos = (float)$codBeca;
+						$descuentoSistemicoCalculado = $montoSemestre * ($porcentajeSistemicos / 100);
+					}
+				}
 
 				// Si el descuento calculado por sistema es mayor al que ya tenemos registrado,
 				// y el estudiante ya completó sus pagos (o para mostrar proyección), usamos el del sistema.
-				// Para 120251047, esto asegurará que se vea el 10% si los manuales fallan.
 				if ($descuentoSistemicoCalculado > $totalDescuentos && $totalMensualidadConParciales >= ($montoSemestre - $descuentoSistemicoCalculado - 1)) {
 					$totalDescuentos = $descuentoSistemicoCalculado;
 				}
@@ -3865,7 +3885,11 @@ class CobroController extends Controller
 					'observaciones' => $obsCobro !== '' ? $obsCobro : null,
                     'detalle' => $detalle,
                     'id_usuario' => $idUsuarioReposicion ?: (int)$request->id_usuario,
-                    'id_forma_cobro' => isset($item['id_forma_cobro']) ? $item['id_forma_cobro'] : $formaIdItem,
+                    // Facturación posterior: solo el registro en `cobro` se marca con forma 'P'.
+                    // SIAT (codigoMetodoPago) y Notas SGA siguen usando la forma original.
+                    'id_forma_cobro' => $isReposicionFactura
+                        ? 'P'
+                        : (isset($item['id_forma_cobro']) ? $item['id_forma_cobro'] : $formaIdItem),
                     'pu_mensualidad' => $puMensualidadFinal,
                     'order' => $order,
                     'descuento' => $descuentoFinal,

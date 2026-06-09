@@ -70,6 +70,14 @@ class FormasCobroSeeder extends Seeder
 				'created_at' => null,
 				'updated_at' => null,
 			],
+			[
+				'id_forma_cobro' => 'P',
+				'nombre' => 'Facturación Posterior',
+				'descripcion' => 'Se utiliza para registrar el cobro de facturación posterior (reposición de factura)',
+				'estado' => '1',
+				'created_at' => null,
+				'updated_at' => null,
+			],
 		];
 
 		foreach ($formas as $f) {

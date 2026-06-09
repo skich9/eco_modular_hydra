@@ -25,8 +25,8 @@ class LibroDiarioAggregatorService
 	/** Códigos en `cobro.cod_tipo_cobro` considerados mora/recargos para el resumen del Libro Diario. */
 	private const COD_TIPO_COBRO_MORA = ['MORA', 'RECARGO', 'INTERES', 'PENALIDAD', 'NIVELACION'];
 
-	/** Letras alineadas con `formas_cobro` y el resumen (Transferencia, Cheque, Depósito, Efectivo, Tarjeta, Otro, Traspaso). */
-	private const LETRAS_RESUMEN = ['B', 'C', 'D', 'E', 'L', 'O', 'T'];
+	/** Letras alineadas con `formas_cobro` y el resumen (Transferencia, Cheque, Depósito, Efectivo, Tarjeta, Otro, Traspaso, Facturación Posterior). */
+	private const LETRAS_RESUMEN = ['B', 'C', 'D', 'E', 'L', 'O', 'T', 'P'];
 
 	/** @var array<string, string>|null id_forma_cobro => E|L|D|C|B|T|O */
 	private ?array $mapaFormaCobroIdALetra = null;
@@ -962,6 +962,9 @@ class LibroDiarioAggregatorService
 		if (str_contains($n, 'tarj')) {
 			return str_contains($n, 'efectiv') ? 'O' : 'L';
 		}
+		if (str_contains($n, 'facturacion') && str_contains($n, 'posterior')) {
+			return 'P';
+		}
 		if (str_contains($n, 'vales') || str_contains($n, 'otro') || (str_contains($n, 'pago') && str_contains($n, 'posterior'))) {
 			return 'O';
 		}
@@ -998,6 +1001,9 @@ class LibroDiarioAggregatorService
 		}
 		if ($c === 'T' || str_contains($c, 'TRASP')) {
 			return 'T';
+		}
+		if ($c === 'P') {
+			return 'P';
 		}
 		return 'O';
 	}
@@ -1185,7 +1191,7 @@ class LibroDiarioAggregatorService
 	private function construirResumenMetodosPago(array $items): array
 	{
 		$resumen = [];
-		$map = ['E' => 'efectivo', 'L' => 'tarjeta', 'D' => 'deposito', 'C' => 'cheque', 'B' => 'transferencia', 'T' => 'traspaso', 'O' => 'otro'];
+		$map = ['E' => 'efectivo', 'L' => 'tarjeta', 'D' => 'deposito', 'C' => 'cheque', 'B' => 'transferencia', 'T' => 'traspaso', 'O' => 'otro', 'P' => 'otro'];
 		foreach ($map as $k => $v) {
 			$resumen[$v] = [
 				'factura' => 0.0,

@@ -455,7 +455,7 @@ class VerifyMigrationService
             'pago' => [
                 'src_table' => 'cobro',
                 'src_date_col' => 'fecha_cobro',
-                'src_filters' => [fn($q) => $q->whereIn('cod_tipo_cobro', ['MENSUALIDAD', 'ARRASTRE'])->whereNotNull('cod_inscrip')->where(fn($q2) => $q2->whereNull('reposicion_factura')->orWhere('reposicion_factura', '!=', 1)->orWhere('tipo_documento', '!=', 'F')->orWhereNull('tipo_documento'))],
+                'src_filters' => [fn($q) => $q->whereIn('cod_tipo_cobro', ['MENSUALIDAD', 'ARRASTRE'])->whereNotNull('cod_inscrip')->where(fn($q2) => $q2->whereNull('reposicion_factura')->orWhere('reposicion_factura', '!=', 1)->orWhere('tipo_documento', '!=', 'F')->orWhereNull('tipo_documento')->orWhereNotExists(fn($sub) => $sub->from('cobro AS sibling')->whereColumn('sibling.cod_ceta', 'cobro.cod_ceta')->whereColumn('sibling.gestion', 'cobro.gestion')->where('sibling.reposicion_factura', 1)->where('sibling.tipo_documento', 'R')->whereNotNull('sibling.nro_recibo')))],
                 'route_cols' => ['cod_pensum'],
                 'route_resolver' => $byPensum,
                 'log_table' => 'cobro_pago',
@@ -481,7 +481,7 @@ class VerifyMigrationService
             'pago_multa' => [
                 'src_table' => 'cobro',
                 'src_date_col' => 'fecha_cobro',
-                'src_filters' => [fn($q) => $q->whereIn('cod_tipo_cobro', ['MORA', 'NIVELACION'])->whereNotNull('cod_inscrip')->where(fn($q2) => $q2->whereNull('reposicion_factura')->orWhere('reposicion_factura', '!=', 1)->orWhere('tipo_documento', '!=', 'F')->orWhereNull('tipo_documento'))],
+                'src_filters' => [fn($q) => $q->whereIn('cod_tipo_cobro', ['MORA', 'NIVELACION'])->whereNotNull('cod_inscrip')->where(fn($q2) => $q2->whereNull('reposicion_factura')->orWhere('reposicion_factura', '!=', 1)->orWhere('tipo_documento', '!=', 'F')->orWhereNull('tipo_documento')->orWhereNotExists(fn($sub) => $sub->from('cobro AS sibling')->whereColumn('sibling.cod_ceta', 'cobro.cod_ceta')->whereColumn('sibling.gestion', 'cobro.gestion')->where('sibling.reposicion_factura', 1)->where('sibling.tipo_documento', 'R')->whereNotNull('sibling.nro_recibo')))],
                 'route_cols' => ['cod_pensum'],
                 'route_resolver' => $byPensum,
                 'log_table' => 'cobro_pago_multa',
