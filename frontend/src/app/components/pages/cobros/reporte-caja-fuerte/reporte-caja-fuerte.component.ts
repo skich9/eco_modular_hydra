@@ -146,6 +146,18 @@ export class ReporteCajaFuerteComponent implements OnInit {
     setTimeout(() => { this.alertMsg = ''; }, 6000);
   }
 
+  get mesFuturo(): boolean {
+    if (!this.mesAnio) return false;
+    return this.mesAnio > new Date().toISOString().substring(0, 7);
+  }
+
+  get fechaFinMesAnterior(): string {
+    if (!this.mesAnio) return '';
+    const [anio, mes] = this.mesAnio.split('-').map(Number);
+    const ultimo = new Date(anio, mes - 1, 0);
+    return ultimo.toISOString().substring(0, 10);
+  }
+
   get totalFilas(): number {
     return this.datos?.movimientos.length ?? 0;
   }
