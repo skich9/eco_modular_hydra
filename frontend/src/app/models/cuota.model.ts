@@ -3,7 +3,6 @@ export interface Cuota {
 	nombre: string;
 	descripcion?: string;
 	monto: number;
-	fecha_vencimiento?: string;
 	turno?: string;
 	estado?: string;
 	tipo?: string;

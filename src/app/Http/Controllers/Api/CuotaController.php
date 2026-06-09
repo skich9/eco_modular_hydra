@@ -158,7 +158,7 @@ class CuotaController extends Controller
 			'cuotas.*.descripcion' => 'nullable|string',
 			'cuotas.*.semestre' => 'required', // puede venir numérico o string
 			'cuotas.*.monto' => 'required|numeric',
-			'cuotas.*.fecha_vencimiento' => 'required|date',
+			'cuotas.*.fecha_vencimiento' => 'nullable|date',
 			'cuotas.*.tipo' => 'nullable|string',
 			'cuotas.*.turno' => 'nullable|string|max:150',
 		]);
@@ -169,7 +169,7 @@ class CuotaController extends Controller
 				foreach ($validated['cuotas'] as $q) {
 					$sem = (string)($q['semestre'] ?? '');
 					$nombre = (string)($q['nombre'] ?? '');
-					$fv = substr((string)($q['fecha_vencimiento'] ?? ''), 0, 10);
+					$fv = isset($q['fecha_vencimiento']) && $q['fecha_vencimiento'] ? substr((string)$q['fecha_vencimiento'], 0, 10) : null;
 					// Buscar si ya existe misma cuota por nombre+gestion+cod_pensum+semestre(+turno si aplica)
 					$query = Cuota::query()
 						->where('gestion', $validated['gestion'])
@@ -185,7 +185,7 @@ class CuotaController extends Controller
 					$exists = $query->first();
 					if ($exists) {
 						$exists->monto = $q['monto'];
-						$exists->fecha_vencimiento = $fv;
+						if ($fv !== null) $exists->fecha_vencimiento = $fv;
 						// turno/tipo/activo opcionales
 						if (Schema::hasColumn('cuotas', 'turno') && array_key_exists('turno', $q)) {
 							$exists->turno = $q['turno'];
@@ -207,7 +207,7 @@ class CuotaController extends Controller
 						$model->nombre = $nombre;
 						$model->descripcion = $q['descripcion'] ?? null;
 						$model->monto = $q['monto'];
-						$model->fecha_vencimiento = $fv;
+						if ($fv !== null) $model->fecha_vencimiento = $fv;
 						if (Schema::hasColumn('cuotas', 'turno') && array_key_exists('turno', $q)) {
 							$model->turno = $q['turno'];
 						}

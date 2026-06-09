@@ -68,7 +68,7 @@ class ParametroCuotaController extends Controller
 	{
 		$data = $request->validate([
 			'nombre_cuota'       => ['required','string','max:50'],
-			'fecha_vencimiento'  => ['required','date'],
+			'fecha_vencimiento'  => ['nullable','date'],
 			'activo'             => ['required','boolean'],
 		]);
 

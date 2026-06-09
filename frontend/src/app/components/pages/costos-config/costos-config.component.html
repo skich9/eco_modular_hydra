@@ -143,7 +143,6 @@
 								<input class="form-check-input" type="checkbox" [id]="'cuota_'+c.id_parametro_cuota" [formControlName]="'cuota_'+c.id_parametro_cuota" [disabled]="cuotasDisabled" />
 								<label class="form-check-label" [for]="'cuota_'+c.id_parametro_cuota">
 									{{ c.nombre_cuota }}
-									<small class="text-muted ms-2" *ngIf="c.fecha_vencimiento">{{ c.fecha_vencimiento | date:'dd/MM/yyyy' }}</small>
 								</label>
 							</div>
 							<div class="text-muted" *ngIf="cuotas.length===0">No hay cuotas activas.</div>
@@ -262,10 +261,6 @@
 						<div class="mb-3">
 							<label class="form-label">Nombre de cuota</label>
 							<input type="text" class="form-control" formControlName="nombre_cuota" placeholder="Ej. Matrícula" />
-						</div>
-						<div class="mb-3">
-							<label class="form-label">Fecha de vencimiento</label>
-							<input type="date" class="form-control" formControlName="fecha_vencimiento" />
 						</div>
 						<div class="form-check mb-2">
 							<input class="form-check-input" type="checkbox" id="chkCuotaActivo" formControlName="activo" />
@@ -391,15 +386,6 @@
 													[(ngModel)]="cq.monto"
 													[ngModelOptions]="{standalone: true}"
 													autocomplete="off"
-												/>
-											</td>
-											<td>
-												<input
-													type="date"
-													class="form-control form-control-sm"
-													[name]="'ecf_'+i"
-													[(ngModel)]="cq.fecha_vencimiento"
-													[ngModelOptions]="{standalone: true}"
 												/>
 											</td>
 										</tr>

@@ -48,7 +48,6 @@ class AsignacionCostos extends Model
 		'id_compromisos',
 		// Nuevos campos para manejo de cuotas
 		'numero_cuota',
-		'fecha_vencimiento',
 		'estado_pago',
 		'fecha_pago',
 		'monto_pagado',
@@ -64,7 +63,6 @@ class AsignacionCostos extends Model
 		'monto' => 'decimal:2',
 		'estado' => 'boolean',
 		'monto_pagado' => 'decimal:2',
-		'fecha_vencimiento' => 'date',
 		'fecha_pago' => 'date',
 	];
 

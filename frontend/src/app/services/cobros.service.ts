@@ -178,13 +178,13 @@ export class CobrosService {
 		);
 	}
 
-	createParametroCuota(payload: { nombre_cuota: string; fecha_vencimiento: string; activo: boolean }): Observable<any> {
+	createParametroCuota(payload: { nombre_cuota: string; activo: boolean }): Observable<any> {
 		return this.http.post<any>(`${this.apiUrl}/parametros-cuota`, payload).pipe(
 			map((res: any) => ({ success: !!res?.success, data: res?.data || null, message: res?.message }))
 		);
 	}
 
-	updateParametroCuota(id: number, payload: { fecha_vencimiento: string }): Observable<any> {
+	updateParametroCuota(id: number, payload: { activo?: boolean }): Observable<any> {
 		return this.http.put<any>(`${this.apiUrl}/parametros-cuota/${id}`, payload).pipe(
 			map((res: any) => ({ success: !!res?.success, data: res?.data || null, message: res?.message }))
 		);
@@ -518,7 +518,6 @@ export class CobrosService {
 			descripcion?: string | null;
 			semestre: string;
 			monto: number;
-			fecha_vencimiento: string;
 			tipo?: string;
 			turno?: string;
 			activo?: boolean;

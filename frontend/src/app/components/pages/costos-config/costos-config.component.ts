@@ -22,14 +22,14 @@ export class CostosConfigComponent implements OnInit {
 	private wiredKeys = new Set<string>();
 
 	// Cuotas
-	cuotas: Array<{ id_parametro_cuota: number; nombre_cuota: string; fecha_vencimiento?: string; activo: boolean }> = [];
+	cuotas: Array<{ id_parametro_cuota: number; nombre_cuota: string; activo: boolean }> = [];
 	cuotasGroup: FormGroup;
 	// Modales de cuotas
 	addCuotaOpen = false;
 	addCuotaForm: FormGroup;
 	editCuotasOpen = false;
 	editCuotasLoading = false;
-	editCuotasList: Array<{ id_parametro_cuota: number; nombre_cuota: string; fecha_vencimiento?: string; activo: boolean }> = [];
+	editCuotasList: Array<{ id_parametro_cuota: number; nombre_cuota: string; activo: boolean }> = [];
 	editCuotasForm: FormGroup;
 
 	// Tabs y datos de costo_semestral
@@ -66,7 +66,6 @@ export class CostosConfigComponent implements OnInit {
 		nombre: string;
 		semestre: string;
 		monto: string;
-		fecha_vencimiento: string;
 		tipo?: string | null;
 		turno?: string | null;
 	}> = [];
@@ -144,7 +143,6 @@ export class CostosConfigComponent implements OnInit {
 		// Formularios de cuotas
 		this.addCuotaForm = this.fb.group({
 			nombre_cuota: ['', Validators.required],
-			fecha_vencimiento: ['', Validators.required],
 			activo: [true]
 		});
 		this.editCuotasForm = this.fb.group({});
@@ -180,7 +178,7 @@ export class CostosConfigComponent implements OnInit {
 
 	// --- Cuotas: Modales y flujos ---
 	addCuota(): void {
-		this.addCuotaForm.reset({ nombre_cuota: '', fecha_vencimiento: '', activo: true });
+		this.addCuotaForm.reset({ nombre_cuota: '', activo: true });
 		this.addCuotaOpen = true;
 	}
 
@@ -194,10 +192,9 @@ export class CostosConfigComponent implements OnInit {
 		const v = this.addCuotaForm.value as any;
 		const payload = {
 			nombre_cuota: String(v.nombre_cuota || '').trim(),
-			fecha_vencimiento: String(v.fecha_vencimiento || ''),
 			activo: !!v.activo
 		};
-		if (!payload.nombre_cuota || !payload.fecha_vencimiento) return;
+		if (!payload.nombre_cuota) return;
 		this.cobrosService.createParametroCuota(payload).subscribe({
 			next: (res) => {
 				const item = res?.data;
@@ -222,7 +219,6 @@ export class CostosConfigComponent implements OnInit {
 				// Construir controles para fechas
 				const controls: Record<string, FormControl> = {};
 				for (const c of this.editCuotasList) {
-					controls[`fecha_${c.id_parametro_cuota}`] = new FormControl(this.toDateInput(c.fecha_vencimiento || ''));
 					controls[`activo_${c.id_parametro_cuota}`] = new FormControl(!!c.activo);
 				}
 				this.editCuotasForm = this.fb.group(controls);
@@ -241,15 +237,11 @@ export class CostosConfigComponent implements OnInit {
 		let pending = this.editCuotasList.length;
 		let failed = 0;
 		for (const c of this.editCuotasList) {
-			const ctrlKey = `fecha_${c.id_parametro_cuota}`;
-			const newDate = String(this.editCuotasForm.get(ctrlKey)?.value || '').trim();
-			const oldDate = this.toDateInput(c.fecha_vencimiento || '');
 			const activoKey = `activo_${c.id_parametro_cuota}`;
 			const newActivo = this.editCuotasForm.get(activoKey)?.value === true;
 			const oldActivo = !!c.activo;
 
 			const payload: any = {};
-			if (newDate && newDate !== oldDate) payload.fecha_vencimiento = newDate;
 			if (newActivo !== oldActivo) payload.activo = newActivo;
 			if (Object.keys(payload).length === 0) { pending--; if (pending===0) this.finishEditBatch(failed); continue; }
 
@@ -271,15 +263,6 @@ export class CostosConfigComponent implements OnInit {
 		else alert('Cuotas actualizadas correctamente.');
 		// Refrescar lista visible de cuotas activas (fechas)
 		this.loadCuotasActivas();
-	}
-
-	private toDateInput(val: string): string {
-		if (!val) return '';
-		// Normalizar formatos 'YYYY-MM-DD', 'YYYY-MM-DD HH:mm:ss', ISO
-		const s = String(val);
-		if (s.includes('T')) return s.substring(0, 10);
-		if (s.includes(' ')) return s.substring(0, 10);
-		return s;
 	}
 
 	// Normaliza tipo de costo visible (label) a la clave usada en cuotas
@@ -598,7 +581,6 @@ export class CostosConfigComponent implements OnInit {
 							c.monto != null && `${c.monto}`.trim() !== ''
 								? String(Math.trunc(Number(c.monto)))
 								: '',
-						fecha_vencimiento: this.toDateInput(c.fecha_vencimiento || ''),
 						tipo: c.tipo != null && `${c.tipo}`.trim() !== '' ? String(c.tipo) : null,
 						turno: c.turno != null && `${c.turno}`.trim() !== '' ? String(c.turno) : null,
 					}));
@@ -832,11 +814,6 @@ export class CostosConfigComponent implements OnInit {
 					this.notificacionCostosError = 'En cuotas, cada monto debe ser un entero mayor a cero.';
 					return;
 				}
-				const fv = String(cq.fecha_vencimiento || '').trim();
-				if (!fv) {
-					this.notificacionCostosError = 'En cuotas, indique la fecha de vencimiento en cada fila.';
-					return;
-				}
 			}
 		}
 
@@ -869,7 +846,6 @@ export class CostosConfigComponent implements OnInit {
 							descripcion: '',
 							semestre: String(cq.semestre || row.semestre),
 							monto: parsePositiveInteger(cq.monto) as number,
-							fecha_vencimiento: String(cq.fecha_vencimiento || '').substring(0, 10),
 							tipo: cq.tipo || undefined,
 							turno: cq.turno || undefined,
 						}));
@@ -1120,20 +1096,17 @@ export class CostosConfigComponent implements OnInit {
 						// recoger cuotas seleccionadas
 						const seleccionadas = this.cuotas.filter(c => this.cuotasGroup.get(`cuota_${c.id_parametro_cuota}`)?.value === true);
 						if (seleccionadas.length > 0) {
-							const cuotasPayload: Array<{ nombre: string; descripcion?: string | null; semestre: string; monto: number; fecha_vencimiento: string; tipo?: string; turno?: string; }> = [];
+							const cuotasPayload: Array<{ nombre: string; descripcion?: string | null; semestre: string; monto: number; tipo?: string; turno?: string; }> = [];
 							for (const cost of selectedCosts) {
 								const turnosToUse = (cost.turno === 'TODOS') ? this.turnos.map(t => t.key) : [cost.turno];
 								for (const s of semestres) {
 									for (const q of seleccionadas) {
-										const fv = this.toDateInput(q.fecha_vencimiento || '');
-										if (!fv) continue;
 										for (const tu of turnosToUse) {
 											cuotasPayload.push({
 												nombre: q.nombre_cuota,
 												descripcion: '',
 												semestre: String(s),
 												monto: cost.monto,
-												fecha_vencimiento: fv,
 												tipo: cost.tipo,
 												turno: tu,
 											});

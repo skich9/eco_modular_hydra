@@ -828,7 +828,7 @@ class CobroController extends Controller
 						'monto_pagado' => (float) (isset($nextParcial->monto_pagado) ? $nextParcial->monto_pagado : 0),
 						'id_asignacion_costo' => (isset($nextParcial->id_asignacion_costo) && $nextParcial->id_asignacion_costo != 0) ? (int)$nextParcial->id_asignacion_costo : null,
 						'id_cuota_template' => isset($nextParcial->id_cuota_template) ? ((int)$nextParcial->id_cuota_template ?: null) : null,
-						'fecha_vencimiento' => $nextParcial->fecha_vencimiento,
+						'fecha_vencimiento' => null,
 						'estado_pago' => 'PARCIAL',
 					];
 				} else {
@@ -848,7 +848,7 @@ class CobroController extends Controller
 							'monto_pagado' => (float) (isset($nextPend->monto_pagado) ? $nextPend->monto_pagado : 0),
 							'id_asignacion_costo' => (isset($nextPend->id_asignacion_costo) && $nextPend->id_asignacion_costo != 0) ? (int)$nextPend->id_asignacion_costo : null,
 							'id_cuota_template' => isset($nextPend->id_cuota_template) ? ((int)$nextPend->id_cuota_template ?: null) : null,
-							'fecha_vencimiento' => $nextPend->fecha_vencimiento,
+							'fecha_vencimiento' => null,
 							'estado_pago' => (string)(isset($nextPend->estado_pago) ? $nextPend->estado_pago : 'PENDIENTE'),
 						];
 					}
@@ -893,7 +893,7 @@ class CobroController extends Controller
 									'monto_neto' => $montoNeto,
 									'id_asignacion_costo' => (int) $asig->id_asignacion_costo,
 									'id_cuota_template' => isset($asig->id_cuota_template) ? ((int)$asig->id_cuota_template ?: null) : null,
-									'fecha_vencimiento' => $asig->fecha_vencimiento,
+									'fecha_vencimiento' => null,
 								];
 							}
 						}
@@ -1482,7 +1482,7 @@ class CobroController extends Controller
 							'estado_pago' => (string) ($a->estado_pago ?? ''),
 							'id_asignacion_costo' => $idAsignacion ?: null,
 							'id_cuota_template' => isset($a->id_cuota_template) ? ((int)$a->id_cuota_template ?: null) : null,
-							'fecha_vencimiento' => $a->fecha_vencimiento,
+							'fecha_vencimiento' => null,
 							'gestion' => $a->gestion ?? null,
 							'gestion_cuota' => $a->gestion ?? null,
 							'tipo_inscripcion' => (string) ($a->tipo_inscripcion ?? 'NORMAL'),
@@ -1524,7 +1524,7 @@ class CobroController extends Controller
 								'monto_pagado' => $montoPagado,
 								'estado_pago' => $estadoPago,
 								'fecha_pago' => $fechaPago,
-								'fecha_vencimiento' => $a->fecha_vencimiento,
+								'fecha_vencimiento' => null,
 								'id_asignacion_costo' => (isset($a->id_asignacion_costo) && $a->id_asignacion_costo != 0) ? (int)$a->id_asignacion_costo : null,
 								'id_cuota_template' => isset($a->id_cuota_template) ? $a->id_cuota_template : null,
 								'nro_cobro' => null,
@@ -1566,7 +1566,7 @@ class CobroController extends Controller
 									$fechaInicioCfg = $cfgEntry ? $cfgEntry['fecha_inicio'] : null;
 									$fechaVenc = $fechaInicioCfg
 										? $getPreviousDiaHabil((string)$fechaInicioCfg)
-										: $a->fecha_vencimiento;
+										: null;
 								}
 								// Calcular dias_mora y monto_mora para cuotas sin asignacion_mora activa
 								$diasMoraVal  = $moraDatosPorAsign[$idAsign]['dias_mora']  ?? null;
@@ -1599,7 +1599,7 @@ class CobroController extends Controller
 								$fechaInicioMora = $moraFechaInicioMap[$idAsign] ?? null;
 								$fechaVenc = $fechaInicioMora
 									? $getPreviousDiaHabil((string)$fechaInicioMora)
-									: $a->fecha_vencimiento;
+									: null;
 								// Formatear asignaciones de arrastre con la misma estructura que las primarias
 								return [
 									'numero_cuota' => (int) ($a->numero_cuota ?? 0),
@@ -1653,7 +1653,7 @@ class CobroController extends Controller
 						'estado_pago' => (string) ($a->estado_pago ?? ''),
 						'id_asignacion_costo' => (int) ($a->id_asignacion_costo ?? 0) ?: null,
 						'id_cuota_template' => isset($a->id_cuota_template) ? ((int)$a->id_cuota_template ?: null) : null,
-						'fecha_vencimiento' => $a->fecha_vencimiento,
+						'fecha_vencimiento' => null,
 						'mes_nombre' => $mesNombre,
 					];
 				})->values() : [],
