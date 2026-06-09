@@ -152,7 +152,7 @@ class ReporteCajaFuerteService
                         ELSE r.observacion
                     END as descripcion
                 "),
-                DB::raw('SUM(dr.total_entregado) as ingreso'),
+                DB::raw('SUM(dr.total_recibos + dr.total_deposito + dr.total_traspaso) as ingreso'),
                 DB::raw('0.00 as egreso')
             )
             ->where('r.id_caja_actividad', $idCaja)

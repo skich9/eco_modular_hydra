@@ -13,7 +13,6 @@
 
   @if (cargando) {
     <div class="text-center py-5">
-      <div class="spinner-border text-primary" role="status"></div>
       <div class="mt-2 text-muted">Cargando catálogos...</div>
     </div>
   } @else {
@@ -65,15 +64,14 @@
 
     <!-- ─── Tabla de resultados ──────────────────────────────────────────────── -->
     @if (datos) {
-      <div class="card-panel card-panel--table">
+      <div class="tabla-seccion">
 
         <div class="table-header">
           <h2>Movimientos del mes</h2>
           <div class="table-badges"></div>
           <div class="table-actions">
             <button class="btn btn-success me-2" (click)="imprimir()" [disabled]="imprimiendo">
-              @if (imprimiendo) { <span class="spinner-border spinner-border-sm me-1"></span> }
-              Imprimir y cerrar mes
+              Imprimir y Cerrar Mes
             </button>
           </div>
         </div>
@@ -136,6 +134,22 @@
           </table>
         </div>
 
+      </div>
+    }
+
+    <!-- ─── Overlay imprimiendo ─────────────────────────────────────────────── -->
+    @if (imprimiendo) {
+      <div class="print-overlay">
+        <div class="print-card">
+          <div class="print-logo-wrap">
+            <img src="assets/images/logo-ceta.png" alt="CETA" class="print-logo" />
+            <div class="print-scan-line"></div>
+          </div>
+          <p class="print-label">Generando PDF...</p>
+          <div class="print-dots">
+            <span></span><span></span><span></span>
+          </div>
+        </div>
       </div>
     }
 
